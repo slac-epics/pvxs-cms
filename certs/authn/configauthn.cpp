@@ -7,13 +7,17 @@
 #include "configauthn.h"
 
 #include <authnstd.h>
-#include <ifaddrs.h>
+#ifndef _WIN32
+#  include <ifaddrs.h>
+#endif
 #include <osiFileName.h>
 #include <osiProcess.h>
 
 #include "certdate.h"
 
+#ifndef _WIN32
 struct ifaddrs;
+#endif
 
 namespace pvxs {
 namespace certs {
@@ -130,6 +134,11 @@ void ConfigAuthN::updateDefs(defs_t &defs) const {
  * @return the IP address of the current process' host
  */
 std::string ConfigAuthN::getIPAddress() {
+#ifdef _WIN32
+    // getifaddrs() / <ifaddrs.h> is not available with MinGW.
+    // This is only used as a fallback when gethostname() fails.
+    return "127.0.0.1";
+#else
     ifaddrs *if_addr_struct = nullptr;
     std::string chosen_ip;
     std::string private_ip;
@@ -181,6 +190,7 @@ std::string ConfigAuthN::getIPAddress() {
 
     // Return the chosen IP address
     return chosen_ip;
+#endif
 }
 
 }  // namespace certs

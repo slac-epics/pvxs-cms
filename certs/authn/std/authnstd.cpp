@@ -6,7 +6,6 @@
 
 #include "authnstd.h"
 
-#include <ifaddrs.h>
 #include <osiProcess.h>
 
 #include <pvxs/log.h>
