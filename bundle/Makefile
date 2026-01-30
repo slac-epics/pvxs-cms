@@ -132,6 +132,7 @@ ifneq (,$(filter %mingw,$(T_A)))
 ifeq (NO,$(SHARED_LIBRARIES))
 ifneq ($(LIB_SUFFIX_A),YES)
 	$(CP) $(LIBEVENT_$(T_A))/lib/libevent_core.a $(LIBEVENT_$(T_A))/lib/event_core.lib
+	$(CP) $(LIBEVENT_$(T_A))/lib/libevent_openssl.a $(LIBEVENT_$(T_A))/lib/event_openssl.lib
 # HACK: when STATIC_BUILD=YES we (in configure/RULES_PVXS_MODULE) inject the event_core
 #       dependency via <target>_LIBS += event_core which requires the existance of
 #       $(event_core_DIR)/event_core.lib however, cmake outputs the *nix style name
