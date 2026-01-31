@@ -604,7 +604,7 @@ struct Tester {
         waitCounterAtLeast(cert_status_request_counters, cert_status_evt, client1, 2);
 
         // Sleep a bit, but not long enough for the status validity to expire
-        sleep(1);
+        epicsThreadSleep(1.0);
 
         testDiag("Get with cached-status (same server)");
         auto reply_2(cli2.get(TEST_PV).exec()->wait(5.0));
