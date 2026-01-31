@@ -7,6 +7,17 @@
 #ifndef CERT_CONTEXT_H
 #define CERT_CONTEXT_H
 
+#include <errno.h>
+#include <limits.h>
+#include <string.h>
+
+#ifdef _WIN32
+#  include <direct.h>
+#  define getcwd _getcwd
+#else
+#  include <unistd.h>
+#endif
+
 #include <unordered_map>
 #include <vector>
 

@@ -11,6 +11,12 @@ include $(TOP)/configure/CONFIG
 ifeq ($(EVENT2_HAS_OPENSSL),YES)
 USR_CPPFLAGS += -DPVXS_ENABLE_OPENSSL -I$(TOP)/bundle/CLI11/include
 
+ifeq (WIN32,$(OS_CLASS))
+# certs/ builds some PVXS implementation sources directly.
+# Avoid PVXS_API resolving to dllimport for these definitions.
+USR_CPPFLAGS += -DPVXS_API_BUILDING
+endif
+
 USR_CPPFLAGS += -I$(TOP)/src/pvxs
 
 AUTHN = $(TOP)/certs/authn

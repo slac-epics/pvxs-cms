@@ -118,9 +118,14 @@ TESTS += testudpfwd
 ifdef BASE_3_15
 ifeq ($(EVENT2_HAS_OPENSSL),YES)
 USR_CPPFLAGS += -I$(TOP)/certs -I$(TOP)/bundle/CLI11/include
-SRC_DIRS += $(TOP)/certs
-SRC_DIRS += $(TOP)/certs/authn
-SRC_DIRS += $(TOP)/certs/authn/std
+ ifeq (WIN32,$(OS_CLASS))
+ # test/ builds some PVXS implementation sources directly.
+ # Avoid PVXS_API resolving to dllimport for these definitions.
+ USR_CPPFLAGS += -DPVXS_API_BUILDING
+ endif
+ SRC_DIRS += $(TOP)/certs
+ SRC_DIRS += $(TOP)/certs/authn
+ SRC_DIRS += $(TOP)/certs/authn/std
 SRC_DIRS += $(TOP)/src
 SRC_DIRS += $(TOP)/src/pvxs
 SRCS += configcms.cpp

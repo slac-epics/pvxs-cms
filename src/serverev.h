@@ -62,7 +62,7 @@ public:
 
     explicit operator bool() const { return !!base_;}
 
-    friend PVXS_API std::ostream& operator<<(std::ostream& strm, const ServerEv& serv) { return strm<<serv.base_;}
+    friend std::ostream& operator<<(std::ostream& strm, const ServerEv& serv);
 
     struct Pvt;
 private:
@@ -71,6 +71,9 @@ private:
     void startCb();
     void stopCb();
 };
+
+// Inline helper: no dllimport/dllexport needed.
+inline std::ostream& operator<<(std::ostream& strm, const ServerEv& serv) { return strm<<serv.base_; }
 
 struct ServerEv::Pvt {
     std::weak_ptr<Pvt> self;
