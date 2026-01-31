@@ -326,11 +326,16 @@ enum ocspcertstatus_t { OCSP_CERT_STATUS_LIST };
 #define CERT_STATE(index) ((const char*[])CERT_STATES[(index)])
 #define OCSP_CERT_STATE(index) ((const char*[])OCSP_CERT_STATES[(index)])
 
-// Certificate status categories
-enum cert_status_category_t : int {
-    BAD_STATUS = -1,
-    UNKNOWN_STATUS = 0,
-    GOOD_STATUS = 1,
+// Certificate status classes
+//
+// Note: This is a classification of certstatus_t values into a smaller set
+// used by connection logic (eg. allow/deny/defer).
+//
+// Must be scoped to avoid collision with certstatus_t enumerators (eg. UNKNOWN).
+enum class cert_status_class_t : int {
+    BAD = -1,
+    UNKNOWN = 0,
+    GOOD = 1,
 };
 
 // Forward declarations
@@ -974,13 +979,15 @@ struct CertificateStatus {
         : CertificateStatus(cs.status != UNKNOWN && !cs.ocsp_bytes.empty(), cs.status, cs.ocsp_status, cs.status_date, cs.status_valid_until_date,
                             cs.revocation_date) {}
 
-    /**
-     * @brief Get the status category
-     *
-     * @return GOOD_STATUS (VALID), BAD_STATUS (REVOKED, EXPIRED), or UNKNOWN_STATUS (everything else)
-     */
-    cert_status_category_t getStatusCategory() const noexcept { return status == VALID ? GOOD_STATUS : isRevokedOrExpired() ? BAD_STATUS : UNKNOWN_STATUS; }
-    cert_status_category_t getEffectiveStatusCategory() const noexcept { return isValid() ? getStatusCategory() : UNKNOWN_STATUS; }
+     /**
+      * @brief Get the cert status class
+      *
+      * @return cert_status_class_t::GOOD (VALID), cert_status_class_t::BAD (REVOKED, EXPIRED), or cert_status_class_t::UNKNOWN (everything else)
+      */
+     cert_status_class_t getStatusClass() const noexcept {
+         return status == VALID ? cert_status_class_t::GOOD : isRevokedOrExpired() ? cert_status_class_t::BAD : cert_status_class_t::UNKNOWN;
+     }
+     cert_status_class_t getEffectiveStatusClass() const noexcept { return isValid() ? getStatusClass() : cert_status_class_t::UNKNOWN; }
 
     /**
      * @brief Check if the certificate is Expired of Revoked

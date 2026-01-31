@@ -62,7 +62,7 @@ const char* ConnBase::peerLabel() const
 
 #ifdef PVXS_ENABLE_OPENSSL
 bool ConnBase::isPeerStatusGood() const {
-    return peer_status && peer_status->status.getEffectiveStatusCategory() == certs::GOOD_STATUS;
+    return peer_status && peer_status->status.getEffectiveStatusClass() == certs::cert_status_class_t::GOOD;
 }
 #endif
 
@@ -162,9 +162,9 @@ void ConnBase::bevEvent(const short events) {
                         // peer status updates can originate from other threads (eg. cert status client)
                         // so never capture a raw ConnBase* here.
                         const auto weakself = std::weak_ptr<ConnBase>(self_from_this());
-                        peer_status = ossl::SSLContext::subscribeToPeerCertStatus(ctx, [weakself](certs::cert_status_category_t status_category) {
+                        peer_status = ossl::SSLContext::subscribeToPeerCertStatus(ctx, [weakself](certs::cert_status_class_t status_class) {
                             if (const auto self = weakself.lock()) {
-                                self->peerStatusCallback(status_category);
+                                self->peerStatusCallback(status_class);
                             }
                         });
                     } catch (certs::CertStatusNoExtensionException &e) {

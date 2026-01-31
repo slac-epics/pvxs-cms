@@ -135,7 +135,7 @@ private:
     void startConnecting();
     virtual void bevEvent(short events) override final;
 #ifdef PVXS_ENABLE_OPENSSL
-    void peerStatusCallback(certs::cert_status_category_t status_category) override;
+    void peerStatusCallback(certs::cert_status_class_t status_class) override;
 #endif
 public:
 

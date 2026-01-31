@@ -350,20 +350,20 @@ void Connection::bevEvent(short events) {
  *
  * This function is called when the peer status changes.
  *
- * It will be given a status category indicating whether the peer certificate status is GOOD, BAD, or UNKNOWN.
+ * It will be given a cert status class indicating whether the peer certificate status is GOOD, BAD, or UNKNOWN.
  *
  * - If the peer certificate status is GOOD, and we're waiting for certificate validity before creating channels,
  *   it will set the state to Connected and proceed with creating channels.
  * - If the peer certificate status is BAD, it will disconnect from the server
  */
 #ifdef PVXS_ENABLE_OPENSSL
-void Connection::peerStatusCallback(certs::cert_status_category_t status_category) {
-    if (status_category == certs::GOOD_STATUS) {
+void Connection::peerStatusCallback(certs::cert_status_class_t status_class) {
+    if (status_class == certs::cert_status_class_t::GOOD) {
         log_debug_printf(certs, "Ready to proceed with creating channels: %s %s\n", "Connecting", peerName.c_str());
         // Only the CONNECTION_VALIDATED handler should flip Connection::ready.
         // Here we only resume any deferred channel creation.
         proceedWithCreatingChannels();
-    } else if (status_category == certs::BAD_STATUS) {
+    } else if (status_class == certs::cert_status_class_t::BAD) {
         log_debug_printf(certs, "Cancel Wait to Creating Channels: BAD CERT STATUS%s\n", "");
         disconnect();
     } else {
