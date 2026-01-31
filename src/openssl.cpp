@@ -799,8 +799,10 @@ void SSLPeerStatusAndMonitor::updateStatus(const certs::CertificateStatus &new_s
 
     // Status updates (and the associated timer operations) must happen in the SSL context's event loop.
     // Cert status updates may originate from other threads (eg. a client context used to query PVACMS).
+    // Use call()/tryCall() (not dispatch) to avoid adding avoidable latency for connection bring-up.
+    // This matters for first-time status fetch in CI where tests have tight timeouts.
     auto self = shared_from_this();
-    ex_data_ptr->loop.dispatch([self, new_status]() {
+    if(!ex_data_ptr->loop.tryCall([self, new_status]() {
         certs::cert_status_category_t prior_cert_status;
         certs::cert_status_category_t cert_status;
         {
@@ -816,7 +818,10 @@ void SSLPeerStatusAndMonitor::updateStatus(const certs::CertificateStatus &new_s
 
         // Restart status validity countdown timer for this new status
         self->restartStatusValidityTimerFromCertStatus();
-    });
+    })) {
+        // ignore during shutdown
+        return;
+    }
 }
 
 std::shared_ptr<SSLPeerStatusAndMonitor> CertStatusExData::subscribeToPeerCertStatus(X509 *cert_ptr, const std::function<void(certs::cert_status_category_t)> &fn) {
