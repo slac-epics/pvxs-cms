@@ -1,7 +1,7 @@
 ARG DOCKER_USERNAME=georgeleveln
 ARG BASE_IMAGE=lab_base
 ARG BASE_IMAGE_TAG=latest
-ARG RELATIVE_DOCKER_DIR=pvxs/example/kubernetes/docker/gateway
+ARG RELATIVE_DOCKER_DIR=example/kubernetes/docker/gateway
 
 FROM ${DOCKER_USERNAME}/${BASE_IMAGE}:${BASE_IMAGE_TAG}
 

@@ -17,6 +17,7 @@ TARGET_IMAGE_TAG="latest"
 echo "--- Building ${TARGET_IMAGE_NAME} Docker image ---"
 
 docker build \
+  --build-arg DOCKER_USERNAME=${DOCKER_USERNAME:-georgeleveln} \
   --build-arg BASE_IMAGE=${BASE_IMAGE_NAME} \
   --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} \
   ${*} \
