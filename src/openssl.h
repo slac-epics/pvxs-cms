@@ -104,7 +104,7 @@ struct PVXS_API SSLError : public std::runtime_error {
  */
 struct CertStatusExData;
 
-struct SSLPeerStatusAndMonitor {
+struct SSLPeerStatusAndMonitor : public std::enable_shared_from_this<SSLPeerStatusAndMonitor> {
     // To lock changes to peer statuses
     epicsMutex lock;
     // The cert status manager

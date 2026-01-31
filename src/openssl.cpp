@@ -797,19 +797,26 @@ void SSLPeerStatusAndMonitor::updateStatus(const certs::CertificateStatus &new_s
     if (!new_status.isValid()) // Ignore invalid statuses
         return;
 
-    const auto prior_cert_status = status.getStatusCategory();
-    {
-        // Update the status
-        Guard G(lock);
-        status = new_status;
-    }
+    // Status updates (and the associated timer operations) must happen in the SSL context's event loop.
+    // Cert status updates may originate from other threads (eg. a client context used to query PVACMS).
+    auto self = shared_from_this();
+    ex_data_ptr->loop.dispatch([self, new_status]() {
+        certs::cert_status_category_t prior_cert_status;
+        certs::cert_status_category_t cert_status;
+        {
+            Guard G(self->lock);
+            prior_cert_status = self->status.getStatusCategory();
+            self->status = new_status;
+            cert_status = self->status.getStatusCategory();
+        }
 
-    // Call the callback if there has been any change in the status category
-    const auto cert_status = status.getStatusCategory();
-    if (fn && cert_status != prior_cert_status) fn(cert_status);
+        // Call the callback if there has been any change in the status category
+        if (self->fn && cert_status != prior_cert_status)
+            self->fn(cert_status);
 
-    // Restart status validity countdown timer for this new status
-    restartStatusValidityTimerFromCertStatus();
+        // Restart status validity countdown timer for this new status
+        self->restartStatusValidityTimerFromCertStatus();
+    });
 }
 
 std::shared_ptr<SSLPeerStatusAndMonitor> CertStatusExData::subscribeToPeerCertStatus(X509 *cert_ptr, const std::function<void(certs::cert_status_category_t)> &fn) {

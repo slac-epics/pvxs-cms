@@ -159,7 +159,14 @@ void ConnBase::bevEvent(const short events) {
                 if (!peer_status) {
                     try {
                         log_debug_printf(connsetup, "ConnBase::bevEvent().  Subscribe to %s peer certificate status \n", peerLabel());
-                        peer_status = ossl::SSLContext::subscribeToPeerCertStatus(ctx, [this](certs::cert_status_category_t status_category) { peerStatusCallback(status_category); });
+                        // peer status updates can originate from other threads (eg. cert status client)
+                        // so never capture a raw ConnBase* here.
+                        const auto weakself = std::weak_ptr<ConnBase>(self_from_this());
+                        peer_status = ossl::SSLContext::subscribeToPeerCertStatus(ctx, [weakself](certs::cert_status_category_t status_category) {
+                            if (const auto self = weakself.lock()) {
+                                self->peerStatusCallback(status_category);
+                            }
+                        });
                     } catch (certs::CertStatusNoExtensionException &e) {
                         log_debug_printf(connio, "no status to monitor for peer %s %s: %s\n", peerLabel(), peerName.c_str(), e.what());
                     } catch (std::exception &e) {
