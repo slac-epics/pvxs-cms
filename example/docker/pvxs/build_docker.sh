@@ -22,7 +22,7 @@ docker build \
   --build-arg BASE_IMAGE=${BASE_IMAGE_NAME} \
   --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} \
   ${*} \
-  -t "${DOCKER_USERNAME:-georgeleveln}/${TARGET_IMAGE_NAME}:${TARGET_IMAGE_TAG}" \
+  -t "${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/${TARGET_IMAGE_NAME}:${TARGET_IMAGE_TAG}" \
   -f "${DOCKER_DIR}/Dockerfile" \
   .
 

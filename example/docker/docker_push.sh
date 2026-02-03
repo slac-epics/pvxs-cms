@@ -1,6 +1,6 @@
-docker push ${DOCKER_USERNAME:-georgeleveln}/epics-base:latest
-docker push ${DOCKER_USERNAME:-georgeleveln}/pvxs:latest
-docker push ${DOCKER_USERNAME:-georgeleveln}/spva_std:latest
-docker push ${DOCKER_USERNAME:-georgeleveln}/spva_krb:latest
-docker push ${DOCKER_USERNAME:-georgeleveln}/spva_ldap:latest
-docker push ${DOCKER_USERNAME:-georgeleveln}/spva_jwt:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/epics-base:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/pvxs:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/spva_std:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/spva_krb:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/spva_ldap:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/spva_jwt:latest

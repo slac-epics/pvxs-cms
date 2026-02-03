@@ -1,4 +1,5 @@
-dockerUsername: "georgeleveln"
+dockerRegistry: "ghcr.io"
+dockerUsername: "slac-epics"
 
 images:
   pvacms:

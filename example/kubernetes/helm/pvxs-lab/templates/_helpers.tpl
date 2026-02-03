@@ -1,8 +1,9 @@
 {{- define "pvxs-lab.image" -}}
-{{- $u := .Values.dockerUsername | default "georgeleveln" -}}
+{{- $r := .Values.dockerRegistry | default "ghcr.io" -}}
+{{- $u := .Values.dockerUsername | default "slac-epics" -}}
 {{- $name := required "image name is required" .name -}}
 {{- $tag := .tag | default "latest" -}}
-{{- printf "%s/%s:%s" $u $name $tag -}}
+{{- printf "%s/%s/%s:%s" $r $u $name $tag -}}
 {{- end -}}
 {{- define "pvxs-lab.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}

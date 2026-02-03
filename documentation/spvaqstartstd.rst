@@ -42,7 +42,7 @@ If you want a prepackaged environment, try the following.  You will need four te
 
 .. code-block:: shell
 
-    docker run -it --name spva_std georgeleveln/spva_std:latest
+    docker run -it --name spva_std ghcr.io/slac-epics/spva_std:latest
 
 .. code-block:: console
 
@@ -221,7 +221,7 @@ If you want a prepackaged environment, try the following.  You will need four te
 
 .. code-block:: shell
 
-    docker run -it --name spva_std georgeleveln/pvxs:latest
+    docker run -it --name spva_std ghcr.io/slac-epics/pvxs:latest
 
 
 |step| EPICS Agents

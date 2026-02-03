@@ -68,7 +68,7 @@ If you want a prepackaged environment, try the following.  You will need three t
 
 .. code-block:: shell
 
-    docker run -it --name spva_ldap georgeleveln/spva_ldap:latest
+    docker run -it --name spva_ldap ghcr.io/slac-epics/spva_ldap:latest
 
 .. code-block:: console
 
@@ -290,7 +290,7 @@ create a server certificate using the LDAP Authenticator, enter ``secret`` when 
 
 .. code-block:: shell
 
-    docker run -it --name spva_ldap georgeleveln/spva_std:latest /bin/bash
+    docker run -it --name spva_ldap ghcr.io/slac-epics/spva_std:latest /bin/bash
 
 .. _spva_qs_ldap_kdc:
 

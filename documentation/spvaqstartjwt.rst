@@ -56,7 +56,7 @@ If you want a prepackaged environment, try the following.  You will need three t
 
 .. code-block:: shell
 
-    docker run -it --name spva_jwt georgeleveln/spva_jwt:latest
+    docker run -it --name spva_jwt ghcr.io/slac-epics/spva_jwt:latest
 
 .. code-block:: console
 
@@ -346,7 +346,7 @@ If you want a prepackaged environment, try the following.  You will need three t
 
 .. code-block:: shell
 
-    docker run -it --name spva_jwt georgeleveln/spva_std:latest /bin/bash
+    docker run -it --name spva_jwt ghcr.io/slac-epics/spva_std:latest /bin/bash
 
 .. _spva_qs_jwt_kdc:
 

@@ -1,6 +1,6 @@
-docker push georgeleveln/lab_base:latest
-docker push georgeleveln/lab:latest
-docker push georgeleveln/gateway:latest
-docker push georgeleveln/pvacms:latest
-docker push georgeleveln/testioc:latest
-docker push georgeleveln/tsstioc:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/lab_base:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/lab:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/gateway:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/pvacms:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/testioc:latest
+docker push ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/tsstioc:latest

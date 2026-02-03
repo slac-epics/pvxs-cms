@@ -54,7 +54,7 @@ If you want a prepackaged environment, try the following.  You will need three t
 
 .. code-block:: shell
 
-    docker run -it --name spva_krb georgeleveln/spva_krb:latest
+    docker run -it --name spva_krb ghcr.io/slac-epics/spva_krb:latest
 
 .. code-block:: console
 
@@ -320,7 +320,7 @@ If you want a prepackaged environment, try the following.  You will need three t
 
 .. code-block:: shell
 
-    docker run -it --name spva_krb georgeleveln/spva_std:latest /bin/bash
+    docker run -it --name spva_krb ghcr.io/slac-epics/spva_std:latest /bin/bash
 
 .. _spva_qs_krb_kdc:
 

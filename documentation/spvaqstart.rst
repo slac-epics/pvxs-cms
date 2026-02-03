@@ -47,7 +47,7 @@ If you want a prepackaged environment, try the following.  You will need two ter
 
 .. code-block:: shell
 
-    docker run -it --name ubuntu_pvxs georgeleveln/pvxs:latest
+    docker run -it --name ubuntu_pvxs ghcr.io/slac-epics/pvxs:latest
 
 - within the container, start *pvacms*
 

@@ -18,7 +18,7 @@ echo "--- Building ${IMAGE_NAME} Docker image ---"
 
 docker build \
   ${*} \
-  -t "${DOCKER_USERNAME:-georgeleveln}/${IMAGE_NAME}:${IMAGE_TAG}" \
+  -t "${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/${IMAGE_NAME}:${IMAGE_TAG}" \
   -f "${DOCKER_DIR}/Dockerfile" \
   .
 

@@ -15,4 +15,4 @@ docker run -d \
   -p 8888:88/udp \
   -p 8749:749 \
   -v $HOME/Projects:/opt/home \
-  ${DOCKER_USERNAME:-georgeleveln}/${TARGET_IMAGE_NAME}:${TARGET_IMAGE_TAG}
+  ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_USERNAME:-slac-epics}/${TARGET_IMAGE_NAME}:${TARGET_IMAGE_TAG}
