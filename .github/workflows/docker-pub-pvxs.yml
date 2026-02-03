@@ -106,7 +106,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push pvxs
@@ -118,9 +118,9 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
-          tags: ${{ env.REGISTRY }}/slac-epics/pvxs:latest
+          tags: ghcr.io/slac-epics/pvxs:latest
 
   build-spva-std:
     needs: [check_docker_changes, build-pvxs]
@@ -147,7 +147,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push spva_std
@@ -158,9 +158,9 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
-          tags: ${{ env.REGISTRY }}/slac-epics/spva_std:latest
+          tags: ghcr.io/slac-epics/spva_std:latest
 
   build-spva-krb:
     needs: [check_docker_changes, build-spva-std]
@@ -187,7 +187,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push spva_krb
@@ -198,9 +198,9 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
-          tags: ${{ env.REGISTRY }}/slac-epics/spva_krb:latest
+          tags: ghcr.io/slac-epics/spva_krb:latest
 
   build-spva-ldap:
     needs: [check_docker_changes, build-spva-std]
@@ -227,7 +227,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push spva_ldap
@@ -238,9 +238,9 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
-          tags: ${{ env.REGISTRY }}/slac-epics/spva_ldap:latest
+          tags: ghcr.io/slac-epics/spva_ldap:latest
 
   build-spva-jwt:
     needs: [check_docker_changes, build-spva-std]
@@ -267,7 +267,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push spva_jwt
@@ -278,9 +278,9 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
-          tags: ${{ env.REGISTRY }}/slac-epics/spva_jwt:latest
+          tags: ghcr.io/slac-epics/spva_jwt:latest
 
   build-k8s-lab-base:
     needs: [check_docker_changes, build-pvxs]
@@ -307,7 +307,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push k8s lab_base
@@ -318,11 +318,11 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
             BASE_IMAGE=pvxs
             BASE_IMAGE_TAG=latest
-          tags: ${{ env.REGISTRY }}/slac-epics/lab_base:latest
+          tags: ghcr.io/slac-epics/lab_base:latest
 
   build-k8s-lab:
     needs: [check_docker_changes, build-k8s-lab-base]
@@ -349,7 +349,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push k8s lab
@@ -360,11 +360,11 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
             BASE_IMAGE=lab_base
             BASE_IMAGE_TAG=latest
-          tags: ${{ env.REGISTRY }}/slac-epics/lab:latest
+          tags: ghcr.io/slac-epics/lab:latest
 
   build-k8s-pvacms:
     needs: [check_docker_changes, build-k8s-lab-base]
@@ -391,7 +391,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push k8s pvacms
@@ -402,11 +402,11 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
             BASE_IMAGE=lab_base
             BASE_IMAGE_TAG=latest
-          tags: ${{ env.REGISTRY }}/slac-epics/pvacms:latest
+          tags: ghcr.io/slac-epics/pvacms:latest
 
   build-k8s-testioc:
     needs: [check_docker_changes, build-k8s-lab-base]
@@ -433,7 +433,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push k8s testioc
@@ -444,11 +444,11 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
             BASE_IMAGE=lab_base
             BASE_IMAGE_TAG=latest
-          tags: ${{ env.REGISTRY }}/slac-epics/testioc:latest
+          tags: ghcr.io/slac-epics/testioc:latest
 
   build-k8s-tstioc:
     needs: [check_docker_changes, build-k8s-lab-base]
@@ -475,7 +475,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push k8s tstioc
@@ -486,11 +486,11 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
             BASE_IMAGE=lab_base
             BASE_IMAGE_TAG=latest
-          tags: ${{ env.REGISTRY }}/slac-epics/tstioc:latest
+          tags: ghcr.io/slac-epics/tstioc:latest
 
   build-k8s-gateway:
     needs: [check_docker_changes, build-k8s-lab-base]
@@ -523,7 +523,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push k8s gateway
@@ -535,9 +535,9 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            DOCKER_REGISTRY=${{ env.REGISTRY }}
+            DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
             BASE_IMAGE=lab_base
             BASE_IMAGE_TAG=latest
             RELATIVE_DOCKER_DIR=example/kubernetes/docker/gateway
-          tags: ${{ env.REGISTRY }}/slac-epics/gateway:latest
+          tags: ghcr.io/slac-epics/gateway:latest
