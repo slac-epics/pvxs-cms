@@ -419,34 +419,34 @@ void CertFactory::addCustomTimeExtensionByNid(const ossl_ptr<X509> &certificate,
  *
  */
 void CertFactory::addCustomExtensionByNid(const ossl_ptr<X509> &certificate, const int nid, const std::string &value) {
-    char err_msg[256];
 
-    // Construct the string value using ASN1_STRING with IA5String type
-    const ossl_ptr<ASN1_IA5STRING> string_data(ASN1_IA5STRING_new(), false);
-    if (!string_data) {
-        throw std::runtime_error("Adding custom extension: Failed to create ASN1_IA5STRING object");
-    }
+    // wrap string value as IA5 string
+    const ossl_ptr<ASN1_IA5STRING> ival(__FILE__, __LINE__, s2i_ASN1_IA5STRING(nullptr, nullptr, value.c_str()));
 
-    // Set the string data using ASN1_STRING_set
-    if (!ASN1_STRING_set(string_data.get(), value.c_str(), value.size())) {
-        const auto err = ERR_get_error();
-        ERR_error_string_n(err, err_msg, sizeof(err_msg));
-        throw std::runtime_error(SB() << "Adding custom extension: Failed to set ASN1_STRING: " << err_msg);
-    }
+    // encode as DER to byte buffer
+    unsigned char *dbuf = nullptr;
+    const auto dbuflen = i2d_ASN1_IA5STRING(ival.get(), &dbuf); // encode
+    if (dbuflen < 0)
+        throw ossl::SSLError("Adding custom extension: Failed to create ASN1_IA5STRING object");
 
-    // Create a new extension using the smart pointer
-    const ossl_ptr<X509_EXTENSION> ext(X509_EXTENSION_create_by_NID(nullptr, nid, false, string_data.get()), false);
+    // ensure OPENSSL_free()
+    const ossl_ptr<unsigned char> dholder(__FILE__, __LINE__, dbuf);
+
+    // wrap byte buffer as OCTET string
+    // can't use s2i_ASN1_OCTET_STRING() as DER is not nil terminated string
+    const ossl_ptr<ASN1_OCTET_STRING> idval(__FILE__, __LINE__, ASN1_OCTET_STRING_new());
+    if (!ASN1_OCTET_STRING_set(idval.get(), dbuf, dbuflen))
+        throw ossl::SSLError("Adding custom extension: Failed to set ASN1_OCTET_STRING");
+
+    // Create a new non-critical extension using wrapped, encoded, PV name as value
+    const ossl_ptr<X509_EXTENSION> ext(X509_EXTENSION_create_by_NID(nullptr, nid, false, idval.get()), false);
     if (!ext) {
-        const auto err = ERR_get_error();
-        ERR_error_string_n(err, err_msg, sizeof(err_msg));
-        throw std::runtime_error(SB() << "Adding custom extension: Failed to create X509_EXTENSION: " << err_msg);
+        throw ossl::SSLError("Adding custom extension: Failed to create X509_EXTENSION");
     }
 
     // Add the extension to the certificate
     if (!X509_add_ext(certificate.get(), ext.get(), -1)) {
-        const auto err = ERR_get_error();
-        ERR_error_string_n(err, err_msg, sizeof(err_msg));
-        throw std::runtime_error(SB() << "Failed to add X509_EXTENSION to certificate: " << err_msg);
+        throw ossl::SSLError("Failed to add X509_EXTENSION to certificate");
     }
 
     log_debug_printf(certs, "Extension [%*d]: %-*s = \"%s\"\n", 3, nid, 32, nid2String(nid), value.c_str());
