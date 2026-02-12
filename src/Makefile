@@ -1,8 +1,6 @@
 TOP=..
 
 include $(TOP)/configure/CONFIG
-# cfg/ sometimes isn't correctly included due to a Base bug
-# so we do here (maybe again) as workaround
 -include $(wildcard $(TOP)/cfg/CONFIG*)
 #----------------------------------------
 #  ADD MACRO DEFINITIONS AFTER THIS LINE
@@ -11,12 +9,17 @@ ifeq ($(EVENT2_HAS_OPENSSL),YES)
 USR_CPPFLAGS += -DPVXS_ENABLE_OPENSSL
 endif # EVENT2_HAS_OPENSSL
 
-USR_CPPFLAGS += -DPVXS_API_BUILDING
 USR_CPPFLAGS += -DPVXS_ENABLE_EXPERT_API
 
+# Access to certs specific headers
+ifeq ($(EVENT2_HAS_OPENSSL),YES)
+USR_CPPFLAGS += -I$(TOP)/certs
+SRC_DIRS += $(TOP)/certs
+endif # EVENT2_HAS_OPENSSL
+
+# SSL key log file support
 ifeq ($(EVENT2_HAS_OPENSSL),YES)
 PVXS_ENABLE_SSLKEYLOGFILE ?= YES
-
 PVXS_ENABLE_SSLKEYLOGFILE_YES = -DPVXS_ENABLE_SSLKEYLOGFILE
 USR_CPPFLAGS += $(PVXS_ENABLE_SSLKEYLOGFILE_$(PVXS_ENABLE_SSLKEYLOGFILE))
 endif # EVENT2_HAS_OPENSSL
@@ -29,105 +32,50 @@ endif
 
 ifdef BASE_3_15
 ifeq ($(GNUISH),YES)
-# we explicitly mark dllimport/export anyway.
-# So hide our internal symbols to speed up linking/loading on all targets.
 USR_CFLAGS += -fvisibility=hidden
 USR_CXXFLAGS += -fvisibility=hidden -fvisibility-inlines-hidden
 endif
 endif
 
-# fault on any undefined symbols (eg. from missing LIB_SYS_LIBS)
-# breaks on older ncurses (circa RHEL6) not using the INPUT() trick to pull in libtinfo.so
-#USR_LDFLAGS_Linux += -Wl,--no-undefined -Wl,--no-allow-shlib-undefined
-
-# see below for special case versionNum.h
-EXPAND += describe.h
-
-EXPANDVARS += PVXS_MAJOR_VERSION
-EXPANDVARS += PVXS_MINOR_VERSION
-EXPANDVARS += PVXS_MAINTENANCE_VERSION
-EXPANDVARS += EPICS_HOST_ARCH T_A OS_CLASS
-ifdef BASE_3_15
-EXPANDVARS += CMPLR_CLASS
-endif
-
-EXPANDFLAGS += $(foreach var,$(EXPANDVARS),-D$(var)="$(strip $($(var)))")
-
-GENVERSION = pvxsVCS.h
-GENVERSIONMACRO = PVXS_VCS_VERSION
-
-SHRLIB_VERSION = $(PVXS_MAJOR_VERSION).$(PVXS_MINOR_VERSION)
-
-# Access to certs specific headers
-ifeq ($(EVENT2_HAS_OPENSSL),YES)
-USR_CPPFLAGS += -I$(TOP)/certs
-SRC_DIRS += $(TOP)/certs
-endif # EVENT2_HAS_OPENSSL
-
-INC += pvxs/client.h
-INC += pvxs/config.h
-INC += pvxs/data.h
-INC += pvxs/log.h
-INC += pvxs/netcommon.h
-INC += pvxs/nt.h
-INC += pvxs/server.h
-INC += pvxs/sharedArray.h
-INC += pvxs/sharedpv.h
-INC += pvxs/source.h
-INC += pvxs/srvcommon.h
-INC += pvxs/unittest.h
-INC += pvxs/util.h
-INC += pvxs/version.h
-INC += pvxs/versionNum.h
-
-LIBRARY = pvxs
-
+# SSL and CMS-related sources only (no pvxs endpoint implementations)
 LIB_SRCS += bitmask.cpp
-LIB_SRCS += client.cpp
-LIB_SRCS += clientconn.cpp
-LIB_SRCS += clientdiscover.cpp
-LIB_SRCS += clientget.cpp
-LIB_SRCS += clientintrospect.cpp
-LIB_SRCS += clientmon.cpp
-LIB_SRCS += clientreq.cpp
+LIB_SRCS += certdate.h
+LIB_SRCS += certfactory.cpp
+LIB_SRCS += certfilefactory.cpp
+LIB_SRCS += certstatus.cpp
+LIB_SRCS += certstatusmanager.cpp
 LIB_SRCS += config.cpp
 LIB_SRCS += conn.cpp
 LIB_SRCS += data.cpp
 LIB_SRCS += dataencode.cpp
 LIB_SRCS += datafmt.cpp
+LIB_SRCS += dataimpl.h
 LIB_SRCS += describe.cpp
+LIB_SRCS += describe.h
 LIB_SRCS += evhelper.cpp
 LIB_SRCS += log.cpp
 LIB_SRCS += nt.cpp
+LIB_SRCS += openssl.cpp
+LIB_SRCS += openssl.h
+LIB_SRCS += opensslgbl.cpp
+LIB_SRCS += opensslgbl.h
 LIB_SRCS += osdSockExt.cpp
 LIB_SRCS += osgroups.cpp
-LIB_SRCS += pvrequest.cpp
-LIB_SRCS += server.cpp
-LIB_SRCS += serverchan.cpp
-LIB_SRCS += serverconn.cpp
-LIB_SRCS += serverget.cpp
-LIB_SRCS += serverintrospect.cpp
-LIB_SRCS += servermon.cpp
-LIB_SRCS += serversource.cpp
-LIB_SRCS += sharedarray.cpp
-LIB_SRCS += sharedpv.cpp
-LIB_SRCS += type.cpp
-LIB_SRCS += udp_collector.cpp
-LIB_SRCS += unittest.cpp
-LIB_SRCS += util.cpp
-
-ifeq ($(EVENT2_HAS_OPENSSL),YES)
-LIB_SRCS += configcerts.cpp
-LIB_SRCS += certfactory.cpp
-LIB_SRCS += certfilefactory.cpp
-LIB_SRCS += certstatus.cpp
-LIB_SRCS += certstatusmanager.cpp
-LIB_SRCS += openssl.cpp
-LIB_SRCS += opensslgbl.cpp
+LIB_SRCS += ownedptr.h
 LIB_SRCS += p12filefactory.cpp
+LIB_SRCS += pvaproto.h
+LIB_SRCS += pvrequest.cpp
+LIB_SRCS += pvrequest.h
+LIB_SRCS += security.h
 LIB_SRCS += serverev.cpp
+LIB_SRCS += serverev.h
+LIB_SRCS += serverget.cpp
+LIB_SRCS += serversource.cpp
+LIB_SRCS += type.cpp
+LIB_SRCS += util.cpp
+LIB_SRCS += utilpvt.h
 LIB_SRCS += wildcardpv.cpp
-endif # EVENT2_HAS_OPENSSL
+LIB_SRCS += wildcardpv.h
 
 LIB_LIBS += Com
 
@@ -147,16 +95,5 @@ include $(TOP)/configure/RULES
 #----------------------------------------
 #  ADD RULES AFTER THIS LINE
 
-# Can't use EXPAND as generated headers must appear
-# in O.Common, but EXPAND emits rules for O.$(T_A)
-../O.Common/pvxs/versionNum.h: ../pvxs/versionNum.h@
-	$(MKDIR) $(COMMON_DIR)/pvxs
-	$(EXPAND_TOOL) $(EXPANDFLAGS) $($@_EXPANDFLAGS) $< $@
-
 describe$(DEP): describe.h
-util$(DEP): $(COMMON_DIR)/$(GENVERSION)
-
-ifndef GENVERSIONHEADER
-$(COMMON_DIR)/$(GENVERSION):
-	echo "/* genVersionHeader.pl missing */" > $@
-endif
+util$(DEP): util.cpp
