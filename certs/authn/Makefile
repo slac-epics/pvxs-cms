@@ -7,16 +7,16 @@ SRCS += configauthn.cpp
 SRCS += ccrmanager.cpp
 SRCS += certstatusmanager.cpp
 
-include $(AUTHN)/std/Makefile
-
-
-#--------------------------------------------
-#  ADD AUTHENTICATOR PLUGINS AFTER THIS LINE
-
-ifeq ($(PVXS_ENABLE_KRB_AUTH),YES)
-include $(AUTHN)/krb/Makefile
-endif
-
-ifeq ($(PVXS_ENABLE_LDAP_AUTH),YES)
-include $(AUTHN)/ldap/Makefile
-endif
+#include $(AUTHN)/std/Makefile
+#
+#
+##--------------------------------------------
+##  ADD AUTHENTICATOR PLUGINS AFTER THIS LINE
+#
+#ifeq ($(PVXS_ENABLE_KRB_AUTH),YES)
+#include $(AUTHN)/krb/Makefile
+#endif
+#
+#ifeq ($(PVXS_ENABLE_LDAP_AUTH),YES)
+#include $(AUTHN)/ldap/Makefile
+#endif
