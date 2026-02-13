@@ -19,9 +19,6 @@
 # Allow sources in these directories to be found by basename
 SRC_DIRS += $(PVACMS_DIR)
 
-# Headers local to pvacms and authn framework
-USR_CPPFLAGS += -I$(AUTHN_STD_DIR)
-
 # Build pvacms host executable
 PROD += pvacms
 

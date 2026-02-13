@@ -1,13 +1,6 @@
-# This is a Makefile fragment, see cert/Makefile.
+# This is a Makefile fragment included by TOP/src/Makefile.
 
-SRC_DIRS += $(AUTHN)
-
-SRCS += auth.cpp
-SRCS += configauthn.cpp
-SRCS += ccrmanager.cpp
-SRCS += certstatusmanager.cpp
-
-#include $(AUTHN)/std/Makefile
+include $(AUTHN)/std/Makefile
 #
 #
 ##--------------------------------------------

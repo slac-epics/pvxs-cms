@@ -41,7 +41,6 @@ include $(TOP)/configure/CONFIG
 #=============================
 
 COMMON_DIR     = $(TOP)/src/common
-CERTS_DIR      = $(TOP)/certs
 AUTHN_DIR      = $(TOP)/src/authn
 AUTHN_STD_DIR  = $(AUTHN_DIR)/std
 CLI11_BUNDLE   = $(TOP)/bundle/CLI11
@@ -49,7 +48,12 @@ CLI11_BUNDLE   = $(TOP)/bundle/CLI11
 PVACMS_DIR     = $(TOP)/src/pvacms
 TOOLS_DIR      = $(TOP)/src/tools
 
+# Backwards-compat for existing authn Makefile fragments
+AUTHN = $(AUTHN_DIR)
+
 USR_CPPFLAGS += -I$(COMMON_DIR)
+USR_CPPFLAGS += -I$(AUTHN_DIR)
+USR_CPPFLAGS += -I$(AUTHN_STD_DIR)
 USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
 
 # Source search path for pvacms and its shared sources
@@ -83,6 +87,9 @@ endif
 
 # Include pvacms target definition (Makefile fragment)
 include $(PVACMS_DIR)/Makefile
+
+# Authenticators (Makefile fragment)
+include $(AUTHN_DIR)/Makefile
 
 # Host tools (Makefile fragments)
 include $(TOOLS_DIR)/Makefile
