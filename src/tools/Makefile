@@ -17,7 +17,5 @@
 #     below.
 ########################################################################
 
-TOOLS_DIR = $(TOP)/src/tools
-
 # Tool: pvxcert (certificate management utility)
 include $(TOOLS_DIR)/pvxcert/Makefile

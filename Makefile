@@ -11,7 +11,4 @@ setup_DEPEND_DIRS = configure
 DIRS += src
 src_DEPEND_DIRS = setup
 
-DIRS += certs
-certs_DEPEND_DIRS = src
-
 include $(TOP)/configure/RULES_TOP

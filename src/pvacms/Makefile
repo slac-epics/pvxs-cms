@@ -13,20 +13,13 @@
 #   TOP/src/Makefile    : common build setup + includes this fragment
 #   TOP/src/pvacms/*    : pvacms entrypoints/config sources
 #   TOP/src/common/*    : shared CMS/cert implementation sources
-#   TOP/certs/*         : shared config/authn sources (re-used by pvacms)
+#   TOP/src/authn/*     : shared config/authn sources (re-used by pvacms)
 ########################################################################
-
-PVACMS_DIR    = $(TOP)/src/pvacms
-AUTHN_DIR     = $(TOP)/certs/authn
-AUTHN_STD_DIR = $(AUTHN_DIR)/std
 
 # Allow sources in these directories to be found by basename
 SRC_DIRS += $(PVACMS_DIR)
-SRC_DIRS += $(AUTHN_DIR)
 
 # Headers local to pvacms and authn framework
-USR_CPPFLAGS += -I$(PVACMS_DIR)
-USR_CPPFLAGS += -I$(AUTHN_DIR)
 USR_CPPFLAGS += -I$(AUTHN_STD_DIR)
 
 # Build pvacms host executable
@@ -52,7 +45,7 @@ pvacms_SRCS += openssl.cpp
 pvacms_SRCS += serverev.cpp
 pvacms_SRCS += util.cpp
 
-# Authentication plugin framework (from certs/authn/)
+# Authentication plugin framework (from src/authn/)
 pvacms_SRCS += auth.cpp
 pvacms_SRCS += configauthn.cpp
 pvacms_SRCS += ccrmanager.cpp

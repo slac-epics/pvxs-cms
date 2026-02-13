@@ -21,8 +21,8 @@ USR_CPPFLAGS += -I$(TOP)/certs -I$(TOP)/bundle/CLI11/include
  USR_CPPFLAGS += -DPVXS_API_BUILDING
  endif
  SRC_DIRS += $(TOP)/certs
- SRC_DIRS += $(TOP)/certs/authn
- SRC_DIRS += $(TOP)/certs/authn/std
+  SRC_DIRS += $(TOP)/src/authn
+  SRC_DIRS += $(TOP)/src/authn/std
 SRC_DIRS += $(TOP)/src
 SRCS += configcms.cpp
 

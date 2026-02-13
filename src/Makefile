@@ -9,20 +9,25 @@ include $(TOP)/configure/CONFIG
 # This directory builds host-side executables:
 #   - pvacms (CMS server)
 #   - tools (eg. pvxcert)
-#   - (future) authenticator plugins once they move under src/
+#   - authenticators (e.g. authnstd)
 #
 # Nested organization (src path only):
 #   TOP/Makefile
 #     -> builds TOP/src/   (this file)
-#     -> builds TOP/certs/ (currently contains authn sources used by pvacms)
 #
 #   TOP/src/Makefile
-#     -> sets up shared include paths / feature flags used by pvacms and tools
+#     -> sets up shared include paths / feature flags used by pvacms, authenticators and tools
 #     -> includes Makefile fragments which define concrete targets
 #
 #   TOP/src/pvacms/Makefile
 #     -> Makefile fragment (inherits vars/flags from TOP/src/Makefile)
 #     -> defines PROD += pvacms and pvacms_* settings
+#
+#   TOP/src/authn/Makefile
+#     -> Makefile fragment (inherits vars/flags from TOP/src/Makefile)
+#     -> aggregates tool fragments under TOP/src/authn/<authenticator>/Makefile
+#     -> plugin architecture adds sources to pvacms_SRCS, and pvacms_LIBS,
+#        to implement the selected authenticator's verify methods inside pvacms
 #
 #   TOP/src/tools/Makefile
 #     -> Makefile fragment (inherits vars/flags from TOP/src/Makefile)
@@ -37,7 +42,7 @@ include $(TOP)/configure/CONFIG
 
 COMMON_DIR     = $(TOP)/src/common
 CERTS_DIR      = $(TOP)/certs
-AUTHN_DIR      = $(CERTS_DIR)/authn
+AUTHN_DIR      = $(TOP)/src/authn
 AUTHN_STD_DIR  = $(AUTHN_DIR)/std
 CLI11_BUNDLE   = $(TOP)/bundle/CLI11
 
@@ -45,12 +50,11 @@ PVACMS_DIR     = $(TOP)/src/pvacms
 TOOLS_DIR      = $(TOP)/src/tools
 
 USR_CPPFLAGS += -I$(COMMON_DIR)
-USR_CPPFLAGS += -I$(CERTS_DIR)
 USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
 
 # Source search path for pvacms and its shared sources
 SRC_DIRS += $(COMMON_DIR)
-SRC_DIRS += $(CERTS_DIR)
+SRC_DIRS += $(AUTHN_DIR)
 
 USR_CPPFLAGS += -DPVXS_ENABLE_PVACMS
 USR_CPPFLAGS += -DPVXS_ENABLE_EXPERT_API
