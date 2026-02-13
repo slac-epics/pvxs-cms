@@ -60,7 +60,6 @@
 #include "osiFileName.h"
 #include "utilpvt.h"
 #include "udp_collector.h"
-#include "pvxsVCS.h"
 
 #ifdef PVXS_ENABLE_OPENSSL
 #include "certfactory.h"
