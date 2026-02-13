@@ -17,7 +17,7 @@ namespace certs {
 
 class ConfigStd final : public ConfigAuthN {
    public:
-    ConfigStd& applyEnv() override {
+    ConfigStd& applyEnv() {
         Config::applyEnv();
         tls_disabled = true;
         return *this;
@@ -45,9 +45,9 @@ class ConfigStd final : public ConfigAuthN {
     // To create trust anchor only
     bool trust_anchor_only{false};
 
-    void fromStdEnv(const std::map<std::string, std::string>& defs);
+void fromStdEnv(const std::map<std::string, std::string>& defs);
 
-    void updateDefs(defs_t &defs) const override;
+void updateDefs(defs_t &defs) const;
 };
 
 }  // namespace certs

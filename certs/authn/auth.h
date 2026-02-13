@@ -24,7 +24,8 @@
 #include "openssl.h"
 #include "opensslgbl.h"
 #include "security.h"
-#include "server.h"
+// server.h removed - pvxs-cms no longer has pvxs library
+// #include "server.h"
 #include "serverev.h"
 
 namespace pvxs {

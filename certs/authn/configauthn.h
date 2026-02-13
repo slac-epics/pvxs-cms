@@ -32,9 +32,9 @@ class ConfigAuthN : public client::Config {
 
     int64_t cert_validity_mins = 0; // Minutes for Custom Duration of requested certificate
 
-    void fromAuthEnv(const std::map<std::string, std::string>& defs);
-    static std::string getIPAddress();
-    void updateDefs(defs_t& defs) const override;
+void fromAuthEnv(const std::map<std::string, std::string>& defs);
+static std::string getIPAddress();
+void updateDefs(defs_t& defs) const;
 };
 
 }  // namespace certs

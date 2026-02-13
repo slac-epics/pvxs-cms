@@ -248,7 +248,7 @@ class FLock {
     FILE * const fp = nullptr;
     bool writing = false;
 public:
-    FLock(FILE* fp, bool writing);
+    FLock(FILE* fp, bool is_writing);
     ~FLock();
 };
 

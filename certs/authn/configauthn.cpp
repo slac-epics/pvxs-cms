@@ -6,7 +6,7 @@
 
 #include "configauthn.h"
 
-#include <authnstd.h>
+#include "authnstd.h"
 #ifndef _WIN32
 #  include <ifaddrs.h>
 #endif
