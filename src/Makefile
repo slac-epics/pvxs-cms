@@ -3,30 +3,33 @@ TOP = ..
 include $(TOP)/configure/CONFIG
 -include $(wildcard $(TOP)/cfg/CONFIG*)
 
-#+#+#+#+######################################
+#+#+#+#+#+######################################
 # src/Makefile
 #
-# This directory is responsible for building the pvacms *host executable*.
+# This directory builds host-side executables:
+#   - pvacms (CMS server)
+#   - tools (eg. pvxcert)
+#   - (future) authenticator plugins once they move under src/
 #
-# Nested organization (pvacms path only):
+# Nested organization (src path only):
 #   TOP/Makefile
-#     -> builds TOP/src/ (this file)
-#     -> builds TOP/certs/ (authn code + related pieces)
+#     -> builds TOP/src/   (this file)
+#     -> builds TOP/certs/ (currently contains authn sources used by pvacms)
 #
 #   TOP/src/Makefile
-#     -> sets up shared include paths / flags needed by pvacms and its shared
-#        sources (which live in multiple directories)
-#     -> includes TOP/src/pvacms/Makefile (a Makefile *fragment*) which defines
-#        the pvacms target: sources + link libraries
+#     -> sets up shared include paths / feature flags used by pvacms and tools
+#     -> includes Makefile fragments which define concrete targets
 #
 #   TOP/src/pvacms/Makefile
-#     -> Makefile fragment ONLY (no CONFIG/RULES includes)
-#     -> owns the pvacms target definition
+#     -> Makefile fragment (inherits vars/flags from TOP/src/Makefile)
+#     -> defines PROD += pvacms and pvacms_* settings
 #
-# Note: pvacms pulls in sources from:
-#   - TOP/src/common/  (shared cert/CMS implementation)
-#   - TOP/certs/       (configcerts.cpp)
-#   - TOP/certs/authn/ (authn plugin framework used by pvacms)
+#   TOP/src/tools/Makefile
+#     -> Makefile fragment (inherits vars/flags from TOP/src/Makefile)
+#     -> aggregates tool fragments under TOP/src/tools/<tool>/Makefile
+#
+# Note: pvacms/tools pull shared implementation sources from TOP/src/common/
+# and some config/authn sources from TOP/certs/.
 #
 #----------------------------------------
 #  ADD MACRO DEFINITIONS AFTER THIS LINE
@@ -39,6 +42,7 @@ AUTHN_STD_DIR  = $(AUTHN_DIR)/std
 CLI11_BUNDLE   = $(TOP)/bundle/CLI11
 
 PVACMS_DIR     = $(TOP)/src/pvacms
+TOOLS_DIR      = $(TOP)/src/tools
 
 USR_CPPFLAGS += -I$(COMMON_DIR)
 USR_CPPFLAGS += -I$(CERTS_DIR)
@@ -75,6 +79,9 @@ endif
 
 # Include pvacms target definition (Makefile fragment)
 include $(PVACMS_DIR)/Makefile
+
+# Host tools (Makefile fragments)
+include $(TOOLS_DIR)/Makefile
 #===========================
 
 include $(TOP)/configure/RULES
