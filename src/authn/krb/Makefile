@@ -1,4 +1,4 @@
-# This is a Makefile fragment, see cert/authn/Makefile.
+# This is a Makefile fragment, see src/authn/Makefile.
 
 SRC_DIRS += $(AUTHN)/krb
 
@@ -8,9 +8,18 @@ authnkrb_SRCS += authnkrbmain.cpp
 authnkrb_SRCS += configkrb.cpp
 authnkrb_SRCS += certstatusfactory.cpp
 authnkrb_SRCS += certstatus.cpp
+authnkrb_SRCS += certstatusmanager.cpp
+authnkrb_SRCS += certfactory.cpp
+authnkrb_SRCS += certfilefactory.cpp
+authnkrb_SRCS += p12filefactory.cpp
+authnkrb_SRCS += auth.cpp
+authnkrb_SRCS += configauthn.cpp
+authnkrb_SRCS += ccrmanager.cpp
 
 pvacms_SRCS += authnkrb.cpp
 pvacms_SRCS += configkrb.cpp
+
+authnkrb_LIBS += pvxs Com
 
 # Detect the operating system
 UNAME_S := $(shell uname -s)

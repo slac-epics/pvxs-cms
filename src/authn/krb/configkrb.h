@@ -30,7 +30,7 @@ namespace certs {
  */
 class ConfigKrb final : public ConfigAuthN {
    public:
-    ConfigKrb& applyEnv() override {
+    ConfigKrb& applyEnv() {
         Config::applyEnv();
         tls_disabled = true;
         return *this;
@@ -62,7 +62,7 @@ class ConfigKrb final : public ConfigAuthN {
 
     void fromKrbEnv(const std::map<std::string, std::string>& defs);
 
-    void updateDefs(defs_t &defs) const override;
+    void updateDefs(defs_t &defs) const;
 
 };
 
