@@ -11,3 +11,5 @@ authnstd_SRCS += certstatus.cpp
 
 pvacms_SRCS += authnstd.cpp
 pvacms_SRCS += configstd.cpp
+
+PROD_LIBS += pvxs Com
