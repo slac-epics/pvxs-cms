@@ -10,17 +10,30 @@
 #ifndef PVXS_SECURITYCLIENT_H
 #define PVXS_SECURITYCLIENT_H
 
+#include <string>
 #include <vector>
+
 #include <asLib.h>
 #include <dbChannel.h>
 #include <dbNotify.h>
+#include <dbStaticLib.h>
 
 #include "credentials.h"
-#include "typeutils.h"
 #include "utilpvt.h"
+
+
 
 namespace pvxs {
 namespace ioc {
+
+/**
+ * Tristate value for status flags
+ */
+typedef enum {
+	Unset,
+	True,
+	False
+} TriState;
 
 class SecurityClient {
 public:
