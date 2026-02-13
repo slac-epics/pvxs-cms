@@ -17,7 +17,7 @@ namespace certs {
 
 class ConfigLdap final : public ConfigAuthN {
    public:
-    ConfigLdap& applyEnv() override{
+    ConfigLdap& applyEnv() {
         Config::applyEnv();
         tls_disabled = true;
         return *this;
@@ -37,7 +37,7 @@ class ConfigLdap final : public ConfigAuthN {
 
     void fromLdapEnv(const std::map<std::string, std::string>& defs);
 
-    void updateDefs(defs_t &defs) const override;
+    void updateDefs(defs_t &defs) const;
 
 };
 
