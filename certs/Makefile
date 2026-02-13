@@ -21,7 +21,7 @@ endif
 
 AUTHN = $(TOP)/certs/authn
 # Include source files from pvxs repo
-SRC_DIRS += $(TOP)/src
+SRC_DIRS += $(TOP)/src/common
 SRC_DIRS += $(TOP)/ioc
 SRC_DIRS += /Users/george/Projects/com/slac/pvxs/src
 SRC_DIRS += /Users/george/Projects/com/slac/pvxs/ioc
@@ -40,29 +40,29 @@ USR_CPPFLAGS += -I/Users/george/Projects/com/slac/pvxs/src/O.Common
  USR_CPPFLAGS += -DPVXS_ENABLE_PVACMS
  USR_CPPFLAGS += -DPVXS_ENABLE_EXPERT_API
  PROD += pvacms
- pvacms_SRCS += pvacms.cpp
- pvacms_SRCS += certstatus.cpp
- pvacms_SRCS += certstatusfactory.cpp
-  pvacms_SRCS += configcms.cpp
-  pvacms_SRCS += configcerts.cpp
+  pvacms_SRCS += pvacms.cpp
+  pvacms_SRCS += certstatus.cpp
+  pvacms_SRCS += certstatusfactory.cpp
+   pvacms_SRCS += configcms.cpp
+   pvacms_SRCS += configcerts.cpp
  # credentials.cpp and securityclient.cpp removed - were pvxs library code
  # pvacms_SRCS += credentials.cpp
  # pvacms_SRCS += securityclient.cpp
 
-  # Include source files from src/ for server functionality
-  # Note: Some pvxs sources needed for linking (evhelper needs util for Timer)
-  pvacms_SRCS += wildcardpv.cpp
-  pvacms_SRCS += conn.cpp
-  pvacms_SRCS += evhelper.cpp
-  pvacms_SRCS += openssl.cpp
-  pvacms_SRCS += serverev.cpp
-  pvacms_SRCS += util.cpp
+   # Include source files from src/common/ for server functionality
+   # Note: Some pvxs sources needed for linking (evhelper needs util for Timer)
+   pvacms_SRCS += wildcardpv.cpp
+   pvacms_SRCS += conn.cpp
+   pvacms_SRCS += evhelper.cpp
+   pvacms_SRCS += openssl.cpp
+   pvacms_SRCS += serverev.cpp
+   pvacms_SRCS += util.cpp
   # util.cpp excluded - already compiled into pvxsIoc library (requires pvxsVCS.h generated header)
 
-  # Include source files for IdFileFactory
-  pvacms_SRCS += p12filefactory.cpp
-  pvacms_SRCS += certfilefactory.cpp
-  pvacms_SRCS += certfactory.cpp
+   # Include source files for IdFileFactory
+   pvacms_SRCS += p12filefactory.cpp
+   pvacms_SRCS += certfilefactory.cpp
+   pvacms_SRCS += certfactory.cpp
   # certstatusmanager.cpp already included via authn/Makefile
 
  # Link against pvxs libraries for server, certs, and ioc components
