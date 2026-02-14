@@ -35,7 +35,6 @@
 #endif
 
 DEFINE_LOGGER(setup, "pvxs.ossl.init");
-DEFINE_LOGGER(stapling, "pvxs.stapling");
 DEFINE_LOGGER(watcher, "pvxs.certs.mon");
 DEFINE_LOGGER(io, "pvxs.ossl.io");
 DEFINE_LOGGER(status_cli, "pvxs.st.cli");
@@ -565,81 +564,6 @@ std::shared_ptr<SSLContext> commonSetup(const SSL_METHOD *method, const bool is_
 
 }  // namespace
 
-/**
- * @brief This is the callback that is made by the TLS handshake to add the server OCSP status to the payload
- *
- * @param ssl the SSL session to add the OCSP response to
- * @param raw the pointer to cast to a Server::Pvt object to get the OCSP response from
- * @return SSL_TLSEXT_ERR_OK if the OCSP response was added successfully,
- *         SSL_TLSEXT_ERR_ALERT_WARNING if the callback should not have been called, (never happens)
- *         SSL_TLSEXT_ERR_NOACK if the OCSP response was not added - no status available to staple at this time
- *         SSL_TLSEXT_ERR_ALERT_FATAL if the OCSP response was not added - some error occurred adding the OCSP response
- */
-int serverOCSPCallback(SSL *ssl, void *raw) {
-    auto ret_val = SSL_TLSEXT_ERR_OK;
-    const auto server = static_cast<server::Server::Pvt *>(raw);
-    log_debug_printf(stapling, "Server OCSP Stapling: %s\n", "serverOCSPCallback");
-
-    if (const auto &tls_context = server->tls_context) {
-        auto &current_status = tls_context->get_cert_status();
-        if (current_status.isStatusCurrent()) {
-            uint8_t *ocsp_data_ptr_copy = nullptr;
-            const auto ocsp_data_ptr = (void *)current_status.ocsp_bytes.data();
-            const auto ocsp_data_len = current_status.ocsp_bytes.size();
-
-             // OpenSSL API takes an int length. Check for overflow.
-            if (ocsp_data_len > INT_MAX) {
-                log_warn_printf(stapling, "OCSP response too large to staple (%zu)\n", ocsp_data_len);
-                ret_val = SSL_TLSEXT_ERR_NOACK;
-            } else {
-                // Allocate a new one and copy in the response data
-                ocsp_data_ptr_copy = static_cast<uint8_t *>(OPENSSL_malloc(ocsp_data_len));
-                if (!ocsp_data_ptr_copy) {
-                    log_warn_printf(stapling, "Unable to allocate memory for OCSP response%s\n", "");
-                    ret_val = SSL_TLSEXT_ERR_NOACK;
-                } else {
-                    memcpy(ocsp_data_ptr_copy, ocsp_data_ptr, ocsp_data_len);
-
-                    // On success, OpenSSL takes ownership and will OPENSSL_free() it later.
-                    if (SSL_set_tlsext_status_ocsp_resp(ssl, ocsp_data_ptr_copy, ocsp_data_len) != 1) {
-                        // On failure, we must free it.
-                        OPENSSL_free(ocsp_data_ptr_copy);
-
-                        log_warn_printf(stapling, "Server OCSP Stapling: %s\n", "unable to staple server status");
-                        ret_val = SSL_TLSEXT_ERR_NOACK;
-                    } else {
-                        log_info_printf(stapling, "Server OCSP Stapling: %s\n", "server status stapled");
-                    }
-                }
-            }
-        } else {
-            log_info_printf(stapling, "Server OCSP Stapling: %s\n", "Server status not current.  Not stapling");
-            ret_val = SSL_TLSEXT_ERR_NOACK;
-        }
-    } else {
-        log_warn_printf(stapling, "Server OCSP Stapling: %s\n", "No server status to staple");
-        ret_val = SSL_TLSEXT_ERR_NOACK;
-    }
-
-    return ret_val;
-}
-
-/**
- * @brief Configure the server's OCSP callback
- *
- * This sets the callback that will be used called during TLS handshake to staple OCSP data on
- * the entity cert to the handshake data.
- *
- * The server object is passed to the callback so that the server can be referenced when the callback is called.
- * This allows the server's certificate status to be retrieved and used to staple the OCSP response to the handshake data.
- *
- * @param server_ptr pointer to the server object who's tls context is to be configured for stapling
- */
-void configureServerOCSPCallback(void *server_ptr, SSL *) {
-    auto server = static_cast<server::Server::Pvt *>(server_ptr);
-    SSL_CTX_set_tlsext_status_arg(server->tls_context->ctx.get(), server);
-    SSL_CTX_set_tlsext_status_cb(server->tls_context->ctx.get(), serverOCSPCallback);
-}
 
 /**
  * @brief Called when last  peer connection is being destroyed to remove the

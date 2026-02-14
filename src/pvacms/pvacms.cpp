@@ -35,7 +35,6 @@
 #include <tuple>
 #include <vector>
 
-#include <asDbLib.h>
 #include <epicsGetopt.h>
 #include <epicsThread.h>
 #include <epicsTime.h>
@@ -64,7 +63,6 @@
 #include "certstatus.h"
 #include "certstatusfactory.h"
 #include "configcms.h"
-#include "credentials.h"
 #include "evhelper.h"
 #include "openssl.h"
 #include "ownedptr.h"
@@ -3281,10 +3279,10 @@ int main(int argc, char *argv[]) {
             // Get credentials for this operation
             const auto creds = op->credentials();
 
-            pvxs::ioc::Credentials credentials(*creds);
+            AsCredentials credentials(*creds);
 
             // Get security client from channel
-            pvxs::ioc::SecurityClient securityClient;
+            SecurityClient securityClient;
 
             static ASMember as_member;
             securityClient.update(as_member.mem, ASL1, credentials);

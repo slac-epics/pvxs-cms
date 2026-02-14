@@ -45,7 +45,7 @@ eventversion = eventversion()
 
 def cexpand(iname, oname, defs={}, dry_run=False):
     """Expand input file to output file.
-    
+
     defs dict used to expand "@MACRO@", or replace "#cmakedefine MACRO VALUE" lines
     """
     log.info('expand %s -> %s', iname, oname)
@@ -466,12 +466,6 @@ class InstallHeaders(Command):
             self.copy_file(header,
                            os.path.join(self.build_lib, 'pvxslibs', 'include', os.path.relpath(header, 'src')))
 
-        for header in glob('ioc/pvxs/*.h'):
-            self.copy_file(header,
-                           os.path.join(self.build_lib, 'pvxslibs', 'include', os.path.relpath(header, 'ioc')))
-
-        self.copy_file('ioc/pvxs7x.dbd',
-                       os.path.join(self.build_lib, 'pvxslibs/dbd/pvxsIoc.dbd'))
 
 @logexc
 def define_DSOS(self):

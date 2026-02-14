@@ -32,7 +32,6 @@
 #include <pvxs/server.h>
 
 #include "certstatus.h"
-#include "conn.h"
 #include "evhelper.h"
 #include "ownedptr.h"
 
@@ -435,8 +434,6 @@ struct SSLContext {
     static void statusValidityTimerCallback(evutil_socket_t fd, short evt, void* raw);
     void restartStatusValidityTimerFromCertStatus() const;
 };
-
-PVXS_API void configureServerOCSPCallback(void* server, SSL* ssl);
 
 struct OCSPStapleData {
     size_t size;
