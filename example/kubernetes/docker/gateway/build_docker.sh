@@ -8,7 +8,7 @@ DOCKER_DIR=${DOCKER_DIR:A}
 PROJECTS=${DOCKER_DIR}/../../../../..
 PROJECTS=${PROJECTS:A}
 pushd "${PROJECTS}"
-RELATIVE_DOCKER_DIR=pvxs/example/kubernetes/docker/gateway
+RELATIVE_DOCKER_DIR=pvxs-cms/example/kubernetes/docker/gateway
 
 # Add trap to ensure we return to original directory on exit
 trap "popd" EXIT

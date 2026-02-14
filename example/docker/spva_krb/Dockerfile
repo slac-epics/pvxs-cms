@@ -57,7 +57,7 @@ RUN echo "PVXS_ENABLE_PVACMS = YES" >> CONFIG_SITE.local
 RUN echo "PVXS_ENABLE_KRB_AUTH = YES" >> CONFIG_SITE.local
 
 # Rebuild PVXS with kerberos support
-RUN cd pvxs && \
+RUN cd pvxs-cms && \
     make distclean && make -j$(nproc) all
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

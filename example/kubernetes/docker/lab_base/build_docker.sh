@@ -9,7 +9,7 @@ pushd "${DOCKER_DIR}"
 # Add trap to ensure we return to original directory on exit
 trap "popd" EXIT
 
-BASE_IMAGE_NAME="pvxs"
+BASE_IMAGE_NAME="pvxs-cms"
 BASE_IMAGE_TAG="latest"
 TARGET_IMAGE_NAME="lab_base"
 TARGET_IMAGE_TAG="latest"

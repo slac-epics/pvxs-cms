@@ -1,6 +1,6 @@
 ARG DOCKER_REGISTRY=ghcr.io
 ARG DOCKER_USERNAME=slac-epics
-ARG BASE_IMAGE=epics-base
+ARG BASE_IMAGE=pvxs
 ARG BASE_IMAGE_TAG=latest
 
 FROM ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${BASE_IMAGE}:${BASE_IMAGE_TAG}
@@ -22,12 +22,13 @@ RUN apt-get update && \
 # Set up RELEASE.local
 WORKDIR ${PROJECT_HOME}
 RUN echo "EPICS_BASE = \$(TOP)/../epics-base" >> ${PROJECT_HOME}/RELEASE.local
+RUN echo "PVXS = \$(TOP)/../pvxs"             >> ${PROJECT_HOME}/RELEASE.local
 
 # Set up CONFIG_SITE.local
-RUN echo "PVXS_ENABLE_PVACMS = YES" >> CONFIG_SITE.local
+RUN echo "PVXS_ENABLE_PVACMS = YES"           >> CONFIG_SITE.local
 
-# build PVXS
-WORKDIR ${PROJECT_HOME}/pvxs
+# build PVXS-CMS
+WORKDIR ${PROJECT_HOME}/pvxs-cms
 COPY . .
 RUN make -j$(nproc) all
 

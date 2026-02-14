@@ -20,6 +20,7 @@ export EPICS_PVA_AUTH_ORGANIZATION=epics.org
 
 # set path
 export EPICS_HOST_ARCH=$(${PROJECT_HOME}/epics-base/startup/EpicsHostArch)
+export PATH="${PROJECT_HOME}/pvxs-cms/bin/${EPICS_HOST_ARCH}:$PATH"
 export PATH="${PROJECT_HOME}/pvxs/bin/${EPICS_HOST_ARCH}:$PATH"
 export PATH="${PROJECT_HOME}/p4p/bin/${EPICS_HOST_ARCH}:$PATH"
 

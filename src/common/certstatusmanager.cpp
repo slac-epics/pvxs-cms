@@ -147,8 +147,21 @@ PVXS_API ParsedOCSPStatus CertStatusManager::parse(const ossl_ptr<OCSP_RESPONSE>
     OCSP_id_get0_info(nullptr, nullptr, nullptr, &serial, const_cast<OCSP_CERTID *>(cert_id));
 
     const auto ocsp_status = static_cast<ocspcertstatus_t>(OCSP_single_get0_status(single_response, &reason, &revocation_time, &this_update, &next_update));
-    // Check status validity: less than 5 seconds old
-    OCSP_check_validity(this_update, next_update, 0, 5);
+    constexpr int allowed_skew = 300;                      // Allow a 5-minute clock skew
+    const int fallback_max_age = next_update ? -1 : 1800;  // only enforce a status validity age cap of 30 minutes if `next_update` is missing
+
+    // Check status validity: tolerate skew of 5 minutes and a maximum age provided in next_update or fall back to a max of 30 minutes
+    if (OCSP_check_validity(this_update, next_update, allowed_skew, fallback_max_age) != 1) {
+        const unsigned long err = ERR_get_error();
+        if(err) {
+            char err_buf[256];
+            ERR_error_string_n(err, err_buf, sizeof(err_buf));
+            throw OCSPParseException(SB() << "OCSP_check_validity failed: " << err_buf);
+        }
+        const auto this_s = this_update ? CertDate(this_update).s : std::string("<null>");
+        const auto next_s = next_update ? CertDate(next_update).s : std::string("<null>");
+        throw OCSPParseException(SB() << "OCSP_check_validity failed. thisUpdate=" << this_s << " nextUpdate=" << next_s);
+    }
 
     if (ocsp_status == OCSP_CERTSTATUS_REVOKED && !revocation_time) {
         throw OCSPParseException("Revocation time not set when status is REVOKED");

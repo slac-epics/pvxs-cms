@@ -87,7 +87,7 @@ RUN echo "PVXS_ENABLE_PVACMS = YES" >> CONFIG_SITE.local
 RUN echo "PVXS_ENABLE_LDAP_AUTH = YES" >> CONFIG_SITE.local
 
 # Rebuild PVXS with ldap support
-RUN cd pvxs && \
+RUN cd pvxs-cms && \
     make distclean && make -j$(nproc) all
 
 # Set the entrypoint to run supervisord.

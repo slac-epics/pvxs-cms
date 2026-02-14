@@ -6,19 +6,21 @@ DOCKER_DIR=${DOCKER_DIR:A}
 PROJECTS=${DOCKER_DIR}/../../../..
 PROJECTS=${PROJECTS:A}
 
-pushd "${PROJECTS}/pvxs"
+pushd "${PROJECTS}/pvxs-cms"
 
 # Add trap to ensure we return to original directory on exit
 trap "popd" EXIT
 
-BASE_IMAGE_NAME="epics-base"
+BASE_IMAGE_NAME="pvxs"
 BASE_IMAGE_TAG="latest"
-TARGET_IMAGE_NAME="pvxs"
+TARGET_IMAGE_NAME="pvxs-cms"
 TARGET_IMAGE_TAG="latest"
 
 echo "--- Building ${TARGET_IMAGE_NAME} Docker image ---"
 
 docker build \
+  --build-arg DOCKER_REGISTRY="${DOCKER_REGISTRY:-ghcr.io}" \
+  --build-arg DOCKER_USERNAME="${DOCKER_USERNAME:-slac-epics}" \
   --build-arg BASE_IMAGE=${BASE_IMAGE_NAME} \
   --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} \
   ${*} \

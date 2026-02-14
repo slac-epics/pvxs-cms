@@ -8,8 +8,7 @@ on:
         required: true
         type: choice
         options:
-          - epics-base
-          - pvxs
+          - pvxs_cms
           - spva_std
           - spva_krb
           - spva_ldap
@@ -50,9 +49,7 @@ jobs:
           filters: |
             non_docker:
               - 'src/**'
-              - 'include/**'
               - 'test/**'
-              - 'example/[!docker]/**'
             spva_std:
               - 'example/docker/spva_std/**'
             spva_krb:
@@ -81,15 +78,14 @@ jobs:
     uses: slac-epics/epics-base-tls/.github/workflows/docker-pub-epics-base.yml@7.0-secure-pvaccess
 
 
-  build-pvxs:
+  build-pvxs-cms:
     needs: [check_docker_changes, build-epics-base]
     if: |
       always() && 
       (github.event_name == 'workflow_dispatch' && 
-       github.event.inputs.build_target == 'pvxs') || 
+       github.event.inputs.build_target == 'pvxs_cms') || 
       (github.event_name == 'push' && 
-       needs.check_docker_changes.outputs.non_docker_changed == 'true') ||
-      needs.build-epics-base.result == 'success'
+       needs.check_docker_changes.outputs.non_docker_changed == 'true')
     runs-on: ubuntu-22.04
     outputs:
       status: ${{ job.status }}
@@ -97,7 +93,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: tls
           submodules: recursive
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -109,21 +104,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push pvxs
+      - name: Build and push pvxs-cms
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: example/docker/pvxs/Dockerfile
+          file: example/docker/pvxs-cms/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           no-cache: true
           build-args: |
             DOCKER_REGISTRY=ghcr.io
             DOCKER_USERNAME=slac-epics
-          tags: ghcr.io/slac-epics/pvxs:latest
+          tags: ghcr.io/slac-epics/pvxs-cms:latest
 
   build-spva-std:
-    needs: [check_docker_changes, build-pvxs]
+    needs: [check_docker_changes, build-pvxs-cms]
     if: |
       always() && 
       (github.event_name == 'workflow_dispatch' && 

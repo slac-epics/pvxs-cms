@@ -1,6 +1,6 @@
 ARG DOCKER_REGISTRY=ghcr.io
 ARG DOCKER_USERNAME=slac-epics
-ARG BASE_IMAGE=pvxs
+ARG BASE_IMAGE=pvxs-cms
 ARG BASE_IMAGE_TAG=latest
 
 FROM ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${BASE_IMAGE}:${BASE_IMAGE_TAG}
@@ -45,7 +45,7 @@ RUN mkdir -p /var/log/supervisor && \
     chown pvacms:pvacms /var/log/supervisor/pvacms.out.log /var/log/supervisor/pvacms.err.log
 
 # Generate the administrator certificate with logging redirections
-RUN su - pvacms -c "/bin/bash -c '/opt/epics/pvxs/bin/$(${PROJECT_HOME}/epics-base/startup/EpicsHostArch)/pvacms --admin-keychain-new admin >> /var/log/supervisor/pvacms.out.log 2>> /var/log/supervisor/pvacms.err.log'"
+RUN su - pvacms -c "/bin/bash -c '/opt/epics/pvxs-cms/bin/$(${PROJECT_HOME}/epics-base/startup/EpicsHostArch)/pvacms --admin-keychain-new admin >> /var/log/supervisor/pvacms.out.log 2>> /var/log/supervisor/pvacms.err.log'"
 
 # Copy the administrator certificate to the admin user
 RUN mkdir -p /home/admin/.config/pva/1.5 && \

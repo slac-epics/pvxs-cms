@@ -1,19 +1,27 @@
+AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority")
+
 UAG(USERS) {
-    "x509/guest",
-    "x509/operator",
-    "x509/remote"
+    "guest",
+    "operator",
+    "remote"
 }
 
 UAG(SPECIAL_USERS) {
-    "x509/operator"
+    "operator"
 }
 
 ASG(SPECIAL) {
     RULE(1,READ) {
         UAG(USERS)
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
     }
     RULE(1,WRITE,TRAPWRITE) {
         UAG(SPECIAL_USERS)
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
     }
 }
 
@@ -28,5 +36,8 @@ ASG(CERT_STATUS) {
 ASG(DEFAULT) {
     RULE(1,READ) {
         UAG(USERS)
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
     }
 }
