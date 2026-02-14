@@ -18,6 +18,7 @@ USR_CPPFLAGS += -I$(COMMON_DIR)
 USR_CPPFLAGS += -I$(AUTHN_DIR)
 USR_CPPFLAGS += -I$(AUTHN_STD_DIR)
 USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
+USR_CPPFLAGS += -I$(COMMON_DIR)/serverev
 
 USR_CPPFLAGS += -I$(TOP)/certs -I$(TOP)/bundle/CLI11/include
 ifeq (WIN32,$(OS_CLASS))
@@ -29,6 +30,7 @@ endif
 SRC_DIRS += $(COMMON_DIR)
 SRC_DIRS += $(AUTHN_DIR)
 SRC_DIRS += $(PVACMS_DIR)
+SRC_DIRS += $(COMMON_DIR)/serverev
 
 # Common sources
 SRCS += configcms.cpp

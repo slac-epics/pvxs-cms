@@ -7,7 +7,6 @@
 #define PVXS_OWNED_PTR_H_
 
 #include <cstdio>
-#ifdef PVXS_ENABLE_OPENSSL
 #include <openssl/bn.h>
 #include <openssl/conf.h>
 #include <openssl/crypto.h>
@@ -24,7 +23,6 @@
 
 #ifdef PVXS_ENABLE_PVACMS
 #include "sqlite3.h"
-#endif
 #endif
 #include "utilpvt.h"
 
