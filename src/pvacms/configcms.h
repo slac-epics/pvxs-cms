@@ -12,7 +12,6 @@
 
 #include "certfactory.h"
 #include "configcerts.h"
-#include "serverev.h"
 
 namespace pvxs {
 namespace certs {

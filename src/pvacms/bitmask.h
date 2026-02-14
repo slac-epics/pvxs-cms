@@ -250,16 +250,6 @@ inline bool operator!=(const BitMask& lhs, const BitMask& rhs) {
     return !(lhs==rhs);
 }
 
-namespace impl {
-struct Buffer;
-
-PVXS_API
-void to_wire(Buffer& buf, const BitMask& mask);
-
-PVXS_API
-void from_wire(Buffer& buf, BitMask& mask);
-}
-
 } // namespace pvxs
 
 #endif // PVXS_BITMASK_H

@@ -13,7 +13,6 @@
 
 #include "authregistry.h"
 #include "configcerts.h"
-#include "serverev.h"
 
 DEFINE_LOGGER(cert_cfg, "pvxs.certs.cfg");
 
