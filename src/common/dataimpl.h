@@ -11,7 +11,6 @@
 
 #include <pvxs/data.h>
 #include <pvxs/sharedArray.h>
-#include <bitmask.h>
 #include "utilpvt.h"
 
 namespace pvxs {
@@ -165,32 +164,6 @@ struct StructTop {
 using Type = std::shared_ptr<const FieldDesc>;
 
 
-//! serialize all Value fields
-PVXS_API
-void to_wire_full(Buffer& buf, const Value& val);
-
-//! serialize BitMask and marked valid Value fields
-PVXS_API
-void to_wire_valid(Buffer& buf, const Value& val, const BitMask* mask=nullptr);
-
-//! deserialize type description
-PVXS_API
-void from_wire_type(Buffer& buf, TypeStore& ctxt, Value& val);
-
-//! deserialize full Value
-PVXS_API
-void from_wire_full(Buffer& buf, TypeStore& ctxt, Value& val);
-
-//! deserialize BitMask and partial Value
-PVXS_API
-void from_wire_valid(Buffer& buf, TypeStore& ctxt, Value& val);
-
-//! deserialize type description and full value (a la. pvRequest)
-PVXS_API
-void from_wire_type_value(Buffer& buf, TypeStore& ctxt, Value& val);
-
-PVXS_API
-std::ostream& operator<<(std::ostream& strm, const FieldDesc* desc);
 
 } // namespace impl
 

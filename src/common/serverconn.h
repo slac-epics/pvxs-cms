@@ -19,7 +19,6 @@
 #include <pvxs/source.h>
 
 #include "evhelper.h"
-#include "udp_collector.h"
 #include "utilpvt.h"
 
 #ifdef PVXS_ENABLE_OPENSSL
