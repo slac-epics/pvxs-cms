@@ -1,4 +1,4 @@
-name: Tag SPVA snapshot
+name: Tag PVXS CMS snapshot
 
 on:
   workflow_dispatch:
@@ -7,9 +7,9 @@ on:
         description: "YYYYMMDD (blank = today)"
         required: false
       tag_prefix:
-        description: "Tag prefix (default pvxs)"
+        description: "Tag prefix (default pvxs-cms)"
         required: false
-        default: "pvxs"
+        default: "pvxs-cms"
       spva_label:
         description: "Pre-release label (default spva)"
         required: false

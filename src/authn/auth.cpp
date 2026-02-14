@@ -16,6 +16,7 @@
 #include <pvxs/client.h>
 #include <pvxs/log.h>
 #include <pvxs/server.h>
+#include <pvxs/sharedpv.h>
 
 #include "authregistry.h"
 #include "ccrmanager.h"
@@ -24,7 +25,6 @@
 #include "configcerts.h"
 #include "p12filefactory.h"
 #include "security.h"
-#include "sharedpv.h"
 
 DEFINE_LOGGER(config, "pvxs.auth.config");
 
