@@ -256,22 +256,6 @@ evbase::evbase(const std::string &name, unsigned prio)
 
 evbase::~evbase() {}
 
-evbase evbase::internal() const
-{
-    evbase ret;
-    ret.pvt = decltype(pvt)(pvt->internal_self);
-    ret.base = base;
-    return ret;
-}
-
-void evbase::join() const {
-    pvt->join();
-}
-
-void evbase::sync() const {
-    call([](){});
-}
-
 bool evbase::_dispatch(mfunction&& fn, bool dothrow) const {
     bool empty;
     {

@@ -91,12 +91,6 @@ struct evbase {
     explicit evbase(const std::string& name, unsigned prio=0);
     ~evbase();
 
-    evbase internal() const;
-
-    void join() const;
-
-    void sync() const;
-
 private:
     bool _dispatch(mfunction&& fn, bool dothrow) const;
     bool _call(mfunction&& fn, bool dothrow) const;
@@ -107,29 +101,14 @@ public:
     void call(mfunction&& fn) const {
         _call(std::move(fn), true);
     }
-    inline
-    bool tryCall(mfunction&& fn) const {
-        return _call(std::move(fn), false);
-    }
 
     // queue request to execute in event loop.  return immediately.
     inline
     void dispatch(mfunction&& fn) const {
         _dispatch(std::move(fn), true);
     }
-    inline
-    bool tryDispatch(mfunction&& fn) const {
-        return _dispatch(std::move(fn), false);
-    }
 
-    bool tryInvoke(bool docall, mfunction&& fn) const {
-        if(docall)
-            return tryCall(std::move(fn));
-        else
-            return tryDispatch(std::move(fn));
-    }
-
-    inline void reset() { pvt.reset(); }
+    void reset() { pvt.reset(); }
 
 private:
     struct Pvt;
@@ -139,7 +118,7 @@ public:
 };
 
 template<typename T>
-using ev_owned_ptr = pvxs::OwnedPtr<T, ev_delete<T>>;
+using ev_owned_ptr = OwnedPtr<T, ev_delete<T>>;
 typedef ev_owned_ptr<event_config> evconfig;
 typedef ev_owned_ptr<event_base> evbaseptr;
 typedef ev_owned_ptr<event> evevent;
