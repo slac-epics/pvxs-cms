@@ -36,6 +36,7 @@
 #include <epicsGetopt.h>
 #include <epicsTime.h>
 #include <epicsVersion.h>
+#include <dbBase.h>
 
 #include <openssl/asn1.h>
 #include <openssl/bio.h>
@@ -50,6 +51,7 @@
 #include <pvxs/server.h>
 #include <pvxs/sharedpv.h>
 #include <wildcardpv.h>
+#include <pvxs/credentials.h>
 
 #include "auth.h"
 #include "authregistry.h"
@@ -61,7 +63,6 @@
 #include "evhelper.h"
 #include "openssl.h"
 #include "ownedptr.h"
-#include "securityclient.h"
 #include "serverev.h"
 #include "sqlite3.h"
 #include "utilpvt.h"
@@ -3274,10 +3275,10 @@ int main(int argc, char *argv[]) {
             // Get credentials for this operation
             const auto creds = op->credentials();
 
-            AsCredentials credentials(*creds);
+            pvxs::ioc::Credentials credentials(*creds);
 
             // Get security client from channel
-            SecurityClient securityClient;
+            pvxs::ioc::SecurityClient securityClient;
 
             static ASMember as_member;
             securityClient.update(as_member.mem, ASL1, credentials);

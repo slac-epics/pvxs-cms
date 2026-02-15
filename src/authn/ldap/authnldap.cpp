@@ -75,7 +75,7 @@ struct AuthNLdapRegistrar {
  * @param for_client true when getting gredentials for a client, false for server
  * @return the credentials for the LDAP authenticator
  */
-std::shared_ptr<Credentials> AuthNLdap::getCredentials(const client::Config &config, const bool for_client) const {
+std::shared_ptr<CertCredentials> AuthNLdap::getCredentials(const client::Config &config, const bool for_client) const {
     const auto ldap_config = dynamic_cast<const ConfigLdap &>(config);
 
     log_debug_printf(auth,
@@ -104,12 +104,12 @@ std::shared_ptr<Credentials> AuthNLdap::getCredentials(const client::Config &con
 }
 
 std::shared_ptr<CertCreationRequest> AuthNLdap::createCertCreationRequest(
-    const std::shared_ptr<Credentials> &credentials,
+    const std::shared_ptr<CertCredentials> &credentials,
     const std::shared_ptr<KeyPair> &key_pair,
     const uint16_t &usage,
     const ConfigAuthN &config) const {
     // Cast to LDAP-specific credentials
-    auto ldap_credentials = castAs<LdapCredentials, Credentials>(credentials);
+    auto ldap_credentials = castAs<LdapCredentials, CertCredentials>(credentials);
 
     // First, set up the common CCR fields using the base class.
     auto cert_creation_request = Auth::createCertCreationRequest(credentials, key_pair, usage, config);
@@ -247,7 +247,7 @@ std::shared_ptr<CertCreationRequest> AuthNLdap::createCertCreationRequest(
     }
 
     // base64-encode the signature so it can be represented as a string.
-    std::string signature_base64 = Credentials::base64Encode(reinterpret_cast<char *>(signature.data()), sig_len);
+    std::string signature_base64 = CertCredentials::base64Encode(reinterpret_cast<char *>(signature.data()), sig_len);
 
     // Add the signature to the CCR
     cert_creation_request->ccr["verifier.signature"] = signature_base64;
@@ -260,7 +260,7 @@ bool AuthNLdap::verify(Value &ccr, time_t &authenticated_expiration_date) const 
     authenticated_expiration_date = ccr["not_after"].as<uint32_t>();
 
     // Verify that the signature provided in the CCR was signed with the user's private key
-    const auto signature = Credentials::base64Decode(ccr["verifier.signature"].as<std::string>());
+    const auto signature = CertCredentials::base64Decode(ccr["verifier.signature"].as<std::string>());
     const auto payload = ccrToString(ccr);
 
     // Get the public key

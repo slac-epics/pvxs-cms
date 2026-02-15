@@ -126,7 +126,7 @@ static std::string getCountryCode() {
  * @param for_client true if getting credentials for a client
  * @return A structure containing the credentials required for the creation of a certificate.
  */
-std::shared_ptr<Credentials> AuthNStd::getCredentials(const client::Config &config, const bool for_client) const {
+std::shared_ptr<CertCredentials> AuthNStd::getCredentials(const client::Config &config, const bool for_client) const {
     const auto &std_config = dynamic_cast<const ConfigStd &>(config);
 
     log_debug_printf(auth,
@@ -197,7 +197,7 @@ std::shared_ptr<Credentials> AuthNStd::getCredentials(const client::Config &conf
  * @return A managed shared CertCreationRequest object.
  */
 std::shared_ptr<CertCreationRequest> AuthNStd::createCertCreationRequest(
-    const std::shared_ptr<Credentials> &credentials,
+    const std::shared_ptr<CertCredentials> &credentials,
     const std::shared_ptr<KeyPair> &key_pair,
     const uint16_t &usage,
     const ConfigAuthN &config) const {

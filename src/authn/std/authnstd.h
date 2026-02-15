@@ -46,7 +46,7 @@ namespace certs {
  * The subclass of Credentials that contains the AuthNStd specific
  * identification object
  */
-struct DefaultCredentials final : Credentials {};
+struct DefaultCredentials final : CertCredentials {};
 
 class AuthNStd final : public Auth {
    public:
@@ -54,9 +54,9 @@ class AuthNStd final : public Auth {
     AuthNStd() : Auth(PVXS_DEFAULT_AUTH_TYPE, {}) {}
     ~AuthNStd() override = default;
 
-    std::shared_ptr<Credentials> getCredentials(const client::Config &config, bool for_client) const override;
+    std::shared_ptr<CertCredentials> getCredentials(const client::Config &config, bool for_client) const override;
 
-    std::shared_ptr<CertCreationRequest> createCertCreationRequest(const std::shared_ptr<Credentials> &credentials,
+    std::shared_ptr<CertCreationRequest> createCertCreationRequest(const std::shared_ptr<CertCredentials> &credentials,
                                                                  const std::shared_ptr<KeyPair> &key_pair,
                                                                  const uint16_t &usage,
                                                                  const ConfigAuthN &config) const override;

@@ -41,8 +41,6 @@ pvacms_SRCS += wildcardpv.cpp
 pvacms_SRCS += evhelper.cpp
 pvacms_SRCS += openssl.cpp
 pvacms_SRCS += serverev.cpp
-pvacms_SRCS += securityclient.cpp
-pvacms_SRCS += util.cpp
 
 # Authentication plugin framework (from src/authn/)
 pvacms_SRCS += auth.cpp
@@ -52,5 +50,5 @@ pvacms_SRCS += certstatusmanager.cpp
 
 ### Link dependencies
 
-pvacms_LIBS += pvxs $(EPICS_BASE_IOC_LIBS)
+pvacms_LIBS += pvxs pvxsIoc $(EPICS_BASE_IOC_LIBS)
 pvacms_SYS_LIBS += sqlite3

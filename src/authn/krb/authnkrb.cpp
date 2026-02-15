@@ -56,7 +56,7 @@ struct AuthNKrbRegistrar {
  *
  * @return the credentials for the Kerberos authenticator
  */
-std::shared_ptr<Credentials> AuthNKrb::getCredentials(const client::Config &config, bool) const {
+std::shared_ptr<CertCredentials> AuthNKrb::getCredentials(const client::Config &config, bool) const {
     const auto krb_config = dynamic_cast<const ConfigKrb &>(config);
     log_debug_printf(auth,
                      "\n******************************************\n"
@@ -142,10 +142,10 @@ std::string AuthNKrb::getRealm() {
  * @param usage the desired certificate usage bitmask: client, server, or ioc
  * @return The certificate creation request (CCR).
  */
-std::shared_ptr<CertCreationRequest> AuthNKrb::createCertCreationRequest(const std::shared_ptr<Credentials> &credentials,
+std::shared_ptr<CertCreationRequest> AuthNKrb::createCertCreationRequest(const std::shared_ptr<CertCredentials> &credentials,
 const std::shared_ptr<KeyPair> &key_pair, const uint16_t &usage,
 const ConfigAuthN &config) const {
-    const auto krb_credentials = castAs<KrbCredentials, Credentials>(credentials);
+    const auto krb_credentials = castAs<KrbCredentials, CertCredentials>(credentials);
 
     // Call base class to set up the common CCR fields.
     auto cert_creation_request = Auth::createCertCreationRequest(credentials, key_pair, usage, config);
