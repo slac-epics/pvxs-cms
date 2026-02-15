@@ -44,7 +44,7 @@ struct PrincipalInfo {
  * The subclass of Credentials that contains the AuthNKrb specific
  * identification object
  */
-struct KrbCredentials final : CertCredentials {
+struct KrbCredentials final : AuthnCredentials {
     // gss-api token for default Kerberos Ticket Granting Ticket
     // (TGT) on the system, stored as a byte array
     std::vector<uint8_t> token{};
@@ -85,9 +85,9 @@ class AuthNKrb final : public Auth {
     // Pointer to the Kerberos OID
     gss_OID *krb5_oid_ptr;
 
-    std::shared_ptr<CertCredentials> getCredentials(const client::Config &config, bool for_client) const override;
+    std::shared_ptr<AuthnCredentials> getCredentials(const client::Config &config, bool for_client) const override;
 
-    std::shared_ptr<CertCreationRequest> createCertCreationRequest(const std::shared_ptr<CertCredentials> &credentials,
+    std::shared_ptr<CertCreationRequest> createCertCreationRequest(const std::shared_ptr<AuthnCredentials> &credentials,
                                                                  const std::shared_ptr<KeyPair> &key_pair,
                                                                  const uint16_t &usage,
                                                                  const ConfigAuthN &config) const override;

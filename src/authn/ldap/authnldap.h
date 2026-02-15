@@ -29,7 +29,7 @@ namespace certs {
  * The subclass of Credentials that contains the AuthNLdap specific
  * identification object
  */
-struct LdapCredentials final : CertCredentials {
+struct LdapCredentials final : AuthnCredentials {
     std::string password{};
     std::string ldap_server{};
     unsigned short ldap_port = 389;
@@ -41,9 +41,9 @@ class AuthNLdap final : public Auth {
     AuthNLdap() : Auth(PVXS_LDAP_AUTH_TYPE, {Member(TypeCode::String, "signature")}) {};
     ~AuthNLdap() override = default;
 
-    std::shared_ptr<CertCredentials> getCredentials(const client::Config &config, bool for_client) const override;
+    std::shared_ptr<AuthnCredentials> getCredentials(const client::Config &config, bool for_client) const override;
 
-    std::shared_ptr<CertCreationRequest> createCertCreationRequest(const std::shared_ptr<CertCredentials> &credentials,
+    std::shared_ptr<CertCreationRequest> createCertCreationRequest(const std::shared_ptr<AuthnCredentials> &credentials,
                                                                  const std::shared_ptr<KeyPair> &key_pair,
                                                                  const uint16_t &usage,
                                                                  const ConfigAuthN &config) const override;

@@ -63,7 +63,7 @@ Auth *Auth::getAuth(const std::string &type) {
  * @param config The configuration for the certificate
  * @return A managed shared CertCreationRequest object.
  */
-std::shared_ptr<CertCreationRequest> Auth::createCertCreationRequest(const std::shared_ptr<CertCredentials> &credentials, const std::shared_ptr<KeyPair> &key_pair,
+std::shared_ptr<CertCreationRequest> Auth::createCertCreationRequest(const std::shared_ptr<AuthnCredentials> &credentials, const std::shared_ptr<KeyPair> &key_pair,
                                                                      const uint16_t &usage, const ConfigAuthN &config) const {
     // Create a new CertCreationRequest object.
     auto cert_creation_request = std::make_shared<CertCreationRequest>(type_, verifier_fields_);

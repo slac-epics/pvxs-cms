@@ -15,13 +15,13 @@ namespace pvxs {
 namespace certs {
 
 /**
- * @class CertCredentials
+ * @class AuthnCredentials
  * @brief Represents the credentials for an abstract Authenticator.
  *
  * This structure provides the principal name.
  */
-struct CertCredentials {
-    virtual ~CertCredentials() {};
+struct AuthnCredentials {
+    virtual ~AuthnCredentials() {};
 
     // Principal's name - e.g. username, or device name, or IP address.
     std::string name;
@@ -100,7 +100,7 @@ struct CertCredentials {
     }
 
 struct CertCreationRequest final {
-    std::shared_ptr<CertCredentials> credentials;
+    std::shared_ptr<AuthnCredentials> credentials;
 
     // Type of authenticator to use to verify this certificate creation request:
     // "std", "krb", etc

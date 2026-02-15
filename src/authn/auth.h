@@ -61,7 +61,7 @@ class Auth {
      * @param for_client Whether the credentials are for a client or server
      * @return A shared pointer to the Credentials object
      */
-    virtual std::shared_ptr<CertCredentials> getCredentials(const client::Config &config, bool for_client = true) const = 0;
+    virtual std::shared_ptr<AuthnCredentials> getCredentials(const client::Config &config, bool for_client = true) const = 0;
 
     /**
      * @brief Verify a Certificate Creation Request (CCR).
@@ -100,7 +100,7 @@ class Auth {
      * @return A shared pointer to the CCR
      */
     virtual std::shared_ptr<CertCreationRequest> createCertCreationRequest(
-        const std::shared_ptr<CertCredentials> &credentials,
+        const std::shared_ptr<AuthnCredentials> &credentials,
         const std::shared_ptr<KeyPair> &key_pair,
         const uint16_t &usage,
         const ConfigAuthN &config) const = 0;
