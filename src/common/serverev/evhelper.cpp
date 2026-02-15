@@ -98,7 +98,6 @@ DEFINE_INST_COUNTER(evbaseRunning);
 }
 
 struct evbase::Pvt final : public epicsThreadRunable {
-    SockAttach attach;
 
     std::weak_ptr<Pvt> internal_self;
 

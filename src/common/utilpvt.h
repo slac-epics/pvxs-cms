@@ -100,9 +100,7 @@ struct SB {
     SB& operator<<(const T& i) { strm<<i; return *this; }
 };
 
-void strDiff(std::ostream& out,
-             const char *lhs,
-             const char *rhs);
+void strDiff(std::ostream& out, const char *lhs, const char *rhs);
 
 std::string convertPath(std::string &path);
 void ensureDirectoryExists(std::string &filepath, bool convert_path = true);
