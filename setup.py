@@ -567,10 +567,6 @@ def define_DSOS(self):
 
     src_pvxs = [os.path.join('src', src) for src in src_pvxs]
 
-    if OS_CLASS=='WIN32':
-        src_pvxs += ['src/os/WIN32/osdSockExt.cpp']
-    else:
-        src_pvxs += ['src/os/default/osdSockExt.cpp']
     if DEFS['EVENT__HAVE_OPENSSL']=='1':
         src_pvxs += ['src/ossl.cpp']
 

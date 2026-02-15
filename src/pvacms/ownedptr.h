@@ -6,16 +6,12 @@
 #ifndef PVXS_OWNED_PTR_H_
 #define PVXS_OWNED_PTR_H_
 
-#include <cstdio>
 #include <openssl/bn.h>
-#include <openssl/conf.h>
 #include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/ocsp.h>
-#include <openssl/pem.h>
 #include <openssl/pkcs12.h>
-#include <openssl/rsa.h>
 #include <openssl/ssl.h>
 #include <openssl/types.h>
 #include <openssl/x509.h>
@@ -123,7 +119,6 @@ DEFINE_FILE_DELETER_FOR_(FILE);
 
 DEFINE_REGULAR_DELETER_FOR_(epicsMutex);
 
-#ifdef PVXS_ENABLE_OPENSSL
 DEFINE_BIGNUM_DELETER_FOR_(BIGNUM);
 DEFINE_OPENSSL_DELETER_FOR_(char);
 DEFINE_OPENSSL_DELETER_FOR_(unsigned char);
@@ -156,16 +151,13 @@ DEFINE_SSL_DELETER_FOR_(X509_PUBKEY);
 DEFINE_SSL_INFO_STACK_DELETER_FOR_(X509_INFO);
 DEFINE_SSL_STACK_DELETER_FOR_(X509);
 DEFINE_SSL_STACK_DELETER_FOR_(X509_ATTRIBUTE);
-#endif
 
 #undef DEFINE_FILE_DELETER_FOR_
-#ifdef PVXS_ENABLE_OPENSSL
 #undef DEFINE_SSL_DELETER_FOR_
 #undef DEFINE_SSL_DELETER_ALL_FOR_
 #undef DEFINE_SQLITE_DELETER_FOR_
 #undef DEFINE_SSL_STACK_DELETER_FOR_
 #undef DEFINE_OPENSSL_DELETER_FOR_
-#endif
 
 /**
  * @class OwnedPtr
