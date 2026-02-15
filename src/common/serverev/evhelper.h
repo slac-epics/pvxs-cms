@@ -207,38 +207,8 @@ struct evsocket
     void bind(const SockAddr& addr) const;
     void bind(SockAddr& addr) const;
 
-    void listen(int backlog) const;
-
-    void set_broadcast(bool b) const;
-
-    //! Join multicast group, optionally on selected interface
-    bool mcast_join(const MCastMembership& m) const;
-    //! Reverse previous join
-    void mcast_leave(const MCastMembership& m) const;
-    //! Prepare socket for subsequent sendto() with TTL and output interface
-    void mcast_prep_sendto(const SockEndpoint& ep) const;
-
-    //! Whether mcasts sent from this socket should be received to local listeners
-    //! @see IP_MULTICAST_LOOP and IPV6_MULTICAST_LOOP
-    void mcast_loop(bool loop) const;
-    //! Disable IPv4 through IPv6 socket
-    void ipv6_only(bool b=true) const;
-
-    //! Linux specific include OS dropped packet counter as cmsg
-    void enable_SO_RXQ_OVFL() const;
-
-    void enable_IP_PKTINFO() const;
-
-    //! wraps osiSockDiscoverBroadcastAddresses()
-    std::vector<SockAddr> broadcasts(const SockAddr* match=nullptr) const;
-
-    static
-    size_t get_buffer_size(evutil_socket_t sock, bool tx);
-
     static
     bool canIPv6;
-
-    static bool init_canIPv6() noexcept;
 
     enum ipstack_t {
         Linsock,
@@ -246,61 +216,6 @@ struct evsocket
         GenericBSD,
     };
     static ipstack_t ipstack;
-};
-
-struct IfaceMap {
-    static
-    IfaceMap instance();
-    static
-    void cleanup();
-
-    // return true if ifindex is valid, and addr an interface address assigned to it.
-    bool has_address(uint64_t ifindex, const SockAddr& addr) const;
-    // lookup interface name by index
-    std::string name_of(uint64_t index) const;
-    // find (an) interface name with this address.  useful for IPv4.  returns empty string if not found.
-    std::string name_of(const SockAddr& addr) const;
-    // returns 0 if not found
-    uint64_t index_of(const std::string& name) const;
-    // lookup interface index by interface address (not broadcast addr)
-    uint64_t index_of(const SockAddr& addr) const;
-    // is this a valid interface or broadcast address?
-    bool is_iface(const SockAddr& addr) const;
-    // is this index the/a loopback interface?
-    bool is_lo(uint64_t index) const;
-    // is this a valid interface or broadcast address?
-    bool is_broadcast(const SockAddr& addr) const;
-    // look up interface address.  useful for IPV4.  returns AF_UNSPEC if not found
-    SockAddr address_of(const std::string& name) const;
-    // all interface names except LO
-    std::set<std::string> all_external() const;
-
-    struct Iface {
-        std::string name;
-        uint64_t index;
-        bool isLO;
-        // addrs - interface address -> (maybe) broadcast addr
-        // bcast - broadcast -> interface address
-        std::map<SockAddr, SockAddr, SockAddrOnlyLess> addrs, bcast;
-        Iface(const std::string& name, uint64_t index, bool isLO) :name(name), index(index), isLO(isLO) {}
-    };
-
-    struct Current {
-        std::map<uint64_t, Iface> byIndex;
-        std::map<std::string, Iface*> byName;
-        // map address to tuple of interface and broadcast?
-        std::multimap<SockAddr, std::pair<Iface*, bool>, SockAddrOnlyLess> byAddr;
-    };
-    std::shared_ptr<const Current> current;
-
-    IfaceMap() = default;
-    IfaceMap(const IfaceMap&) = default;
-    IfaceMap(std::shared_ptr<const Current>&& cur) : current(std::move(cur)) {}
-    static
-    std::shared_ptr<const Current> refresh();
-private:
-    static
-    decltype (Current::byIndex) _refresh();
 };
 
 } // namespace impl

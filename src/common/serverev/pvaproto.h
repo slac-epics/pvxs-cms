@@ -23,7 +23,7 @@
 #include <pvxs/version.h>
 #include <pvxs/sharedArray.h>
 #include <pvxs/log.h>
-#include "utilpvt.h"
+#include "../utilpvt.h"
 
 namespace pvxs {namespace impl {
 
@@ -127,41 +127,6 @@ public:
 
     inline
     size_t consumed() const { return pos - backing.data(); }
-};
-
-//! serialize into an evbuffer, resizing as necessary
-class EvOutBuf : public Buffer
-{
-    typedef Buffer base_type;
-    evbuffer * const backing;
-    uint8_t* base; // original pos
-public:
-
-    EvOutBuf(bool be, evbuffer *b, size_t isize=0)
-        :base_type(be, nullptr, 0)
-        ,backing(b)
-        ,base(nullptr)
-    {refill(isize);}
-    virtual ~EvOutBuf();
-    virtual bool refill(size_t more) override final;
-};
-
-//! deserialize from an evbuffer, possibly segmented
-class EvInBuf : public Buffer
-{
-    typedef Buffer base_type;
-    evbuffer * const backing;
-    uint8_t* base; // original pos after ctor or refill()
-public:
-
-    EvInBuf(bool be, evbuffer *b, size_t ifill=0)
-        :base_type(be, nullptr, 0)
-        ,backing(b)
-        ,base(nullptr)
-    {refill(ifill);}
-    virtual ~EvInBuf();
-
-    virtual bool refill(size_t more) override final;
 };
 
 // assumes prior buf.ensure(M) where M>=N
@@ -678,8 +643,6 @@ void to_wire(Buf& buf, const Header& H)
         to_wire(buf, H.len);
     }
 }
-
-void to_evbuf(evbuffer *buf, const Header& H, bool be);
 
 template<typename Buf>
 void from_wire(Buf& buf, Header& H)
