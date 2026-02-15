@@ -33,7 +33,6 @@
 
 typedef epicsGuard<epicsMutex> Guard;
 
-// EvInBuf prefers to extract slices of this length from a backing buffer
 namespace pvxs {namespace impl {
 
 DEFINE_LOGGER(logerr, "pvxs.loop");
@@ -57,8 +56,7 @@ void evthread_init()
 #endif
 }
 
-struct ThreadEvent
-{
+struct ThreadEvent {
     std::atomic<epicsThreadPrivateId> pvt{};
 
     static
@@ -99,8 +97,7 @@ struct evbaseRunning {
 DEFINE_INST_COUNTER(evbaseRunning);
 }
 
-struct evbase::Pvt final : public epicsThreadRunable
-{
+struct evbase::Pvt final : public epicsThreadRunable {
     SockAttach attach;
 
     std::weak_ptr<Pvt> internal_self;
@@ -140,8 +137,7 @@ struct evbase::Pvt final : public epicsThreadRunable
 
     virtual ~Pvt() {}
 
-    void join()
-    {
+    void join() {
         {
             Guard G(lock);
             running = false;
