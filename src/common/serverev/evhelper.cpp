@@ -14,7 +14,6 @@
 #include <cstring>
 #include <system_error>
 #include <deque>
-#include <limits>
 #include <algorithm>
 
 #include <event2/event.h>
@@ -22,13 +21,10 @@
 
 #include <errlog.h>
 #include <epicsEvent.h>
-#include <epicsString.h>
 #include <epicsThread.h>
 #include <epicsExit.h>
 #include <epicsMutex.h>
 #include <epicsGuard.h>
-#include <dbDefs.h>
-#include <ellLib.h>
 
 #include "evhelper.h"
 #include "pvaproto.h"
@@ -41,7 +37,6 @@ typedef epicsGuard<epicsMutex> Guard;
 namespace pvxs {namespace impl {
 
 DEFINE_LOGGER(logerr, "pvxs.loop");
-DEFINE_LOGGER(logtimer, "pvxs.timer");
 
 namespace mdetail {
 VFunctor0::~VFunctor0() {}
@@ -67,16 +62,12 @@ struct ThreadEvent
     std::atomic<epicsThreadPrivateId> pvt{};
 
     static
-    void destroy(void* raw)
-    {
-        delete static_cast<epicsEvent*>(raw);
-    }
+    void destroy(void* raw) { delete static_cast<epicsEvent*>(raw); }
 
-    epicsEvent* get()
-    {
+    epicsEvent* get() {
         epicsThreadPrivateId id = pvt.load();
-        if(!id) {
-            auto temp = epicsThreadPrivateCreate();
+        if (!id) {
+            const auto temp = epicsThreadPrivateCreate();
             if(pvt.compare_exchange_strong(id, temp)) {
                 // stored
                 id = temp;
@@ -89,7 +80,7 @@ struct ThreadEvent
 
         auto evt = static_cast<epicsEvent*>(epicsThreadPrivateGet(id));
 
-        if(!evt) {
+        if (!evt) {
             evt = new epicsEvent();
             epicsThreadPrivateSet(id, evt);
             epicsAtThreadExit(destroy, evt);
@@ -98,7 +89,7 @@ struct ThreadEvent
         return evt;
     }
 
-    inline epicsEvent* operator->() { return get(); }
+    epicsEvent* operator->() { return get(); }
 };
 
 namespace {
@@ -144,9 +135,7 @@ struct evbase::Pvt final : public epicsThreadRunable
 
         worker.start();
         start_sync.wait();
-        if(!base) {
-            throw std::runtime_error("event_base_new() fails");
-        }
+        if (!base) throw std::runtime_error("event_base_new() fails");
     }
 
     virtual ~Pvt() {}
@@ -164,11 +153,10 @@ struct evbase::Pvt final : public epicsThreadRunable
         worker.exitWait();
     }
 
-    virtual void run() override final
-    {
+    void run() override {
         evbaseRunning track;
         try {
-            evconfig conf(__FILE__, __LINE__, event_config_new());
+            const evconfig conf(__FILE__, __LINE__, event_config_new());
 #ifdef __rtems__
             /* with libbsd circa RTEMS 5.1
              * TCP peer close/reset notifications appear to be lost.
@@ -178,9 +166,8 @@ struct evbase::Pvt final : public epicsThreadRunable
             event_config_avoid_method(conf.get(), "kqueue");
 #endif
             decltype (base) tbase(__FILE__, __LINE__, event_base_new_with_config(conf.get()));
-            if(evthread_make_base_notifiable(tbase.get())) {
+            if (evthread_make_base_notifiable(tbase.get()))
                 throw std::runtime_error("evthread_make_base_notifiable");
-            }
 
             evevent handle(__FILE__, __LINE__,
                            event_new(tbase.get(), -1, EV_TIMEOUT, &doWorkS, this));
@@ -191,7 +178,7 @@ struct evbase::Pvt final : public epicsThreadRunable
             dowork = std::move(handle);
             keepalive = std::move(ka);
 
-            timeval tick{1000,0};
+            const timeval tick{1000,0};
             if(event_add(keepalive.get(), &tick))
                 throw std::runtime_error("Can't start keepalive timer");
 
@@ -199,14 +186,13 @@ struct evbase::Pvt final : public epicsThreadRunable
 
             log_info_printf(logerr, "Enter loop worker for %p using %s\n", base.get(), event_base_get_method(base.get()));
 
-            int ret = event_base_loop(base.get(), 0);
+            const int ret = event_base_loop(base.get(), 0);
 
             auto lvl = ret ? Level::Crit : Level::Info;
             log_printf(logerr, lvl, "Exit loop worker: %d for %p\n", ret, base.get());
 
-        }catch(std::exception& e){
-            log_exc_printf(logerr, "Unhandled exception in event_base run : %s\n",
-                            e.what());
+        } catch(std::exception& e) {
+            log_exc_printf(logerr, "Unhandled exception in event_base run : %s\n", e.what());
             start_sync.signal();
         }
     }
@@ -238,18 +224,17 @@ struct evbase::Pvt final : public epicsThreadRunable
     static
     void doWorkS(evutil_socket_t sock, short evt, void *raw)
     {
-        auto self =static_cast<Pvt*>(raw);
+        const auto self =static_cast<Pvt*>(raw);
         try {
             self->doWork();
-        }catch(std::exception& e){
+        } catch(std::exception& e) {
             log_exc_printf(logerr, "Unhandled error in doWorkS callback: %s\n", e.what());
         }
     }
 
     static
-    void evkeepalive(evutil_socket_t sock, short evt, void *raw)
-    {
-        auto self = static_cast<Pvt*>(raw);
+    void evkeepalive(evutil_socket_t sock, short evt, void *raw) {
+        const auto self = static_cast<Pvt*>(raw);
         log_debug_printf(logerr, "Look keepalive %p\n", self);
     }
 
@@ -279,18 +264,15 @@ evbase evbase::internal() const
     return ret;
 }
 
-void evbase::join() const
-{
+void evbase::join() const {
     pvt->join();
 }
 
-void evbase::sync() const
-{
+void evbase::sync() const {
     call([](){});
 }
 
-bool evbase::_dispatch(mfunction&& fn, bool dothrow) const
-{
+bool evbase::_dispatch(mfunction&& fn, bool dothrow) const {
     bool empty;
     {
         Guard G(pvt->lock);
@@ -310,8 +292,7 @@ bool evbase::_dispatch(mfunction&& fn, bool dothrow) const
     return true;
 }
 
-bool evbase::_call(mfunction&& fn, bool dothrow) const
-{
+bool evbase::_call(mfunction&& fn, bool dothrow) const {
     if(pvt->worker.isCurrentThread()) {
         fn();
         return true;
@@ -343,146 +324,6 @@ bool evbase::_call(mfunction&& fn, bool dothrow) const
     return true;
 }
 
-void evbase::assertInLoop() const
-{
-    if(!pvt->worker.isCurrentThread()) {
-        char name[32];
-        pvt->worker.getName(name, sizeof(name));
-        log_exc_printf(logerr, "Not in evbase working: \"%s\" != \"%s\"\n",
-                       name, epicsThread::getNameSelf());
-    }
-}
-
-bool evbase::assertInRunningLoop() const
-{
-    if(pvt->worker.isCurrentThread())
-        return true;
-
-    Guard G(pvt->lock);
-    if(!pvt->running)
-        return false;
-
-    char name[32];
-    pvt->worker.getName(name, sizeof(name));
-    log_exc_printf(logerr, "Not in running evbase worker: \"%s\" != \"%s\"\n",
-                   name, epicsThread::getNameSelf());
-    throw std::logic_error("Not in running evbase worker");
-}
-
-bool evsocket::canIPv6;
-evsocket::ipstack_t evsocket::ipstack;
-
-evsocket::evsocket(int af, evutil_socket_t sock, bool blocking)
-    :sock(sock)
-    ,af(af)
-{
-    if(sock==evutil_socket_t(-1)) {
-        int err = evutil_socket_geterror(sock);
-#ifdef _WIN32
-        if(err==WSANOTINITIALISED) {
-            throw std::runtime_error("WSANOTINITIALISED");
-        }
-#endif
-        throw std::system_error(err, std::system_category());
-    }
-    if(af!=AF_INET && af!=AF_INET6) {
-        evutil_closesocket(sock);
-        throw std::logic_error("Unsupported address family");
-    }
-
-    evutil_make_socket_closeonexec(sock);
-
-#ifdef SO_NOSIGPIPE
-    // probably OSX only
-    {
-        int val = 1;
-        if(setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, (char*)&val, sizeof(val))) {
-            log_warn_printf(logerr, "Unable to set SO_NOSIGPIPE (err=%d).\n",
-                            evutil_socket_geterror(sock));
-        }
-    }
-#endif
-
-    if(!blocking && evutil_make_socket_nonblocking(sock)) {
-        evutil_closesocket(sock);
-        throw std::runtime_error("Unable to make non-blocking socket");
-    }
-}
-
-// Linux specific way to atomically create a socket with O_CLOEXEC
-#ifndef SOCK_CLOEXEC
-#  define SOCK_CLOEXEC 0
-#endif
-
-evsocket::evsocket(int af, int type, int proto, bool blocking)
-    :evsocket(af, socket(af, type | SOCK_CLOEXEC, proto), blocking)
-{
-#ifdef __linux__
-#  ifndef IP_MULTICAST_ALL
-#    define IP_MULTICAST_ALL		49
-#  endif
-    // Disable non-compliant legacy behavior of Linux IP stack
-    if(af==AF_INET && type==SOCK_DGRAM){
-        int val = 0;
-        if(setsockopt(sock, IPPROTO_IP, IP_MULTICAST_ALL, (char*)&val, sizeof(val))) {
-            log_warn_printf(logerr, "Unable to clear IP_MULTICAST_ALL (err=%d).  This may cause problems on multi-homed hosts.\n",
-                            evutil_socket_geterror(sock));
-        }
-    }
-#endif
-}
-
-evsocket::evsocket(evsocket&& o) noexcept
-    :sock(o.sock)
-    ,af(o.af)
-{
-    o.sock = evutil_socket_t(-1);
-    o.af = AF_UNSPEC;
-}
-
-evsocket& evsocket::operator=(evsocket&& o) noexcept
-{
-    if(this!=&o) {
-        if(sock!=evutil_socket_t(-1))
-            evutil_closesocket(sock);
-        sock = o.sock;
-        af = o.af;
-        o.sock = evutil_socket_t(-1);
-        o.af = AF_UNSPEC;
-    }
-    return *this;
-}
-
-evsocket::~evsocket()
-{
-    if(sock!=evutil_socket_t(-1))
-        evutil_closesocket(sock);
-}
-
-SockAddr evsocket::sockname() const
-{
-    SockAddr addr;
-    socklen_t slen = addr.size();
-    if(getsockname(sock, &addr->sa, &slen))
-        throw std::logic_error("Unable to fetch address of newly bound socket");
-    return addr;
-}
-
-void evsocket::bind(const SockAddr& addr) const
-{
-    int ret = ::bind(sock, &addr->sa, addr.size());
-    if(ret!=0) {
-        int err = evutil_socket_geterror(sock);
-        throw std::system_error(err, std::system_category());
-    }
-}
-
-void evsocket::bind(SockAddr& addr) const
-{
-    const SockAddr& arg = addr;
-    bind(arg);
-    addr = sockname();
-}
 
 #ifndef IPV6_ADD_MEMBERSHIP
 #  define IPV6_ADD_MEMBERSHIP IPV6_JOIN_GROUP
@@ -499,177 +340,7 @@ void evsocket::bind(SockAddr& addr) const
 #  define getMonotonic getCurrent
 #endif
 
-
-void to_wire(Buffer& buf, const SockAddr& val)
-{
-    if(!buf.ensure(16)) {
-        buf.fault(__FILE__, __LINE__);
-        return;
-
-    } else if(val.family()==AF_INET) {
-        for(unsigned i=0; i<10; i++)
-            buf[i]=0;
-        buf[10] = buf[11] = 0xff;
-
-        memcpy(buf.save()+12, &val->in.sin_addr.s_addr, 4);
-
-    } else if(val.family()==AF_INET6) {
-        static_assert (sizeof(val->in6.sin6_addr)==16, "");
-        memcpy(buf.save(), &val->in6.sin6_addr, 16);
-    }
-    buf._skip(16);
-}
-
-void from_wire(Buffer &buf, SockAddr& val)
-{
-    if(!buf.ensure(16)) {
-        buf.fault(__FILE__, __LINE__);
-        return;
-    }
-
-    // win32 lacks IN6_IS_ADDR_V4MAPPED()
-    bool ismapped = true;
-    for(unsigned i=0u; i<10; i++)
-        ismapped &= buf[i]==0;
-    ismapped &= buf[10]==0xff;
-    ismapped &= buf[11]==0xff;
-
-    if(ismapped) {
-        val->in = {};
-        val->in.sin_family = AF_INET;
-        memcpy(&val->in.sin_addr.s_addr, buf.save()+12, 4);
-
-    } else {
-        val->in6 = {};
-        val->in6.sin6_family = AF_INET6;
-
-        static_assert (sizeof(val->in6.sin6_addr)==16, "");
-        memcpy(&val->in6.sin6_addr, buf.save(), 16);
-    }
-    buf._skip(16);
-}
-
-
 bool Buffer::refill(size_t more) { return false; }
 
-FixedBuf::~FixedBuf() {}
-
-VectorOutBuf::~VectorOutBuf() {}
-
-bool VectorOutBuf::refill(size_t more) {
-    assert(pos <= limit);
-    assert(pos >= backing.data());
-
-    if(err) return false;
-
-    more = ((more-1)|0xff)+1; // round up to multiple of 256
-    size_t idx = pos - backing.data(); // save current offset
-    try{
-        backing.resize(backing.size()+more);
-    }catch(std::bad_alloc& e) {
-        return false;
-    }
-    pos = backing.data()+idx;
-    limit = backing.data()+backing.size();
-    return true;
-}
-
 } // namespace impl
-
-std::atomic<size_t> Timer::Pvt::cnt_Timer {0u};
-
-Timer::~Timer() {}
-
-bool Timer::cancel()
-{
-    if(!pvt)
-        throw std::logic_error("NULL Timer");
-
-    auto P(std::move(pvt));
-
-    return P->cancel();
-}
-
-Timer::Pvt::~Pvt() {
-    log_debug_printf(logtimer, "Timer %p %s\n", this, __func__);
-    if(base.assertInRunningLoop())
-        (void)cancel();
-}
-
-bool Timer::Pvt::cancel()
-{
-    bool ret = false;
-    decltype (cb) trash;
-
-    log_debug_printf(logtimer, "Timer %p pcancel\n", this);
-
-    base.call([this, &ret, &trash](){
-        trash = std::move(cb);
-        if(auto T = std::move(timer)) {
-            log_debug_printf(logtimer, "Timer %p dispose %p\n", this, T.get());
-            ret = event_pending(T.get(), EV_TIMEOUT, nullptr);
-            (void)event_del(T.get());
-        }
-    });
-
-    return ret;
-}
-
-static
-void expire_cb(evutil_socket_t, short, void * raw)
-{
-    auto self(static_cast<Timer::Pvt*>(raw));
-    log_debug_printf(logtimer, "Timer %p expires\n", self);
-    assert(self->base.base);
-
-    try {
-        self->cb();
-    } catch(std::exception& e){
-        log_exc_printf(logtimer, "Unhandled exception in Timer callback: %s\n", e.what());
-    }
-}
-
-Timer Timer::Pvt::buildOneShot(double delay, const evbase& base, std::function<void()>&& cb)
-{
-    if(!cb)
-        throw std::invalid_argument("NULL cb");
-
-    auto internal(std::make_shared<Timer::Pvt>(base, std::move(cb)));
-
-    Timer ret;
-    ret.pvt = decltype (internal)(internal.get(), [internal](Timer::Pvt*) mutable {
-        // from user thread
-        auto temp(std::move(internal));
-        auto loop(temp->base);
-        // std::bind for lack of c++14 generalized capture
-        // to move internal ref to worker for dtor
-
-        loop.tryCall(std::bind([](std::shared_ptr<Timer::Pvt>& internal) {
-                         // on worker
-                         // ordering of dispatch()/call() ensures creation before destruction
-                         internal->cancel();
-                     }, std::move(temp)));
-    });
-
-    base.call([internal, delay](){
-        // on worker
-        evevent timer(__FILE__, __LINE__,
-                      event_new(internal->base.base, -1, EV_TIMEOUT, &expire_cb, internal.get()));
-        internal->timer = std::move(timer);
-
-        auto timo(totv(delay));
-
-        if(event_add(internal->timer.get(), &timo))
-            throw std::runtime_error("Unable to start oneshot timer");
-
-        log_debug_printf(logtimer, "Create timer %p as %p with delay %f and %s\n",
-                         internal.get(),
-                         internal->timer.get(),
-                         delay,
-                         internal->cb.target_type().name());
-    });
-
-    return ret;
-}
-
 } // namespace pvxs

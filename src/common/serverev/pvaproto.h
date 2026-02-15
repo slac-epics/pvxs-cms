@@ -97,37 +97,7 @@ public:
     void restore(uint8_t* p) { pos = p; }
 };
 
-//! (de)serialization to/from buffers which are fixed size and contiguous
-struct FixedBuf : public Buffer
-{
-    typedef Buffer base_type;
-    virtual bool refill(size_t more) override final { return false; }
-
-    // for "uint8_t msg[] = "..."; // assumes extraneous trailing nil
-    template<size_t N>
-    constexpr FixedBuf(bool be, uint8_t(&buf)[N]) :base_type(be, buf, N-1) {}
-    constexpr FixedBuf(bool be, uint8_t* buf, size_t n) :base_type(be, buf, n) {}
-    FixedBuf(bool be, std::vector<uint8_t>& buf) :base_type(be, buf.data(), buf.size()) {}
-    virtual ~FixedBuf();
-};
-
 //! serialize into a vector, resizing as necessary
-class VectorOutBuf : public Buffer
-{
-    typedef Buffer base_type;
-    std::vector<uint8_t>& backing;
-public:
-    // note: vector::data() is not constexpr in c++11
-    VectorOutBuf(bool be, std::vector<uint8_t>& b)
-        :base_type(be, b.data(), b.size())
-        ,backing(b)
-    {}
-    virtual ~VectorOutBuf();
-    virtual bool refill(size_t more) override final;
-
-    inline
-    size_t consumed() const { return pos - backing.data(); }
-};
 
 // assumes prior buf.ensure(M) where M>=N
 template<unsigned N>

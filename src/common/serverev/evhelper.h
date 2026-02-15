@@ -49,25 +49,6 @@ DEFINE_DELETE(bufferevent);
 DEFINE_DELETE(evbuffer);
 #undef DEFINE_DELETE
 
-/* It seems that std::function<void()>(Fn&&) from gcc (circa 8.3) and clang (circa 7.0)
- * always copies the functor/lambda.  We can't allow this when transferring ownership
- * of shared_ptr<> instances to a worker thread as it leaves the caller thread with a
- * reference.
- *
- * std::unique_ptr<int> arg{new int(42)};
- * // eg. with
- * auto lambda = [arg{std::move(arg)}]() { // c++14 capture w/ move
- *     auto trash(std::move(arg));
- * };
- * // or
- * auto lambda = std::bind([](std::unique_ptr<int>& arg) { // c++11 capture w/ move
- *     auto trash(std::move(arg));
- * }, std::move(arg));
- * // the following line tries to copy the unique_ptr which fails to compile
- * std::function<void()> fn(std::move(lambda));
- *
- * So we invent our own limited, non-copyable, version of std::function<void()>.
- */
 namespace mdetail {
 struct VFunctor0 {
     VFunctor0() = default;
@@ -148,11 +129,6 @@ public:
             return tryDispatch(std::move(fn));
     }
 
-    void assertInLoop() const;
-    //! Caller must be on the worker, or the worker must be stopped.
-    //! @returns true if working is running.
-    bool assertInRunningLoop() const;
-
     inline void reset() { pvt.reset(); }
 
 private:
@@ -170,53 +146,6 @@ typedef ev_owned_ptr<event> evevent;
 typedef ev_owned_ptr<evconnlistener> evlisten;
 typedef ev_owned_ptr<bufferevent> evbufferevent;
 typedef ev_owned_ptr<evbuffer> evbuf;
-
-void to_wire(Buffer& buf, const SockAddr& val);
-
-void from_wire(Buffer &buf, SockAddr& val);
-
-struct evsocket
-{
-    evutil_socket_t sock;
-    int af;
-
-    // default construct an invalid socket
-    constexpr evsocket() noexcept :sock(-1), af(AF_UNSPEC) {}
-
-    // construct from a valid (not -1) socket
-    explicit evsocket(int af, evutil_socket_t sock, bool blocking=false);
-
-    // create a new socket
-    evsocket(int af, int type, int proto, bool blocking=false);
-
-    // movable
-    evsocket(evsocket&& o) noexcept;
-    evsocket& operator=(evsocket&&) noexcept;
-
-    // not copyable
-    evsocket(const evsocket&) = delete;
-    evsocket& operator=(const evsocket&) = delete;
-
-    ~evsocket();
-
-    SockAddr sockname() const;
-
-    // test validity
-    inline operator bool() const { return sock!=-1; }
-
-    void bind(const SockAddr& addr) const;
-    void bind(SockAddr& addr) const;
-
-    static
-    bool canIPv6;
-
-    enum ipstack_t {
-        Linsock,
-        Winsock,
-        GenericBSD,
-    };
-    static ipstack_t ipstack;
-};
 
 } // namespace impl
 
