@@ -18,7 +18,6 @@
 #include <pvxs/source.h>
 #include <pvxs/sharedpv.h>
 
-#include "dataimpl.h"
 #include "utilpvt.h"
 
 typedef epicsGuard<epicsMutex> Guard;

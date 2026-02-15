@@ -22,6 +22,12 @@
 
 namespace pvxs {
 class Value;
+
+// To gain access to the private members in Value
+struct Value::Helper {
+    static constexpr const FieldDesc* desc(const Value& v) { return v.desc; }
+};
+
 namespace server {
 struct ChannelControl;
 struct Source;

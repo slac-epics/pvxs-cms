@@ -13,7 +13,6 @@
 #include "pvacms.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cctype>
 #include <condition_variable>
 #include <cstdlib>
@@ -25,7 +24,6 @@
 #include <list>
 #include <locale>
 #include <memory>
-#include <mutex>
 #include <random>
 #include <regex>
 #include <sstream>
@@ -36,16 +34,13 @@
 #include <vector>
 
 #include <epicsGetopt.h>
-#include <epicsThread.h>
 #include <epicsTime.h>
 #include <epicsVersion.h>
-#include <osiProcess.h>
 
 #include <openssl/asn1.h>
 #include <openssl/bio.h>
 #include <openssl/ocsp.h>
 #include <openssl/pem.h>
-#include <openssl/ssl.h>
 #include <openssl/x509.h>
 
 #include <pvxs/client.h>
