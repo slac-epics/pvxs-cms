@@ -10,10 +10,7 @@ on:
   push:
     paths-ignore:
       - .appveyor.yml
-      - setup.py
       - MANIFEST.in
-      - pyproject.toml
-      - python/*
   pull_request:
   workflow_dispatch:
 
