@@ -7,7 +7,6 @@
 #ifndef EVHELPER_H
 #define EVHELPER_H
 
-#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -21,17 +20,7 @@
 
 #include "evhelper.h"
 
-#ifdef PVXS_ENABLE_OPENSSL
-#  include <event2/bufferevent_ssl.h>
-#endif
-
-#include <epicsTime.h>
-#include <utilpvt.h>
-
-#include <pvxs/version.h>
-
 #include "ownedptr.h"
-#include "pvaproto.h"
 
 namespace pvxs {namespace impl {
 
@@ -122,35 +111,8 @@ using ev_owned_ptr = OwnedPtr<T, ev_delete<T>>;
 typedef ev_owned_ptr<event_config> evconfig;
 typedef ev_owned_ptr<event_base> evbaseptr;
 typedef ev_owned_ptr<event> evevent;
-typedef ev_owned_ptr<evconnlistener> evlisten;
-typedef ev_owned_ptr<bufferevent> evbufferevent;
-typedef ev_owned_ptr<evbuffer> evbuf;
 
 } // namespace impl
-
-
-#ifdef PVXS_EXPERT_API_ENABLED
-
-struct Timer::Pvt {
-    const evbase base;
-    std::function<void()> cb;
-    evevent timer;
-
-    Pvt(const evbase& base, std::function<void()>&& cb)
-        :base(base), cb(std::move(cb))
-    {}
-    ~Pvt();
-
-    bool cancel();
-
-    static
-    Timer buildOneShot(double delay, const evbase &base, std::function<void()>&& cb);
-
-    INST_COUNTER(Timer);
-};
-
-#endif // PVXS_EXPERT_API_ENABLED
-
 } // namespace pvxs
 
 #endif /* EVHELPER_H */

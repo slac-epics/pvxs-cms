@@ -27,7 +27,6 @@
 #include <epicsGuard.h>
 
 #include "evhelper.h"
-#include "pvaproto.h"
 #include "utilpvt.h"
 #include <pvxs/log.h>
 
@@ -318,8 +317,6 @@ bool evbase::_call(mfunction&& fn, bool dothrow) const {
 #if EPICS_VERSION_INT<VERSION_INT(7,0,3,1)
 #  define getMonotonic getCurrent
 #endif
-
-bool Buffer::refill(size_t more) { return false; }
 
 } // namespace impl
 } // namespace pvxs

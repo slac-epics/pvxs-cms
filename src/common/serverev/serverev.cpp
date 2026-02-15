@@ -6,13 +6,10 @@
 
 #include "serverev.h"
 
-#include <atomic>
-#include <cstdlib>
 #include <functional>
 
 #include <dbDefs.h>
 #include <envDefs.h>
-#include <epicsString.h>
 #include <signal.h>
 
 #include <pvxs/log.h>
