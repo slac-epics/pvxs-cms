@@ -72,13 +72,12 @@ struct promote_print<int8_t> { static int op(const char& v) { return v; }};
 template<>
 struct promote_print<uint8_t> { static unsigned op(const char& v) { return v; }};
 
-PVXS_API
 bool inUnitTest();
 
 /* specialization of bad_alloc which notes the location from which
  * the exception originates.
  */
-struct PVXS_API loc_bad_alloc final : public std::bad_alloc
+struct loc_bad_alloc final : public std::bad_alloc
 {
     loc_bad_alloc(const char *file, int line);
     virtual ~loc_bad_alloc();
@@ -101,21 +100,20 @@ struct SB {
     SB& operator<<(const T& i) { strm<<i; return *this; }
 };
 
-PVXS_API
 void strDiff(std::ostream& out,
              const char *lhs,
              const char *rhs);
 
-PVXS_API std::string convertPath(std::string &path);
-PVXS_API void ensureDirectoryExists(std::string &filepath, bool convert_path = true);
+std::string convertPath(std::string &path);
+void ensureDirectoryExists(std::string &filepath, bool convert_path = true);
 std::string versionString();
-PVXS_API std::string getHomeDir();
-PVXS_API std::string getFileContents(const std::string &file_name);
+std::string getHomeDir();
+std::string getFileContents(const std::string &file_name);
 
-PVXS_API std::string getXdgDataHome();
-PVXS_API std::string getXdgConfigHome();
-PVXS_API std::string getXdgPvaDataHome();
-PVXS_API std::string getXdgPvaConfigHome();
+std::string getXdgDataHome();
+std::string getXdgConfigHome();
+std::string getXdgPvaDataHome();
+std::string getXdgPvaConfigHome();
 
 struct threadOnceInfo {
     epicsThreadOnceId id = EPICS_THREAD_ONCE_INIT;
@@ -124,7 +122,6 @@ struct threadOnceInfo {
     explicit constexpr threadOnceInfo(void (*fn)()) :fn(fn) {}
 };
 
-PVXS_API
 void threadOnce_(threadOnceInfo *info) ;
 
 // Assumes that there is only once call site per function (onceFn)
@@ -173,20 +170,15 @@ template<typename T>
 T parseTo(const std::string& s); // not implemented
 
 template<>
-PVXS_API
 double parseTo<double>(const std::string& s);
 template<>
-PVXS_API
 uint64_t parseTo<uint64_t>(const std::string& s);
 template<>
-PVXS_API
 int64_t parseTo<int64_t>(const std::string& s);
 template<>
-PVXS_API
 bool parseTo<bool>(const std::string& s);
 
 template<>
-PVXS_API
 int8_t parseTo<int8_t>(const std::string& input);
 
 #ifdef _WIN32
@@ -252,7 +244,6 @@ public:
     ~FLock();
 };
 
-PVXS_API
 void osdGetRoles(const std::string& account, std::set<std::string>& roles);
 
 void logger_shutdown();
@@ -295,7 +286,6 @@ using aligned_union = std::aligned_union<Len, Types...>;
 } // namespace impl
 using namespace impl;
 
-PVXS_API
 void logger_config_str(const char *env);
 
 inline
@@ -332,7 +322,6 @@ struct Restore {
     }
 };
 
-PVXS_API
 void registerICount(const char* name, std::atomic<size_t>& Cnt);
 
 // Name and Cnt must have global lifetime

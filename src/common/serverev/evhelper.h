@@ -69,7 +69,7 @@ DEFINE_DELETE(evbuffer);
  * So we invent our own limited, non-copyable, version of std::function<void()>.
  */
 namespace mdetail {
-struct PVXS_API VFunctor0 {
+struct VFunctor0 {
     VFunctor0() = default;
     VFunctor0(VFunctor0&) = delete;
     VFunctor0(const VFunctor0&) = delete;
@@ -105,7 +105,7 @@ private:
     std::unique_ptr<mdetail::VFunctor0> fn;
 };
 
-struct PVXS_API evbase {
+struct evbase {
     evbase() = default;
     explicit evbase(const std::string& name, unsigned prio=0);
     ~evbase();
@@ -171,13 +171,11 @@ typedef ev_owned_ptr<evconnlistener> evlisten;
 typedef ev_owned_ptr<bufferevent> evbufferevent;
 typedef ev_owned_ptr<evbuffer> evbuf;
 
-PVXS_API
 void to_wire(Buffer& buf, const SockAddr& val);
 
-PVXS_API
 void from_wire(Buffer &buf, SockAddr& val);
 
-struct PVXS_API evsocket
+struct evsocket
 {
     evutil_socket_t sock;
     int af;
@@ -250,7 +248,7 @@ struct PVXS_API evsocket
     static ipstack_t ipstack;
 };
 
-struct PVXS_API IfaceMap {
+struct IfaceMap {
     static
     IfaceMap instance();
     static

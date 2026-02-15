@@ -31,7 +31,7 @@ static constexpr timeval kCustomCallbackInterval{15, 0};
 
 struct EnhancedConfig;
 
-class PVXS_API ServerEv {
+class ServerEv {
 public:
     constexpr ServerEv() = default;
     ServerEv(const certs::Config &config, const CustomServerCallback &custom_cert_event_callback);
@@ -55,10 +55,6 @@ public:
     std::shared_ptr<Source> removeSource(const std::string& name, int order =0) { return base_.removeSource(name, order); }
     std::shared_ptr<Source> getSource(const std::string& name, int order =0) { return base_.getSource(name, order); }
     std::vector<std::pair<std::string, int> > listSource() { return base_.listSource(); }
-
-#ifdef PVXS_EXPERT_API_ENABLED
-    Report report(bool zero=true) const { return base_.report(zero);}
-#endif
 
     explicit operator bool() const { return !!base_;}
 

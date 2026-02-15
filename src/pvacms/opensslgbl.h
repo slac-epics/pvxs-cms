@@ -24,7 +24,7 @@ struct OSSLGbl {
 #endif
 };
 
-PVXS_API extern OSSLGbl* ossl_gbl;
+extern OSSLGbl* ossl_gbl;
 
 // Custom OIDs
 // TODO Register these unassigned OIDs for EPICS
@@ -41,10 +41,10 @@ PVXS_API extern OSSLGbl* ossl_gbl;
 #define SN_SPvaCertConfigURI "ASN.1 - SPvaCertConfigURI"
 #define LN_SPvaCertConfigURI "EPICS SPVA Certificate Config URI"
 
-PVXS_API extern void osslInit();
+extern void osslInit();
 
-PVXS_API extern int NID_SPvaCertStatusURI;
-PVXS_API extern int NID_SPvaCertConfigURI;
+extern int NID_SPvaCertStatusURI;
+extern int NID_SPvaCertConfigURI;
 
 }  // namespace ossl
 }  // namespace pvxs

@@ -31,7 +31,7 @@ constexpr bool hostBE{EPICS_BYTE_ORDER==EPICS_ENDIAN_BIG};
 
 //! view of a slice of a buffer.
 //! Don't use directly.  cf. FixedBuf
-struct PVXS_API Buffer {
+struct Buffer {
     typedef uint8_t value_type;
     typedef void is_buffer;
 
@@ -98,7 +98,7 @@ public:
 };
 
 //! (de)serialization to/from buffers which are fixed size and contiguous
-struct PVXS_API FixedBuf : public Buffer
+struct FixedBuf : public Buffer
 {
     typedef Buffer base_type;
     virtual bool refill(size_t more) override final { return false; }
@@ -112,7 +112,7 @@ struct PVXS_API FixedBuf : public Buffer
 };
 
 //! serialize into a vector, resizing as necessary
-class PVXS_API VectorOutBuf : public Buffer
+class VectorOutBuf : public Buffer
 {
     typedef Buffer base_type;
     std::vector<uint8_t>& backing;
@@ -130,7 +130,7 @@ public:
 };
 
 //! serialize into an evbuffer, resizing as necessary
-class PVXS_API EvOutBuf : public Buffer
+class EvOutBuf : public Buffer
 {
     typedef Buffer base_type;
     evbuffer * const backing;
@@ -147,7 +147,7 @@ public:
 };
 
 //! deserialize from an evbuffer, possibly segmented
-class PVXS_API EvInBuf : public Buffer
+class EvInBuf : public Buffer
 {
     typedef Buffer base_type;
     evbuffer * const backing;

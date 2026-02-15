@@ -35,7 +35,7 @@ struct Source;
 
 namespace server {
 
-struct PVXS_API WildcardPV {
+struct WildcardPV {
     //! Create a new SharedPV with a Put handler which post() s any client-provided Value.
     static WildcardPV buildMailbox();
 
@@ -127,7 +127,7 @@ struct PVXS_API WildcardPV {
  * A single wildcard PV name may only be added once to a WildcardSource.
  * However, a single SharedPV may be added multiple times with different PV names.
  */
-struct PVXS_API WildcardSource final : Source, std::enable_shared_from_this<WildcardSource>
+struct WildcardSource final : Source, std::enable_shared_from_this<WildcardSource>
 {
     // Factory: return a shared_ptr so callers can pass it directly to addSource()
     static std::shared_ptr<WildcardSource> build();

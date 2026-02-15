@@ -46,7 +46,7 @@ struct CertData {
 
 typedef std::unique_ptr<IdFileFactory> cert_factory_ptr;
 
-class PVXS_API IdFileFactory {
+class IdFileFactory {
    public:
     /**
      * @brief Creates a new CertFileFactory object.

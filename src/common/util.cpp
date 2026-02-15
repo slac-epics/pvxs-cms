@@ -66,12 +66,10 @@
 
 extern "C" {
 // unofficial helpers for dynamic loading
-PVXS_API
 unsigned long pvxs_version_int()
 {
     return PVXS_VERSION;
 }
-PVXS_API
 unsigned long pvxs_version_abi_int()
 {
     return PVXS_ABI_VERSION;
@@ -1048,7 +1046,7 @@ std::string convertPath(std::string &path) {
  * @param filepath the file path containing an optional directory component
  * @param convert_path true to convert path first
  */
-void PVXS_API ensureDirectoryExists(std::string &filepath, const bool convert_path) {
+void ensureDirectoryExists(std::string &filepath, const bool convert_path) {
     std::string temp_path = convert_path ? convertPath(filepath) : filepath;
 
     const auto delimiter = std::string(OSI_PATH_SEPARATOR);

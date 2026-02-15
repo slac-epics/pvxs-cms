@@ -47,7 +47,7 @@ enum CertStatusSubscription {
  * This class provides methods for creating certificates, creating key
  * pairs, and verifying certificates.
  */
-class PVXS_API CertFactory {
+class CertFactory {
    public:
     uint64_t serial_;
     const std::shared_ptr<KeyPair> key_pair_;
@@ -171,15 +171,11 @@ class PVXS_API CertFactory {
           initial_status_(initial_status),
           allow_duplicates_(allow_duplicates) {}
 
-    ossl_ptr<X509> PVXS_API create();
+    ossl_ptr<X509> create();
 
     static time_t getNotAfterTimeFromCert(const ossl_ptr<X509> &cert);
 
-    static std::string PVXS_API certAndCasToPemString(const ossl_ptr<X509> &cert, const STACK_OF(X509) * cert_auth_chain_ptr);
-
-    //    static bool PVXS_API verifySignature(const ossl_ptr<EVP_PKEY> &pkey, const std::string &data, const std::string &signature);
-
-    //    static std::string sign(const ossl_ptr<EVP_PKEY> &pkey, const std::string &data);
+    static std::string certAndCasToPemString(const ossl_ptr<X509> &cert, const STACK_OF(X509) * cert_auth_chain_ptr);
 
     /**
      * @brief Get the error string from the error queue

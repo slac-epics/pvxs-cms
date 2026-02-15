@@ -21,11 +21,6 @@ USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
 USR_CPPFLAGS += -I$(COMMON_DIR)/serverev
 
 USR_CPPFLAGS += -I$(TOP)/certs -I$(TOP)/bundle/CLI11/include
-ifeq (WIN32,$(OS_CLASS))
- # test/ builds some PVXS implementation sources directly.
- # Avoid PVXS_API resolving to dllimport for these definitions.
- USR_CPPFLAGS += -DPVXS_API_BUILDING
-endif
 
 SRC_DIRS += $(COMMON_DIR)
 SRC_DIRS += $(AUTHN_DIR)

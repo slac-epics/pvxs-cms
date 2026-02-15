@@ -30,7 +30,6 @@ namespace impl {
 struct ConfigCommon;
 } // namespace impl
 
-PVXS_API
 void osiSockAttachExt();
 
 struct SockAttach {
@@ -41,7 +40,7 @@ struct SockAttach {
 };
 
 //! representation of a network address
-struct PVXS_API SockAddr {
+struct SockAddr {
     union store_t {
         sockaddr sa;
         sockaddr_in in;
@@ -113,7 +112,6 @@ struct SockAddrOnlyLess {
     }
 };
 
-PVXS_API
 std::ostream& operator<<(std::ostream& strm, const SockAddr& addr);
 
 // resolved multicast group membership request
@@ -141,7 +139,7 @@ struct MCastMembership {
  *  <IP46>@iface
  *  <IP46>,<ttl#>@iface
  */
-struct PVXS_API SockEndpoint {
+struct SockEndpoint {
     SockAddr addr; // ucast, mcast, or bcast
     // if mcast, then output TTL and interface
     int ttl=-1;
@@ -160,10 +158,8 @@ struct PVXS_API SockEndpoint {
     MCastMembership resolve() const;
 };
 
-PVXS_API
 std::ostream& operator<<(std::ostream& strm, const SockEndpoint& addr);
 
-PVXS_API
 bool operator==(const SockEndpoint& lhs, const SockEndpoint& rhs);
 
 inline
@@ -219,7 +215,6 @@ struct recvfromx {
     int64_t dstif;  // if enable_IP_PKTINFO(), destination interface index
     uint32_t ndrop; // if enable_SO_RXQ_OVFL()
 
-    PVXS_API
     int call();
 };
 
@@ -231,7 +226,6 @@ struct sendtox {
     const SockAddr* src; // if !NULL override UDP source address
     uint64_t srcif;      // if !=0 override routing to send through this interface
 
-    PVXS_API
     int call();
 };
 
