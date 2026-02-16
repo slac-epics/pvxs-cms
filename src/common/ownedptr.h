@@ -24,7 +24,6 @@
 
 namespace pvxs {
 
-#ifdef PVXS_ENABLE_OPENSSL
 template <typename T>
 struct ssl_delete;
 
@@ -33,7 +32,6 @@ struct ssl_delete_all;
 
 template <typename T>
 struct sqlite_delete;
-#endif
 
 template <typename T>
 struct file_delete;
@@ -57,7 +55,6 @@ struct regular_delete;
         }                                            \
     }
 
-#ifdef PVXS_ENABLE_OPENSSL
 #define DEFINE_SSL_DELETER_FOR_(TYPE)                    \
     template <>                                          \
     struct ssl_delete<TYPE> {                            \
@@ -105,7 +102,6 @@ struct regular_delete;
             if (base_pointer) OPENSSL_free(base_pointer); \
         }                                                 \
     }
-#endif
 
 #define DEFINE_BIGNUM_DELETER_FOR_(TYPE)                  \
     template <>                                           \
@@ -216,7 +212,6 @@ using file_ptr = OwnedPtr<FILE, file_delete<FILE>>;
 
 using epicsMutex_ptr = OwnedPtr<epicsMutex, regular_delete<epicsMutex>>;
 
-#ifdef PVXS_ENABLE_OPENSSL
 template <typename T>
 using ossl_ptr = OwnedPtr<T, ssl_delete<T>>;
 
@@ -271,8 +266,6 @@ template <typename T>
 ossl_shared_ptr<T> make_ossl_shared_ptr(const T *ptr) {
     return ossl_shared_ptr<T>(const_cast<T *>(ptr));
 }
-
-#endif
 
 }  // namespace pvxs
 #endif  // PVXS_OWNED_PTR_H_
