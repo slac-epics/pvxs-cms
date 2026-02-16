@@ -18,8 +18,6 @@
 
 # Allow sources in these directories to be found by basename
 SRC_DIRS += $(PVACMS_DIR)
-SRC_DIRS += $(COMMON_DIR)/serverev
-USR_CPPFLAGS += -I$(COMMON_DIR)/serverev
 
 # Build pvacms host executable
 PROD += pvacms

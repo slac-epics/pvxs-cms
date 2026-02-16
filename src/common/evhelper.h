@@ -13,16 +13,12 @@
 #include <sstream>
 #include <string>
 
-#include <event2/buffer.h>
-#include <event2/bufferevent.h>
 #include <event2/event.h>
-#include <event2/listener.h>
-
-#include "evhelper.h"
 
 #include "ownedptr.h"
 
-namespace pvxs {namespace impl {
+namespace pvxs {
+namespace impl {
 
 template<typename T>
 struct ev_delete;
@@ -33,9 +29,6 @@ template<> struct ev_delete<TYPE> { \
 DEFINE_DELETE(event_config);
 DEFINE_DELETE(event_base);
 DEFINE_DELETE(event);
-DEFINE_DELETE(evconnlistener);
-DEFINE_DELETE(bufferevent);
-DEFINE_DELETE(evbuffer);
 #undef DEFINE_DELETE
 
 namespace mdetail {

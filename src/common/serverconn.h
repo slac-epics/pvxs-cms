@@ -21,11 +21,9 @@
 #include "evhelper.h"
 #include "utilpvt.h"
 
-#ifdef PVXS_ENABLE_OPENSSL
 #include "certstatus.h"
 #include "certstatusmanager.h"
 #include "openssl.h"
-#endif
 
 namespace pvxs {namespace impl {
 

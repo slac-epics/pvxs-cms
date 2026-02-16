@@ -18,14 +18,12 @@ USR_CPPFLAGS += -I$(COMMON_DIR)
 USR_CPPFLAGS += -I$(AUTHN_DIR)
 USR_CPPFLAGS += -I$(AUTHN_STD_DIR)
 USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
-USR_CPPFLAGS += -I$(COMMON_DIR)/serverev
 
 USR_CPPFLAGS += -I$(TOP)/certs -I$(TOP)/bundle/CLI11/include
 
 SRC_DIRS += $(COMMON_DIR)
 SRC_DIRS += $(AUTHN_DIR)
 SRC_DIRS += $(PVACMS_DIR)
-SRC_DIRS += $(COMMON_DIR)/serverev
 
 # Common sources
 SRCS += configcms.cpp
@@ -35,9 +33,6 @@ SRCS += certstatus.cpp
 SRCS += configcerts.cpp
 SRCS += serverev.cpp
 SRCS += wildcardpv.cpp
-
-# Common flags
-USR_CPPFLAGS += -DPVXS_ENABLE_OPENSSL
 
 # Test files
 TESTFILES += cert_auth.p12
