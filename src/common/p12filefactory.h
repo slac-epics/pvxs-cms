@@ -9,13 +9,9 @@
 
 #include <memory>
 
-#include <openssl/bio.h>
 #include <openssl/err.h>
-#include <openssl/evp.h>
 #include <openssl/pkcs12.h>
 #include <openssl/x509.h>
-
-#include <pvxs/version.h>
 
 #include "certfilefactory.h"
 #include "ownedptr.h"

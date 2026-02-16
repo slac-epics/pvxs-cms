@@ -12,7 +12,6 @@
 #ifndef PVXS_PVACMS_H
 #define PVXS_PVACMS_H
 
-#include <ctime>
 #include <iostream>
 #include <vector>
 

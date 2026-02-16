@@ -15,8 +15,6 @@
 #include <openssl/x509.h>
 
 #include <pvxs/config.h>
-#include <pvxs/log.h>
-#include <pvxs/version.h>
 
 #include "certstatus.h"
 #include "ownedptr.h"

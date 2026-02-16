@@ -12,7 +12,6 @@
 #ifndef PVXS_CERTSTATUSFACTORY_H_
 #define PVXS_CERTSTATUSFACTORY_H_
 
-#include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <sstream>

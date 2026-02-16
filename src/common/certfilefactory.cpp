@@ -13,8 +13,6 @@
 
 #include <pvxs/log.h>
 
-#include <sys/stat.h>
-
 #include "p12filefactory.h"
 
 namespace pvxs {

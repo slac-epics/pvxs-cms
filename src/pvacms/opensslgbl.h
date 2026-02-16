@@ -7,8 +7,6 @@
 #ifndef PVXS_OPENSSL_GBL_H
 #define PVXS_OPENSSL_GBL_H
 
-#include <fstream>
-
 #include "ownedptr.h"
 
 namespace pvxs {

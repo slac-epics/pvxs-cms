@@ -12,7 +12,6 @@
 #endif
 
 #include <cstring>
-#include <system_error>
 #include <deque>
 #include <algorithm>
 

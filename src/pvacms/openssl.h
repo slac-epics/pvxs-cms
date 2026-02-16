@@ -20,8 +20,6 @@
 
 #include <openssl/ssl.h>
 
-#include <pvxs/server.h>
-
 #include "ownedptr.h"
 
 typedef epicsGuard<epicsMutex> Guard;

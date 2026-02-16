@@ -71,7 +71,7 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
     PickOne pickone{defs, true};
     PickOne pick_another_one{defs, true};
 
-    // EPICS_PVACMS_TLS_KEYCHAIN ( default the private key to use the same file and password )
+    // EPICS_PVACMS_TLS_KEYCHAIN (default the private key to use the same file and password)
     if (pickone({"EPICS_PVACMS_TLS_KEYCHAIN", "EPICS_PVAS_TLS_KEYCHAIN"})) {
         ensureDirectoryExists(tls_keychain_file = pickone.val);
 

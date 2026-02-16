@@ -18,7 +18,6 @@
 #include "certstatusmanager.h"
 #include "evhelper.h"
 #include "ownedptr.h"
-#include "serverconn.h"
 
 #ifndef TLS1_3_VERSION
 #error TLS 1.3 support required.  Upgrade to openssl >= 1.1.0

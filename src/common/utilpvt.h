@@ -22,7 +22,6 @@
 #include <string>
 #include <sstream>
 #include <type_traits>
-#include <limits>
 
 #include <stdio.h>
 
@@ -50,8 +49,6 @@
 #ifndef ERL_ERROR
 #  define ERL_ERROR "ERROR"
 #endif
-
-#include <epicsThread.h>
 
 // hooks for std::unique_ptr
 namespace std {

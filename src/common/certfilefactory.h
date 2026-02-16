@@ -13,8 +13,6 @@
 
 #include <openssl/x509.h>
 
-#include <pvxs/log.h>
-
 #include "ownedptr.h"
 #include "security.h"
 

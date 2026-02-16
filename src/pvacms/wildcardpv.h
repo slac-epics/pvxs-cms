@@ -14,9 +14,7 @@
 #include <string>
 
 #include <pvxs/srvcommon.h>
-#include <pvxs/sharedpv.h>
 #include <pvxs/source.h>
-#include <pvxs/version.h>
 
 #include "utilpvt.h"
 

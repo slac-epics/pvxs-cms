@@ -8,11 +8,7 @@
 #define SERVERCONN_H
 
 #include <atomic>
-#include <list>
-#include <map>
 #include <memory>
-
-#include <epicsEvent.h>
 
 #include <pvxs/server.h>
 #include <pvxs/sharedpv.h>
@@ -23,7 +19,6 @@
 
 #include "certstatus.h"
 #include "certstatusmanager.h"
-#include "openssl.h"
 
 namespace pvxs {namespace impl {
 

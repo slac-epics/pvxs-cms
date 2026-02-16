@@ -60,7 +60,6 @@
 #include "certstatus.h"
 #include "certstatusfactory.h"
 #include "configcms.h"
-#include "evhelper.h"
 #include "openssl.h"
 #include "ownedptr.h"
 #include "serverev.h"

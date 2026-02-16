@@ -4,8 +4,6 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include <climits>
-#include <cstdio>
 #include <memory>
 
 #include <libgen.h>
@@ -14,11 +12,6 @@
 #include <pwd.h>
 #endif
 #include <string>
-#include <tuple>
-#include <type_traits>
-#include <unordered_set>
-
-#include <unistd.h>
 
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -31,11 +24,9 @@
 #include <pvxs/log.h>
 
 #include <sys/stat.h>
-#include <sys/types.h>
 
 #include "certfactory.h"
 #include "openssl.h"
-#include "osiFileName.h"
 #include "ownedptr.h"
 #include "p12filefactory.h"
 #include "security.h"
