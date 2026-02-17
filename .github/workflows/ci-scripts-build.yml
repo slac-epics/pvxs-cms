@@ -57,6 +57,8 @@ jobs:
       run: |
         echo "EPICS_BASE=\$(TOP)/../epics-base-${{ matrix.base_ver }}" > pvxs${{ matrix.pvxs_suffix }}/configure/RELEASE.local
     - name: Prepare and build PVXS ${{ matrix.base_ver }}
+      env:
+        EPICS_BASE: ${{ github.workspace }}/epics-base-${{ matrix.base_ver }}
       run: |
         cd pvxs${{ matrix.pvxs_suffix }}
         BASE=SELF SETUP_PATH=.ci-local:.ci python .ci/cue.py prepare
