@@ -85,7 +85,7 @@ jobs:
     - name: "apt-get install"
       run: |
         sudo apt-get update
-        sudo apt-get -y install libreadline-dev g++-mingw-w64-x86-64 cmake gdb qemu-system-x86 libssl-dev mingw-w64-x86-64-dev libevent-dev
+        sudo apt-get -y install libreadline-dev g++-mingw-w64-x86-64 cmake gdb qemu-system-x86 libssl-dev mingw-w64-x86-64-dev libevent-dev libkrb5-dev libldap2-dev
       if: runner.os == 'Linux'
 
     - name: Install OpenSSL for MinGW
@@ -114,7 +114,7 @@ jobs:
 
     - name: "brew install"
       run: |
-        brew install libevent
+        brew install libevent krb5 openldap
       if: runner.os == 'macOS'
 
     - name: Host Info
@@ -216,7 +216,7 @@ jobs:
     - name: "apt-get install"
       run: |
         sudo apt-get update
-        sudo apt-get -y install libreadline-dev g++-mingw-w64-x86-64 cmake gdb qemu-system-x86 libssl-dev mingw-w64-x86-64-dev libevent-dev
+        sudo apt-get -y install libreadline-dev g++-mingw-w64-x86-64 cmake gdb qemu-system-x86 libssl-dev mingw-w64-x86-64-dev libevent-dev libkrb5-dev libldap2-dev
       if: runner.os == 'Linux'
 
     - name: Install OpenSSL for MinGW
