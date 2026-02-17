@@ -167,7 +167,10 @@ jobs:
         echo "EPICS_BASE=$(pwd)/deps/epics-base-${{ matrix.base }}" > configure/RELEASE.local
         echo "PVXS=$(pwd)/deps/pvxs${{ matrix.pvxs_suffix }}" >> configure/RELEASE.local
         echo "EPICS_BASE=$(pwd)/deps/epics-base-${{ matrix.base }}" >> $GITHUB_ENV
-        echo "PVXS=$(pwd)/deps/pvxs${{ matrix.pvxs_suffix }}" >> $GITHUB_ENV
+        echo "CACHEDIR=$(pwd)/.cache" >> $GITHUB_ENV
+        # cue.py reads from CACHEDIR/RELEASE.local
+        mkdir -p .cache
+        cp configure/RELEASE.local .cache/RELEASE.local
     - name: "apt-get install"
       run: |
         sudo apt-get update
@@ -302,7 +305,10 @@ jobs:
         echo "EPICS_BASE=$(pwd)/deps/epics-base-${{ matrix.base }}" > configure/RELEASE.local
         echo "PVXS=$(pwd)/deps/pvxs${{ matrix.pvxs_suffix }}" >> configure/RELEASE.local
         echo "EPICS_BASE=$(pwd)/deps/epics-base-${{ matrix.base }}" >> $GITHUB_ENV
-        echo "PVXS=$(pwd)/deps/pvxs${{ matrix.pvxs_suffix }}" >> $GITHUB_ENV
+        echo "CACHEDIR=$(pwd)/.cache" >> $GITHUB_ENV
+        # cue.py reads from CACHEDIR/RELEASE.local
+        mkdir -p .cache
+        cp configure/RELEASE.local .cache/RELEASE.local
     - name: "apt-get install"
       run: |
         sudo apt-get update
