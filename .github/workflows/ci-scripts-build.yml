@@ -11,7 +11,6 @@ on:
   workflow_dispatch:
 
 env:
-  SETUP_PATH: .ci-local
   _PVXS_ABORT_ON_CRIT: 1
   PVXS_LOG: pvxs.*=WARN
   OPENSSL_VERSION: "3.1.4"
@@ -20,6 +19,8 @@ jobs:
   build-deps:
     name: Build EPICS Base and PVXS
     runs-on: ubuntu-latest
+    env:
+      SETUP_PATH: .ci-local
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +76,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     needs: build-deps
     env:
+      SETUP_PATH: .ci-local
       SET: ${{ matrix.set || 'defaults' }}
       CMP: ${{ matrix.cmp }}
       BCFG: ${{ matrix.configuration }}
@@ -242,6 +244,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     needs: build-deps
     env:
+      SETUP_PATH: .ci-local
       SET: ${{ matrix.set || 'defaults' }}
       CMP: ${{ matrix.cmp }}
       BCFG: ${{ matrix.configuration }}
