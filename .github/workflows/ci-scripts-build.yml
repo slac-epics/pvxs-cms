@@ -38,11 +38,11 @@ jobs:
     - name: Prepare EPICS Base ${{ matrix.base_ver }}
       run: |
         cd epics-base-${{ matrix.base_ver }}
-        BASE=SELF SETUP_PATH=.ci python .ci/cue.py prepare
+        BASE=SELF SETUP_PATH=.ci-local:.ci python .ci/cue.py prepare
     - name: Build EPICS Base ${{ matrix.base_ver }}
       run: |
         cd epics-base-${{ matrix.base_ver }}
-        BASE=SELF SETUP_PATH=.ci python .ci/cue.py build
+        BASE=SELF SETUP_PATH=.ci-local:.ci python .ci/cue.py build
     - uses: actions/checkout@v4
       with:
         repository: slac-epics/pvxs-tls
@@ -54,8 +54,8 @@ jobs:
     - name: Prepare and build PVXS ${{ matrix.base_ver }}
       run: |
         cd pvxs${{ matrix.pvxs_suffix }}
-        BASE=SELF SETUP_PATH=.ci-local python .ci/cue.py prepare
-        BASE=SELF SETUP_PATH=.ci-local python .ci/cue.py build
+        BASE=SELF SETUP_PATH=.ci-local:.ci python .ci/cue.py prepare
+        BASE=SELF SETUP_PATH=.ci-local:.ci python .ci/cue.py build
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
