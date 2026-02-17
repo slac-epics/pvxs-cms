@@ -35,6 +35,7 @@ jobs:
       with:
         repository: slac-epics/epics-base-tls
         path: epics-base-${{ matrix.base_ver }}
+        submodules: true
     - name: Prepare EPICS Base ${{ matrix.base_ver }}
       run: |
         cd epics-base-${{ matrix.base_ver }}
@@ -47,6 +48,7 @@ jobs:
       with:
         repository: slac-epics/pvxs-tls
         path: pvxs${{ matrix.pvxs_suffix }}
+        submodules: true
     - name: Configure PVXS to use EPICS Base ${{ matrix.base_ver }}
       run: |
         echo "EPICS_BASE=\$(TOP)/../epics-base-${{ matrix.base_ver }}" > pvxs${{ matrix.pvxs_suffix }}/configure/RELEASE.local
