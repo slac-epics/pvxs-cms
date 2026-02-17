@@ -155,7 +155,10 @@ jobs:
     - name: Troubleshoot
       if: ${{ always() }}
       shell: bash
-      run: grep . cfg/*
+      run: |
+        if [ -d cfg ]; then
+          grep . cfg/*
+        fi
     - name: Upload tapfiles Artifact
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
@@ -264,7 +267,10 @@ jobs:
     - name: Troubleshoot
       if: ${{ always() }}
       shell: bash
-      run: grep . cfg/*
+      run: |
+        if [ -d cfg ]; then
+          grep . cfg/*
+        fi
     - name: Upload tapfiles Artifact
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
