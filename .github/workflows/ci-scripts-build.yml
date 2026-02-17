@@ -55,13 +55,13 @@ jobs:
         submodules: true
     - name: Configure PVXS ${{ matrix.base_ver }}
       run: |
-        # cue.py reads EPICS_BASE from CACHEDIR/RELEASE.local
-        # Use absolute path to our pre-built EPICS Base
         EPICS_BASE_PATH="${{ github.workspace }}/epics-base-${{ matrix.base_ver }}"
+        # cue.py reads from CACHEDIR/RELEASE.local
         mkdir -p .cache
         echo "EPICS_BASE=$EPICS_BASE_PATH" > .cache/RELEASE.local
-        echo "DEBUG: CACHEDIR=${{ github.workspace }}/.cache"
-        echo "DEBUG: EPICS_BASE=$EPICS_BASE_PATH"
+        # EPICS build system also needs configure/RELEASE.local in pvxs dir
+        mkdir -p pvxs${{ matrix.pvxs_suffix }}/configure
+        echo "EPICS_BASE=$EPICS_BASE_PATH" > pvxs${{ matrix.pvxs_suffix }}/configure/RELEASE.local
     - name: Build libevent for PVXS
       run: |
         export CACHEDIR="${{ github.workspace }}/.cache"
