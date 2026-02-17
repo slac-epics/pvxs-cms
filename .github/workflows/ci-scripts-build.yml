@@ -19,8 +19,6 @@ jobs:
   build-deps:
     name: Build EPICS Base and PVXS
     runs-on: ubuntu-latest
-    env:
-      SETUP_PATH: .ci-local
     strategy:
       fail-fast: false
       matrix:
@@ -40,11 +38,11 @@ jobs:
     - name: Prepare EPICS Base ${{ matrix.base_ver }}
       run: |
         cd epics-base-${{ matrix.base_ver }}
-        python .ci/cue.py prepare
+        SETUP_PATH=.ci python .ci/cue.py prepare
     - name: Build EPICS Base ${{ matrix.base_ver }}
       run: |
         cd epics-base-${{ matrix.base_ver }}
-        python .ci/cue.py build
+        SETUP_PATH=.ci python .ci/cue.py build
     - uses: actions/checkout@v4
       with:
         repository: slac-epics/pvxs-tls
@@ -56,8 +54,8 @@ jobs:
     - name: Prepare and build PVXS ${{ matrix.base_ver }}
       run: |
         cd pvxs${{ matrix.pvxs_suffix }}
-        python .ci/cue.py prepare
-        python .ci/cue.py build
+        SETUP_PATH=.ci-local python .ci/cue.py prepare
+        SETUP_PATH=.ci-local python .ci/cue.py build
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
