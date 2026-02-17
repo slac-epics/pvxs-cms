@@ -40,6 +40,7 @@ jobs:
         repository: slac-epics/epics-base-tls
         path: epics-base-${{ matrix.base_ver }}
         submodules: true
+        fetch-depth: 1
     - name: Prepare EPICS Base ${{ matrix.base_ver }}
       run: |
         cd epics-base-${{ matrix.base_ver }}
@@ -53,6 +54,7 @@ jobs:
         repository: slac-epics/pvxs-tls
         path: pvxs${{ matrix.pvxs_suffix }}
         submodules: true
+        fetch-depth: 1
     - name: Configure PVXS ${{ matrix.base_ver }}
       run: |
         EPICS_BASE_PATH="${{ github.workspace }}/epics-base-${{ matrix.base_ver }}"
