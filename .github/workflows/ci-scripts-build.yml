@@ -53,18 +53,24 @@ jobs:
         repository: slac-epics/pvxs-tls
         path: pvxs${{ matrix.pvxs_suffix }}
         submodules: true
-    - name: Configure PVXS to use EPICS Base ${{ matrix.base_ver }}
+    - name: Configure PVXS ${{ matrix.base_ver }}
       run: |
-        echo "EPICS_BASE=$(pwd)/epics-base-${{ matrix.base_ver }}" > pvxs${{ matrix.pvxs_suffix }}/configure/RELEASE.local
-    - name: Prepare and build PVXS ${{ matrix.base_ver }}
+        # cue.py reads EPICS_BASE from CACHEDIR/RELEASE.local
+        # Use absolute path to our pre-built EPICS Base
+        EPICS_BASE_PATH="${{ github.workspace }}/epics-base-${{ matrix.base_ver }}"
+        mkdir -p .cache
+        echo "EPICS_BASE=$EPICS_BASE_PATH" > .cache/RELEASE.local
+        echo "DEBUG: CACHEDIR=${{ github.workspace }}/.cache"
+        echo "DEBUG: EPICS_BASE=$EPICS_BASE_PATH"
+    - name: Build PVXS ${{ matrix.base_ver }}
       run: |
-        export EPICS_BASE="$(pwd)/epics-base-${{ matrix.base_ver }}"
-        export PVXS="$(pwd)/pvxs${{ matrix.pvxs_suffix }}"
-        echo "DEBUG: EPICS_BASE = $EPICS_BASE"
-        ls -la "$EPICS_BASE/configure/os/" 2>&1 || echo "os dir missing"
-        cd "$PVXS"
-        BASE=SELF SETUP_PATH=.ci-local:.ci python .ci/cue.py prepare
-        BASE=SELF SETUP_PATH=.ci-local:.ci python .ci/cue.py build
+        # Point CACHEDIR to where we put RELEASE.local
+        export CACHEDIR="${{ github.workspace }}/.cache"
+        export EPICS_BASE="${{ github.workspace }}/epics-base-${{ matrix.base_ver }}"
+        cd pvxs${{ matrix.pvxs_suffix }}
+        # Without BASE=SELF, cue.py reads EPICS_BASE from CACHEDIR/RELEASE.local
+        SETUP_PATH=.ci-local:.ci python .ci/cue.py prepare
+        SETUP_PATH=.ci-local:.ci python .ci/cue.py build
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
