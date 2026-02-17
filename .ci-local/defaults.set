@@ -5,3 +5,12 @@ BASE_REPOOWNER=slac-epics
 BASE=7.0
 BASE_VARNAME=EPICS_BASE
 BASE_RECURSIVE=no
+
+# PVXS - Secure PVAccess library
+MODULES=pvxs
+PVXS_DIRNAME=pvxs
+PVXS_REPONAME=pvxs-tls
+PVXS_REPOOWNER=slac-epics
+PVXS=pvxs-tls
+PVXS_VARNAME=PVXS
+# Let PVXS use its bundled libevent submodule

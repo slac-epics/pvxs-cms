@@ -1,4 +1,4 @@
-# .github/workflows/ci-scripts-build.yml for use with EPICS Base ci-scripts
+# .github/workflows/ci-scripts-build.yml for pvxs-cms
 
 name: PVXS CMS Build
 
@@ -16,93 +16,16 @@ env:
   OPENSSL_VERSION: "3.1.4"
 
 jobs:
-  build-deps:
-    name: Build EPICS Base and PVXS
-    runs-on: ubuntu-latest
-    env:
-      CMP: ${{ matrix.cmp }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - base_ver: "7.0-secure-pvaccess"
-            pvxs_suffix: ""
-            cmp: gcc
-          - base_ver: "R7.0.2"
-            pvxs_suffix: "-R7.0.2"
-            cmp: gcc
-          - base_ver: "3.15"
-            pvxs_suffix: "-3.15"
-            cmp: gcc
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        repository: slac-epics/epics-base-tls
-        path: epics-base-${{ matrix.base_ver }}
-        submodules: true
-        fetch-depth: 1
-    - name: Prepare EPICS Base ${{ matrix.base_ver }}
-      run: |
-        cd epics-base-${{ matrix.base_ver }}
-        BASE=SELF SETUP_PATH=.ci-local:.ci python .ci/cue.py prepare
-    - name: Build EPICS Base ${{ matrix.base_ver }}
-      run: |
-        cd epics-base-${{ matrix.base_ver }}
-        BASE=SELF SETUP_PATH=.ci-local:.ci python .ci/cue.py build
-    - uses: actions/checkout@v4
-      with:
-        repository: slac-epics/pvxs-tls
-        path: pvxs${{ matrix.pvxs_suffix }}
-        submodules: true
-        fetch-depth: 1
-    - name: Configure PVXS ${{ matrix.base_ver }}
-      run: |
-        EPICS_BASE_PATH="${{ github.workspace }}/epics-base-${{ matrix.base_ver }}"
-        # cue.py reads from CACHEDIR/RELEASE.local
-        mkdir -p .cache
-        echo "EPICS_BASE=$EPICS_BASE_PATH" > .cache/RELEASE.local
-        # EPICS build system also needs configure/RELEASE.local in pvxs dir
-        mkdir -p pvxs${{ matrix.pvxs_suffix }}/configure
-        echo "EPICS_BASE=$EPICS_BASE_PATH" > pvxs${{ matrix.pvxs_suffix }}/configure/RELEASE.local
-    - name: Build libevent for PVXS
-      run: |
-        export CACHEDIR="${{ github.workspace }}/.cache"
-        export EPICS_BASE="${{ github.workspace }}/epics-base-${{ matrix.base_ver }}"
-        cd pvxs${{ matrix.pvxs_suffix }}
-        SETUP_PATH=.ci-local:.ci python .ci/cue.py exec python .ci-local/libevent.py
-    - name: Build PVXS ${{ matrix.base_ver }}
-      run: |
-        export CACHEDIR="${{ github.workspace }}/.cache"
-        export EPICS_BASE="${{ github.workspace }}/epics-base-${{ matrix.base_ver }}"
-        cd pvxs${{ matrix.pvxs_suffix }}
-        SETUP_PATH=.ci-local:.ci python .ci/cue.py prepare
-        SETUP_PATH=.ci-local:.ci python .ci/cue.py build
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: deps-${{ matrix.base_ver }}
-        path: |
-          epics-base-${{ matrix.base_ver }}/bin/**
-          epics-base-${{ matrix.base_ver }}/lib/**
-          epics-base-${{ matrix.base_ver }}/include/**
-          pvxs${{ matrix.pvxs_suffix }}/bin/**
-          pvxs${{ matrix.pvxs_suffix }}/lib/**
-          pvxs${{ matrix.pvxs_suffix }}/include/**
-          pvxs${{ matrix.pvxs_suffix }}/bundle/**
-        if-no-files-found: error
-
   native:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    needs: build-deps
     env:
-      SETUP_PATH: .ci-local
+      SETUP_PATH: .ci-local:.ci
       SET: ${{ matrix.set || 'defaults' }}
       CMP: ${{ matrix.cmp }}
       BCFG: ${{ matrix.configuration }}
-      BASE: SELF
+      BASE: ${{ matrix.base }}
       CI_CROSS_TARGETS: ${{ matrix.cross }}
-      LIBEVENT_TAG: ${{ matrix.libevent }}
       TEST: ${{ matrix.test }}
       EXTRA: ${{ matrix.extra }}
       VV: "1"
@@ -115,7 +38,6 @@ jobs:
             cmp: gcc
             configuration: default
             base: "7.0-secure-pvaccess"
-            pvxs_suffix: ""
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
           - name: Linux (gcc) EPICS R7.0.2
@@ -123,7 +45,6 @@ jobs:
             cmp: gcc
             configuration: default
             base: "R7.0.2"
-            pvxs_suffix: "-R7.0.2"
             set: "nofortify"
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES CMD_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
 
@@ -132,7 +53,6 @@ jobs:
             cmp: gcc
             configuration: default
             base: "3.15"
-            pvxs_suffix: "-3.15"
             set: "nofortify"
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES CMD_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
 
@@ -141,7 +61,6 @@ jobs:
             cmp: clang
             configuration: default
             base: "7.0-secure-pvaccess"
-            pvxs_suffix: ""
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
           - name: macOS EPICS 7.0-secure-pvaccess
@@ -149,7 +68,6 @@ jobs:
             cmp: clang
             configuration: default
             base: "7.0-secure-pvaccess"
-            pvxs_suffix: ""
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
           - name: Windows (vs2022) EPICS 7.0-secure-pvaccess
@@ -157,28 +75,12 @@ jobs:
             cmp: vs2022
             configuration: default
             base: "7.0-secure-pvaccess"
-            pvxs_suffix: ""
             extra: "PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: true
-        fetch-depth: 1
-    - name: Download EPICS Base and PVXS artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: deps-${{ matrix.base }}
-        path: deps
-    - name: Configure RELEASE.local
-      run: |
-        echo "EPICS_BASE=$(pwd)/deps/epics-base-${{ matrix.base }}" > configure/RELEASE.local
-        echo "PVXS=$(pwd)/deps/pvxs${{ matrix.pvxs_suffix }}" >> configure/RELEASE.local
-        echo "EPICS_BASE=$(pwd)/deps/epics-base-${{ matrix.base }}" >> $GITHUB_ENV
-        echo "CACHEDIR=$(pwd)/.cache" >> $GITHUB_ENV
-        # cue.py reads from CACHEDIR/RELEASE.local
-        mkdir -p .cache
-        cp configure/RELEASE.local .cache/RELEASE.local
     - name: "apt-get install"
       run: |
         sudo apt-get update
@@ -207,7 +109,7 @@ jobs:
         done
         cd ..
         rm -rf openssl-${OPENSSL_VERSION}*
-      if: runner.os == 'Linux' && matrix.cross == 'windows-x64-mingw'
+      if: runner.os == 'Linux'
 
     - name: Host Info
       run: openssl version -a
@@ -267,15 +169,13 @@ jobs:
   cross:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    needs: build-deps
     env:
-      SETUP_PATH: .ci-local
+      SETUP_PATH: .ci-local:.ci
       SET: ${{ matrix.set || 'defaults' }}
       CMP: ${{ matrix.cmp }}
       BCFG: ${{ matrix.configuration }}
-      BASE: SELF
+      BASE: ${{ matrix.base }}
       CI_CROSS_TARGETS: ${{ matrix.cross }}
-      LIBEVENT_TAG: ${{ matrix.libevent }}
       TEST: ${{ matrix.test }}
       EXTRA: ${{ matrix.extra }}
       VV: "1"
@@ -288,7 +188,6 @@ jobs:
             cmp: gcc
             configuration: default
             base: "7.0-secure-pvaccess"
-            pvxs_suffix: ""
             cross: "RTEMS-pc686-qemu@5"
 
           - name: mingw64
@@ -296,28 +195,12 @@ jobs:
             cmp: gcc
             configuration: default
             base: "7.0-secure-pvaccess"
-            pvxs_suffix: ""
             cross: "windows-x64-mingw"
 
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: true
-        fetch-depth: 1
-    - name: Download EPICS Base and PVXS artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: deps-${{ matrix.base }}
-        path: deps
-    - name: Configure RELEASE.local
-      run: |
-        echo "EPICS_BASE=$(pwd)/deps/epics-base-${{ matrix.base }}" > configure/RELEASE.local
-        echo "PVXS=$(pwd)/deps/pvxs${{ matrix.pvxs_suffix }}" >> configure/RELEASE.local
-        echo "EPICS_BASE=$(pwd)/deps/epics-base-${{ matrix.base }}" >> $GITHUB_ENV
-        echo "CACHEDIR=$(pwd)/.cache" >> $GITHUB_ENV
-        # cue.py reads from CACHEDIR/RELEASE.local
-        mkdir -p .cache
-        cp configure/RELEASE.local .cache/RELEASE.local
     - name: "apt-get install"
       run: |
         sudo apt-get update
