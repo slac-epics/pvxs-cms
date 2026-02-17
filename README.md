@@ -1,7 +1,7 @@
 PVXS - Secure PVAccess protocol library
 =======================================
 
-[![PVXS EPICS](https://github.com/slac-epics/pvxs-tls/actions/workflows/ci-scripts-build.yml/badge.svg)](https://github.com/slac-epics/pvxs-tls/actions/workflows/ci-scripts-build.yml) [![Python](https://github.com/slac-epics/pvxs-tls/actions/workflows/python.yml/badge.svg)](https://github.com/slac-epics/pvxs-tls/actions/workflows/python.yml) [![Spell Check](https://github.com/slac-epics/pvxs-tls/actions/workflows/codespell.yml/badge.svg)](https://github.com/slac-epics/pvxs-tls/actions/workflows/codespell.yml) [![GH pages](https://github.com/slac-epics/pvxs-tls/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/slac-epics/pvxs-tls/actions/workflows/gh-pages.yml) [![Release artifacts](https://github.com/slac-epics/pvxs-tls/actions/workflows/release.yml/badge.svg)](https://github.com/slac-epics/pvxs-tls/actions/workflows/release.yml) [![Docker Multi-Platform Build Pipeline](https://github.com/slac-epics/pvxs-tls/actions/workflows/docker-pub-pvxs.yml/badge.svg)](https://github.com/slac-epics/pvxs-tls/actions/workflows/docker-pub-pvxs.yml)
+[![PVXS EPICS](https://github.com/slac-epics/pvxs-cms/actions/workflows/ci-scripts-build.yml/badge.svg)](https://github.com/slac-epics/pvxs-cms/actions/workflows/ci-scripts-build.yml) [![Spell Check](https://github.com/slac-epics/pvxs-cms/actions/workflows/codespell.yml/badge.svg)](https://github.com/slac-epics/pvxs-cms/actions/workflows/codespell.yml) [![GH pages](https://github.com/slac-epics/pvxs-cms/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/slac-epics/pvxs-cms/actions/workflows/gh-pages.yml) [![Release artifacts](https://github.com/slac-epics/pvxs-cms/actions/workflows/release.yml/badge.svg)](https://github.com/slac-epics/pvxs-cms/actions/workflows/release.yml) [![Docker Multi-Platform Build Pipeline](https://github.com/slac-epics/pvxs-cms/actions/workflows/docker-pub-pvxs.yml/badge.svg)](https://github.com/slac-epics/pvxs-cms/actions/workflows/docker-pub-pvxs.yml)
 
 
 This module provides a library (libpvxs.so or pvxs.dll) and a set of
@@ -11,9 +11,9 @@ PVXS is functionally equivalent to the
 `pvDataCPP <https://github.com/epics-base/pvDataCPP>`_ and
 `pvAccessCPP <https://github.com/epics-base/pvAccessCPP>`_ modules
 
-- VCS: https://github.com/slac-epics/pvxs-tls
-- Docs: https://slac-epics.github.io/pvxs-tls/
-- Issues: https://github.com/slac-epics/pvxs-tls/issues
+- VCS: https://github.com/slac-epics/pvxs-cms
+- Docs: https://slac-epics.github.io/pvxs-cms/
+- Issues: https://github.com/slac-epics/pvxs-cms/issues
 
 Dependencies
 

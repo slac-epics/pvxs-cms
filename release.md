@@ -34,17 +34,9 @@ git tag -s -m B.B.B B.B.B
 git push origin B.B.B master
 ```
 
-7. Verify GHA builds and pypi uploads
+7. Verify GHA builds
 
-```sh
-virtualenv /tmp/p4p-bin
-/tmp/p4p-bin/bin/pip install pvxslibs
-cd /tmp && /tmp/p4p-bin/bin/python -m nose2 -v pvxslibs nose2
-
-virtualenv /tmp/p4p-src
-/tmp/p4p-src/bin/pip install --no-binary epicscorelibs,pvxslibs pvxslibs nose2
-cd /tmp && /tmp/p4p-src/bin/python -m nose2 -v pvxslibs
-```
+   Confirm all workflow builds complete successfully.
 
 8. Create github.com release B.B.B
 
