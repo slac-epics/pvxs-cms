@@ -55,7 +55,7 @@ jobs:
         submodules: true
     - name: Configure PVXS to use EPICS Base ${{ matrix.base_ver }}
       run: |
-        echo "EPICS_BASE=\$(TOP)/../epics-base-${{ matrix.base_ver }}" > pvxs${{ matrix.pvxs_suffix }}/configure/RELEASE.local
+        echo "EPICS_BASE=${{ github.workspace }}/epics-base-${{ matrix.base_ver }}" > pvxs${{ matrix.pvxs_suffix }}/configure/RELEASE.local
     - name: Prepare and build PVXS ${{ matrix.base_ver }}
       env:
         EPICS_BASE: ${{ github.workspace }}/epics-base-${{ matrix.base_ver }}
@@ -153,12 +153,11 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: deps-${{ matrix.base }}
-        path: |
-          epics-base-${{ matrix.base }}
-          pvxs${{ matrix.pvxs_suffix }}
-    - name: Configure PVXS for this build
+        path: ..
+    - name: Configure RELEASE.local
       run: |
-        echo "PVXS=\$(TOP)/../pvxs${{ matrix.pvxs_suffix }}" >> configure/RELEASE.local
+        echo "EPICS_BASE=$(pwd)/../epics-base-${{ matrix.base }}" > configure/RELEASE.local
+        echo "PVXS=$(pwd)/../pvxs${{ matrix.pvxs_suffix }}" >> configure/RELEASE.local
     - name: "apt-get install"
       run: |
         sudo apt-get update
@@ -287,12 +286,11 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: deps-${{ matrix.base }}
-        path: |
-          epics-base-${{ matrix.base }}
-          pvxs${{ matrix.pvxs_suffix }}
-    - name: Configure PVXS for this build
+        path: ..
+    - name: Configure RELEASE.local
       run: |
-        echo "PVXS=\$(TOP)/../pvxs${{ matrix.pvxs_suffix }}" >> configure/RELEASE.local
+        echo "EPICS_BASE=$(pwd)/../epics-base-${{ matrix.base }}" > configure/RELEASE.local
+        echo "PVXS=$(pwd)/../pvxs${{ matrix.pvxs_suffix }}" >> configure/RELEASE.local
     - name: "apt-get install"
       run: |
         sudo apt-get update
