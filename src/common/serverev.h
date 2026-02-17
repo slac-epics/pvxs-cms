@@ -15,7 +15,7 @@
 
 #include <pvxs/server.h>
 
-#include "serverconn.h"
+#include "evhelper.h"
 #include "wildcardpv.h"
 
 namespace pvxs {

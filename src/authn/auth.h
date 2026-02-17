@@ -22,10 +22,7 @@
 #include "certstatusmanager.h"
 #include "configstd.h"
 #include "openssl.h"
-#include "opensslgbl.h"
 #include "security.h"
-// server.h removed - pvxs-cms no longer has pvxs library
-// #include "server.h"
 #include "serverev.h"
 
 namespace pvxs {

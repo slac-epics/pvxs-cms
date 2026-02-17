@@ -6,7 +6,6 @@
 
 #include "authnkrb.h"
 
-#include <cstring>
 #include <stdexcept>
 #include <string>
 
@@ -17,11 +16,7 @@
 #include <gssapi/gssapi_krb5.h>
 #endif
 
-#include <CLI/CLI.hpp>
-
 #include "authregistry.h"
-#include "openssl.h"
-#include "p12filefactory.h"
 #include "utilpvt.h"
 
 DEFINE_LOGGER(auth, "pvxs.auth.krb");

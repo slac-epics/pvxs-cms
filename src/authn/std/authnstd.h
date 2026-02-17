@@ -26,10 +26,8 @@
 #include <string>
 
 #include <pvxs/data.h>
-#include <pvxs/version.h>
 
 #include "auth.h"
-#include "authregistry.h"
 #include "certfactory.h"
 #include "configstd.h"
 #include "ownedptr.h"

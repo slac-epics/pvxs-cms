@@ -6,8 +6,6 @@
 
 #include "authnstd.h"
 
-#include <osiProcess.h>
-
 #include <pvxs/log.h>
 
 #include "authregistry.h"
@@ -15,7 +13,6 @@
 #include "configstd.h"
 #include "openssl.h"
 #include "p12filefactory.h"
-#include "utilpvt.h"
 
 #include <CLI/CLI.hpp>
 

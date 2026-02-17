@@ -19,12 +19,13 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 
+#include <osiFileName.h>
+
 #include <pvxs/config.h>
 #include <pvxs/log.h>
 
 #include "openssl.h"
 #include "opensslgbl.h"
-#include "osiFileName.h"
 #include "ownedptr.h"
 #include "security.h"
 #include "utilpvt.h"

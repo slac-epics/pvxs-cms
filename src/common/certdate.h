@@ -6,17 +6,17 @@
 /**
  * The certificate time functions
  *
- *   certtime.h
+ *   certdate.h
  *
  */
-#ifndef CERTTIME_H
-#define CERTTIME_H
+#ifndef CERTDATE_H
+#define CERTDATE_H
 
 #include "ownedptr.h"
 
 #define CERT_TIME_FORMAT "%a %b %d %H:%M:%S %Y UTC"
 
-DEFINE_LOGGER(certs_time, "pvxs.certs.time");
+DEFINE_LOGGER(certs_time, "pvxs.certs.date");
 namespace pvxs {
 namespace certs {
 
@@ -495,4 +495,4 @@ struct CertDate {
 }  // namespace certs
 }  // namespace pvxs
 
-#endif //CERTTIME_H
+#endif //CERTDATE_H

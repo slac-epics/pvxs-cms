@@ -6,8 +6,6 @@
 
 #include "configstd.h"
 
-#include <pvxs/log.h>
-
 #include "utilpvt.h"
 
 namespace pvxs {

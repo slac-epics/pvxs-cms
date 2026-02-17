@@ -3178,7 +3178,7 @@ int main(int argc, char *argv[]) {
         if (!config.pvacms_acf_filename.empty()) {
             log_debug_printf(pvacms, "Setting server access security from ACF: %s\n", config.pvacms_acf_filename.c_str());
             if(auto err = asInitFile(config.pvacms_acf_filename.c_str(), ""))
-                throw std::runtime_error(SB()<<"Failed to load "<<config.pvacms_acf_filename<<" : "<<err);
+                throw std::runtime_error(pvxs::SB()<<"Failed to load "<<config.pvacms_acf_filename<<" : "<<err);
         } else {
             log_err_printf(pvacms, "****EXITING****: PVACMS Access Security Policy File Required%s", "\n");
             return 1;

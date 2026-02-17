@@ -6,7 +6,6 @@
 
 #include "auth.h"
 
-#include <atomic>
 #include <chrono>
 #include <iostream>
 #include <memory>

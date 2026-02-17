@@ -18,7 +18,6 @@
 #include "configcerts.h"
 #include "certstatusmanager.h"
 #include "evhelper.h"
-#include "serverconn.h"
 
 namespace pvxs {
 namespace server {

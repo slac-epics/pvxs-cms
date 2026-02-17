@@ -9,7 +9,6 @@
 #include "authregistry.h"
 #include "configldap.h"
 #include "openssl.h"
-#include "p12filefactory.h"
 
 namespace pvxs {
 namespace certs {
