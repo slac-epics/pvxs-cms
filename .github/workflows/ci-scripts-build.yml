@@ -33,7 +33,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        repository: epics-base/epics-base-tls
+        repository: slac-epics/epics-base-tls
         path: epics-base-${{ matrix.base_ver }}
     - name: Prepare EPICS Base ${{ matrix.base_ver }}
       run: |
@@ -45,7 +45,7 @@ jobs:
         python ../.ci/cue.py build
     - uses: actions/checkout@v4
       with:
-        repository: epics-base/pvxs-tls
+        repository: slac-epics/pvxs-tls
         path: pvxs${{ matrix.pvxs_suffix }}
     - name: Configure PVXS to use EPICS Base ${{ matrix.base_ver }}
       run: |
