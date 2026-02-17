@@ -1,19 +1,7 @@
 # .github/workflows/ci-scripts-build.yml for use with EPICS Base ci-scripts
-# (see: https://github.com/epics-base/ci-scripts)
-
-# Workflow to build:
-# - authnstd (all platforms)
-# - authnkrb (Linux, OSX, Windows, mingw - NOT RTEMS)
-# - authnldap (Linux, OSX, Windows, mingw - NOT RTEMS)
-# - pvxcert (all platforms)
-# - pvacms (Linux, OSX only)
-# - tests (all platforms)
-
-# This is YAML - indentation levels are crucial
 
 name: PVXS CMS Build
 
-# Trigger on pushes and PRs to any branch
 on:
   push:
     paths-ignore:
@@ -29,10 +17,61 @@ env:
   OPENSSL_VERSION: "3.1.4"
 
 jobs:
-  # Native builds (Linux, OSX, Windows)
+  build-deps:
+    name: Build EPICS Base and PVXS
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - base_ver: "7.0-secure-pvaccess"
+            pvxs_suffix: ""
+          - base_ver: "R7.0.2"
+            pvxs_suffix: "-R7.0.2"
+          - base_ver: "3.15"
+            pvxs_suffix: "-3.15"
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: epics-base/epics-base-tls
+        path: epics-base-${{ matrix.base_ver }}
+    - name: Prepare EPICS Base ${{ matrix.base_ver }}
+      run: |
+        cd epics-base-${{ matrix.base_ver }}
+        python ../.ci/cue.py prepare
+    - name: Build EPICS Base ${{ matrix.base_ver }}
+      run: |
+        cd epics-base-${{ matrix.base_ver }}
+        python ../.ci/cue.py build
+    - uses: actions/checkout@v4
+      with:
+        repository: epics-base/pvxs-tls
+        path: pvxs${{ matrix.pvxs_suffix }}
+    - name: Configure PVXS to use EPICS Base ${{ matrix.base_ver }}
+      run: |
+        echo "EPICS_BASE=\$(TOP)/../epics-base-${{ matrix.base_ver }}" > pvxs${{ matrix.pvxs_suffix }}/configure/RELEASE.local
+    - name: Prepare and build PVXS ${{ matrix.base_ver }}
+      run: |
+        cd pvxs${{ matrix.pvxs_suffix }}
+        python .ci/cue.py prepare
+        python .ci/cue.py build
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: deps-${{ matrix.base_ver }}
+        path: |
+          epics-base-${{ matrix.base_ver }}/bin/**
+          epics-base-${{ matrix.base_ver }}/lib/**
+          epics-base-${{ matrix.base_ver }}/include/**
+          pvxs${{ matrix.pvxs_suffix }}/bin/**
+          pvxs${{ matrix.pvxs_suffix }}/lib/**
+          pvxs${{ matrix.pvxs_suffix }}/include/**
+        if-no-files-found: error
+
   native:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    needs: build-deps
     env:
       SET: ${{ matrix.set || 'defaults' }}
       CMP: ${{ matrix.cmp }}
@@ -47,19 +86,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux with gcc - builds everything including pvacms and tests
           - name: Linux (gcc) EPICS 7.0-secure-pvaccess
             os: ubuntu-latest
             cmp: gcc
             configuration: default
             base: "7.0-secure-pvaccess"
+            pvxs_suffix: ""
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
-          - name: Linux (gcc) EPICS 7.0.2
+          - name: Linux (gcc) EPICS R7.0.2
             os: ubuntu-latest
             cmp: gcc
             configuration: default
             base: "R7.0.2"
+            pvxs_suffix: "-R7.0.2"
             set: "nofortify"
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES CMD_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
 
@@ -68,37 +108,48 @@ jobs:
             cmp: gcc
             configuration: default
             base: "3.15"
+            pvxs_suffix: "-3.15"
             set: "nofortify"
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES CMD_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
 
-          # Linux with clang - builds everything including pvacms and tests
           - name: Linux (clang) EPICS 7.0-secure-pvaccess
             os: ubuntu-latest
             cmp: clang
             configuration: default
             base: "7.0-secure-pvaccess"
+            pvxs_suffix: ""
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
-          # OSX - builds everything including pvacms and tests
           - name: macOS EPICS 7.0-secure-pvaccess
             os: macos-latest
             cmp: clang
             configuration: default
             base: "7.0-secure-pvaccess"
+            pvxs_suffix: ""
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
-          # Windows - builds authnXXX, pvxcert, and tests (no pvacms)
           - name: Windows (vs2022) EPICS 7.0-secure-pvaccess
             os: windows-2022
             cmp: vs2022
             configuration: default
             base: "7.0-secure-pvaccess"
+            pvxs_suffix: ""
             extra: "PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: true
+    - name: Download EPICS Base and PVXS artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: deps-${{ matrix.base }}
+        path: |
+          epics-base-${{ matrix.base }}
+          pvxs${{ matrix.pvxs_suffix }}
+    - name: Configure PVXS for this build
+      run: |
+        echo "PVXS=\$(TOP)/../pvxs${{ matrix.pvxs_suffix }}" >> configure/RELEASE.local
     - name: "apt-get install"
       run: |
         sudo apt-get update
@@ -113,8 +164,6 @@ jobs:
         ./Configure mingw64 --cross-compile-prefix=x86_64-w64-mingw32- --prefix=/usr/x86_64-w64-mingw32
         make -j$(nproc)
         sudo make install
-
-        # Ensure the default library search paths contain unversioned import/static libs.
         SYSROOT=/usr/x86_64-w64-mingw32
         for lib in ssl crypto; do
           for kind in dll.a a; do
@@ -127,7 +176,6 @@ jobs:
             fi
           done
         done
-
         cd ..
         rm -rf openssl-${OPENSSL_VERSION}*
       if: runner.os == 'Linux' && matrix.cross == 'windows-x64-mingw'
@@ -187,10 +235,10 @@ jobs:
         path: '**/O.*/*.tap'
         if-no-files-found: ignore
 
-  # Cross-compilation builds (RTEMS, mingw)
   cross:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    needs: build-deps
     env:
       SET: ${{ matrix.set || 'defaults' }}
       CMP: ${{ matrix.cmp }}
@@ -205,26 +253,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # RTEMS - builds authnstd, pvxcert, tests (no authnkrb, authnldap, pvacms)
           - name: RTEMS5
             os: ubuntu-22.04
             cmp: gcc
             configuration: default
             base: "7.0-secure-pvaccess"
+            pvxs_suffix: ""
             cross: "RTEMS-pc686-qemu@5"
 
-          # mingw - builds authnstd, authnkrb, authnldap, pvxcert, tests (no pvacms)
           - name: mingw64
             os: ubuntu-latest
             cmp: gcc
             configuration: default
             base: "7.0-secure-pvaccess"
+            pvxs_suffix: ""
             cross: "windows-x64-mingw"
 
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: true
+    - name: Download EPICS Base and PVXS artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: deps-${{ matrix.base }}
+        path: |
+          epics-base-${{ matrix.base }}
+          pvxs${{ matrix.pvxs_suffix }}
+    - name: Configure PVXS for this build
+      run: |
+        echo "PVXS=\$(TOP)/../pvxs${{ matrix.pvxs_suffix }}" >> configure/RELEASE.local
     - name: "apt-get install"
       run: |
         sudo apt-get update
@@ -239,8 +297,6 @@ jobs:
         ./Configure mingw64 --cross-compile-prefix=x86_64-w64-mingw32- --prefix=/usr/x86_64-w64-mingw32
         make -j$(nproc)
         sudo make install
-
-        # Ensure the default library search paths contain unversioned import/static libs.
         SYSROOT=/usr/x86_64-w64-mingw32
         for lib in ssl crypto; do
           for kind in dll.a a; do
@@ -253,7 +309,6 @@ jobs:
             fi
           done
         done
-
         cd ..
         rm -rf openssl-${OPENSSL_VERSION}*
       if: runner.os == 'Linux' && matrix.cross == 'windows-x64-mingw'
@@ -274,11 +329,8 @@ jobs:
     - name: Host info
       run: python .ci/cue.py --add-path "{TOP}/bin/{EPICS_HOST_ARCH}" --add-path "{TOP}/bundle/usr/{EPICS_HOST_ARCH}/lib" exec pvxinfo -D
     - name: Run main module tests
-      # For RTEMS, we can't run tests natively - just build them
-      # For mingw, tests can be run with wine or similar if available
       run: |
         if [ "${{ matrix.cross }}" = "RTEMS-pc686-qemu@5" ]; then
-          # Just build tests for RTEMS, don't try to run them
           python -m ci_core_dumper exec python .ci/cue.py build tests
         else
           python -m ci_core_dumper exec python .ci/cue.py -T 5M --add-path "{TOP}/bundle/usr/{EPICS_HOST_ARCH}/lib" test
