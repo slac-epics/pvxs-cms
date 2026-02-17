@@ -254,6 +254,9 @@ jobs:
       run: python .ci/cue.py prepare
     - name: Build libevent
       run: python .ci/cue.py exec python .ci-local/libevent.py
+    - name: Export bundled libevent path for cross target
+      shell: bash
+      run: echo "LIBEVENT=$PWD/bundle/usr/${{ matrix.cross }}" >> $GITHUB_ENV
     - name: Build pvxs-tls dependency
       run: python .ci/cue.py exec make -C ../pvxs-pvxs-tls
     - name: Build main module
