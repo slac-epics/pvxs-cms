@@ -13,4 +13,5 @@ PVXS_REPONAME=pvxs-tls
 PVXS_REPOOWNER=slac-epics
 PVXS=pvxs-tls
 PVXS_VARNAME=PVXS
-# Let PVXS use its bundled libevent submodule
+# Use PVXS's bundled libevent submodule
+PVXS_RECURSIVE=yes
