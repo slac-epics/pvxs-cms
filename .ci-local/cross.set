@@ -1,0 +1,15 @@
+# EPICS Base - for cross compilation targets (RTEMS, mingw)
+BASE_DIRNAME=base
+BASE_REPONAME=epics-base-tls
+BASE_REPOOWNER=slac-epics
+BASE=7.0
+BASE_VARNAME=EPICS_BASE
+BASE_RECURSIVE=no
+
+# PVXS - NOT included as MODULES, built manually after libevent.py
+PVXS_DIRNAME=pvxs
+PVXS_REPONAME=pvxs-tls
+PVXS_REPOOWNER=slac-epics
+PVXS=pvxs-tls
+PVXS_VARNAME=PVXS
+PVXS_RECURSIVE=yes
