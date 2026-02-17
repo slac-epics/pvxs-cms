@@ -126,9 +126,9 @@ jobs:
     - name: Build libevent (for Windows/Cross)
       run: python .ci/cue.py exec python .ci-local/libevent.py
       if: runner.os == 'Windows' || matrix.cross != ''
-    - name: Build pvxs-tls (for Windows/Cross)
+    - name: Build pvxs-tls tools (for non-defaults)
       run: python .ci/cue.py exec make -C ../pvxs-pvxs-tls
-      if: runner.os == 'Windows' || matrix.cross != ''
+      if: runner.os == 'Windows' || matrix.cross != '' || runner.os == 'macOS'
     - name: Build main module
       run: python .ci/cue.py build
     - name: otool (for bundled libevent)
