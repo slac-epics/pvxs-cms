@@ -4,13 +4,14 @@
  * in file LICENSE that is included with this distribution.
  */
 
+// The parts of this file that are referenced by sources in this repo MUST match `evhelper.h` in the pvxs repo.
+// pvxs already makes them available with in the pvxs library.  If this header
+// matches exactly, then we can avoid the need to duplicate `evhelper.cpp` and simply link with pvxs lib.
+
 #ifndef EVHELPER_H
 #define EVHELPER_H
 
-#include <map>
 #include <memory>
-#include <set>
-#include <sstream>
 #include <string>
 
 #include <event2/event.h>

@@ -36,7 +36,6 @@ pvacms_SRCS += certfilefactory.cpp
 pvacms_SRCS += certfactory.cpp
 pvacms_SRCS += configcerts.cpp
 pvacms_SRCS += wildcardpv.cpp
-pvacms_SRCS += evhelper.cpp
 pvacms_SRCS += openssl.cpp
 pvacms_SRCS += serverev.cpp
 
