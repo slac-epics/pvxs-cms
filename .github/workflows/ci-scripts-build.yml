@@ -19,16 +19,21 @@ jobs:
   build-deps:
     name: Build EPICS Base and PVXS
     runs-on: ubuntu-latest
+    env:
+      CMP: ${{ matrix.cmp }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - base_ver: "7.0-secure-pvaccess"
             pvxs_suffix: ""
+            cmp: gcc
           - base_ver: "R7.0.2"
             pvxs_suffix: "-R7.0.2"
+            cmp: gcc
           - base_ver: "3.15"
             pvxs_suffix: "-3.15"
+            cmp: gcc
     steps:
     - uses: actions/checkout@v4
       with:
