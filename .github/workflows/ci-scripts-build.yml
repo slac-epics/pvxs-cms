@@ -38,11 +38,11 @@ jobs:
     - name: Prepare EPICS Base ${{ matrix.base_ver }}
       run: |
         cd epics-base-${{ matrix.base_ver }}
-        python ../.ci/cue.py prepare
+        python .ci/cue.py prepare
     - name: Build EPICS Base ${{ matrix.base_ver }}
       run: |
         cd epics-base-${{ matrix.base_ver }}
-        python ../.ci/cue.py build
+        python .ci/cue.py build
     - uses: actions/checkout@v4
       with:
         repository: slac-epics/pvxs-tls
