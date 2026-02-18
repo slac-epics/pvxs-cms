@@ -127,15 +127,8 @@ jobs:
     - name: Build libevent (for Windows/Cross)
       run: python .ci/cue.py exec python .ci-local/libevent.py
       if: runner.os == 'Windows' || matrix.cross != ''
-    - name: Build pvxs-tls tools (for non-defaults)
-      run: python .ci/cue.py exec make -C .cache/pvxs
-      if: runner.os == 'macOS'
-    - name: Build pvxs-tls tools (for Windows/Cross)
-      run: python .ci/cue.py exec make -C ../pvxs
-      if: runner.os == 'Windows' || matrix.cross != ''
-    - name: Build pvxs-tls tools (for Linux)
-      run: python .ci/cue.py exec make -C ../pvxs
-      if: runner.os == 'Linux' && matrix.cross == ''
+    - name: Build pvxs-tls tools
+      run: python .ci/cue.py exec make -C {CACHEDIR}/pvxs-pvxs-tls
     - name: Build main module
       run: python .ci/cue.py build
     - name: otool (for bundled libevent)
@@ -196,6 +189,7 @@ jobs:
       TEST: ${{ matrix.test }}
       EXTRA: ${{ matrix.extra }}
       VV: "1"
+      CACHEDIR: ${{ github.workspace }}/.cache
     strategy:
       fail-fast: false
       matrix:
@@ -262,7 +256,7 @@ jobs:
       shell: bash
       run: echo "LIBEVENT=$PWD/bundle/usr/${{ matrix.cross }}" >> $GITHUB_ENV
     - name: Build pvxs-tls dependency
-      run: python .ci/cue.py exec make -C ../pvxs-pvxs-tls
+      run: python .ci/cue.py exec make -C {CACHEDIR}/pvxs-pvxs-tls
     - name: Build main module
       run: python .ci/cue.py build
     - name: readelf

@@ -35,12 +35,12 @@
 
 /**
  * @brief This tester uses a Tester object and a bunch of MACROS that rely on a very opinionated
- * set of named variables to function.  prefixes `cert_auth`, `super_server`, `intermediate_server`,
+ * set of named variables to function.  Prefixes `cert_auth`, `super_server`, `intermediate_server`,
  * `server1`, `server2`, `ioc`, `client1`, and `client2` refer to the certificates generated
  * by `gen_test_certs`.  `cert_auth` is used for the Certificate Authority and `super_server` is used
  * for the Mock PVACMS.
  *
- * `gen_test_certs` has been modified to generate the cert authority cert and the Mock PVACMS cert without
+ * `gen_test_certs` has been modified to generate the Certificate Authority cert and the Mock PVACMS cert without
  * status extensions for obvious reasons.
  *
  * The tests initially follow the exact same sequence as those in the `testtls` suite and then try out some
@@ -71,8 +71,9 @@ struct Tester {
     CertCtx<tag::client1> client1;
     CertCtx<tag::client2> client2;
 
-    const std::string issuer_id{CertStatusManager::getIssuerIdFromCert(cert_auth.cert.cert.get())};
+    const std::string issuer_id{CertStatus::getSkId(cert_auth.cert.cert)};
 
+    std::shared_ptr<server::WildcardSource> source;
     server::WildcardPV status_pv{server::WildcardPV::buildMailbox()};
     server::Config server_config;
     server::ServerEv pvacms;
@@ -83,14 +84,13 @@ struct Tester {
     Tester()
         : now(time(nullptr)),
           status_valid_until_time(now.t + STATUS_VALID_FOR_SECS),
-          revocation_date(now.t - REVOKED_SINCE_SECS)
-
+          revocation_date(now.t - REVOKED_SINCE_SECS),
+          source(server::WildcardSource::build())
     {
         // Set up the Mock PVACMS server certificate (does not contain custom status extension)
-        auto wildcard_source = server::WildcardSource::build();
-        wildcard_source->add(getCertStatusPv("CERT", issuer_id), status_pv);
+        source->add(getCertStatusPv("CERT", issuer_id), status_pv);
         // Set up a mock source that counts actual certificate-status subscriptions
-        const auto pvacms_mock = std::make_shared<server::MockSource>(wildcard_source, [this](std::string const& pv_name) {
+        const auto pvacms_mock = std::make_shared<server::MockSource>(source, [this](std::string const& pv_name) {
             auto it = cert_status_request_counters.find(pv_name);
             if (it == cert_status_request_counters.end()) {
                 it = cert_status_request_counters.emplace(pv_name, std::make_shared<std::atomic<uint32_t>>(0)).first;
@@ -205,7 +205,7 @@ struct Tester {
                     postValueCase(serial, pv, pv_name, client1,true) ||
                     postValueCase(serial, pv, pv_name, client2,true)
                     )
-                    ; // handled
+                    ; // Handled
                 else
                     testFail("Unknown PV Accessed for Status Request: %s", pv_name.c_str());
         });
@@ -288,9 +288,9 @@ struct Tester {
     };
 
     /**
-     * @brief testServerOnly is a test that verifies the client can connect in server-only authenticated TLS mode
+     * @brief testServerOnly is a test that verifies the client can connect in server-only authenticated TLS mode.
      *
-     * This is used to verify that a client that is configured with a certificate authority certificate but no entity cert
+     * This is used to verify that a client, configured with a trust anchor certificate, but no entity cert,
      * will be able to connect in server-only authenticated TLS mode
      */
     void testServerOnly() {
@@ -321,6 +321,7 @@ struct Tester {
         try {
             auto reply(cli.get(TEST_PV).exec()->wait(5.0));
             testEq(reply[TEST_PV_FIELD].as<int32_t>(), 42);
+            // Both client and server should verify the server's certificate
             waitCounterAtLeast(cert_status_request_counters, cert_status_evt, server1, 2);
         } catch (std::exception& e) {
             testFail("Timeout: %s", e.what());
@@ -330,16 +331,16 @@ struct Tester {
     }
 
     /**
-     * @brief Test getting a value using a certificate that is configured to use an intermediate Certificate Authority
-     * Note that we don't disable status monitoring, so the framework will attempt to contact
+     * @brief Test getting a value using a certificate that is configured to use an intermediate Certificate Authority.
+     * Note that we don't disable status monitoring; therefore, the framework will attempt to contact
      * PVACMS to verify certificate status for any certificates that contain the certificate status extension.
      *
      * We chose the SERVER1 and CLIENT1 certificates for this test which as well as both being
      * certificates that have an intermediate certificate between them and the root Certificate Authority, they
      * also have the certificate status extension embedded in them.  So this test will
-     * verify that the statuses are verified and the TLS proceeds as expected.  If the
-     * statuses are not verified, then the test count will be off because there is a test
-     * in the Mock PVACMS when certificate statuses are posted.
+     * verify that the statuses are mutually verified and the TLS proceeds as expected.  If the
+     * statuses are not verified, then the request count will be off because there is a test
+     * in the Mock PVACMS when certificate statuses are requested.
      *
      * The test to make sure that the connection is a tls connection here serves to verify that
      * the successful status verification does indeed result in a secure PVAccess connection being
@@ -368,11 +369,16 @@ struct Tester {
 
         auto conn(cli.connect(TEST_PV).onConnect([](const client::Connected& c) { testTrue(c.cred && c.cred->isTLS); }).exec());
 
-        auto reply(cli.get(TEST_PV).exec()->wait(5.0));
-        testEq(reply[TEST_PV_FIELD].as<int32_t>(), 42);
+        try {
+            auto reply(cli.get(TEST_PV).exec()->wait(5.0));
+            testEq(reply[TEST_PV_FIELD].as<int32_t>(), 42);
+            // peer status requests must have been processed by time we have a value
+            waitCounterAtLeast(cert_status_request_counters, cert_status_evt, server1, 2);
+            waitCounterAtLeast(cert_status_request_counters, cert_status_evt, client1, 2);
+        } catch (std::exception &e) {
+            testFail("Timeout: %s", e.what());
+        }
 
-        waitCounterAtLeast(cert_status_request_counters, cert_status_evt, server1, 2);
-        waitCounterAtLeast(cert_status_request_counters, cert_status_evt, client1, 2);
         conn.reset();
     }
 
@@ -385,7 +391,7 @@ struct Tester {
      * and check whether the changes are successfully applied to the connection.
      *
      * The simple way we do this is to create a server that will simply return the common name of the identity
-     * presented in the client certificate (via the Subject common name CN) and the method by which the connection
+     * presented in the client certificate; via the Subject common name CN) and the method by which the connection
      * is made (x509 for tls connections).  If we change the configuration, then this value will change to the new
      * credentials presented by the newly configured client.
      *
@@ -460,7 +466,7 @@ struct Tester {
 
         update = pop(sub, evt);
         testEq(update[TEST_PV_FIELD].as<std::string>(), TLS_METHOD_STRING "/" CERT_CN_CLIENT2);
-        // Cached responses so no checks
+        // Cached responses so no new subscriptions
         waitCounterAtLeast(cert_status_request_counters, cert_status_evt, ioc, 3);
         waitCounterAtLeast(cert_status_request_counters, cert_status_evt, client1, 2);
         waitCounterAtLeast(cert_status_request_counters, cert_status_evt, client2, 2);
@@ -470,7 +476,7 @@ struct Tester {
      * @brief Tests that a new configuration is applied to all server connections when the server reconfigure() is executed.
      *
      * Here we use the SERVER1 and IOC1 certificates for the server and check that after a reconfigure() the
-     * tls session is re-established but using the new configuration.
+     * TLS session is re-established but using the new configuration.
      *
      * As this uses the Mock PVACMS, we verify that it checks certificate status before using the certificates
      */

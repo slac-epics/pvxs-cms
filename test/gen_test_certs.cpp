@@ -279,23 +279,6 @@ struct CertCreator {
     size_t keylen = 2048;
     const EVP_MD* sig = EVP_sha256();
 
-    static const char *nid2String(int nid) {
-        switch (nid) {
-            case NID_subject_key_identifier:
-                return LN_subject_key_identifier;
-            case NID_key_usage:
-                return LN_key_usage;
-            case NID_basic_constraints:
-                return LN_basic_constraints;
-            case NID_authority_key_identifier:
-                return LN_authority_key_identifier;
-            case NID_ext_key_usage:
-                return LN_ext_key_usage;
-            default:
-                return "unknown";
-        }
-    }
-
     /**
      * Add a string extension by NID to certificate.
      *
@@ -425,8 +408,7 @@ struct CertCreator {
             add_extension(cert.get(), NID_ext_key_usage, extended_key_usage);
 
         if ( add_status_extension) {
-            const X509* issuer_cert = root ? root : issuer;
-            const auto issuer_id = pvxs::certs::CertStatusManager::getIssuerIdFromCert(issuer_cert);
+            const auto issuer_id = pvxs::certs::CertStatus::getSkId(issuer);
             addCustomExtensionByNid(cert, pvxs::ossl::NID_SPvaCertStatusURI, getCertStatusURI("CERT", issuer_id, serial));
         }
 

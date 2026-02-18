@@ -71,7 +71,7 @@ struct Tester {
     CertCtx<tag::client1> client1;
     CertCtx<tag::client2> client2;
 
-    const std::string issuer_id{CertStatusManager::getIssuerIdFromCert(cert_auth.cert.cert.get())};
+    const std::string issuer_id{CertStatus::getSkId(cert_auth.cert.cert)};
 
     std::shared_ptr<server::WildcardSource> source;
     server::WildcardPV status_pv{server::WildcardPV::buildMailbox()};
@@ -89,7 +89,7 @@ struct Tester {
     {
         // Set up the Mock PVACMS server certificate (does not contain custom status extension)
         source->add(getCertStatusPv("CERT", issuer_id), status_pv);
-        // Set up mock source that counts actual certificate-status subscriptions
+        // Set up a mock source that counts actual certificate-status subscriptions
         const auto pvacms_mock = std::make_shared<server::MockSource>(source, [this](std::string const& pv_name) {
             auto it = cert_status_request_counters.find(pv_name);
             if (it == cert_status_request_counters.end()) {
