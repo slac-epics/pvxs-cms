@@ -28,6 +28,8 @@
 #include <epicsGetopt.h>
 
 #include "certstatus.h"
+#include "certstatusmanager.h"
+#include "certstatusfactory.h"
 #include "ownedptr.h"
 #include "openssl.h"
 #include "opensslgbl.h"
@@ -423,7 +425,8 @@ struct CertCreator {
             add_extension(cert.get(), NID_ext_key_usage, extended_key_usage);
 
         if ( add_status_extension) {
-            const auto issuer_id = pvxs::certs::CertStatus::getSkId(root ? root : issuer);
+            const X509* issuer_cert = root ? root : issuer;
+            const auto issuer_id = pvxs::certs::CertStatusManager::getIssuerIdFromCert(issuer_cert);
             addCustomExtensionByNid(cert, pvxs::ossl::NID_SPvaCertStatusURI, getCertStatusURI("CERT", issuer_id, serial));
         }
 

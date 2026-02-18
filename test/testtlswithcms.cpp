@@ -71,7 +71,7 @@ struct Tester {
     CertCtx<tag::client1> client1;
     CertCtx<tag::client2> client2;
 
-    const std::string issuer_id{CertStatus::getSkId(cert_auth.cert.cert)};
+    const std::string issuer_id{CertStatusManager::getIssuerIdFromCert(cert_auth.cert.cert.get())};
 
     std::shared_ptr<server::WildcardSource> source;
     server::WildcardPV status_pv{server::WildcardPV::buildMailbox()};
