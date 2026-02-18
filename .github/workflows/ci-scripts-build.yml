@@ -128,7 +128,7 @@ jobs:
       run: python .ci/cue.py exec python .ci-local/libevent.py
       if: runner.os == 'Windows' || matrix.cross != ''
     - name: Build pvxs-tls tools
-      run: python .ci/cue.py exec make -C {CACHEDIR}/pvxs-pvxs-tls
+      run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-pvxs-tls
     - name: Build main module
       run: python .ci/cue.py build
     - name: otool (for bundled libevent)
@@ -138,7 +138,7 @@ jobs:
       if: ${{ runner.os == 'Windows' || matrix.cross != '' }}
       run: find bundle/usr lib -name '*.so' -print0 | xargs -0 readelf -d bin/linux-*/pvxinfo
     - name: Host info
-      run: python .ci/cue.py --add-path "{CACHEDIR}/pvxs-pvxs-tls/bin/{EPICS_HOST_ARCH}" --add-path "{TOP}/bundle/usr/{EPICS_HOST_ARCH}/lib" exec pvxinfo -D
+      run: python .ci/cue.py --add-path "${CACHEDIR}/pvxs-pvxs-tls/bin/${EPICS_HOST_ARCH}" --add-path "${TOP}/bundle/usr/${EPICS_HOST_ARCH}/lib" exec pvxinfo -D
     - name: Test env setup
       run: echo "UBSAN_OPTIONS=log_path=$PWD/UBSAN:suppressions=$PWD/.ci-local/ubsan.supp:report_error_type=1:print_stacktrace=1" >> $GITHUB_ENV
     - name: Run main module tests
@@ -256,7 +256,7 @@ jobs:
       shell: bash
       run: echo "LIBEVENT=$PWD/bundle/usr/${{ matrix.cross }}" >> $GITHUB_ENV
     - name: Build pvxs-tls dependency
-      run: python .ci/cue.py exec make -C {CACHEDIR}/pvxs-pvxs-tls
+      run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-pvxs-tls
     - name: Build main module
       run: python .ci/cue.py build
     - name: readelf
