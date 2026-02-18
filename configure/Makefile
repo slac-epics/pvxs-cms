@@ -35,7 +35,11 @@ install: TOOLCHAIN
 
 TOOLCHAIN: toolchain.c
 	$(CPP) $(CPPFLAGS) $(INCLUDES) ../toolchain.c > $@.tmp
-	$(CPP) $(CPPFLAGS) $(INCLUDES) ../probe-openssl.c > probe-openssl.out && echo "EVENT2_HAS_OPENSSL = YES" >> $@.tmp || echo "No OpenSSL"
+	$(CPP) $(CPPFLAGS) $(INCLUDES) ../probe-openssl.c > probe-openssl.out && \
+		echo "EVENT2_HAS_OPENSSL = YES" >> $@.tmp || echo "No OpenSSL"
+	# Propagate detected/custom include paths into the toolchain so all targets (incl. tests) see them
+	$(if $(LIBEVENT),echo "USR_INCLUDES += -I$(LIBEVENT)/include" >> $@.tmp, true)
+	$(if $(OPENSSL),echo "USR_INCLUDES += -I$(OPENSSL)/include" >> $@.tmp, true)
 	$(MV) $@.tmp $@
 
 endif
