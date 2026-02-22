@@ -39,7 +39,7 @@ jobs:
             cmp: gcc
             configuration: default
             base: "7.0-secure-pvaccess"
-            extra: "CMD_CPPFLAGS=-Werror PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
+            extra: "USR_CPPFLAGS=-Werror PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
             doc: 1
 
           - name: Native Linux (libc++ debug) EPICS 7.0-secure-pvaccess
@@ -47,7 +47,7 @@ jobs:
             cmp: gcc
             configuration: default
             base: "7.0-secure-pvaccess"
-            extra: "CMD_CPPFLAGS=\"-D_GLIBCXX_ASSERTIONS -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC\" PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
+            extra: "USR_CPPFLAGS=\"-D_GLIBCXX_ASSERTIONS -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC\" PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
             doc: 1
 
           - name: Native Linux (c++17) EPICS 7.0-secure-pvaccess
@@ -55,7 +55,7 @@ jobs:
             cmp: gcc
             configuration: default
             base: "7.0-secure-pvaccess"
-            extra: "CMD_CXXFLAGS=-std=c++17 PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
+            extra: "USR_CXXFLAGS=-std=c++17 PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
           - name: Linux (gcc) EPICS 7.0-secure-pvaccess
             os: ubuntu-latest
@@ -70,7 +70,7 @@ jobs:
             configuration: default
             base: "R7.0.2"
             set: "nofortify"
-            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES CMD_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
+            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES USR_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
 
           - name: Linux (gcc) EPICS 3.15
             os: ubuntu-latest
@@ -78,7 +78,7 @@ jobs:
             configuration: default
             base: "3.15"
             set: "nofortify"
-            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES CMD_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
+            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES USR_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
 
           - name: Linux (clang) EPICS 7.0-secure-pvaccess
             os: ubuntu-latest
