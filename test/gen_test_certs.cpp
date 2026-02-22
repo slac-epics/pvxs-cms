@@ -24,6 +24,7 @@
 #include <openssl/pkcs12.h>
 #include <openssl/stack.h>
 #include <openssl/err.h>
+#include <openssl/evp.h>
 
 #include <epicsGetopt.h>
 
@@ -68,6 +69,51 @@ struct SB {
     template<typename T>
     SB& operator<<(const T& i) { strm<<i; return *this; }
 };
+
+std::vector<unsigned char> computeSkidFromKey(EVP_PKEY* pkey) {
+    std::vector<unsigned char> skid;
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int hash_len = 0;
+
+    const pvxs::ossl_ptr<EVP_MD_CTX> mdctx(EVP_MD_CTX_new(), false);
+    if (!mdctx) throw SSLError("Failed to create MD context");
+
+    if (!EVP_DigestInit_ex(mdctx.get(), EVP_sha1(), nullptr)) {
+        throw SSLError("Failed to init SHA1 digest");
+    }
+
+    const int len = i2d_PUBKEY(pkey, nullptr);
+    if (len <= 0) throw SSLError("Failed to get public key DER length");
+
+    std::vector<unsigned char> der_data(len);
+    unsigned char* der_ptr = der_data.data();
+    if (i2d_PUBKEY(pkey, &der_ptr) != len) {
+        throw SSLError("Failed to encode public key");
+    }
+
+    const unsigned char* der_data_ptr = der_data.data();
+    const pvxs::ossl_ptr<X509_PUBKEY> pubkey_struct(d2i_X509_PUBKEY(nullptr, &der_data_ptr, len), false);
+    if (!pubkey_struct) throw SSLError("Failed to parse X509_PUBKEY");
+
+    ASN1_OBJECT* alg = nullptr;
+    const unsigned char* pk_data = nullptr;
+    int pk_len = 0;
+    X509_ALGOR* algor = nullptr;
+    if (!X509_PUBKEY_get0_param(&alg, &pk_data, &pk_len, &algor, pubkey_struct.get())) {
+        throw SSLError("Failed to extract public key");
+    }
+
+    if (!EVP_DigestUpdate(mdctx.get(), pk_data, pk_len)) {
+        throw SSLError("Failed to update digest");
+    }
+
+    if (!EVP_DigestFinal_ex(mdctx.get(), hash, &hash_len)) {
+        throw SSLError("Failed to finalize digest");
+    }
+
+    skid.assign(hash, hash + hash_len);
+    return skid;
+}
 
 // many openssl calls return 1 (or sometimes zero) on success.
 void _must_equal(int expect, int actual, const char *expr)
@@ -152,6 +198,17 @@ void add_extension(X509* cert, int nid, const char *expr,
     pvxs::ossl_ptr<X509_EXTENSION> ext(X509V3_EXT_conf_nid(nullptr, &xctx, nid,
                                                       expr));
     MUST(1, X509_add_ext(cert, ext.get(), -1));
+}
+
+void add_skid_extension(X509* cert, EVP_PKEY* pkey) {
+    auto skid = computeSkidFromKey(pkey);
+
+    ASN1_OCTET_STRING* skid_asn1 = ASN1_OCTET_STRING_new();
+    ASN1_OCTET_STRING_set(skid_asn1, skid.data(), skid.size());
+
+    X509_EXTENSION* ext = X509V3_EXT_i2d(NID_subject_key_identifier, 0, skid_asn1);
+    MUST(1, X509_add_ext(cert, ext, -1));
+    X509_EXTENSION_free(ext);
 }
 
 /**
@@ -385,13 +442,13 @@ struct CertCreator {
         // certificate extensions...
         // see RFC5280
 
-        // Store a hash of the public key.  (kind of redundant to stored public key?)
-        // RFC5280 mandates this for a Certificate Authority certificate.  Optional for others, and very common.
-        add_extension(cert.get(), NID_subject_key_identifier, "hash",
-                      cert.get());
+        // Compute SKID manually to ensure consistency across platforms
+        // This ensures the SKID is computed the same way as OCSP_cert_id_new expects
+        add_skid_extension(cert.get(), ikey);
 
         // store hash and name of issuer certificate (or issuer's issuer?)
         // RFC5280 mandates this for all certificates.
+        // Use keyid:always to copy the issuer's SKID into AKID
         add_extension(cert.get(), NID_authority_key_identifier, "keyid:always,issuer:always",
                       nullptr, issuer);
 
