@@ -56,14 +56,12 @@ jobs:
               - 'example/docker/spva_krb/**'
             spva_ldap:
               - 'example/docker/spva_ldap/**'
-            spva_jwt:
-              - 'example/docker/spva_jwt/**'
             k8s_lab_base:
               - 'example/kubernetes/docker/lab_base/**'
             k8s_lab:
               - 'example/kubernetes/docker/lab/**'
             k8s_pvacms:
-              - 'example/kubernetes/docker/pvacms/**'
+              - 'example/kubernetes/docker/idm/**'
             k8s_testioc:
               - 'example/kubernetes/docker/testioc/**'
             k8s_tstioc:
@@ -71,15 +69,8 @@ jobs:
             k8s_gateway:
               - 'example/kubernetes/docker/gateway/**'
 
-  build-epics-base:
-    if: |
-      github.event_name == 'workflow_dispatch' && 
-      github.event.inputs.build_target == 'epics-base'
-    uses: slac-epics/epics-base-tls/.github/workflows/docker-pub-epics-base.yml@7.0-secure-pvaccess
-
-
   build-pvxs-cms:
-    needs: [check_docker_changes, build-epics-base]
+    needs: [check_docker_changes]
     if: |
       always() && 
       (github.event_name == 'workflow_dispatch' && 
@@ -237,48 +228,8 @@ jobs:
             DOCKER_USERNAME=slac-epics
           tags: ghcr.io/slac-epics/spva_ldap:latest
 
-  build-spva-jwt:
-    needs: [check_docker_changes, build-spva-std]
-    if: |
-      always() && 
-      (github.event_name == 'workflow_dispatch' && 
-       github.event.inputs.build_target == 'spva_jwt') || 
-      (github.event_name == 'push' && 
-       needs.check_docker_changes.outputs.spva_jwt_changed == 'true' && 
-       needs.check_docker_changes.outputs.non_docker_changed == 'false') ||
-      needs.build-spva-std.result == 'success'
-    runs-on: ubuntu-22.04
-    outputs:
-      status: ${{ job.status }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: tls
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push spva_jwt
-        uses: docker/build-push-action@v5
-        with:
-          context: example/docker/spva_jwt/.
-          platforms: linux/amd64,linux/arm64
-          push: true
-          no-cache: true
-          build-args: |
-            DOCKER_REGISTRY=ghcr.io
-            DOCKER_USERNAME=slac-epics
-          tags: ghcr.io/slac-epics/spva_jwt:latest
-
   build-k8s-lab-base:
-    needs: [check_docker_changes, build-pvxs]
+    needs: [check_docker_changes, build-pvxs-cms]
     if: |
       always() &&
       (github.event_name == 'workflow_dispatch' &&
@@ -286,7 +237,7 @@ jobs:
       (github.event_name == 'push' &&
        needs.check_docker_changes.outputs.k8s_lab_base_changed == 'true' &&
        needs.check_docker_changes.outputs.non_docker_changed == 'false') ||
-      needs.build-pvxs.result == 'success'
+      needs.build-pvxs-cms.result == 'success'
     runs-on: ubuntu-22.04
     outputs:
       status: ${{ job.status }}
@@ -361,14 +312,14 @@ jobs:
             BASE_IMAGE_TAG=latest
           tags: ghcr.io/slac-epics/lab:latest
 
-  build-k8s-pvacms:
+  build-k8s-idm:
     needs: [check_docker_changes, build-k8s-lab-base]
     if: |
       always() &&
       (github.event_name == 'workflow_dispatch' &&
-       github.event.inputs.build_target == 'k8s_pvacms') ||
+       github.event.inputs.build_target == 'k8s_idm') ||
       (github.event_name == 'push' &&
-       needs.check_docker_changes.outputs.k8s_pvacms_changed == 'true' &&
+       needs.check_docker_changes.outputs.k8s_idm_changed == 'true' &&
        needs.check_docker_changes.outputs.non_docker_changed == 'false') ||
       needs.build-k8s-lab-base.result == 'success'
     runs-on: ubuntu-22.04
@@ -389,10 +340,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push k8s pvacms
+      - name: Build and push k8s idm
         uses: docker/build-push-action@v5
         with:
-          context: example/kubernetes/docker/pvacms/.
+          context: example/kubernetes/docker/idm/.
           platforms: linux/amd64,linux/arm64
           push: true
           no-cache: true
@@ -401,7 +352,7 @@ jobs:
             DOCKER_USERNAME=slac-epics
             BASE_IMAGE=lab_base
             BASE_IMAGE_TAG=latest
-          tags: ghcr.io/slac-epics/pvacms:latest
+          tags: ghcr.io/slac-epics/idm:latest
 
   build-k8s-testioc:
     needs: [check_docker_changes, build-k8s-lab-base]
