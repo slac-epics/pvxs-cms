@@ -168,6 +168,8 @@ jobs:
       run: python .ci/cue.py build
     - name: Test env setup
       run: echo "UBSAN_OPTIONS=log_path=$PWD/UBSAN:suppressions=$PWD/.ci-local/ubsan.supp:report_error_type=1:print_stacktrace=1" >> $GITHUB_ENV
+    - name: Test Logging Setup
+      run: echo 'PVXS_LOG=pvxs.stapling=DEBUG' >> $GITHUB_ENV
     - name: Run main module tests
       run: python -m ci_core_dumper exec python .ci/cue.py -T 5M --add-path "${CACHEDIR}/pvxs-pvxs-tls/bundle/usr/{EPICS_HOST_ARCH}/lib" test
     - name: Collect and show test results
