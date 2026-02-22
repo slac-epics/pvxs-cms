@@ -48,13 +48,6 @@ COPY ${RELATIVE_DOCKER_DIR}/gateway.acf    .
 RUN chown -R gateway:gateway /home/gateway && \
     chmod 644                /home/gateway/gateway.*
 
-# Create the log files with correct permissions
-RUN touch /var/log/supervisor/gateway.out.log \
-          /var/log/supervisor/gateway.err.log && \
-    chown gateway:gateway \
-          /var/log/supervisor/gateway.out.log \
-          /var/log/supervisor/gateway.err.log
-
 # Copy the gateway Supervisor config
 COPY ${RELATIVE_DOCKER_DIR}/gateway-supervisor.conf /etc/supervisor/conf.d/gateway.conf
 

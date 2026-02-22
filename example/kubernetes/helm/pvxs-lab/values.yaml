@@ -2,8 +2,8 @@ dockerRegistry: "ghcr.io"
 dockerUsername: "slac-epics"
 
 images:
-  pvacms:
-    name: "pvacms"
+  idm:
+    name: "idm"
     tag: "latest"
   testioc:
     name: "testioc"
@@ -20,11 +20,21 @@ images:
 
 imagePullPolicy: IfNotPresent
 
-pvacms:
+idm:
   replicas: 1
+  service:
+    name: "idm"
+    udpPort: 88
+    tcpPort: 749
+    pwdPort: 464
+
+  expose:
+    nodePortUdp: 30088
+    nodePortTcp: 30049
+
   debug:
     enabled: false
-    logLevel: "pvxs.*=DEBUG"
+    logLevel: "pvxs.*=INFO"
   persistence:
     enabled: true
     size: 64Mi
@@ -35,7 +45,7 @@ testioc:
   replicas: 1
   debug:
     enabled: false
-    logLevel: "pvxs.*=DEBUG"
+    logLevel: "pvxs.*=INFO"
   persistence:
     enabled: true
     size: 64Mi
@@ -45,7 +55,7 @@ tstioc:
   replicas: 1
   debug:
     enabled: false
-    logLevel: "pvxs.*=DEBUG"
+    logLevel: "pvxs.*=INFO"
   persistence:
     enabled: true
     size: 64Mi
@@ -75,7 +85,7 @@ gateway:
         {
           "name": "upstream",
           "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.pvacmsService" . }} {{ include "pvxs-lab.testiocService" . }} {{ include "pvxs-lab.tstiocService" . }}",
+          "addrlist": "{{ include "pvxs-lab.idmService" . }} {{ include "pvxs-lab.testiocService" . }} {{ include "pvxs-lab.tstiocService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12"
         }
       ],
@@ -85,7 +95,7 @@ gateway:
           "clients": ["upstream"],
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.gatewayService" . }} {{ include "pvxs-lab.pvacmsService" . }}",
+          "addrlist": "{{ include "pvxs-lab.gatewayService" . }} {{ include "pvxs-lab.idmService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway{{ if .Values.gateway.separate_server_keychain }}{{ "S" }}{{ end }}.p12",
           {{- if eq .Values.gateway.expose.mode "NodePort" }}
           "serverport": "{{ toJson .Values.gateway.expose.tcpPort }}",
@@ -108,7 +118,7 @@ gateway:
 
   debug:
     enabled: false
-    logLevel: "p4p.gw*=DEBUG"
+    logLevel: "p4p.gw*=INFO"
 
   persistence:
     enabled: true

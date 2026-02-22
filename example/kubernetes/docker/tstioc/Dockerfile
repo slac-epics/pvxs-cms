@@ -23,13 +23,6 @@ RUN chown tstioc:tstioc /home/tstioc/.tstioc_bashrc && \
 
 RUN echo "source ~/.tstioc_bashrc" >> /home/tstioc/.bashrc
 
-# Create the log files with correct permissions
-RUN touch /var/log/supervisor/tstioc.out.log \
-          /var/log/supervisor/tstioc.err.log && \
-    chown tstioc:tstioc \
-          /var/log/supervisor/tstioc.out.log \
-          /var/log/supervisor/tstioc.err.log
-
 # Copy the tstioc Supervisor config
 COPY tstioc-supervisor.conf /etc/supervisor/conf.d/tstioc.conf
 

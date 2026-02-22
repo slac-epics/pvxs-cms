@@ -23,11 +23,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
+{{- define "pvxs-lab.idmService" -}}
+{{ include "pvxs-lab.fullname" . }}-idm
+{{- end -}}
 {{- define "pvxs-lab.gatewayService" -}}
 {{ include "pvxs-lab.fullname" . }}-gateway
-{{- end -}}
-{{- define "pvxs-lab.pvacmsService" -}}
-{{ include "pvxs-lab.fullname" . }}-pvacms
 {{- end -}}
 {{- define "pvxs-lab.testiocService" -}}
 {{ include "pvxs-lab.fullname" . }}-testioc

@@ -1,27 +1,30 @@
 #!/usr/bin/env zsh
 
 function gw_build_images {
- pushd $PVXS/example/kubernetes/docker
+ pushd $PVXS_CMS/example/kubernetes/docker
  builder="./build.sh"
-
- if [[ "$1" == "gateway" || "$1" == "lab" ||  "$1" == "lab_base" || "$1" == "pvacms" ||  "$1" == "testioc" || "$1" == "tstioc" ]] ; then
-  cd $1
-  builder="./build_docker.sh"
-  shift
+ if [[ "$1" == "gateway" || "$1" == "lab" || "$1" == "lab_base" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" ]]
+ then
+ 	cd $1
+ 	builder="./build_docker.sh"
+ 	shift
  fi
  $builder $*
  popd
 }
 
 function gw_deploy {
- pushd $PVXS/example/kubernetes/helm
+ pushd $PVXS_CMS/example/kubernetes/helm
  if [[ "$1" == "-r" ]] ; then
   helm uninstall pvxs-lab -n pvxs-lab
   sleep 5
+  shift
  fi
  helm upgrade --install pvxs-lab pvxs-lab -n pvxs-lab \
   --set gateway.expose.mode=NodePort \
-  --set gateway.expose.enableUdp=false
+  --set dockerRegistry=${DOCKER_REGISTRY} \
+  --set dockerUsername=${DOCKER_USERNAME} \
+  --set gateway.expose.enableUdp=false ${*}
  popd
 }
 
@@ -35,11 +38,13 @@ function gw_internet_config {
  export EPICS_PVA_AUTO_ADDR_LIST=NO
  export EPICS_PVA_ADDR_LIST=""
  export EPICS_PVA_NAME_SERVERS="127.0.0.1:31075"
- echo "INTERNET mode: PVA client->${EPICS_PVA_NAME_SERVERS} ; ~/.config/pva/1.5/client.p12"
+ sed "s/<NODE-IP>/127.0.0.1/g" ${PVXS_CMS}/example/kubernetes/krb5-client.conf > /tmp/krb5.conf
+ export KRB5_CONFIG=/tmp/krb5.conf
+ echo "INTERNET mode: PVA client->${EPICS_PVA_NAME_SERVERS} ; ~/.config/pva/1.5/client.p12 ; KRB5 PORTS: 30049, 30088"
 }
 
 function go_in_to {
- if [[ "$1" == "lab" ||  "$1" == "pvacms" ||  "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" ]] ; then
+ if [[ "$1" == "lab" ||  "$1" == "idm" ||  "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" ]] ; then
   kubectl -n pvxs-lab exec -it deploy/pvxs-lab-$1 -- /bin/bash
  else
   echo "No such lab system: $1"
@@ -50,8 +55,8 @@ function go_in_to {
 function login_to_lab {
  if [[ "$1" == "guest" || "$1" == "operator" ]] ; then
   kubectl -n pvxs-lab exec -it deploy/pvxs-lab-lab -- su - $1
- elif [[ "$1" == "admin" || "$1" == "pvacms" ]] ;  then
-  kubectl -n pvxs-lab exec -it deploy/pvxs-lab-pvacms -- su - $1
+ elif [[ "$1" == "admin" || "$1" == "idm" ]] ;  then
+  kubectl -n pvxs-lab exec -it deploy/pvxs-lab-idm -- su - $1
  elif [[ "$1" == "testioc" ]] ; then
   kubectl -n pvxs-lab exec -it deploy/pvxs-lab-testioc -- su - $1
  elif [[ "$1" == "tstioc" ]] ; then
@@ -80,12 +85,12 @@ function gw_cp {
   local dst=${4:-./${src:t}}
 
   case "${sys}:${user}" in
-    (gateway:gateway|pvacms:pvacms|testioc:testioc|tstioc:tstioc|pvacms:admin|lab:guest|lab:operator)
+    (gateway:gateway|idm:idm|testioc:testioc|tstioc:tstioc|idm:admin|lab:guest|lab:operator)
       ;;
     (*)
       echo "usage: gw_cp <sys> <user> <src> [dest]"
-      echo "sys: gateway|pvacms|testioc|tstioc|lab"
-      echo "user: gateway|pvacms|testioc|tstioc|admin|guest|operator"
+      echo "sys: gateway|idm|testioc|tstioc|lab"
+      echo "user: gateway|idm|testioc|tstioc|admin|guest|operator"
       return 1
       ;;
   esac
@@ -113,12 +118,12 @@ function gw_cp_in {
   local dst=$4
 
   case "${sys}:${user}" in
-    (gateway:gateway|pvacms:pvacms|testioc:testioc|tstioc:tstioc|pvacms:admin|lab:guest|lab:operator)
+    (gateway:gateway|idm:idm|testioc:testioc|tstioc:tstioc|idm:admin|lab:guest|lab:operator)
       ;;
     (*)
       echo "usage: gw_cp <sys> <user> <src> [dest]"
-      echo "sys: gateway|pvacms|testioc|tstioc|lab"
-      echo "user: gateway|pvacms|testioc|tstioc|admin|guest|operator"
+      echo "sys: gateway|idm|testioc|tstioc|lab"
+      echo "user: gateway|idm|testioc|tstioc|admin|guest|operator"
       return 1
       ;;
   esac

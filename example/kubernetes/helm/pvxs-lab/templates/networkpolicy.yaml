@@ -4,11 +4,11 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "pvxs-lab.fullname" . }}-pvacms-ingress
+  name: {{ include "pvxs-lab.fullname" . }}-idm-ingress
 spec:
   podSelector:
     matchLabels:
-      app: pvacms
+      app: idm
       release: {{ .Release.Name }}
   policyTypes: ["Ingress"]
   ingress:
@@ -59,7 +59,7 @@ spec:
   ingress: []
 
 ---
-# 4) Lab egress: allow ONLY to pvacms/testioc/tstioc + DNS
+# 4) Lab egress: allow ONLY to idm/testioc/tstioc + DNS
 #    This blocks lab -> gateway (by Service name, Pod IP, or hostNetwork IP).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -76,7 +76,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app: pvacms
+              app: idm
               release: {{ .Release.Name }}
         - podSelector:
             matchLabels:

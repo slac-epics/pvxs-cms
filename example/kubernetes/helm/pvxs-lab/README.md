@@ -1,6 +1,6 @@
 # pvxs-lab Helm chart
 
-Deploy pvacms, testioc, tstioc, and gateway together.
+Deploy krb5, pvacms, testioc, tstioc, and gateway together.
 
 Key behaviour:
 - Only gateway is reachable from the external network via hostNetwork.

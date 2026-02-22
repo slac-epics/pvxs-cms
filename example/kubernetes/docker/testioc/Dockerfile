@@ -23,13 +23,6 @@ RUN chown testioc:testioc /home/testioc/.testioc_bashrc && \
 
 RUN echo "source ~/.testioc_bashrc" >> /home/testioc/.bashrc
 
-# Create the log files with correct permissions
-RUN touch /var/log/supervisor/testioc.out.log \
-          /var/log/supervisor/testioc.err.log && \
-    chown testioc:testioc \
-          /var/log/supervisor/testioc.out.log \
-          /var/log/supervisor/testioc.err.log
-
 # Copy the testioc Supervisor config
 COPY testioc-supervisor.conf /etc/supervisor/conf.d/testioc.conf
 

@@ -9,6 +9,6 @@ ${DOCKER_ROOT_DIR}/lab/build_docker.sh ${*}
 ${DOCKER_ROOT_DIR}/testioc/build_docker.sh ${*}
 ${DOCKER_ROOT_DIR}/tstioc/build_docker.sh ${*}
 
-${DOCKER_ROOT_DIR}/pvacms/build_docker.sh ${*}
+${DOCKER_ROOT_DIR}/idm/build_docker.sh ${*}
 
 ${DOCKER_ROOT_DIR}/gateway/build_docker.sh ${*}

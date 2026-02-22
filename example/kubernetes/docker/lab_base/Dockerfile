@@ -14,12 +14,17 @@ RUN apt-get update && \
     apt-get install -y \
             adduser \
             sudo \
-            supervisor
+            supervisor \
+            libkrb5-dev \
+            krb5-user \
+            libgssapi-krb5-2
 
 RUN echo "PVXS = \$(TOP)/../pvxs" >> ${PROJECT_HOME}/RELEASE.local
+RUN echo "PVXS_ENABLE_KRB_AUTH = YES" >> ${PROJECT_HOME}/CONFIG_SITE.local
+RUN cd ${PROJECT_HOME}/pvxs-cms && make -j$(nproc) all
 
-# Create the log directory and files with correct permissions
-RUN mkdir -p /var/log/supervisor
+# Copy user kerberos configuration
+COPY krb5.conf /etc/krb5.conf
 
 # Copy the top-level Supervisor config
 COPY supervisord.conf /etc/supervisor/supervisord.conf

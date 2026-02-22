@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-krb5
+  labels:
+{{ include "pvxs-lab.labels" . | indent 4 }}
+data:
+  krb5.conf: |
+    [libdefaults]
+    default_realm = EPICS.ORG
+    dns_lookup_kdc = false
+    dns_lookup_realm = false
+    dns_canonicalize_hostname = false
+    forwardable = yes
+    proxiable = yes
+    ticket_lifetime = 24h
+    renew_lifetime = 7d
+
+    [realms]
+    EPICS.ORG = {
+        kdc = {{ .Values.idm.service.name }}:{{ .Values.idm.service.udpPort }}
+        admin_server = {{ .Values.idm.service.name }}:{{ .Values.idm.service.tcpPort }}
+        kpasswd_server = {{ .Values.idm.service.name }}:{{ .Values.idm.service.pwdPort }}
+        default_domain = epics.org
+    }
+
+    [domain_realm]
+    .epics.org = EPICS.ORG
+    epics.org = EPICS.ORG

@@ -31,6 +31,9 @@ spec:
             - name: pva-config
               mountPath: /home/operator/.config/pva/1.5
               subPath: operator
+          env:
+            - name: EPICS_AUTH_KRB_REALM
+              value: "EPICS.ORG"
       volumes:
         - name: pva-config
           {{- if .Values.lab.persistence.enabled }}

@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-idm
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.idm.replicas }}
+  selector:
+    matchLabels:
+      app: idm
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: idm
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: idm
+          image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.idm.name "tag" .Values.images.idm.tag) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - name: pva-tcp
+              containerPort: {{ .Values.ports.pvaTcp }}
+              protocol: TCP
+            - name: pva-udp
+              containerPort: {{ .Values.ports.pvaUdp }}
+              protocol: UDP
+            - name: kerberos
+              containerPort: {{ .Values.idm.service.udpPort }}
+              protocol: UDP
+            - name: admin
+              containerPort: {{ .Values.idm.service.tcpPort }}
+              protocol: TCP
+            - name: kpasswd
+              containerPort: {{ .Values.idm.service.pwdPort }}
+              protocol: TCP
+          volumeMounts:
+            - name: pva-config
+              mountPath: /home/idm/.config/pva/1.5
+            - name: pva-data
+              mountPath: /home/idm/.local/share/pva/1.5
+          env:
+            - name: KRB5_CONFIG
+              value: /etc/krb5.conf
+            - name: KRB5_KDC_PROFILE
+              value: /var/lib/krb5kdc/kdc.conf
+            - name: KRB5_KTNAME
+              value: /home/idm/.config/krb5/pvacms.keytab
+            - name: EPICS_AUTH_KRB_REALM
+              value: "EPICS.ORG"
+            - name: EPICS_AUTH_KRB_VALIDATOR_SERVICE
+              value: "pvacms"
+            - name: PVXS_LOG
+              value: {{ .Values.idm.debug.logLevel | quote }}
+            - name: KADMIN_ADMIN_SERVER
+              value: "{{ include "pvxs-lab.fullname" . }}-idm:{{ .Values.idm.service.tcpPort }}"
+            - name: KADMIN_PASSWORD
+              value: "secret"
+            - name: KDB_PASSWORD
+              value: "secret"
+          securityContext:
+            runAsUser: 0  # Run as root to allow KDC to bind to privileged ports
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/bash
+                  - -lc
+                  - |
+                    set -euo pipefail
+                    
+                    src=/home/idm/.config/pva/1.5/admin.p12
+                    dst=/home/admin/.config/pva/1.5/client.p12
+                    
+                    mkdir -p "$(dirname "$dst")"
+                    chown -R admin:admin /home/admin/.config/pva || true
+                    
+                    # Wait for pvacms to generate admin.p12
+                    for i in {1..60}; do
+                      if [ -s "$src" ]; then
+                        cp -f "$src" "$dst"
+                        chown admin:admin "$dst" || true
+                        chmod 0600 "$dst" || true
+                        exit 0
+                      fi
+                      sleep 0.5
+                    done
+                    
+                    echo "admin.p12 not found after timeout" >&2
+                    exit 1
+      volumes:
+        - name: pva-config
+          {{- if .Values.idm.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pvxs-lab.fullname" . }}-idm-config
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: pva-data
+          {{- if .Values.idm.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pvxs-lab.fullname" . }}-idm-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

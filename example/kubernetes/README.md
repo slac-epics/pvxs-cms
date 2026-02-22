@@ -13,7 +13,8 @@ The goal is that external clients can only reach the SoftIOC’s PVs via the gat
 - lab:
   - operator
   - guest
-- pvacms
+- idm
+  - kdc
   - pvacms
   - admin
 - testioc:
@@ -28,6 +29,81 @@ The goal is that external clients can only reach the SoftIOC’s PVs via the gat
   - operator
 - extern:
   - remote
+
+
+# Kerberos Authentication
+
+The lab cluster includes a Kerberos KDC (Key Distribution Center) for authentication.
+
+## Kerberos Realm
+- **Realm**: EPICS.ORG
+- **KDC Service**: pvxs-lab-idm (port 88, 479)
+- **NodePort**: 30049, 30088 (for external kinit)
+
+## Users (Kerberos Principals)
+| Principal  | Password |
+|------------|----------|
+| operator@EPICS.ORG | secret |
+| guest@EPICS.ORG | secret |
+| client@EPICS.ORG | secret |
+
+## External Access (kinit from outside cluster)
+
+1. Copy the sample client configuration:
+   ```sh
+   cp krb5-client.conf /etc/krb5.conf
+   ```
+
+2. Replace `<NODE-IP>` with your Kubernetes node's IP address:
+   ```sh
+   sed -i 's/<NODE-IP>/<your-node-ip>/g' /etc/krb5.conf
+   ```
+
+3. Initialize your Kerberos ticket:
+   ```sh
+   kinit operator@EPICS.ORG
+   # Password: secret
+   ```
+
+4. Verify your ticket:
+   ```sh
+   klist
+   ```
+
+5. Use authnkrb to get an X.509 certificate:
+   ```sh
+   authnkrb
+   ```
+
+## Inside the Lab Pod
+
+Users inside the lab pod already have Kerberos configured via the ConfigMap:
+
+```sh
+kubectl exec -it deploy/pvxs-lab-lab -- su - guest
+kinit guest@EPICS.ORG
+# Password: secret
+```
+
+## Building the IDM Image
+
+The IDM (Identity Management) image includes the KDC and pvacms:
+
+```sh
+cd docker/idm
+./build_docker.sh
+```
+
+## Helm Deployment
+
+Deploy with Helm:
+
+```sh
+helm upgrade --install pvxs-lab ./helm/pvxs-lab \
+  --namespace pvxs-lab --create-namespace
+```
+
+The IDM service is exposed via NodePort on UDP port 30088.
 
 
 # PVs available:
