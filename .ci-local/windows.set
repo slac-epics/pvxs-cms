@@ -6,7 +6,6 @@ BASE=7.0
 BASE_VARNAME=EPICS_BASE
 BASE_RECURSIVE=no
 
-# PVXS - NOT included as MODULES, built manually after libevent.py
 PVXS_DIRNAME=pvxs
 PVXS_REPONAME=pvxs-tls
 PVXS_REPOOWNER=slac-epics

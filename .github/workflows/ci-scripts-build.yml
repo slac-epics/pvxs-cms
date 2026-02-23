@@ -119,6 +119,34 @@ jobs:
       run: |
         brew install libevent krb5 openldap
 
+    - name: Install OpenSSL for MinGW
+      if: runner.os == 'windows'
+      run: |
+        wget https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
+        tar xzf openssl-${OPENSSL_VERSION}.tar.gz
+        cd openssl-${OPENSSL_VERSION}
+        ./Configure mingw64 --cross-compile-prefix=x86_64-w64-mingw32- --prefix=/usr/x86_64-w64-mingw32
+        make -j$(nproc)
+        sudo make install
+
+        # Ensure the default library search paths contain unversioned import/static libs.
+        # Some OpenSSL builds install only versioned names and/or to lib64.
+        SYSROOT=/usr/x86_64-w64-mingw32
+        for lib in ssl crypto; do
+          for kind in dll.a a; do
+            tgt="$SYSROOT/lib/lib${lib}.${kind}"
+            if [ ! -e "$tgt" ]; then
+              cand=$(ls -1 "$SYSROOT"/lib/lib${lib}*.${kind} "$SYSROOT"/lib64/lib${lib}*.${kind} 2>/dev/null | head -n1 || true)
+              if [ -n "$cand" ]; then
+                sudo ln -sf "$cand" "$tgt"
+              fi
+            fi
+          done
+        done
+
+        cd ..
+        rm -rf openssl-${OPENSSL_VERSION}*
+
     - name: Host Info
       run: openssl version -a
 
