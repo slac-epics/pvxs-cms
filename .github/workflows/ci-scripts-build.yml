@@ -150,10 +150,10 @@ jobs:
       run: openssl version -a
     - name: Automatic core dumper analysis
       uses: mdavidsaver/ci-core-dumper@master
-    - name: Build libevent
-      run: python .ci/cue.py exec python .ci-local/libevent.py
     - name: Prepare and compile dependencies
       run: python .ci/cue.py prepare
+    - name: Build libevent
+      run: python .ci/cue.py exec python .ci-local/libevent.py
     - name: Build pvxs-tls tools
       run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-pvxs-tls
     - name: Build main module
