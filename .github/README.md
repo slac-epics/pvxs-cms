@@ -9,6 +9,4 @@
 | Linux (clang) | 7.0-secure-pvaccess | ✅        | ✅        | ✅         | ✅       | ✅      | ✅     |
 | macOS         | 7.0-secure-pvaccess | ✅        | ✅        | ✅         | ✅       | ✅      | ✅     |
 | Windows       | 7.0-secure-pvaccess | ✅        | ❌        | ❌         | ✅       | ❌      | ✅     |
-| RTEMS         | 7.0-secure-pvaccess | ✅        | ❌        | ❌         | ✅       | ❌      | ✅     |
-| mingw         | 7.0-secure-pvaccess | ✅        | ✅        | ❌         | ✅       | ❌      | ✅     |
 

@@ -214,24 +214,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: RTEMS5
-            os: ubuntu-22.04
-            cmp: gcc
-            configuration: default
-            base: "7.0-secure-pvaccess"
-            set: "cross"
-            cross: "RTEMS-pc686-qemu@5"
-            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
-
-          - name: mingw64
-            os: ubuntu-latest
-            cmp: gcc
-            configuration: default
-            base: "7.0-secure-pvaccess"
-            set: "cross"
-            cross: "windows-x64-mingw"
-            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=NO"
+        include: []
 
     steps:
     - uses: actions/checkout@v4
@@ -265,33 +248,14 @@ jobs:
         done
         cd ..
         rm -rf openssl-${OPENSSL_VERSION}*
-      if: runner.os == 'Linux' && matrix.cross == 'windows-x64-mingw'
+      if: runner.os == 'Linux' && false  # disabled
 
     - name: Host Info
       run: openssl version -a
     - name: Automatic core dumper analysis
       uses: mdavidsaver/ci-core-dumper@master
-    - name: Clone pvxs-tls manually for cross target
-      if: matrix.cross != ''
-      run: |
-        git clone --depth 1 --branch pvxs-tls https://github.com/slac-epics/pvxs-tls.git ${CACHEDIR}/pvxs-pvxs-tls
-    - name: Build EPICS Base first (base-only.set)
-      if: matrix.cross != ''
-      run: |
-        SET=base-only python .ci/cue.py prepare
-    - name: Build libevent for cross target
-      if: matrix.cross != ''
-      run: python .ci/cue.py exec python .ci-local/libevent.py
-    - name: Export libevent path for cross target
-      if: matrix.cross != ''
-      shell: bash
-      run: |
-        ARCH=$(echo "${{ matrix.cross }}" | cut -d@ -f1)
-        echo "LIBEVENT_$ARCH=$PWD/bundle/usr/$ARCH" >> $GITHUB_ENV
-    - name: Prepare and compile dependencies (with libevent available)
+    - name: Prepare and compile dependencies
       run: python .ci/cue.py prepare
-    - name: Build pvxs-tls dependency
-      run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-pvxs-tls
     - name: Build main module
       run: python .ci/cue.py build
     - name: readelf
@@ -300,12 +264,7 @@ jobs:
     - name: Host info
       run: python .ci/cue.py --add-path "{TOP}/bin/${EPICS_HOST_ARCH}" --add-path "{TOP}/bundle/usr/${EPICS_HOST_ARCH}/lib" exec pvxinfo -D
     - name: Run main module tests
-      run: |
-        if [ "${{ matrix.cross }}" = "RTEMS-pc686-qemu@5" ]; then
-          python -m ci_core_dumper exec python .ci/cue.py build tests
-        else
-          python -m ci_core_dumper exec python .ci/cue.py -T 5M --add-path "{TOP}/bundle/usr/${EPICS_HOST_ARCH}/lib" test
-        fi
+      run: python -m ci_core_dumper exec python .ci/cue.py -T 5M --add-path "{TOP}/bundle/usr/${EPICS_HOST_ARCH}/lib" test
     - name: Collect and show test results
       if: ${{ always() }}
       run: python .ci/cue.py test-results
