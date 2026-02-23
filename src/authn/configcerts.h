@@ -30,7 +30,7 @@ class Config : public server::Config {
         // Get default config
         auto config = Config{};
         config.applyEnv();
-        config.tls_disable_status_check = true;
+        config.disableStatusCheck();
 
         return config;
     }

@@ -3,8 +3,6 @@
  * pvxs is distributed subject to a Software License Agreement found
  * in file LICENSE that is included with this distribution.
  */
-#define PVXS_ENABLE_EXPERT_API
-
 #include <atomic>
 #include <iostream>
 #include <sstream>
@@ -302,14 +300,14 @@ struct Tester {
 
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = SERVER1_KEYCHAIN_FILE;
-        serv_conf.tls_disable_status_check = false;
+        serv_conf.disableStatusCheck(false);
         serv_conf.tls_disable_stapling = false;
 
         auto serv(serv_conf.build().addPV(TEST_PV, mbox));
 
         auto cli_conf(serv.clientConfig());
         cli_conf.tls_keychain_file = CERT_AUTH_CERT_FILE;
-        cli_conf.tls_disable_status_check = false;
+        cli_conf.disableStatusCheck(false);
 
         auto cli(cli_conf.build());
 
@@ -356,7 +354,7 @@ struct Tester {
 
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = SERVER1_KEYCHAIN_FILE;
-        serv_conf.tls_disable_status_check = false;
+        serv_conf.disableStatusCheck(false);
         serv_conf.tls_disable_stapling = false;
         auto serv(serv_conf.build().addPV(TEST_PV, test_pv));
 
@@ -407,7 +405,7 @@ struct Tester {
 
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = IOC1_KEYCHAIN_FILE;
-        serv_conf.tls_disable_status_check = false;
+        serv_conf.disableStatusCheck(false);
         serv_conf.tls_disable_stapling = false;
 
         auto serv(serv_conf.build().addSource(WHO_AM_I_PV, std::make_shared<WhoAmI>()));
@@ -488,7 +486,7 @@ struct Tester {
 
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = SERVER1_KEYCHAIN_FILE;
-        serv_conf.tls_disable_status_check = false;
+        serv_conf.disableStatusCheck(false);
         serv_conf.tls_disable_stapling = false;
 
         auto serv(serv_conf.build().addSource(WHO_AM_I_PV, std::make_shared<WhoAmI>()));
@@ -568,7 +566,7 @@ struct Tester {
             // Configure a server with status checking enabled
             auto serv_conf = server_config;
             serv_conf.tls_keychain_file = IOC1_KEYCHAIN_FILE;
-            serv_conf.tls_disable_status_check = false;
+            serv_conf.disableStatusCheck(false);
             serv_conf.tls_disable_stapling = false;
 
             try {
@@ -579,7 +577,7 @@ struct Tester {
             }
 
             // Now let's do it again with status checking and stapling disabled so we can test the client
-            serv_conf.tls_disable_status_check = true;
+            serv_conf.disableStatusCheck(false);
             serv_conf.tls_disable_stapling = true;
             auto serv(serv_conf.build().addPV(TEST_PV1, test_pv));
             // Start the server
@@ -588,7 +586,7 @@ struct Tester {
             // Configure a client with status checking enabled
             auto cli_conf(serv.clientConfig());
             cli_conf.tls_keychain_file = CLIENT1_KEYCHAIN_FILE;
-            cli_conf.tls_disable_status_check = false;
+            cli_conf.disableStatusCheck(false);
             cli_conf.tls_disable_stapling = false;
             auto cli(cli_conf.build());
 
@@ -604,7 +602,7 @@ struct Tester {
             // Configure a server with status checking and stapling disabled
             auto serv_conf2 = server_config;
             serv_conf2.tls_keychain_file = IOC1_KEYCHAIN_FILE;
-            serv_conf2.tls_disable_status_check = false;
+            serv_conf2.disableStatusCheck(false);
             serv_conf2.tls_disable_stapling = true;
             auto serv2(serv_conf2.build().addPV(TEST_PV2, test_pv));
 
@@ -640,7 +638,7 @@ struct Tester {
 
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = SERVER1_KEYCHAIN_FILE;
-        serv_conf.tls_disable_status_check = false;
+        serv_conf.disableStatusCheck(false);
         auto serv(serv_conf.build().addPV(TEST_PV, mbox));
 
         auto cli_conf(serv.clientConfig());
@@ -678,7 +676,7 @@ struct Tester {
 
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = SERVER1_KEYCHAIN_FILE;
-        serv_conf.tls_disable_status_check = false;
+        serv_conf.disableStatusCheck(false);
         serv_conf.tls_disable_stapling = false;
         auto serv(serv_conf.build().addPV(TEST_PV, mbox));
 

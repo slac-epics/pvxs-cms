@@ -48,7 +48,7 @@ ConfigCms ConfigCms::mockCms(int family) {
             throw std::logic_error(SB() << "Unsupported address family " << family);
     }
 
-    ret.tls_disable_status_check = true;
+    ret.disableStatusCheck();
     ret.tls_disable_stapling = true;
     return ret;
 }
@@ -62,7 +62,7 @@ ConfigCms ConfigCms::forCms() {
     auto ret = ConfigCms{};
     ret.applyCertsEnv();
     ret.applyCmsEnv({});
-    ret.tls_disable_status_check = true;
+    ret.disableStatusCheck();
     ret.tls_disable_stapling = true;
     return ret;
 }
