@@ -214,7 +214,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: []
+        include:
+          - name: RTEMS5
+            os: ubuntu-22.04
+            cmp: gcc
+            configuration: default
+            base: "7.0-secure-pvaccess"
+            set: "cross"
+            cross: "RTEMS-pc686-qemu@5"
+            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
+
+          - name: mingw64
+            os: ubuntu-latest
+            cmp: gcc
+            configuration: default
+            base: "7.0-secure-pvaccess"
+            set: "cross"
+            cross: "windows-x64-mingw"
+            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=NO"
 
     steps:
     - uses: actions/checkout@v4
@@ -248,7 +265,7 @@ jobs:
         done
         cd ..
         rm -rf openssl-${OPENSSL_VERSION}*
-      if: runner.os == 'Linux' && false  # disabled
+      if: runner.os == 'Linux' && matrix.cross == 'windows-x64-mingw'
 
     - name: Host Info
       run: openssl version -a
