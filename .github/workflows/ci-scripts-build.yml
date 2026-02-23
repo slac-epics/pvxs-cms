@@ -271,13 +271,19 @@ jobs:
       run: openssl version -a
     - name: Automatic core dumper analysis
       uses: mdavidsaver/ci-core-dumper@master
-    - name: Prepare and compile dependencies
-      run: python .ci/cue.py prepare
-    - name: Build libevent
+    - name: Clone pvxs-tls manually for cross target
+      if: matrix.cross != ''
+      run: |
+        git clone --depth 1 --branch pvxs-tls https://github.com/slac-epics/pvxs-tls.git ${CACHEDIR}/pvxs-pvxs-tls
+    - name: Build libevent first (needed for cross target)
+      if: matrix.cross != ''
       run: python .ci/cue.py exec python .ci-local/libevent.py
     - name: Export bundled libevent path for cross target
+      if: matrix.cross != ''
       shell: bash
       run: echo "LIBEVENT=$PWD/bundle/usr/${{ matrix.cross }}" >> $GITHUB_ENV
+    - name: Prepare and compile dependencies
+      run: python .ci/cue.py prepare
     - name: Build pvxs-tls dependency
       run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-pvxs-tls
     - name: Build main module
