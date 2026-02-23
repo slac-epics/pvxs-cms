@@ -92,7 +92,7 @@ jobs:
             configuration: default
             base: "7.0-secure-pvaccess"
             set: "windows"
-            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=NO"
+            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
 
     steps:
     - uses: actions/checkout@v4
@@ -150,10 +150,10 @@ jobs:
       run: openssl version -a
     - name: Automatic core dumper analysis
       uses: mdavidsaver/ci-core-dumper@master
-    - name: Prepare and compile dependencies
-      run: python .ci/cue.py prepare
     - name: Build libevent
       run: python .ci/cue.py exec python .ci-local/libevent.py
+    - name: Prepare and compile dependencies
+      run: python .ci/cue.py prepare
     - name: Build pvxs-tls tools
       run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-pvxs-tls
     - name: Build main module
@@ -231,7 +231,7 @@ jobs:
             base: "7.0-secure-pvaccess"
             set: "cross"
             cross: "windows-x64-mingw"
-            extra: "PVXS_ENABLE_PVACMS=NO"
+            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=NO"
 
     steps:
     - uses: actions/checkout@v4
