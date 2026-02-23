@@ -275,6 +275,13 @@ jobs:
       if: matrix.cross != ''
       run: |
         git clone --depth 1 --branch pvxs-tls https://github.com/slac-epics/pvxs-tls.git ${CACHEDIR}/pvxs-pvxs-tls
+    - name: Create minimal RELEASE.local for libevent build
+      if: matrix.cross != ''
+      run: |
+        cat > ${CACHEDIR}/RELEASE.local << 'EOF'
+        EPICS_BASE=/home/runner/work/pvxs-cms/pvxs-cms/.cache/base-7.0
+        PVXS=/home/runner/work/pvxs-cms/pvxs-cms/.cache/pvxs-pvxs-tls
+        EOF
     - name: Build libevent first (needed for cross target)
       if: matrix.cross != ''
       run: python .ci/cue.py exec python .ci-local/libevent.py
