@@ -1,0 +1,8 @@
+# EPICS Base only (no pvxs - used for cross-compile targets that need libevent built first)
+BASE_DIRNAME=base
+BASE_REPONAME=epics-base-tls
+BASE_REPOOWNER=slac-epics
+BASE=7.0
+BASE_VARNAME=EPICS_BASE
+BASE_RECURSIVE=no
+BASE_HOOK=.ci-local/propagate_flags.sh
