@@ -60,19 +60,13 @@ constexpr uint16_t kAnyServer = kForCMS | kForServer;
 #define IS_FOR_A_SERVER_(USED) (((USED) & (pvxs::ssl::kAnyServer)) != 0x00)
 }  // namespace ssl
 
-struct PeerCredentials;
 namespace ossl {
-
-struct SSLError : std::runtime_error {
-    explicit SSLError(const std::string& msg);
-    virtual ~SSLError();
-};
 
 struct ShowX509 {
     const X509* cert;
 };
 
-std::ostream& operator<<(std::ostream& strm, const ShowX509& cert);
+// std::ostream& operator<<(std::ostream& strm, const ShowX509& cert);
 
 
 }  // namespace ossl

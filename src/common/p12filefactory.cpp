@@ -22,11 +22,11 @@
 
 #include <pvxs/config.h>
 #include <pvxs/log.h>
+#include <pvxs/util.h>
 
 #include <sys/stat.h>
 
 #include "certfactory.h"
-#include "openssl.h"
 #include "ownedptr.h"
 #include "p12filefactory.h"
 #include "security.h"

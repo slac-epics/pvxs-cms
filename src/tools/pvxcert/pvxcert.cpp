@@ -16,6 +16,7 @@
 #endif
 #include <pvxs/client.h>
 #include <pvxs/log.h>
+#include <pvxs/util.h>
 
 #include <CLI/CLI.hpp>
 
