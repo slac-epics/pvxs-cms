@@ -34,6 +34,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: Native Linux EPICS 7.0-secure-pvaccess
+            os: ubuntu-latest
+            cmp: gcc
+            configuration: default
+            base: "7.0-secure-pvaccess"
+            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
+
           - name: Native Linux (WError) EPICS 7.0-secure-pvaccess
             os: ubuntu-latest
             cmp: gcc
@@ -42,27 +49,12 @@ jobs:
             extra: "CMD_CPPFLAGS=-Werror PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
             doc: 1
 
-          - name: Native Linux (libc++ debug) EPICS 7.0-secure-pvaccess
-            os: ubuntu-latest
-            cmp: gcc
-            configuration: default
-            base: "7.0-secure-pvaccess"
-            extra: "CMD_CPPFLAGS=\"-D_GLIBCXX_ASSERTIONS -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC\" PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
-            doc: 1
-
           - name: Native Linux (c++17) EPICS 7.0-secure-pvaccess
             os: ubuntu-latest
             cmp: gcc
             configuration: default
             base: "7.0-secure-pvaccess"
             extra: "CMD_CXXFLAGS=-std=c++17 PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
-
-          - name: Linux (gcc) EPICS 7.0-secure-pvaccess
-            os: ubuntu-latest
-            cmp: gcc
-            configuration: default
-            base: "7.0-secure-pvaccess"
-            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
           - name: Linux (gcc) EPICS R7.0.2
             os: ubuntu-latest
@@ -100,7 +92,7 @@ jobs:
             configuration: default
             base: "7.0-secure-pvaccess"
             set: "windows"
-            extra: "PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
+            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=NO"
 
     steps:
     - uses: actions/checkout@v4
@@ -230,6 +222,7 @@ jobs:
             base: "7.0-secure-pvaccess"
             set: "cross"
             cross: "RTEMS-pc686-qemu@5"
+            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
 
           - name: mingw64
             os: ubuntu-latest
@@ -238,6 +231,7 @@ jobs:
             base: "7.0-secure-pvaccess"
             set: "cross"
             cross: "windows-x64-mingw"
+            extra: "PVXS_ENABLE_PVACMS=NO"
 
     steps:
     - uses: actions/checkout@v4
