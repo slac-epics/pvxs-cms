@@ -282,6 +282,12 @@ jobs:
     - name: Build libevent for cross target
       if: matrix.cross != ''
       run: python .ci/cue.py exec python .ci-local/libevent.py
+    - name: Export libevent path for cross target
+      if: matrix.cross != ''
+      shell: bash
+      run: |
+        ARCH=$(echo "${{ matrix.cross }}" | cut -d@ -f1)
+        echo "LIBEVENT_$ARCH=$PWD/bundle/usr/$ARCH" >> $GITHUB_ENV
     - name: Prepare and compile dependencies (with libevent available)
       run: python .ci/cue.py prepare
     - name: Build pvxs-tls dependency
