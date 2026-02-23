@@ -89,16 +89,17 @@ jobs:
           - name: Windows (vs2022) EPICS 7.0-secure-pvaccess
             os: windows-2022
             cmp: vs2022
-            configuration: default
+            configuration: debug
             base: "7.0-secure-pvaccess"
             set: "windows"
-            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
+            extra: "CMD_CXXFLAGS=-analysis PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
 
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: true
     - name: "apt-get install"
+      if: runner.os == 'Linux'
       run: |
         sudo apt-get update
         sudo apt-get -y install \
@@ -112,64 +113,46 @@ jobs:
             libevent-dev \
             libkrb5-dev \
             libldap2-dev
-      if: runner.os == 'Linux'
-
-    - name: Install OpenSSL for MinGW
-      run: |
-        wget https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
-        tar xzf openssl-${OPENSSL_VERSION}.tar.gz
-        cd openssl-${OPENSSL_VERSION}
-        ./Configure mingw64 --cross-compile-prefix=x86_64-w64-mingw32- --prefix=/usr/x86_64-w64-mingw32
-        make -j$(nproc)
-        sudo make install
-
-        # Ensure the default library search paths contain unversioned import/static libs.
-        # Some OpenSSL builds install only versioned names and/or to lib64.
-        SYSROOT=/usr/x86_64-w64-mingw32
-        for lib in ssl crypto; do
-          for kind in dll.a a; do
-            tgt="$SYSROOT/lib/lib${lib}.${kind}"
-            if [ ! -e "$tgt" ]; then
-              cand=$(ls -1 "$SYSROOT"/lib/lib${lib}*.${kind} "$SYSROOT"/lib64/lib${lib}*.${kind} 2>/dev/null | head -n1 || true)
-              if [ -n "$cand" ]; then
-                sudo ln -sf "$cand" "$tgt"
-              fi
-            fi
-          done
-        done
-        cd ..
-        rm -rf openssl-${OPENSSL_VERSION}*
-      if: runner.os == 'Linux' && matrix.cross == 'windows-x64-mingw'
 
     - name: "brew install"
+      if: runner.os == 'macOS'
       run: |
         brew install libevent krb5 openldap
-      if: runner.os == 'macOS'
 
     - name: Host Info
       run: openssl version -a
+
     - name: Automatic core dumper analysis
       uses: mdavidsaver/ci-core-dumper@master
+
     - name: Prepare and compile dependencies
       run: python .ci/cue.py prepare
+
     - name: Build libevent
       run: python .ci/cue.py exec python .ci-local/libevent.py
+
     - name: Build pvxs-tls tools
       run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-pvxs-tls
+
     - name: Build main module
       run: python .ci/cue.py build
+
     - name: Test env setup
       run: echo "UBSAN_OPTIONS=log_path=$PWD/UBSAN:suppressions=$PWD/.ci-local/ubsan.supp:report_error_type=1:print_stacktrace=1" >> $GITHUB_ENV
+
     - name: Test Logging Setup
       run: echo 'PVXS_LOG=pvxs.stapling=DEBUG' >> $GITHUB_ENV
+
     - name: Run main module tests
       run: python -m ci_core_dumper exec python .ci/cue.py -T 5M --add-path "${CACHEDIR}/pvxs-pvxs-tls/bundle/usr/{EPICS_HOST_ARCH}/lib" test
+
     - name: Collect and show test results
       if: ${{ always() }}
       run: python .ci/cue.py test-results
+
     - name: Show UBSAN logs
-      shell: bash
       if: ${{ always() }}
+      shell: bash
       run: |
         ret=0
         for ff in `find . -name 'UBSAN*'`
@@ -179,9 +162,11 @@ jobs:
           ret=1
         done
         exit $ret
+
     - name: CDT Check
       run: ./.ci-local/cdt-check.sh
       if: runner.os == 'Linux'
+
     - name: Troubleshoot
       if: ${{ always() }}
       shell: bash
@@ -189,6 +174,7 @@ jobs:
         if [ -d cfg ]; then
           grep . cfg/*
         fi
+
     - name: Upload tapfiles Artifact
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
@@ -215,6 +201,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: Cross mingw64 DLL
+            os: ubuntu-latest
+            cmp: gcc
+            configuration: default
+            base: "7.0-secure-pvaccess"
+            set: "cross"
+            cross: "windows-x64-mingw"
+            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=NO"
+          - name: Cross mingw64 static
+            os: ubuntu-latest
+            cmp: gcc
+            configuration: static
+            base: "7.0-secure-pvaccess"
+            set: "cross"
+            cross: "windows-x64-mingw"
+            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=NO"
           - name: RTEMS5
             os: ubuntu-22.04
             cmp: gcc
@@ -223,16 +225,6 @@ jobs:
             set: "cross"
             cross: "RTEMS-pc686-qemu@5"
             extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
-
-          - name: mingw64
-            os: ubuntu-latest
-            cmp: gcc
-            configuration: default
-            base: "7.0-secure-pvaccess"
-            set: "cross"
-            cross: "windows-x64-mingw"
-            extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=NO"
-
     steps:
     - uses: actions/checkout@v4
       with:
