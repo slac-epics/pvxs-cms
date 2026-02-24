@@ -44,12 +44,12 @@ ConfigCms ConfigCms::mockCms(int family) {
             ret.interfaces.emplace_back("::1");
             ret.beaconDestinations.emplace_back("::1");
             break;
-        default:
-            throw std::logic_error(SB() << "Unsupported address family " << family);
+    default:
+        throw std::logic_error(SB() << "Unsupported address family " << family);
     }
 
     ret.disableStatusCheck();
-    ret.tls_disable_stapling = true;
+    ret.disableStapling();
     return ret;
 }
 
@@ -63,7 +63,7 @@ ConfigCms ConfigCms::forCms() {
     ret.applyCertsEnv();
     ret.applyCmsEnv({});
     ret.disableStatusCheck();
-    ret.tls_disable_stapling = true;
+    ret.disableStapling();
     return ret;
 }
 

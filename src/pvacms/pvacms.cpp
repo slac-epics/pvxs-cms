@@ -919,7 +919,7 @@ void onCreateCertificate(ConfigCms &config,
         // Construct and return the reply
         auto serial = CertStatusFactory::getSerialNumber(cert_auth_cert);
         auto cert_id = getCertId(issuer_id, serial);
-        auto status_pv = getCertStatusURI(config.cert_pv_prefix, cert_id);
+        auto status_pv = getCertStatusURI(config.getCertPvPrefix(), cert_id);
         auto reply(getCreatePrototype());
         auto now(time(nullptr));
         setValue<uint32_t>(reply, "value.index", VALID);
@@ -945,7 +945,7 @@ void onCreateCertificate(ConfigCms &config,
     postUpdateToNextCertToExpire(cert_status_factory,
                                  shared_status_pv,
                                  certs_db,
-                                 config.cert_pv_prefix,
+                                 config.getCertPvPrefix(),
                                  issuer_id,
                                  full_skid);
 
@@ -1052,7 +1052,7 @@ void onCreateCertificate(ConfigCms &config,
         const auto not_before = getStructureValue<time_t>(ccr, "not_before");
         auto certificate_factory = CertFactory(serial, key_pair, name, country, organization, organization_unit,
                                                not_before, expiration, renew_by, usage,
-                                               config.cert_pv_prefix, config_uri_base,
+                                               config.getCertPvPrefix(), config_uri_base,
                                                config.cert_status_subscription, no_status,
                                                type != PVXS_DEFAULT_AUTH_TYPE,
                                                cert_auth_cert.get(),
@@ -1076,7 +1076,7 @@ void onCreateCertificate(ConfigCms &config,
             const auto new_renewal_date = std::min(original_certificate.not_after, renew_by);
 
             const auto status_date = std::time(nullptr); // Status date
-            const std::string pv_name(getCertStatusURI(config.cert_pv_prefix, issuer_id, original_certificate.serial));
+            const std::string pv_name(getCertStatusURI(config.getCertPvPrefix(), issuer_id, original_certificate.serial));
 
             // If the original certificate has already expired (PENDING_RENEWAL) ...
             if ( original_certificate.status == PENDING_RENEWAL) {
@@ -1109,7 +1109,7 @@ void onCreateCertificate(ConfigCms &config,
             pem_string = createCertificatePemString(certs_db, certificate_factory);
         }
         auto cert_id = getCertId(issuer_id, serial);
-        auto status_pv = getCertStatusURI(config.cert_pv_prefix, issuer_id, serial);
+        auto status_pv = getCertStatusURI(config.getCertPvPrefix(), issuer_id, serial);
         // Create the certificate using the certificate factory, store it in the database and return the PEM string
 
         ///////////////////////////////////////////////
@@ -1838,7 +1838,7 @@ void createAdminClientCert(const ConfigCms &config,
                                            not_after,
                                            0,
                                            ssl::kForClient,
-                                           config.cert_pv_prefix,
+                                           config.getCertPvPrefix(),
                                            YES,
                                            false,
                                            false,
@@ -1892,7 +1892,7 @@ static void insertLoadedCertIfMissing(const ConfigCms &config,
     }
 
     // Expected prefix: CERT:STATUS:<issuer>:<serial>
-    const auto expected_prefix = getCertStatusPvBase(config.cert_pv_prefix) + ":";
+    const auto expected_prefix = getCertStatusPvBase(config.getCertPvPrefix()) + ":";
     if (status_uri.rfind(expected_prefix, 0) != 0) {
         throw std::runtime_error(SB() << "Loaded certificate status URI has wrong prefix. Expected '" << expected_prefix << "*' got '" << status_uri << "'");
     }
@@ -2062,7 +2062,7 @@ CertData createCertAuthCertificate(const ConfigCms &config,
                                            not_after,
                                            0,
                                            ssl::kForCertAuth,
-                                           config.cert_pv_prefix,
+                                           config.getCertPvPrefix(),
                                            config.cert_status_subscription,
                                            false,
                                            false);
@@ -2116,7 +2116,7 @@ void createServerCertificate(const ConfigCms &config,
                                            getNotAfterTimeFromCert(cert_auth_cert.get()),
                                            0,
                                            ssl::kForCMS,
-                                           config.cert_pv_prefix,
+                                           config.getCertPvPrefix(),
                                            NO,
                                            true,
                                            false,
@@ -2337,7 +2337,7 @@ void postUpdateToNextCertBecomingValid(const CertStatusFactory &cert_status_crea
             int64_t db_serial = sqlite3_column_int64(stmt, 0);
             const uint64_t serial = *reinterpret_cast<uint64_t *>(&db_serial);
             try {
-                const std::string pv_name(getCertStatusURI(status_monitor_params.config_.cert_pv_prefix,
+                const std::string pv_name(getCertStatusURI(status_monitor_params.config_.getCertPvPrefix(),
                                                            status_monitor_params.issuer_id_,
                                                            serial));
                 updateCertificateStatus(status_monitor_params.certs_db_, serial, VALID, 1, {PENDING});
@@ -2636,7 +2636,7 @@ void postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_creator,
     while (postUpdateToNextCertToExpire(cert_status_creator,
                                  status_monitor_params.status_pv_,
                                  status_monitor_params.certs_db_,
-                                 status_monitor_params.config_.cert_pv_prefix,
+                                 status_monitor_params.config_.getCertPvPrefix(),
                                  status_monitor_params.issuer_id_));
 }
 
@@ -2657,12 +2657,12 @@ void postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
     while (postUpdateToNextCertToNeedRenewal(cert_status_creator,
                                  status_monitor_params.status_pv_,
                                  status_monitor_params.certs_db_,
-                                 status_monitor_params.config_.cert_pv_prefix,
+                                 status_monitor_params.config_.getCertPvPrefix(),
                                  status_monitor_params.issuer_id_));
     while (postUpdateToNextCertNearingRenewal(cert_status_creator,
                                  status_monitor_params.status_pv_,
                                  status_monitor_params.certs_db_,
-                                 status_monitor_params.config_.cert_pv_prefix,
+                                 status_monitor_params.config_.getCertPvPrefix(),
                                  status_monitor_params.issuer_id_));
 }
 
@@ -2683,7 +2683,7 @@ void postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
     while (postUpdatesToNextCertStatusToBecomeInvalid(cert_status_creator,
                                  status_monitor_params.status_pv_,
                                  status_monitor_params.certs_db_,
-                                 status_monitor_params.config_.cert_pv_prefix,
+                                 status_monitor_params.config_.getCertPvPrefix(),
                                  status_monitor_params.issuer_id_));
 }
 
@@ -2722,7 +2722,7 @@ void postUpdatesToExpiredStatuses(const CertStatusFactory &cert_status_creator,
             int status = sqlite3_column_int(stmt, 1);
             uint64_t serial = *reinterpret_cast<uint64_t *>(&db_serial);
             try {
-                const std::string pv_name(getCertStatusURI(status_monitor_params.config_.cert_pv_prefix,
+                const std::string pv_name(getCertStatusURI(status_monitor_params.config_.getCertPvPrefix(),
                                                            status_monitor_params.issuer_id_,
                                                            serial));
                 auto status_date = std::time(nullptr);
@@ -2809,7 +2809,7 @@ int readParameters(int argc,
         create_ioc_cert_in_valid_state{false}, create_all_certs_in_valid_state{false};
     bool disallow_custom_durations_client{false}, disallow_custom_durations_server{false},
         disallow_custom_durations_ioc{false}, disallow_custom_durations{false};
-    std::string cert_status_subscription, cert_validity;
+    std::string cert_status_subscription, cert_validity, cert_pv_prefix;
 
     CLI::App app{"PVACMS - Certificate Management Service"};
 
@@ -2911,7 +2911,7 @@ int readParameters(int argc,
                  "Require Peers to monitor Status of Certificates Generated by this server by default.  Can be "
                  "overridden in each CCR");
     app.add_option("--cert-pv-prefix",
-                   config.cert_pv_prefix,
+                   cert_pv_prefix,
                    "Specifies the prefix for all PVs published by this PVACMS.  Default `CERT`");
 
     // Add any parameters for any registered authn methods
@@ -3094,6 +3094,10 @@ int readParameters(int argc,
             std::cerr << "Error: --status-monitoring-enabled: " << e.what() << std::endl;
             exit(11);
         }
+    }
+
+    if ( !cert_pv_prefix.empty() ) {
+        config.setCertPvPrefix(cert_pv_prefix);
     }
 
     return 0;
@@ -3360,16 +3364,16 @@ int main(int argc, char *argv[]) {
 
         // Add a Wildcard Source for the status PV
         auto wildcard_source = WildcardSource::build();
-        wildcard_source->add(getCertStatusPv(config.cert_pv_prefix, our_issuer_id), status_pv);
+        wildcard_source->add(getCertStatusPv(config.getCertPvPrefix(), our_issuer_id), status_pv);
         pva_server.addSource("__wildcard", wildcard_source);
 
         // Add ordinary PVs to regular Sources
-        pva_server.addPV(getCertCreatePv(config.cert_pv_prefix), create_pv)
-            .addPV(getCertCreatePv(config.cert_pv_prefix, our_issuer_id), create_pv)
-            .addPV(getCertAuthRootPv(config.cert_pv_prefix), root_pv)
-            .addPV(getCertAuthRootPv(config.cert_pv_prefix, our_issuer_id), root_pv)
-            .addPV(getCertIssuerPv(config.cert_pv_prefix), issuer_pv)
-            .addPV(getCertIssuerPv(config.cert_pv_prefix, our_issuer_id), issuer_pv);
+        pva_server.addPV(getCertCreatePv(config.getCertPvPrefix()), create_pv)
+            .addPV(getCertCreatePv(config.getCertPvPrefix(), our_issuer_id), create_pv)
+            .addPV(getCertAuthRootPv(config.getCertPvPrefix()), root_pv)
+            .addPV(getCertAuthRootPv(config.getCertPvPrefix(), our_issuer_id), root_pv)
+            .addPV(getCertIssuerPv(config.getCertPvPrefix()), issuer_pv)
+            .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv);
         root_pv.open(root_pv_value);
         issuer_pv.open(issuer_pv_value);
 

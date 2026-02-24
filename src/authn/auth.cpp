@@ -230,7 +230,7 @@ void Auth::runAuthNDaemon(const ConfigAuthN &authn_config, bool for_client, Cert
         pv.post(renewal_manager->config_pv_value);
     });
 
-    const std::string pv_name = getConfigURI(authn_config.cert_pv_prefix, issuer_id, skid);
+    const std::string pv_name = getConfigURI(authn_config.getCertPvPrefix(), issuer_id, skid);
     config_server_.addPV(pv_name, renewal_manager->config_pv);
     std::cout << "Cert Config info available on: " << pv_name << std::endl;
 

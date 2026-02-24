@@ -50,7 +50,7 @@ std::string promptPassword(const std::string &prompt) {
  */
 
 void defineOptions(CLI::App &app, ConfigLdap &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
-                   std::string &usage, std::string &name, std::string &organization, std::string &cert_validity_mins) {
+                   std::string &usage, std::string &name, std::string &organization, std::string &cert_validity_mins, std::string &cert_pv_prefix) {
     app.set_help_flag("", "");  // deactivate built-in help
 
     app.add_flag("-h,--help", help);
@@ -62,7 +62,7 @@ void defineOptions(CLI::App &app, ConfigLdap &config, bool &verbose, bool &debug
 
     app.add_flag("-D,--daemon", daemon_mode, "Daemon mode");
     app.add_flag("--add-config-uri", add_config_uri, "Add a config uri to the generated certificate");
-    app.add_option("--cert-pv-prefix", config.cert_pv_prefix, "Specifies the pv prefix to use to contact PVACMS.  Default `CERT`");
+    app.add_option("--cert-pv-prefix", cert_pv_prefix, "Specifies the pv prefix to use to contact PVACMS.  Default `CERT`");
     app.add_option("-i,--issuer", config.issuer_id, "The issuer ID of the PVACMS service to contact.  If not specified (default) broadcast to any that are listening");
 
     app.add_option("-u,--cert-usage", usage, "Certificate usage.  `server`, `client`, `ioc`");
@@ -113,11 +113,11 @@ void showHelp(const char * const program_name) {
 int readParameters(int argc, char *argv[], ConfigLdap &config, bool &verbose, bool &debug, uint16_t &cert_usage, bool &daemon_mode, bool &force) {
     const auto program_name = argv[0];
     bool show_version{false}, help{false}, add_config_uri{false};
-    std::string usage{"client"}, name, organization, cert_validity_mins;
+    std::string usage{"client"}, name, organization, cert_validity_mins, cert_pv_prefix;
 
     CLI::App app{"authnldap - Secure PVAccess LDAP Authenticator"};
 
-    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, add_config_uri, usage, name, organization, cert_validity_mins);
+    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, add_config_uri, usage, name, organization, cert_validity_mins, cert_pv_prefix);
 
     CLI11_PARSE(app, argc, argv);
 
@@ -183,6 +183,10 @@ int readParameters(int argc, char *argv[], ConfigLdap &config, bool &verbose, bo
 
     if (!cert_validity_mins.empty()) {
         config.cert_validity_mins = CertDate::parseDurationMins(cert_validity_mins);
+    }
+
+    if (!cert_pv_prefix.empty()) {
+        config.setCertPvPrefix(cert_pv_prefix);
     }
 
     return 0;

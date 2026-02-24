@@ -67,7 +67,8 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     app.add_flag("-V,--version", show_version);
 
     // Define options
-    app.add_option("-w,--timeout", conf.request_timeout_specified);
+    double timeout;
+    app.add_option("-w,--timeout", timeout);
     app.add_option("-f,--file", cert_file, "The keychain file to read if no Certificate ID specified");
 
     // Action flags in a mutually exclusive group
@@ -76,6 +77,8 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     app.add_flag("-D,--deny", deny);
 
     CLI11_PARSE(app, argc, argv);
+
+    conf.setRequestTimeout(timeout);
 
     if (help) {
         std::cout << "Certificate management utility for PVXS\n"
@@ -221,16 +224,16 @@ int main(int argc, char *argv[]) {
             Value result;
             switch (action) {
                 case STATUS:
-                    result = client.get(cert_id).exec()->wait(conf.request_timeout_specified);
+                    result = client.get(cert_id).exec()->wait(conf.getRequestTimeout());
                     break;
                 case APPROVE:
-                    result = client.put(cert_id).set("state", "APPROVED").exec()->wait(conf.request_timeout_specified);
+                    result = client.put(cert_id).set("state", "APPROVED").exec()->wait(conf.getRequestTimeout());
                     break;
                 case DENY:
-                    result = client.put(cert_id).set("state", "DENIED").exec()->wait(conf.request_timeout_specified);
+                    result = client.put(cert_id).set("state", "DENIED").exec()->wait(conf.getRequestTimeout());
                     break;
                 case REVOKE:
-                    result = client.put(cert_id).set("state", "REVOKED").exec()->wait(conf.request_timeout_specified);
+                    result = client.put(cert_id).set("state", "REVOKED").exec()->wait(conf.getRequestTimeout());
                     break;
             }
             Indented I(std::cout);

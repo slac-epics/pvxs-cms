@@ -392,7 +392,7 @@ CertData getCertificate(bool &retrieved_credentials,
 
     if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))) {
         // If daemon mode, then add base uri to credentials
-        if (daemon_mode) credentials->config_uri_base = config.cert_pv_prefix;
+        if (daemon_mode) credentials->config_uri_base = config.getCertPvPrefix();
 
         std::shared_ptr<KeyPair> key_pair;
         log_debug_printf(auth, "Credentials retrieved for: %s authenticator\n", authenticator.type_.c_str());
@@ -421,9 +421,9 @@ CertData getCertificate(bool &retrieved_credentials,
         time_t renew_by;
         std::string p12_pem_string;
         std::tie(renew_by, p12_pem_string) = authenticator.processCertificateCreationRequest(cert_creation_request,
-                                                                              config.cert_pv_prefix,
+                                                                              config.getCertPvPrefix(),
                                                                               config.issuer_id,
-                                                                              config.request_timeout_specified);
+                                                                              config.getRequestTimeout());
 
         // If the certificate was created successfully, write it to the keychain file
         if (!p12_pem_string.empty()) {

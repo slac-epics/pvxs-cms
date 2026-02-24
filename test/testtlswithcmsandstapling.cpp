@@ -301,7 +301,7 @@ struct Tester {
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = SERVER1_KEYCHAIN_FILE;
         serv_conf.disableStatusCheck(false);
-        serv_conf.tls_disable_stapling = false;
+        serv_conf.disableStapling(false);
 
         auto serv(serv_conf.build().addPV(TEST_PV, mbox));
 
@@ -355,7 +355,7 @@ struct Tester {
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = SERVER1_KEYCHAIN_FILE;
         serv_conf.disableStatusCheck(false);
-        serv_conf.tls_disable_stapling = false;
+        serv_conf.disableStapling(false);
         auto serv(serv_conf.build().addPV(TEST_PV, test_pv));
 
         auto cli_conf(serv.clientConfig());
@@ -406,7 +406,7 @@ struct Tester {
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = IOC1_KEYCHAIN_FILE;
         serv_conf.disableStatusCheck(false);
-        serv_conf.tls_disable_stapling = false;
+        serv_conf.disableStapling(false);
 
         auto serv(serv_conf.build().addSource(WHO_AM_I_PV, std::make_shared<WhoAmI>()));
 
@@ -487,7 +487,7 @@ struct Tester {
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = SERVER1_KEYCHAIN_FILE;
         serv_conf.disableStatusCheck(false);
-        serv_conf.tls_disable_stapling = false;
+        serv_conf.disableStapling(false);
 
         auto serv(serv_conf.build().addSource(WHO_AM_I_PV, std::make_shared<WhoAmI>()));
 
@@ -567,7 +567,7 @@ struct Tester {
             auto serv_conf = server_config;
             serv_conf.tls_keychain_file = IOC1_KEYCHAIN_FILE;
             serv_conf.disableStatusCheck(false);
-            serv_conf.tls_disable_stapling = false;
+            serv_conf.disableStapling(false);
 
             try {
                 auto serv_no_cms(serv_conf.build().addPV(TEST_PV, test_pv));
@@ -578,7 +578,7 @@ struct Tester {
 
             // Now let's do it again with status checking and stapling disabled so we can test the client
             serv_conf.disableStatusCheck(false);
-            serv_conf.tls_disable_stapling = true;
+            serv_conf.disableStapling(true);
             auto serv(serv_conf.build().addPV(TEST_PV1, test_pv));
             // Start the server
             serv.start();
@@ -587,7 +587,7 @@ struct Tester {
             auto cli_conf(serv.clientConfig());
             cli_conf.tls_keychain_file = CLIENT1_KEYCHAIN_FILE;
             cli_conf.disableStatusCheck(false);
-            cli_conf.tls_disable_stapling = false;
+            cli_conf.disableStapling(false);
             auto cli(cli_conf.build());
 
             try {
@@ -603,7 +603,7 @@ struct Tester {
             auto serv_conf2 = server_config;
             serv_conf2.tls_keychain_file = IOC1_KEYCHAIN_FILE;
             serv_conf2.disableStatusCheck(false);
-            serv_conf2.tls_disable_stapling = true;
+            serv_conf2.disableStapling(true);
             auto serv2(serv_conf2.build().addPV(TEST_PV2, test_pv));
 
             // Configure a client with status checking disabled
@@ -643,7 +643,7 @@ struct Tester {
 
         auto cli_conf(serv.clientConfig());
         cli_conf.tls_keychain_file = CLIENT1_KEYCHAIN_FILE;
-        cli_conf.tls_disable_stapling = false;
+        cli_conf.disableStapling(false);
         auto cli(cli_conf.build());
 
         mbox.open(initial.update("value", 42));
@@ -677,12 +677,12 @@ struct Tester {
         auto serv_conf = server_config;
         serv_conf.tls_keychain_file = SERVER1_KEYCHAIN_FILE;
         serv_conf.disableStatusCheck(false);
-        serv_conf.tls_disable_stapling = false;
+        serv_conf.disableStapling(false);
         auto serv(serv_conf.build().addPV(TEST_PV, mbox));
 
         auto cli_conf(serv.clientConfig());
         cli_conf.tls_keychain_file = CLIENT1_KEYCHAIN_FILE;
-        cli_conf.tls_disable_stapling = true;
+        cli_conf.disableStapling(true);
         auto cli(cli_conf.build());
 
         mbox.open(initial.update("value", 42));

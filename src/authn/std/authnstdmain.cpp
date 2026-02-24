@@ -35,8 +35,8 @@ namespace certs {
  * @param country the country
  * @param cert_validity_mins the requested certificate validity in minutes
  */
-void defineOptions(CLI::App &app, ConfigStd &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
-                   std::string &usage, std::string &name, std::string &organization, std::string &organizational_unit, std::string &country, std::string &cert_validity_mins) {
+ void defineOptions(CLI::App &app, ConfigStd &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
+                    std::string &usage, std::string &name, std::string &organization, std::string &organizational_unit, std::string &country, std::string &cert_validity_mins, std::string &cert_pv_prefix) {
     app.set_help_flag("", "");  // deactivate built-in help
 
     app.add_flag("-h,--help", help);
@@ -49,7 +49,7 @@ void defineOptions(CLI::App &app, ConfigStd &config, bool &verbose, bool &debug,
 
     app.add_flag("-D,--daemon", daemon_mode, "Daemon mode");
     app.add_flag("--add-config-uri", add_config_uri, "Add a config uri to the generated certificate");
-    app.add_option("--cert-pv-prefix", config.cert_pv_prefix, "Specifies the pv prefix to use to contact PVACMS.  Default `CERT`");
+    app.add_option("--cert-pv-prefix", cert_pv_prefix, "Specifies the pv prefix to use to contact PVACMS.  Default `CERT`");
     app.add_option("-i,--issuer", config.issuer_id, "The issuer ID of the PVACMS service to contact.  If not specified (default) broadcast to any that are listening");
 
     app.add_option("-u,--cert-usage", usage, "Certificate usage.  `server`, `client`, `ioc`");
@@ -113,11 +113,11 @@ void showHelp(const char *program_name) {
 int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, bool &debug, uint16_t &cert_usage, bool &daemon_mode, bool &force) {
     auto program_name = argv[0];
     bool show_version{false}, help{false}, add_config_uri{false};
-    std::string usage{"client"}, name, organization, organizational_unit, country, cert_validity_mins;
+    std::string usage{"client"}, name, organization, organizational_unit, country, cert_validity_mins, cert_pv_prefix;
 
     CLI::App app{"authnstd - Secure PVAccess Standard Authenticator"};
 
-    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, add_config_uri, usage, name, organization, organizational_unit, country, cert_validity_mins);
+    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, add_config_uri, usage, name, organization, organizational_unit, country, cert_validity_mins, cert_pv_prefix);
 
     CLI11_PARSE(app, argc, argv);
 
@@ -195,6 +195,10 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
         config.cert_validity_mins = CertDate::parseDurationMins(cert_validity_mins);
     }
 
+    if (!cert_pv_prefix.empty()) {
+        config.setCertPvPrefix(cert_pv_prefix);
+    }
+
     if ( config.trust_anchor_only) {
         const std::string tls_keychain_file = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_file : config.tls_keychain_file;
         const std::string tls_keychain_pwd = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_pwd : config.tls_keychain_pwd;
@@ -205,7 +209,7 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
         auto cert_creation_request = authenticator.createCertCreationRequest(credentials, nullptr, cert_usage, config);
         time_t renew_by;
         std::string p12_pem_string;
-        std::tie(renew_by, p12_pem_string) = authenticator.processCertificateCreationRequest(cert_creation_request, config.cert_pv_prefix, config.issuer_id, config.request_timeout_specified);
+        std::tie(renew_by, p12_pem_string) = authenticator.processCertificateCreationRequest(cert_creation_request, config.getCertPvPrefix(), config.issuer_id, config.getRequestTimeout());
 
         // If the certificate was created successfully, write it to the keychain file
         if (!p12_pem_string.empty()) {
