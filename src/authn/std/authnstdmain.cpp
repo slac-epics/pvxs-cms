@@ -201,7 +201,7 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
 
     if ( config.trust_anchor_only) {
         const std::string tls_keychain_file = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_file : config.tls_keychain_file;
-        const std::string tls_keychain_pwd = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_pwd : config.tls_keychain_pwd;
+        const std::string tls_keychain_pwd = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_pwd : config.getKeychainPassword();
 
         // Create a keychain file from a trust anchor
         AuthNStd authenticator{};

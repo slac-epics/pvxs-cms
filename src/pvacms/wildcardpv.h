@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 
+#include <pvxs/sharedpv.h>
 #include <pvxs/srvcommon.h>
 #include <pvxs/source.h>
 

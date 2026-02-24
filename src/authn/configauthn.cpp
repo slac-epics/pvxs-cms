@@ -86,7 +86,7 @@ void ConfigAuthN::fromAuthEnv(const std::map<std::string, std::string> &defs) {
             // EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE
             if (pickone({"EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE"})) tls_srv_keychain_pwd = getFileContents(pickone.val);
         } else
-            tls_srv_keychain_pwd = tls_keychain_pwd;
+            tls_srv_keychain_pwd = getKeychainPassword();
     } else {
         const std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "server.p12";
         ensureDirectoryExists(tls_srv_keychain_file = filename);

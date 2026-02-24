@@ -442,7 +442,7 @@ struct Tester {
 
         cli_conf = cli.config();
         cli_conf.tls_keychain_file = CLIENT2_KEYCHAIN_FILE;
-        cli_conf.tls_keychain_pwd = CLIENT2_KEYCHAIN_FILE_PWD;
+        cli_conf.setKeychainPassword(CLIENT2_KEYCHAIN_FILE_PWD);
         testDiag("cli.reconfigure()");
         cli.reconfigure(cli_conf);
 

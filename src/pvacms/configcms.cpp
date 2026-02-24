@@ -86,7 +86,7 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         }
         ensureDirectoryExists(password_filename);
         try {
-            tls_keychain_pwd = getFileContents(password_filename);
+            setKeychainPassword(getFileContents(password_filename));
         } catch (std::exception &e) {
             log_err_printf(cert_cfg, "error reading password file: %s. %s", password_filename.c_str(), e.what());
         }

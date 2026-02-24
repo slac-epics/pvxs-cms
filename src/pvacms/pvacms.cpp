@@ -2005,8 +2005,8 @@ void ensureServerCertificateExists(const ConfigCms &config,
                                    const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_cert_chain) {
     CertData cert_data;
     try {
-        log_debug_printf(pvacms, "Attempting to read PVACMS server certificate from: %s with %s\n", config.tls_keychain_file.c_str(), (config.tls_keychain_pwd.empty()?"no password":"pwd: *****"));
-        cert_data = IdFileFactory::create(config.tls_keychain_file, config.tls_keychain_pwd)->getCertDataFromFile();
+        log_debug_printf(pvacms, "Attempting to read PVACMS server certificate from: %s with %s\n", config.tls_keychain_file.c_str(), (config.getKeychainPassword().empty()?"no password":"pwd: *****"));
+        cert_data = IdFileFactory::create(config.tls_keychain_file, config.getKeychainPassword())->getCertDataFromFile();
     } catch (...) {}
 
     if (!cert_data.key_pair) {
@@ -2101,7 +2101,7 @@ void createServerCertificate(const ConfigCms &config,
                              const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                              const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
                              const std::shared_ptr<KeyPair> &key_pair) {
-    log_debug_printf(pvacms, "Creating PVACMS server certificate into: %s with %s\n", config.tls_keychain_file.c_str(), (config.tls_keychain_pwd.empty()?"no password":"pwd: *****"));
+    log_debug_printf(pvacms, "Creating PVACMS server certificate into: %s with %s\n", config.tls_keychain_file.c_str(), (config.getKeychainPassword().empty()?"no password":"pwd: *****"));
 
     // Generate a new serial number
     const auto serial = generateSerial();
@@ -2129,7 +2129,7 @@ void createServerCertificate(const ConfigCms &config,
     // Create keychain file containing certs, private key and null chain
     const auto pem_string = CertFactory::certAndCasToPemString(cert, certificate_factory.certificate_chain_.get());
     const auto cert_file_factory = IdFileFactory::create(config.tls_keychain_file,
-                                                         config.tls_keychain_pwd,
+                                                         config.getKeychainPassword(),
                                                          key_pair,
                                                          nullptr,
                                                          nullptr,
@@ -3052,7 +3052,7 @@ int readParameters(int argc,
     }
     if (!pvacms_password_file.empty()) {
         ensureDirectoryExists(pvacms_password_file);
-        config.tls_keychain_pwd = getFileContents(pvacms_password_file);
+        config.setKeychainPassword(getFileContents(pvacms_password_file));
     }
     if (!admin_password_file.empty()) {
         ensureDirectoryExists(admin_password_file);
