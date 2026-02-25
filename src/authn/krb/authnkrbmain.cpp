@@ -30,7 +30,7 @@ namespace certs {
  * @param add_config_uri the add config uri flag to add a config uri to the generated certificate
  * @param usage the certificate usage client, server, or ioc
  * @param cert_validity_mins the requested certificate validity in minutes
- * @param cert_pv_prefix the certificate prefix
+ * @param cert_pv_prefix the certificate status PV prefix
  */
 void defineOptions(CLI::App &app, ConfigKrb &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
                    std::string &usage, std::string &cert_validity_mins, std::string &cert_pv_prefix) {

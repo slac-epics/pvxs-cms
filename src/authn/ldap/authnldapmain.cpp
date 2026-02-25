@@ -47,6 +47,7 @@ std::string promptPassword(const std::string &prompt) {
  * @param usage the certificate usage client, server, or ioc
  * @param organization the ldap organization
  * @param cert_validity_mins the requested certificate validity in minutes
+ * @param cert_pv_prefix the certificate status PV prefix
  */
 
 void defineOptions(CLI::App &app, ConfigLdap &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,

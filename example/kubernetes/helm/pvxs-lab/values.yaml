@@ -118,7 +118,7 @@ gateway:
 
   debug:
     enabled: false
-    logLevel: "p4p.gw*=INFO"
+    logLevel: "p4p.gw=DEBUG,pvxs.*=DEBUG"
 
   persistence:
     enabled: true

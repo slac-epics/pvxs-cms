@@ -34,6 +34,7 @@ namespace certs {
  * @param organizational_unit the organizational unit
  * @param country the country
  * @param cert_validity_mins the requested certificate validity in minutes
+ * @param cert_pv_prefix the certificate status PV prefix
  */
  void defineOptions(CLI::App &app, ConfigStd &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
                     std::string &usage, std::string &name, std::string &organization, std::string &organizational_unit, std::string &country, std::string &cert_validity_mins, std::string &cert_pv_prefix) {

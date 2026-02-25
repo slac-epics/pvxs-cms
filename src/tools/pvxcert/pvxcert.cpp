@@ -67,7 +67,7 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     app.add_flag("-V,--version", show_version);
 
     // Define options
-    double timeout;
+    double timeout = conf.getRequestTimeout();
     app.add_option("-w,--timeout", timeout);
     app.add_option("-f,--file", cert_file, "The keychain file to read if no Certificate ID specified");
 
