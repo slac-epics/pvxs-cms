@@ -17,7 +17,8 @@ RUN apt-get update && \
             supervisor \
             libkrb5-dev \
             krb5-user \
-            libgssapi-krb5-2
+            libgssapi-krb5-2 \
+            vim nano
 
 RUN echo "PVXS = \$(TOP)/../pvxs" >> ${PROJECT_HOME}/RELEASE.local
 RUN echo "PVXS_ENABLE_KRB_AUTH = YES" >> ${PROJECT_HOME}/CONFIG_SITE.local
