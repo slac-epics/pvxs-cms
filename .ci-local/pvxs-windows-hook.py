@@ -86,3 +86,29 @@ if os.path.isfile(certstatus_h):
         print("pvxs-windows-hook: No patches needed for certstatus.h")
 else:
     print("pvxs-windows-hook: certstatus.h not found (may not be needed)")
+
+# Patch sharedArray.h: add missing #include <stdexcept>
+# MSVC needs explicit include for std::out_of_range and std::logic_error
+shared_array_h = os.path.join("src", "pvxs", "sharedArray.h")
+if os.path.isfile(shared_array_h):
+    with open(shared_array_h, "r") as f:
+        sa_content = f.read()
+    if '#include <stdexcept>' not in sa_content:
+        # Insert #include <stdexcept> after #include <algorithm> or first #include
+        import re
+        sa_content = re.sub(
+            r'(#include <algorithm>)',
+            r'\1\n#include <stdexcept>',
+            sa_content,
+            count=1
+        )
+        if '#include <stdexcept>' in sa_content:
+            with open(shared_array_h, "w") as f:
+                f.write(sa_content)
+            print("pvxs-windows-hook: Added #include <stdexcept> to sharedArray.h")
+        else:
+            print("pvxs-windows-hook: WARNING: Could not find insertion point in sharedArray.h")
+    else:
+        print("pvxs-windows-hook: sharedArray.h already has <stdexcept>")
+else:
+    print("pvxs-windows-hook: sharedArray.h not found")
