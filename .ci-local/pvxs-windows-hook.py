@@ -40,25 +40,49 @@ if os.path.isfile(CONFIG_SITE):
 else:
     print("Warning:", CONFIG_SITE, "not found in", os.getcwd())
 
-# Patch certstatus.h: fix PERMANENTLY_VALID_STATUS macro for MSVC
-# The #else branch is missing '#define' — MSVC does not define __INT_MAX__ or __TIME_T_MAX__
+# Patch certstatus.h for MSVC compatibility
 certstatus_h = os.path.join("src", "certstatus.h")
 if os.path.isfile(certstatus_h):
     with open(certstatus_h, "r") as f:
         content = f.read()
+    patched = False
 
-    # Match the broken #else branch that's missing #define
+    # Patch 1: Fix PERMANENTLY_VALID_STATUS macro (missing #define in #else branch)
+    # __INT_MAX__ and __TIME_T_MAX__ are GCC builtins not defined by MSVC
     old = "#else\nPERMANENTLY_VALID_STATUS(time_t)\n((~(unsigned long long)0) >> 1)"
     new = "#else\n#define PERMANENTLY_VALID_STATUS (time_t)((~(unsigned long long)0) >> 1)"
-
     if old in content:
         content = content.replace(old, new)
+        patched = True
+        print("pvxs-windows-hook: Patched PERMANENTLY_VALID_STATUS in certstatus.h")
+
+    # Patch 2: Replace compound literal macros with inline functions
+    # MSVC does not support C99 compound literals ((const char*[]){...}) in C++
+    old_cert = '#define CERT_STATE(index) ((const char*[])CERT_STATES[(index)])'
+    old_ocsp = '#define OCSP_CERT_STATE(index) ((const char*[])OCSP_CERT_STATES[(index)])'
+    if old_cert in content:
+        replacement = (
+            '// MSVC-compatible replacements for compound literal macros\n'
+            'inline const char* cert_state_name(int index) {\n'
+            '    static const char* const states[] = CERT_STATES;\n'
+            '    return states[index];\n'
+            '}\n'
+            'inline const char* ocsp_cert_state_name(int index) {\n'
+            '    static const char* const states[] = OCSP_CERT_STATES;\n'
+            '    return states[index];\n'
+            '}\n'
+            '#define CERT_STATE(index) cert_state_name(index)\n'
+            '#define OCSP_CERT_STATE(index) ocsp_cert_state_name(index)'
+        )
+        content = content.replace(old_cert, replacement)
+        content = content.replace(old_ocsp, '')  # Remove the old OCSP macro (now in the inline block)
+        patched = True
+        print("pvxs-windows-hook: Patched CERT_STATE/OCSP_CERT_STATE compound literals")
+
+    if patched:
         with open(certstatus_h, "w") as f:
             f.write(content)
-        print("pvxs-windows-hook: Patched PERMANENTLY_VALID_STATUS in certstatus.h")
-    elif "#define PERMANENTLY_VALID_STATUS (time_t)((~(unsigned long long)0) >> 1)" in content:
-        print("pvxs-windows-hook: certstatus.h already patched")
     else:
-        print("pvxs-windows-hook: WARNING: Could not find PERMANENTLY_VALID_STATUS pattern to patch")
+        print("pvxs-windows-hook: No patches needed for certstatus.h")
 else:
     print("pvxs-windows-hook: certstatus.h not found (may not be needed)")
