@@ -92,7 +92,7 @@ jobs:
             configuration: debug
             base: "7.0-secure-pvaccess"
             set: "windows"
-            extra: "CMD_CXXFLAGS=-analysis PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
+            extra: "CMD_CXXFLAGS=\"-analysis /std:c++20\" PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
 
     steps:
     - uses: actions/checkout@v4
@@ -239,6 +239,7 @@ jobs:
       EXTRA: ${{ matrix.extra }}
       VV: "1"
       CACHEDIR: ${{ github.workspace }}/.cache
+      MODULES: ""
     strategy:
       fail-fast: false
       matrix:
@@ -306,8 +307,6 @@ jobs:
     - name: Automatic core dumper analysis
       uses: mdavidsaver/ci-core-dumper@master
     - name: Prepare and compile EPICS Base
-      env:
-        MODULES: ""
       run: python .ci/cue.py prepare
 
     - name: Clone pvxs dependency
