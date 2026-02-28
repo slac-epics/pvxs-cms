@@ -7,7 +7,7 @@ BASE_VARNAME=EPICS_BASE
 BASE_RECURSIVE=no
 BASE_HOOK=.ci-local/propagate_flags.sh
 
-# PVXS - Secure PVAccess library (built as dependency on Linux/macOS using system libevent)
+# PVXS - Secure PVAccess library (built as dependency using system/brew/vcpkg libevent)
 MODULES=pvxs
 PVXS_DIRNAME=pvxs
 PVXS_REPONAME=pvxs-tls
