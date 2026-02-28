@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "pvxs-lab.fullname" . }}-idm
+  name: {{ include "pvxs-lab.fullname" . }}-pvacms
   labels:
     {{- include "pvxs-lab.labels" . | nindent 4 }}
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: idm
     release: {{ .Release.Name }}
@@ -18,17 +18,42 @@ spec:
       port: {{ .Values.ports.pvaUdp }}
       targetPort: pva-udp
       protocol: UDP
+    {{- if .Values.ports.exposePvaTls }}
+    - name: pva-tls
+      port: {{ .Values.ports.pvaTls }}
+      targetPort: pva-tls
+      protocol: TCP
+    {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-krb
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+spec:
   {{- if .Values.idm.expose.nodePortUdp }}
+  type: NodePort
+  externalTrafficPolicy: Local
+  {{- else }}
+  type: ClusterIP
+  {{- end }}
+  selector:
+    app: idm
+    release: {{ .Release.Name }}
+  ports:
     - name: kerberos
       port: {{ .Values.idm.service.udpPort }}
       targetPort: kerberos
+      {{- if .Values.idm.expose.nodePortUdp }}
       nodePort: {{ .Values.idm.expose.nodePortUdp }}
+      {{- end }}
       protocol: UDP
-  {{- end }}
-  {{- if .Values.idm.expose.nodePortTcp }}
     - name: admin
       port: {{ .Values.idm.service.tcpPort }}
       targetPort: admin
+      {{- if .Values.idm.expose.nodePortTcp }}
       nodePort: {{ .Values.idm.expose.nodePortTcp }}
+      {{- end }}
       protocol: TCP
-  {{- end }}

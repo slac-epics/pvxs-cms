@@ -27,6 +27,11 @@ spec:
             - name: pva-udp
               containerPort: {{ .Values.ports.pvaUdp }}
               protocol: UDP
+            {{- if .Values.ports.exposePvaTls }}
+            - name: pva-tls
+              containerPort: {{ .Values.ports.pvaTls }}
+              protocol: TCP
+            {{- end }}
             - name: kerberos
               containerPort: {{ .Values.idm.service.udpPort }}
               protocol: UDP

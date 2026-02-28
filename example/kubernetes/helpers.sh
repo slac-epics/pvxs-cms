@@ -20,7 +20,7 @@ function gw_deploy {
   sleep 5
   shift
  fi
- helm upgrade --install pvxs-lab pvxs-lab -n pvxs-lab \
+ helm upgrade --install pvxs-lab pvxs-lab -n pvxs-lab --create-namespace \
   --set gateway.expose.mode=NodePort \
   --set dockerRegistry=${DOCKER_REGISTRY} \
   --set dockerUsername=${DOCKER_USERNAME} \

@@ -24,4 +24,8 @@ export PATH="${PROJECT_HOME}/pvxs-cms/bin/${EPICS_HOST_ARCH}:$PATH"
 export PATH="${PROJECT_HOME}/pvxs/bin/${EPICS_HOST_ARCH}:$PATH"
 export PATH="${PROJECT_HOME}/p4p/bin/${EPICS_HOST_ARCH}:$PATH"
 
+# Gateway user commandline access
+export EPICS_PVA_ADDR_LIST="pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+export EPICS_PVA_AUTO_ADDR_LIST=NO
+
 cd ~

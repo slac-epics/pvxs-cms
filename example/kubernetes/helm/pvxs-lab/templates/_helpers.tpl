@@ -26,6 +26,9 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "pvxs-lab.idmService" -}}
 {{ include "pvxs-lab.fullname" . }}-idm
 {{- end -}}
+{{- define "pvxs-lab.pvacmsService" -}}
+{{ include "pvxs-lab.fullname" . }}-pvacms
+{{- end -}}
 {{- define "pvxs-lab.gatewayService" -}}
 {{ include "pvxs-lab.fullname" . }}-gateway
 {{- end -}}

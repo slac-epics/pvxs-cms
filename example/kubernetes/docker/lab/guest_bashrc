@@ -15,7 +15,7 @@ export EPICS_PVA_AUTH_ORGANIZATION=epics.org
 
 #### SETUP Address list
 # Make sure that the only PVs that are seen are upstream (idm, testioc, and tstioc)
-export EPICS_PVA_ADDR_LIST="pvxs-lab-idm pvxs-lab-testioc pvxs-lab-tstioc"
+export EPICS_PVA_ADDR_LIST="pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
 export EPICS_PVA_AUTO_ADDR_LIST="NO"
 
 # set path
