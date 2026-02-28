@@ -159,8 +159,8 @@ jobs:
     - name: Build libevent
       run: python .ci/cue.py exec python .ci-local/libevent.py
 
-    - name: Build pvxs-tls tools
-      run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-pvxs-tls
+    - name: Build pvx-tls tools
+      run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-tls
 
     - name: Build main module
       run: python .ci/cue.py build
@@ -172,7 +172,7 @@ jobs:
       run: echo 'PVXS_LOG=pvxs.stapling=DEBUG' >> $GITHUB_ENV
 
     - name: Run main module tests
-      run: python -m ci_core_dumper exec python .ci/cue.py -T 5M --add-path "${CACHEDIR}/pvxs-pvxs-tls/bundle/usr/{EPICS_HOST_ARCH}/lib" test
+      run: python -m ci_core_dumper exec python .ci/cue.py -T 5M --add-path "${CACHEDIR}/pvxs-tls/bundle/usr/{EPICS_HOST_ARCH}/lib" test
 
     - name: Collect and show test results
       if: ${{ always() }}
