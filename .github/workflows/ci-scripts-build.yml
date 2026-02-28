@@ -125,14 +125,14 @@ jobs:
       uses: actions/cache@v4
       with:
         path: c:/vcpkg-cache
-        key: ${{ runner.os }}-vcpkg-v2
+        key: ${{ runner.os }}-vcpkg-v3
 
     - name: "vcpkg install (libevent + openssl)"
       if: runner.os == 'Windows'
       shell: bash
       run: |
         install -d c:/vcpkg-cache
-        vcpkg install --binarysource="clear;files,c:/vcpkg-cache,readwrite" libevent openssl
+        vcpkg install --binarysource="clear;files,c:/vcpkg-cache,readwrite" "libevent[openssl]" openssl
         echo "LIBEVENT=C:/vcpkg/installed/x64-windows" >> "$GITHUB_ENV"
         echo "OPENSSL=C:/vcpkg/installed/x64-windows" >> "$GITHUB_ENV"
     - name: Install OpenSSL for MinGW
