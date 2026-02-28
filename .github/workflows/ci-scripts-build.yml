@@ -200,7 +200,7 @@ jobs:
         fi
         cp "$RELEASE_LOCAL" configure/RELEASE.local
         # Build pvxs
-        python .ci/cue.py exec make -C "$PVXS_DIR" -j${NUMBER_OF_PROCESSORS:-2}
+        python .ci/cue.py exec make -C "$PVXS_DIR" -j${NUMBER_OF_PROCESSORS:-2} CMD_CXXFLAGS="-analysis /std:c++20"
 
     - name: Build main module
       run: python .ci/cue.py build
