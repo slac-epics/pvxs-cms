@@ -167,14 +167,40 @@ jobs:
     - name: Automatic core dumper analysis
       uses: mdavidsaver/ci-core-dumper@master
 
+    - name: "Windows: override MODULES to build Base only"
+      if: runner.os == 'Windows'
+      shell: bash
+      run: echo "MODULES=" >> "$GITHUB_ENV"
+
     - name: Prepare and compile dependencies
       run: python .ci/cue.py prepare
 
     - name: Build libevent
+      if: runner.os != 'Windows'
       run: python .ci/cue.py exec python .ci-local/libevent.py
 
-    - name: Build pvx-tls tools
+    - name: "Build pvxs-tls (non-Windows)"
+      if: runner.os != 'Windows'
       run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-tls
+
+    - name: "Windows: clone and build pvxs-tls manually"
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        PVXS_DIR=${CACHEDIR}/pvxs-tls
+        if [ ! -d "$PVXS_DIR" ]; then
+          git clone --depth 5 --recursive --branch tls https://github.com/slac-epics/pvxs-tls.git "$PVXS_DIR"
+        fi
+        # Overwrite configure/RELEASE to use RELEASE.local from cache
+        echo '-include $(TOP)/../RELEASE.local' > "$PVXS_DIR/configure/RELEASE"
+        # Add PVXS to RELEASE.local so pvxs-cms can find it
+        RELEASE_LOCAL=${CACHEDIR}/RELEASE.local
+        if ! grep -q "^PVXS=" "$RELEASE_LOCAL" 2>/dev/null; then
+          sed -i '/^EPICS_BASE=/i PVXS='"$PVXS_DIR" "$RELEASE_LOCAL"
+        fi
+        cp "$RELEASE_LOCAL" configure/RELEASE.local
+        # Build pvxs
+        python .ci/cue.py exec make -C "$PVXS_DIR" -j${NUMBER_OF_PROCESSORS:-2}
 
     - name: Build main module
       run: python .ci/cue.py build
