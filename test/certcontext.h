@@ -14,6 +14,9 @@
 #ifdef _WIN32
 #  include <direct.h>
 #  define getcwd _getcwd
+#  ifndef PATH_MAX
+#    define PATH_MAX MAX_PATH
+#  endif
 #else
 #  include <unistd.h>
 #endif
