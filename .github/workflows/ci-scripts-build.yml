@@ -120,20 +120,21 @@ jobs:
         brew install libevent krb5 openldap
         echo "LIBEVENT=$(brew --prefix)" >> "$GITHUB_ENV"
 
-    - name: "vcpkg libevent cache"
+    - name: "vcpkg cache (libevent + openssl)"
       if: runner.os == 'Windows'
       uses: actions/cache@v4
       with:
         path: c:/vcpkg-cache
-        key: ${{ runner.os }}-vcpkg
+        key: ${{ runner.os }}-vcpkg-v2
 
-    - name: "vcpkg libevent build"
+    - name: "vcpkg install (libevent + openssl)"
       if: runner.os == 'Windows'
       shell: bash
       run: |
         install -d c:/vcpkg-cache
-        vcpkg install --binarysource="clear;files,c:/vcpkg-cache,readwrite" "libevent"
+        vcpkg install --binarysource="clear;files,c:/vcpkg-cache,readwrite" libevent openssl
         echo "LIBEVENT=C:/vcpkg/installed/x64-windows" >> "$GITHUB_ENV"
+        echo "OPENSSL=C:/vcpkg/installed/x64-windows" >> "$GITHUB_ENV"
     - name: Install OpenSSL for MinGW
       if: runner.os == 'Linux' && matrix.cross == 'windows-x64-mingw'
       run: |
@@ -167,11 +168,6 @@ jobs:
     - name: Automatic core dumper analysis
       uses: mdavidsaver/ci-core-dumper@master
 
-    - name: "Windows: override MODULES to build Base only"
-      if: runner.os == 'Windows'
-      shell: bash
-      run: echo "MODULES=" >> "$GITHUB_ENV"
-
     - name: Prepare and compile dependencies
       run: python .ci/cue.py prepare
 
@@ -182,25 +178,6 @@ jobs:
     - name: "Build pvxs-tls (non-Windows)"
       if: runner.os != 'Windows'
       run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-tls
-
-    - name: "Windows: clone and build pvxs-tls manually"
-      if: runner.os == 'Windows'
-      shell: bash
-      run: |
-        PVXS_DIR=${CACHEDIR}/pvxs-tls
-        if [ ! -d "$PVXS_DIR" ]; then
-          git clone --depth 5 --recursive --branch tls https://github.com/slac-epics/pvxs-tls.git "$PVXS_DIR"
-        fi
-        # Overwrite configure/RELEASE to use RELEASE.local from cache
-        echo '-include $(TOP)/../RELEASE.local' > "$PVXS_DIR/configure/RELEASE"
-        # Add PVXS to RELEASE.local so pvxs-cms can find it
-        RELEASE_LOCAL=${CACHEDIR}/RELEASE.local
-        if ! grep -q "^PVXS=" "$RELEASE_LOCAL" 2>/dev/null; then
-          sed -i '/^EPICS_BASE=/i PVXS='"$PVXS_DIR" "$RELEASE_LOCAL"
-        fi
-        cp "$RELEASE_LOCAL" configure/RELEASE.local
-        # Build pvxs
-        python .ci/cue.py exec make -C "$PVXS_DIR" -j${NUMBER_OF_PROCESSORS:-2} CMD_CXXFLAGS="-analysis /std:c++20"
 
     - name: Build main module
       run: python .ci/cue.py build
