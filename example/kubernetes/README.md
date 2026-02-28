@@ -133,7 +133,7 @@ Set up the following helper functions by sourcing the helpers.sh script:
 # usage: 
 gw_build_images [<target>] [<options>]
 
-# target: if ommited then build all images
+# target: if omitted then build all images
 #  lab_base - Build lab base image
 #  lab - Build lab image (simulates login terminal inside lab)
 #  testioc - Build testioc image
