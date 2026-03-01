@@ -344,9 +344,6 @@ jobs:
         make -C "$PVXS_DIR" -j$(nproc)
     - name: Build main module
       run: python .ci/cue.py build
-    - name: readelf
-      if: ${{ always() && runner.os == 'Linux' }}
-      run: find bundle/usr lib -name '*.so' -print0 | xargs -0 readelf -d bin/linux-*/pvxinfo
     - name: Host info
       run: python .ci/cue.py --add-path "{TOP}/bin/${EPICS_HOST_ARCH}" --add-path "{TOP}/bundle/usr/${EPICS_HOST_ARCH}/lib" exec pvxinfo -D
     - name: Run main module tests
