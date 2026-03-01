@@ -7,6 +7,8 @@
 #ifndef PVXS_OPENSSL_GBL_H
 #define PVXS_OPENSSL_GBL_H
 
+#include <pvxs/version.h>
+
 #include "ownedptr.h"
 
 namespace pvxs {
@@ -22,7 +24,7 @@ struct OSSLGbl {
 #endif
 };
 
-extern OSSLGbl* ossl_gbl;
+PVXS_API extern OSSLGbl* ossl_gbl;
 
 // Custom OIDs
 // TODO Register these unassigned OIDs for EPICS
@@ -39,10 +41,10 @@ extern OSSLGbl* ossl_gbl;
 #define SN_SPvaCertConfigURI "ASN.1 - SPvaCertConfigURI"
 #define LN_SPvaCertConfigURI "EPICS SPVA Certificate Config URI"
 
-extern void osslInit();
+PVXS_API extern void osslInit();
 
-extern int NID_SPvaCertStatusURI;
-extern int NID_SPvaCertConfigURI;
+PVXS_API extern int NID_SPvaCertStatusURI;
+PVXS_API extern int NID_SPvaCertConfigURI;
 
 }  // namespace ossl
 }  // namespace pvxs

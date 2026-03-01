@@ -172,3 +172,29 @@ if os.path.isfile(security_logger_h):
         print("pvxs-windows-hook: securitylogger.h pattern not found (may already be patched)")
 else:
     print("pvxs-windows-hook: securitylogger.h not found")
+
+# Patch pvxs-tls test/certcontext.h: add PATH_MAX define for MSVC
+# MSVC doesn't define PATH_MAX; use MAX_PATH from windows.h instead
+pvxs_certcontext_h = os.path.join("test", "certcontext.h")
+if os.path.isfile(pvxs_certcontext_h):
+    with open(pvxs_certcontext_h, "r") as f:
+        cc_content = f.read()
+    if "PATH_MAX" in cc_content and "#    define PATH_MAX MAX_PATH" not in cc_content:
+        # Insert '#  ifndef PATH_MAX\n#    define PATH_MAX MAX_PATH\n#  endif'
+        # after the '#  define getcwd _getcwd' line in the _WIN32 block
+        old_win32 = "#  define getcwd _getcwd"
+        new_win32 = ("#  define getcwd _getcwd\n"
+                     "#  ifndef PATH_MAX\n"
+                     "#    define PATH_MAX MAX_PATH\n"
+                     "#  endif")
+        if old_win32 in cc_content:
+            cc_content = cc_content.replace(old_win32, new_win32)
+            with open(pvxs_certcontext_h, "w") as f:
+                f.write(cc_content)
+            print("pvxs-windows-hook: Patched PATH_MAX in test/certcontext.h")
+        else:
+            print("pvxs-windows-hook: Could not find getcwd pattern in test/certcontext.h")
+    else:
+        print("pvxs-windows-hook: test/certcontext.h PATH_MAX already handled or not needed")
+else:
+    print("pvxs-windows-hook: test/certcontext.h not found")
