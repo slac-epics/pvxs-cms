@@ -200,3 +200,26 @@ if os.path.isfile(pvxs_certcontext_h):
         print("pvxs-windows-hook: test/certcontext.h PATH_MAX already handled or not needed")
 else:
     print("pvxs-windows-hook: test/certcontext.h not found")
+
+# Patch pvxs-tls test Makefile to skip cert generation on Windows
+# gen_test_certs.exe fails with OPENSSL_Applink error on MSVC because
+# OpenSSL DLLs require applink.c for FILE* operations
+test_makefile = os.path.join("test", "Makefile")
+if os.path.isfile(test_makefile):
+    with open(test_makefile, "r") as f:
+        tm_content = f.read()
+    # Comment out the cert_auth.p12 generation rule to skip it
+    old_rule = "cert_auth.p12 :\n\t$(RM) *.p12\n\t../O.$(EPICS_HOST_ARCH)/gen_test_certs$(HOSTEXE) -O ."
+    if old_rule in tm_content:
+        new_rule = ("# Disabled by pvxs-windows-hook.py (OPENSSL_Applink issue on MSVC)\n"
+                    "# cert_auth.p12 :\n"
+                    "#\t$(RM) *.p12\n"
+                    "#\t../O.$(EPICS_HOST_ARCH)/gen_test_certs$(HOSTEXE) -O .")
+        tm_content = tm_content.replace(old_rule, new_rule)
+        with open(test_makefile, "w") as f:
+            f.write(tm_content)
+        print("pvxs-windows-hook: Disabled cert_auth.p12 generation in test/Makefile")
+    else:
+        print("pvxs-windows-hook: cert_auth.p12 rule pattern not found in test/Makefile")
+else:
+    print("pvxs-windows-hook: test/Makefile not found")
