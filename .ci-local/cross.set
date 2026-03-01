@@ -12,3 +12,6 @@ PVXS_REPOOWNER=slac-epics
 PVXS=tls
 PVXS_VARNAME=PVXS
 PVXS_RECURSIVE=yes
+
+# Hook to build libevent before building pvxs-tls for cross targets
+PVXS_HOOK=.ci-local/pvxs-cross-hook.py
