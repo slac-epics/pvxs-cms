@@ -168,6 +168,16 @@ jobs:
     - name: Automatic core dumper analysis
       uses: mdavidsaver/ci-core-dumper@master
 
+    - name: Set Windows DLL paths
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        # Add DLL directories to PATH so test executables can find shared libraries
+        echo "${CACHEDIR}/base-7.0-secure-pvaccess/bin/windows-x64-debug" >> $GITHUB_PATH
+        echo "${CACHEDIR}/pvxs-tls/bin/windows-x64-debug" >> $GITHUB_PATH
+        echo "${CACHEDIR}/pvxs-tls/lib/windows-x64-debug" >> $GITHUB_PATH
+        echo "C:/vcpkg/installed/x64-windows/bin" >> $GITHUB_PATH
+
     - name: Prepare and compile dependencies
       run: python .ci/cue.py prepare
 
