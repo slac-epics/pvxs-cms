@@ -60,7 +60,11 @@ USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
 SRC_DIRS += $(COMMON_DIR)
 SRC_DIRS += $(AUTHN_DIR)
 
-USR_CPPFLAGS += -DPVXS_ENABLE_PVACMS
+# PVXS_ENABLE_PVACMS: gate CMS-server build + sqlite3 dependency.
+# Default YES; set to NO in EXTRA or CONFIG_SITE.local to disable.
+PVXS_ENABLE_PVACMS ?= YES
+PVXS_ENABLE_PVACMS_YES = -DPVXS_ENABLE_PVACMS
+USR_CPPFLAGS += $(PVXS_ENABLE_PVACMS_$(PVXS_ENABLE_PVACMS))
 USR_CPPFLAGS += -DPVXS_ENABLE_EXPERT_API
 
 # SSL key log file support (debugging aid)
@@ -81,11 +85,13 @@ USR_CXXFLAGS += -fvisibility=hidden -fvisibility-inlines-hidden
 endif
 endif
 
-# Include pvacms target definition (Makefile fragment)
+# Include pvacms + authenticator targets only when CMS is enabled
+ifeq ($(PVXS_ENABLE_PVACMS),YES)
 include $(PVACMS_DIR)/Makefile
 
 # Authenticators (Makefile fragment)
 include $(AUTHN_DIR)/Makefile
+endif
 
 # Host tools (Makefile fragments)
 include $(TOOLS_DIR)/Makefile
