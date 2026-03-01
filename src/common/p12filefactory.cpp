@@ -6,8 +6,9 @@
 
 #include <memory>
 
-
-#ifdef __unix__
+#ifdef _WIN32
+#include <io.h>
+#elif defined(__unix__)
 #include <pwd.h>
 #endif
 #include <string>
@@ -265,8 +266,12 @@ void P12FileFactory::writePKCS12File() {
 
     p12_ptr_ = nullptr;
 
+#ifdef _WIN32
+    _chmod(filename_.c_str(), _S_IREAD | _S_IWRITE);
+#else
     chmod(filename_.c_str(),
           S_IRUSR | S_IWUSR);  // Protect P12 file
+#endif
 }
 
 #ifdef NID_oracle_jdk_trustedkeyusage
