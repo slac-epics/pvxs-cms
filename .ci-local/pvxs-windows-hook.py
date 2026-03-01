@@ -31,6 +31,11 @@ if os.path.isfile(CONFIG_SITE):
     openssl = os.environ.get("OPENSSL", "")
     if openssl:
         lines.append("OPENSSL = " + openssl)
+        # Tell EPICS where to find ssl.lib and crypto.lib
+        # EPICS uses <lib>_DIR to build full path: $(ssl_DIR)/ssl.lib
+        lib_dir = openssl.replace("\\", "/") + "/lib"
+        lines.append("ssl_DIR = " + lib_dir)
+        lines.append("crypto_DIR = " + lib_dir)
         print("pvxs-windows-hook: Set OPENSSL=" + openssl)
 
     with open(CONFIG_SITE, "a") as f:
