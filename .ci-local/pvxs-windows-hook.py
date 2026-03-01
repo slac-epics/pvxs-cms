@@ -9,6 +9,7 @@ Runs in the pvxs-tls source directory before compilation.
 """
 
 import os
+import shutil
 
 CONFIG_SITE = os.path.join("configure", "CONFIG_SITE")
 
@@ -37,6 +38,21 @@ if os.path.isfile(CONFIG_SITE):
         for line in lines:
             f.write(line + "\n")
             print("pvxs-windows-hook: >>", line)
+
+    # Create ssl.lib/crypto.lib aliases for vcpkg's libssl.lib/libcrypto.lib
+    # EPICS build system appends .lib to SYS_LIBS names, so 'ssl' -> 'ssl.lib'
+    # but vcpkg OpenSSL 3.x on Windows provides 'libssl.lib' and 'libcrypto.lib'
+    openssl_lib = os.environ.get("OPENSSL", "")
+    if openssl_lib:
+        lib_dir = os.path.join(openssl_lib, "lib")
+        for name in [("libssl", "ssl"), ("libcrypto", "crypto")]:
+            src = os.path.join(lib_dir, name[0] + ".lib")
+            dst = os.path.join(lib_dir, name[1] + ".lib")
+            if os.path.isfile(src) and not os.path.isfile(dst):
+                shutil.copy2(src, dst)
+                print("pvxs-windows-hook: Copied", src, "->", dst)
+            elif os.path.isfile(dst):
+                print("pvxs-windows-hook:", dst, "already exists")
 else:
     print("Warning:", CONFIG_SITE, "not found in", os.getcwd())
 
