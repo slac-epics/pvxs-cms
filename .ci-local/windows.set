@@ -13,3 +13,8 @@ PVXS=tls
 PVXS_VARNAME=PVXS
 PVXS_RECURSIVE=yes
 PVXS_HOOK=.ci-local/pvxs-windows-hook.py
+
+# Disable CMS-specific features on Windows (no sqlite, kerberos, ldap)
+PVXS_ENABLE_PVACMS=NO
+PVXS_ENABLE_KRB_AUTH=NO
+PVXS_ENABLE_LDAP_AUTH=NO
