@@ -52,4 +52,7 @@ PVXS_ENABLE_SSLKEYLOGFILE ?= YES
 # MSVC - skip defining min()/max() macros and enable APIs
 USR_CPPFLAGS_WIN32 += -DNOMINMAX -D_WIN32_WINNT=_WIN32_WINNT_VISTA -DNOCRYPT
 
+# Add OpenSSL lib path for MSVC linker (ssl.lib, crypto.lib from LIBEVENT_SYS_LIBS)
+USR_LDFLAGS_WIN32 += $(if $(OPENSSL),/LIBPATH:$(OPENSSL)/lib)
+
 USR_CPPFLAGS += -DUSE_TYPED_RSET

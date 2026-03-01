@@ -132,3 +132,43 @@ if os.path.isfile(shared_array_h):
         print("pvxs-windows-hook: sharedArray.h already has <stdexcept>")
 else:
     print("pvxs-windows-hook: sharedArray.h not found")
+
+# Patch securitylogger.h: replace compound literal (ASIDENTITY){...} for MSVC
+# MSVC doesn't support C99 compound literals in C++ mode
+security_logger_h = os.path.join("ioc", "securitylogger.h")
+if os.path.isfile(security_logger_h):
+    with open(security_logger_h, "r") as f:
+        sl_content = f.read()
+    # Replace the compound literal with a helper lambda that creates the struct
+    old_pattern = """        ,pvt(asTrapWriteBeforeWithIdentityData(
+            (ASIDENTITY){
+                .user = credentials.cred[0].c_str(),
+                .host = (char *)credentials.host.c_str(),
+                .method =  credentials.method.c_str(),
+                .authority = credentials.authority.c_str(),
+                .protocol = AS_PROTOCOL_TLS },"""
+    new_code = """        ,pvt([&]() {
+            ASIDENTITY id = {};
+            id.user = credentials.cred[0].c_str();
+            id.host = (char *)credentials.host.c_str();
+            id.method = credentials.method.c_str();
+            id.authority = credentials.authority.c_str();
+            id.protocol = AS_PROTOCOL_TLS;
+            return asTrapWriteBeforeWithIdentityData(
+                id,"""
+    if old_pattern in sl_content:
+        sl_content = sl_content.replace(old_pattern, new_code)
+        # Also need to close the lambda: replace the closing )) with }()))
+        # The original ends with: nullptr\n        ))
+        old_end = """            nullptr
+        ))"""
+        new_end = """            nullptr
+        ); }())"""
+        sl_content = sl_content.replace(old_end, new_end)
+        with open(security_logger_h, "w") as f:
+            f.write(sl_content)
+        print("pvxs-windows-hook: Patched securitylogger.h compound literal")
+    else:
+        print("pvxs-windows-hook: securitylogger.h pattern not found (may already be patched)")
+else:
+    print("pvxs-windows-hook: securitylogger.h not found")
