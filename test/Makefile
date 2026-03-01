@@ -14,6 +14,8 @@ CLI11_BUNDLE   = $(TOP)/bundle/CLI11
 PROD_LIBS = pvxs Com
 
 ifdef BASE_3_15
+PVXS_ENABLE_PVACMS ?= YES
+ifeq ($(PVXS_ENABLE_PVACMS),YES)
 USR_CPPFLAGS += -I$(COMMON_DIR)
 USR_CPPFLAGS += -I$(AUTHN_DIR)
 USR_CPPFLAGS += -I$(AUTHN_STD_DIR)
@@ -65,7 +67,8 @@ TESTS += testtlsstatus
 TESTPROD_HOST += testtlsstatus
 testtlsstatus_SRCS += testtlsstatus.cpp
 
-endif
+endif # PVXS_ENABLE_PVACMS
+endif # BASE_3_15
 
 TESTSCRIPTS_HOST += $(TESTS:%=%.t)
 ifdef BASE_3_15
@@ -83,6 +86,7 @@ include $(TOP)/configure/RULES
 #  ADD RULES AFTER THIS LINE
 
 ifdef BASE_3_15
+ifeq ($(PVXS_ENABLE_PVACMS),YES)
 ifeq ($(EVENT2_HAS_OPENSSL),YES)
 testtlswithcms$(EXE): | cert_auth.p12
 
@@ -96,5 +100,5 @@ cert_auth.p12 : gen_test_certs$(HOSTEXE)
 endif # T_A==EPICS_HOST_ARCH
 endif # T_A
 endif # EVENT2_HAS_OPENSSL
-
-endif
+endif # PVXS_ENABLE_PVACMS
+endif # BASE_3_15
