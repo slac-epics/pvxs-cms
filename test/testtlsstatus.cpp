@@ -3,6 +3,11 @@
  * pvxs is distributed subject to a Software License Agreement found
  * in file LICENSE that is included with this distribution.
  */
+// OpenSSL on Windows requires applink.c for FILE* operations in DLL builds
+#ifdef _WIN32
+#  include <openssl/applink.c>
+#endif
+
 #include <iostream>
 
 #include <epicsUnitTest.h>

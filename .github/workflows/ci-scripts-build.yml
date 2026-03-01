@@ -92,7 +92,6 @@ jobs:
             configuration: debug
             base: "7.0-secure-pvaccess"
             set: "windows"
-            test: "NO"
             extra: "CMD_CXXFLAGS=\"-analysis /std:c++20\" PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
 
     steps:
