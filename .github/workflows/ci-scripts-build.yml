@@ -252,6 +252,7 @@ jobs:
       EXTRA: ${{ matrix.extra }}
       VV: "1"
       CACHEDIR: ${{ github.workspace }}/.cache
+      MODULES: " "
     strategy:
       fail-fast: false
       matrix:
@@ -320,6 +321,27 @@ jobs:
       uses: mdavidsaver/ci-core-dumper@master
     - name: Prepare and compile dependencies
       run: python .ci/cue.py prepare
+
+    - name: Clone pvxs-tls dependency
+      run: |
+        PVXS_DIR=${CACHEDIR}/pvxs-tls
+        if [ ! -d "$PVXS_DIR" ]; then
+          git clone --depth 5 --recursive --branch tls https://github.com/slac-epics/pvxs-tls.git "$PVXS_DIR"
+        fi
+        echo '-include $(TOP)/../RELEASE.local' > "$PVXS_DIR/configure/RELEASE"
+
+    - name: Build libevent for pvxs (host + cross targets)
+      run: python .ci/cue.py exec python .ci-local/pvxs-libevent-hook.py ${CACHEDIR}/pvxs-tls
+
+    - name: Build pvxs-tls dependency
+      run: |
+        PVXS_DIR=${CACHEDIR}/pvxs-tls
+        RELEASE_LOCAL=${CACHEDIR}/RELEASE.local
+        if ! grep -q "^PVXS=" "$RELEASE_LOCAL" 2>/dev/null; then
+          sed -i '/^EPICS_BASE=/i PVXS='"$PVXS_DIR" "$RELEASE_LOCAL"
+        fi
+        cp "$RELEASE_LOCAL" configure/RELEASE.local
+        make -C "$PVXS_DIR" -j$(nproc)
     - name: Build main module
       run: python .ci/cue.py build
     - name: readelf

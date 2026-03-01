@@ -5,6 +5,3 @@ BASE_REPOOWNER=slac-epics
 BASE=7.0
 BASE_VARNAME=EPICS_BASE
 BASE_RECURSIVE=no
-
-# Hook to build libevent (host + cross) before pvxs-tls compilation
-PVXS_HOOK=.ci-local/pvxs-libevent-hook.py
