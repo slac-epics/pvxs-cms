@@ -55,6 +55,7 @@ USR_CPPFLAGS += -I$(COMMON_DIR)
 USR_CPPFLAGS += -I$(AUTHN_DIR)
 USR_CPPFLAGS += -I$(AUTHN_STD_DIR)
 USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
+USR_CPPFLAGS += -I$(PVACMS_DIR)
 
 # Source search path for pvacms and its shared sources
 SRC_DIRS += $(COMMON_DIR)

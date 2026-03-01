@@ -6,7 +6,6 @@
 
 #include <memory>
 
-#include <libgen.h>
 
 #ifdef __unix__
 #include <pwd.h>
