@@ -20,6 +20,8 @@ if os.path.isfile(CONFIG_SITE):
 
     # Add /std:c++20 for MSVC (designated initializers require it)
     lines.append("USR_CXXFLAGS_WIN32 += /std:c++20")
+    # Prevent winsock.h from being included by windows.h (conflicts with winsock2.h)
+    lines.append("USR_CPPFLAGS_WIN32 += -DWIN32_LEAN_AND_MEAN")
 
     # Point to LIBEVENT if env var is set
     libevent = os.environ.get("LIBEVENT", "")

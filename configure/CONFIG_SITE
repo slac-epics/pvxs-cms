@@ -49,8 +49,9 @@ PVXS_ENABLE_SSLKEYLOGFILE ?= YES
 -include $(TOP)/../CONFIG_SITE.local
 -include $(TOP)/configure/CONFIG_SITE.local
 
-# MSVC - skip defining min()/max() macros and enable APIs
-USR_CPPFLAGS_WIN32 += -DNOMINMAX -D_WIN32_WINNT=_WIN32_WINNT_VISTA -DNOCRYPT
+# MSVC - skip defining min()/max() macros, enable APIs, and prevent winsock.h
+# WIN32_LEAN_AND_MEAN prevents windows.h from including winsock.h which conflicts with winsock2.h
+USR_CPPFLAGS_WIN32 += -DNOMINMAX -D_WIN32_WINNT=_WIN32_WINNT_VISTA -DNOCRYPT -DWIN32_LEAN_AND_MEAN
 
 # Add OpenSSL lib path for MSVC linker (ssl.lib, crypto.lib from LIBEVENT_SYS_LIBS)
 USR_LDFLAGS_WIN32 += $(if $(OPENSSL),/LIBPATH:$(OPENSSL)/lib)
