@@ -4,7 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 // OpenSSL on Windows requires applink.c for FILE* operations in DLL builds
-#ifdef _WIN32
+#ifdef _MSC_VER
 #  include <openssl/applink.c>
 #endif
 
