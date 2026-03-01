@@ -5,3 +5,10 @@ BASE_REPOOWNER=slac-epics
 BASE=7.0
 BASE_VARNAME=EPICS_BASE
 BASE_RECURSIVE=no
+
+# Prevent defaults.set from adding PVXS to the module list.
+# Cross builds handle PVXS explicitly in the workflow steps.
+# Setting MODULES=base prevents defaults.set from overriding
+# (cue.py only assigns if value is empty). BASE is always
+# in the module list anyway, so this is harmless.
+MODULES=base
