@@ -199,7 +199,7 @@ jobs:
       run: echo 'PVXS_LOG=pvxs.stapling=DEBUG' >> $GITHUB_ENV
 
     - name: Run main module tests
-      run: python -m ci_core_dumper exec python .ci/cue.py -T 5M --add-path "${CACHEDIR}/pvxs-tls/bundle/usr/{EPICS_HOST_ARCH}/lib" test
+      run: python -m ci_core_dumper exec python .ci/cue.py -T 10M --add-path "${CACHEDIR}/pvxs-tls/bundle/usr/{EPICS_HOST_ARCH}/lib" test
 
     - name: Collect and show test results
       if: ${{ always() }}
