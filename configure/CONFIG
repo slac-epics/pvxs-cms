@@ -28,3 +28,5 @@ ifdef T_A
  -include $(TOP)/configure/O.$(T_A)/TOOLCHAIN
 endif
 
+# Include PVXS module configuration (provides libevent paths for cross-compilation)
+-include $(wildcard $(PVXS)/cfg/CONFIG*)

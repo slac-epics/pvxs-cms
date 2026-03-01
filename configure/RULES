@@ -1,6 +1,8 @@
 # RULES
 
 include $(CONFIG)/RULES
+# Include PVXS module rules (provides libevent linking for cross-compilation)
+-include $(wildcard $(PVXS)/cfg/RULES*)
 
 # Library should be rebuilt because LIBOBJS may have changed.
 $(LIBNAME): ../Makefile
