@@ -13,6 +13,11 @@
 #  include <windows.h>
 #endif
 
+// OpenSSL on Windows requires applink.c for FILE* operations in DLL builds
+#ifdef _WIN32
+#  include <openssl/applink.c>
+#endif
+
 #include <iostream>
 #include <memory>
 #include <sstream>
