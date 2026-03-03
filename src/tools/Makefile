@@ -19,3 +19,6 @@
 
 # Tool: pvxcert (certificate management utility)
 include $(TOOLS_DIR)/pvxcert/Makefile
+
+# Tool: pvxperf (performance benchmarking utility)
+include $(TOOLS_DIR)/pvxperf/Makefile
