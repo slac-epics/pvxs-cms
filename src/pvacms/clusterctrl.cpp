@@ -118,13 +118,18 @@ void ClusterController::postCtrlValue() {
 }
 
 void ClusterController::addMember(const ClusterMember &member) {
+    bool already_member = false;
     for (const auto &m : members_) {
-        if (m.node_id == member.node_id)
-            return;
+        if (m.node_id == member.node_id) {
+            already_member = true;
+            break;
+        }
     }
-    members_.push_back(member);
-    postCtrlValue();
-    sync_publisher_.publishSnapshot(members_);
+    if (!already_member) {
+        members_.push_back(member);
+        postCtrlValue();
+        sync_publisher_.publishSnapshot(members_);
+    }
     if (on_membership_changed)
         on_membership_changed(members_);
 }
@@ -136,7 +141,6 @@ void ClusterController::removeMember(const std::string &node_id) {
         return;
     members_.erase(it, members_.end());
     postCtrlValue();
-    sync_publisher_.publishSnapshot(members_);
     log_info_printf(pvacmscluster, "Removed node %s from cluster %s\n",
                     node_id.c_str(), issuer_id_.c_str());
     if (on_membership_changed)

@@ -27,7 +27,6 @@ ClusterDiscovery::ClusterDiscovery(const std::string &node_id,
                                    const std::string &issuer_id,
                                    const std::string &pv_prefix,
                                    uint32_t discovery_timeout_secs,
-                                   uint32_t removal_timeout_secs,
                                    sqlite3 *certs_db,
                                    const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                    const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
@@ -39,7 +38,6 @@ ClusterDiscovery::ClusterDiscovery(const std::string &node_id,
     , issuer_id_(issuer_id)
     , pv_prefix_(pv_prefix)
     , discovery_timeout_secs_(discovery_timeout_secs)
-    , removal_timeout_secs_(removal_timeout_secs)
     , certs_db_(certs_db)
     , cert_auth_pkey_(cert_auth_pkey)
     , cert_auth_pub_key_(cert_auth_pub_key)
@@ -175,8 +173,6 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     }
     reconcileMembers(remote_members);
 
-    purgeExpiredDisconnects();
-
     log_debug_printf(pvacmscluster, "Applied sync snapshot from %s (%zu certs)\n",
                      peer_node_id.c_str(), static_cast<size_t>(val["certs"].as<shared_array<const Value> >().size()));
 }
@@ -187,8 +183,6 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
     if (subscriptions_.count(node_id))
         return;
 
-    disconnected_peers_.erase(node_id);
-
     auto sub = client_ctx_.monitor(sync_pv)
         .maskConnected(false)
         .maskDisconnected(false)
@@ -198,9 +192,8 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
                     while (auto val = sub.pop()) {
                         handleSyncUpdate(node_id, std::move(val));
                     }
-                    break;  // pop() returned empty — queue drained
+                    break;
                 } catch (client::Connected &) {
-                    handleReconnect(node_id);
                     // continue loop to drain any data queued after Connected
                 } catch (client::Disconnect &) {
                     handleDisconnect(node_id);
@@ -220,46 +213,16 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
 }
 
 void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
-    log_debug_printf(pvacmscluster, "Sync subscription disconnected for node %s, "
-                     "starting removal timer (%u secs)\n",
-                     peer_node_id.c_str(), removal_timeout_secs_);
-
-    auto it = subscriptions_.find(peer_node_id);
-    std::string sync_pv;
-    if (it != subscriptions_.end()) {
-        subscriptions_.erase(it);
-    }
-
-    disconnected_peers_[peer_node_id] = {sync_pv, static_cast<int64_t>(std::time(nullptr))};
-}
-
-void ClusterDiscovery::handleReconnect(const std::string &peer_node_id) {
-    disconnected_peers_.erase(peer_node_id);
-}
-
-void ClusterDiscovery::removeExpiredMember(const std::string &peer_node_id) {
+    subscriptions_.erase(peer_node_id);
     controller_.removeMember(peer_node_id);
-    log_info_printf(pvacmscluster, "Removed expired member %s after disconnect timeout\n",
-                    peer_node_id.c_str());
-}
-
-void ClusterDiscovery::purgeExpiredDisconnects() {
-    auto now = static_cast<int64_t>(std::time(nullptr));
-    for (auto it = disconnected_peers_.begin(); it != disconnected_peers_.end(); ) {
-        if (now - it->second.disconnect_time > static_cast<int64_t>(removal_timeout_secs_)) {
-            removeExpiredMember(it->first);
-            it = disconnected_peers_.erase(it);
-        } else {
-            ++it;
-        }
-    }
+    log_info_printf(pvacmscluster, "Removed disconnected member %s\n", peer_node_id.c_str());
 }
 
 void ClusterDiscovery::reconcileMembers(const std::vector<ClusterMember> &remote_members) {
     for (const auto &m : remote_members) {
         if (m.node_id == node_id_)
             continue;
-        if (subscriptions_.count(m.node_id) == 0 && disconnected_peers_.count(m.node_id) == 0) {
+        if (subscriptions_.count(m.node_id) == 0) {
             subscribeToMember(m.node_id, m.sync_pv);
             controller_.addMember(m);
         }

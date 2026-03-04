@@ -32,7 +32,6 @@ public:
                      const std::string &issuer_id,
                      const std::string &pv_prefix,
                      uint32_t discovery_timeout_secs,
-                     uint32_t removal_timeout_secs,
                      sqlite3 *certs_db,
                      const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                      const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
@@ -47,16 +46,10 @@ public:
     void reconcileMembers(const std::vector<ClusterMember> &remote_members);
 
 private:
-    struct DisconnectedPeer {
-        std::string sync_pv;
-        int64_t disconnect_time;
-    };
-
     std::string node_id_;
     std::string issuer_id_;
     std::string pv_prefix_;
     uint32_t discovery_timeout_secs_;
-    uint32_t removal_timeout_secs_;
     sqlite3 *certs_db_;
     const ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     const ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
@@ -66,7 +59,6 @@ private:
     client::Context client_ctx_;
 
     std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
-    std::map<std::string, DisconnectedPeer> disconnected_peers_;
 
     std::atomic<int64_t> global_high_water_mark_{0};
     static constexpr int64_t kClockSkewTolerance = 5;
@@ -74,9 +66,6 @@ private:
 
     void handleSyncUpdate(const std::string &peer_node_id, Value &&val);
     void handleDisconnect(const std::string &peer_node_id);
-    void handleReconnect(const std::string &peer_node_id);
-    void removeExpiredMember(const std::string &peer_node_id);
-    void purgeExpiredDisconnects();
 };
 
 void applySyncSnapshot(sqlite3 *certs_db,

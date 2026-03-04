@@ -2964,10 +2964,6 @@ int readParameters(int argc,
     app.add_option("--cluster-discovery-timeout",
                    config.cluster_discovery_timeout_secs,
                    "Seconds to wait for cluster discovery before bootstrapping.  Default 10");
-    app.add_option("--cluster-removal-timeout",
-                   config.cluster_removal_timeout_secs,
-                   "Seconds before removing a departed cluster node.  Default 30");
-
     // Add any parameters for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry())
         authn_entry.second->addOptions(app, authn_config_map);
@@ -3052,6 +3048,8 @@ int readParameters(int argc,
             << "        --status-validity-mins               Set Status Validity Time in Minutes\n"
             << "        --cert-pv-prefix <cert_pv_prefix>    Specifies the prefix for all PVs published by this "
                "PVACMS.  Default `CERT`\n"
+            << "        --cluster-pv-prefix <prefix>         Prefix for cluster PV names. Default `CERT:CLUSTER`\n"
+            << "        --cluster-discovery-timeout <secs>   Seconds to wait for cluster discovery. Default 10\n"
             << "  (-v | --verbose)                           Verbose mode\n"
             << std::endl
             << "admin options:\n"
@@ -3463,7 +3461,6 @@ int main(int argc, char *argv[]) {
         ClusterDiscovery cluster_discovery(our_node_id, our_issuer_id,
                                            config.cluster_pv_prefix,
                                            config.cluster_discovery_timeout_secs,
-                                           config.cluster_removal_timeout_secs,
                                            certs_db.get(),
                                            cert_auth_pkey,
                                            cert_auth_pub_key,

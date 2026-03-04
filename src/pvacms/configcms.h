@@ -302,15 +302,6 @@ class ConfigCms final : public Config {
      */
     uint32_t cluster_discovery_timeout_secs = 10;
 
-    /**
-     * @brief Grace period in seconds before removing a departed node.
-     *
-     * When a sync PV subscription disconnects, the node waits this long
-     * before removing the peer from the membership list. If the subscription
-     * reconnects before this timeout, the peer is kept.
-     */
-    uint32_t cluster_removal_timeout_secs = 30;
-
     void applyCmsEnv(const std::map<std::string, std::string>& defs);
     static ConfigCms mockCms(int family=AF_INET);
     static ConfigCms forCms();
