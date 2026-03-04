@@ -52,6 +52,16 @@ long registerAllRecordDeviceDrivers(struct dbBase *pdbbase);
 }
 #endif
 
+// db_access.h (included by cadef.h) redefines macros from dbFldTypes.h/dbAccessDefs.h
+#undef DBR_SHORT
+#undef DBR_GR_LONG
+#undef DBR_GR_DOUBLE
+#undef DBR_CTRL_LONG
+#undef DBR_CTRL_DOUBLE
+#undef DBR_PUT_ACKT
+#undef DBR_PUT_ACKS
+#undef VALID_DB_REQ
+#undef INVALID_DB_REQ
 #include <cadef.h>
 
 #include <pvxs/client.h>
