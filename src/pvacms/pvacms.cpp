@@ -2344,8 +2344,9 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
  * @param cert_status_creator The certificate status creator
  * @param status_monitor_params The status monitor parameters
  */
-void postUpdateToNextCertBecomingValid(const CertStatusFactory &cert_status_creator,
+bool postUpdateToNextCertBecomingValid(const CertStatusFactory &cert_status_creator,
                                        const StatusMonitor &status_monitor_params) {
+    bool changed = false;
     Guard G(status_update_lock);
     sqlite3_stmt *stmt;
     std::string valid_sql(SQL_CERT_TO_VALID);
@@ -2369,6 +2370,7 @@ void postUpdateToNextCertBecomingValid(const CertStatusFactory &cert_status_crea
                 log_info_printf(pvacmsmonitor,
                                 "%s ==> VALID\n",
                                 getCertId(status_monitor_params.issuer_id_, serial).c_str());
+                changed = true;
             } catch (const std::runtime_error &e) {
                 log_err_printf(pvacmsmonitor, "PVACMS Certificate Monitor Error: %s\n", e.what());
             }
@@ -2379,6 +2381,7 @@ void postUpdateToNextCertBecomingValid(const CertStatusFactory &cert_status_crea
                        "PVACMS Certificate Monitor Error: %s\n",
                        sqlite3_errmsg(status_monitor_params.certs_db_.get()));
     }
+    return changed;
 }
 
 /**
@@ -2653,13 +2656,16 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
  * @param cert_status_creator The certificate status creator
  * @param status_monitor_params The status monitor parameters
  */
-void postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_creator,
-                                  const StatusMonitor &status_monitor_params) {
+bool postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_creator,
+                                   const StatusMonitor &status_monitor_params) {
+    bool changed = false;
     while (postUpdateToNextCertToExpire(cert_status_creator,
                                  status_monitor_params.status_pv_,
                                  status_monitor_params.certs_db_,
                                  status_monitor_params.config_.getCertPvPrefix(),
-                                 status_monitor_params.issuer_id_));
+                                 status_monitor_params.issuer_id_))
+        changed = true;
+    return changed;
 }
 
 /**
@@ -2674,18 +2680,22 @@ void postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_creator,
  * @param cert_status_creator The certificate status creator
  * @param status_monitor_params The status monitor parameters
  */
-void postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_creator,
-                                  const StatusMonitor &status_monitor_params) {
+bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_creator,
+                                   const StatusMonitor &status_monitor_params) {
+    bool changed = false;
     while (postUpdateToNextCertToNeedRenewal(cert_status_creator,
                                  status_monitor_params.status_pv_,
                                  status_monitor_params.certs_db_,
                                  status_monitor_params.config_.getCertPvPrefix(),
-                                 status_monitor_params.issuer_id_));
+                                 status_monitor_params.issuer_id_))
+        changed = true;
     while (postUpdateToNextCertNearingRenewal(cert_status_creator,
                                  status_monitor_params.status_pv_,
                                  status_monitor_params.certs_db_,
                                  status_monitor_params.config_.getCertPvPrefix(),
-                                 status_monitor_params.issuer_id_));
+                                 status_monitor_params.issuer_id_))
+        changed = true;
+    return changed;
 }
 
 /**
@@ -2700,13 +2710,16 @@ void postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
  * @param cert_status_creator The certificate status creator
  * @param status_monitor_params The status monitor parameters
  */
-void postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_status_creator,
-                                  const StatusMonitor &status_monitor_params) {
+bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_status_creator,
+                                   const StatusMonitor &status_monitor_params) {
+    bool changed = false;
     while (postUpdatesToNextCertStatusToBecomeInvalid(cert_status_creator,
                                  status_monitor_params.status_pv_,
                                  status_monitor_params.certs_db_,
                                  status_monitor_params.config_.getCertPvPrefix(),
-                                 status_monitor_params.issuer_id_));
+                                 status_monitor_params.issuer_id_))
+        changed = true;
+    return changed;
 }
 
 /**
@@ -2723,11 +2736,12 @@ void postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
  * @param cert_status_creator The certificate status creator
  * @param status_monitor_params The status monitor parameters
  */
-void postUpdatesToExpiredStatuses(const CertStatusFactory &cert_status_creator,
-                                  const StatusMonitor &status_monitor_params) {
+bool postUpdatesToExpiredStatuses(const CertStatusFactory &cert_status_creator,
+                                   const StatusMonitor &status_monitor_params) {
+    bool changed = false;
     auto const serials = status_monitor_params.getActiveSerials();
     if (serials.empty())
-        return;
+        return false;
 
     sqlite3_stmt *stmt;
     std::string validity_sql(SQL_CERT_BECOMING_INVALID);
@@ -2756,6 +2770,7 @@ void postUpdatesToExpiredStatuses(const CertStatusFactory &cert_status_creator,
                 log_debug_printf(pvacmsmonitor,
                                  "%s ==> \u21BA \n",
                                  getCertId(status_monitor_params.issuer_id_, serial).c_str());
+                changed = true;
             } catch (const std::runtime_error &e) {
                 log_err_printf(pvacmsmonitor, "PVACMS Certificate Monitor Error: %s\n", e.what());
             }
@@ -2766,6 +2781,7 @@ void postUpdatesToExpiredStatuses(const CertStatusFactory &cert_status_creator,
                        "PVACMS Certificate Monitor Error: %s\n",
                        sqlite3_errmsg(status_monitor_params.certs_db_.get()));
     }
+    return changed;
 }
 
 /**
@@ -2784,24 +2800,28 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
                                                      status_monitor_params.cert_auth_pkey_,
                                                      status_monitor_params.cert_auth_cert_chain_,
                                                      status_monitor_params.config_.cert_status_validity_mins));
+
+    bool db_changed = false;
+
     // Search for the next cert to become valid and update it
-    postUpdateToNextCertBecomingValid(cert_status_creator, status_monitor_params);
+    db_changed |= postUpdateToNextCertBecomingValid(cert_status_creator, status_monitor_params);
 
     // Search for all certs that have expired
-    postUpdateToNextCertToExpire(cert_status_creator, status_monitor_params);
+    db_changed |= postUpdateToNextCertToExpire(cert_status_creator, status_monitor_params);
 
     // Search for all certs that need renewal
-    postUpdateToNextCertToNeedRenewal(cert_status_creator, status_monitor_params);
+    db_changed |= postUpdateToNextCertToNeedRenewal(cert_status_creator, status_monitor_params);
 
     // Search for certs that are becoming invalid
     if (!status_monitor_params.active_status_validity_.empty()) {
-        postUpdatesToExpiredStatuses(cert_status_creator, status_monitor_params);
+        db_changed |= postUpdatesToExpiredStatuses(cert_status_creator, status_monitor_params);
     }
 
     // Search for all certs whose status is becoming invalid
-    postUpdatesToNextCertStatusToBecomeInvalid(cert_status_creator, status_monitor_params);
+    db_changed |= postUpdatesToNextCertStatusToBecomeInvalid(cert_status_creator, status_monitor_params);
 
-    if (status_monitor_params.cluster_sync_)
+    // Only publish sync snapshot if cert data actually changed
+    if (db_changed && status_monitor_params.cluster_sync_)
         status_monitor_params.cluster_sync_->publishSnapshot();
 
     log_debug_printf(pvacmsmonitor, "Certificate Monitor Thread Sleep%s", "\n");
