@@ -944,6 +944,13 @@ int main(int argc, char* argv[]) {
             "interference with benchmark results.\n"
         };
 
+        app.set_help_flag("", "");  // deactivate built-in help
+
+        bool help{false};
+        bool verbose{false};
+        app.add_flag("-h,--help", help);
+        app.add_flag("-v,--verbose", verbose, "Verbose mode");
+
         double duration = 5.0;
         uint64_t warmup = 100;
         std::string subs_str = "1,10,100,500,1000";
@@ -958,17 +965,12 @@ int main(int argc, char* argv[]) {
         bool show_version = false;
         bool nt_payload = false;
 
-        app.add_option("--duration", duration, "Measurement duration per data point in seconds")
-            ->default_val(5.0);
-        app.add_option("--warmup", warmup, "Number of warm-up updates before measurement")
-            ->default_val(100);
+        app.add_option("--duration", duration, "Measurement duration per data point in seconds");
+        app.add_option("--warmup", warmup, "Number of warm-up updates before measurement");
         app.add_option("--subscriptions", subs_str,
-                        "Comma-separated subscriber counts to sweep (e.g. 1,10,100,500,1000)")
-            ->default_val("1,10,100,500,1000");
-        app.add_option("--sizes", sizes_str, "Comma-separated payload sizes in bytes")
-            ->default_val("1,10,100,1000,10000,100000");
-        app.add_option("--modes", modes_str, "Comma-separated protocol modes: ca,pva,spva,spva_certmon")
-            ->default_val("ca,pva,spva,spva_certmon");
+                        "Comma-separated subscriber counts to sweep (e.g. 1,10,100,500,1000)");
+        app.add_option("--sizes", sizes_str, "Comma-separated payload sizes in bytes");
+        app.add_option("--modes", modes_str, "Comma-separated protocol modes: ca,pva,spva,spva_certmon");
         app.add_option("--keychain", keychain, "TLS keychain file for SPVA modes");
         app.add_option("--output", output_file, "CSV output file (default: stdout)");
         app.add_flag("--setup-cms", setup_cms,
@@ -985,9 +987,55 @@ int main(int argc, char* argv[]) {
 
         CLI11_PARSE(app, argc, argv);
 
+        if (help) {
+            auto program_name = argv[0];
+            std::cout
+                << "pvxperf - PVAccess Performance Benchmarking Tool\n"
+                << std::endl
+                << "Measures monitor subscription throughput (updates/second) across four protocol\n"
+                << "modes: CA, PVA, SPVA, and SPVA+CERTMON, sweeping across configurable subscriber\n"
+                << "counts.\n"
+                << std::endl
+                << "WARNING: Run on a network with no other active PVACMS to avoid interference\n"
+                << "with benchmark results.\n"
+                << std::endl
+                << "usage:\n"
+                << "  " << program_name << " [options]                              Run benchmarks\n"
+                << "  " << program_name << " (-h | --help)                          Show this help message and exit\n"
+                << "  " << program_name << " (-V | --version)                       Print version and exit\n"
+                << std::endl
+                << "benchmark options:\n"
+                << "        --duration <seconds>                  Measurement duration per data point. Default 5\n"
+                << "        --warmup <count>                      Number of warm-up updates before measurement. Default 100\n"
+                << "        --subscriptions <list>                Comma-separated subscriber counts to sweep.\n"
+                << "                                              Default 1,10,100,500,1000\n"
+                << "        --sizes <list>                        Comma-separated payload sizes in bytes.\n"
+                << "                                              Default 1,10,100,1000,10000,100000\n"
+                << "        --modes <list>                        Comma-separated protocol modes to run.\n"
+                << "                                              ca,pva,spva,spva_certmon. Default all\n"
+                << "        --nt-payload                          Use NT types for PVA payload (adds timestamp/alarm\n"
+                << "                                              metadata overhead)\n"
+                << "        --output <file>                       CSV output file. Default stdout\n"
+                << std::endl
+                << "TLS/CMS options:\n"
+                << "        --keychain <path>                     TLS keychain file for SPVA modes\n"
+                << "        --setup-cms                           Auto-bootstrap PVACMS with temp certs for\n"
+                << "                                              SPVA_CERTMON\n"
+                << "        --external-cms                        Use already-running PVACMS for SPVA_CERTMON\n"
+                << "        --cms-db <path>                       Path to existing PVACMS SQLite database\n"
+                << "        --cms-keychain <path>                 Path to existing PVACMS server keychain\n"
+                << "        --cms-acf <path>                      Path to existing PVACMS ACF file\n"
+                << std::endl
+                << "general options:\n"
+                << "  (-d | --debug)                              Enable PVXS debug logging\n"
+                << "  (-v | --verbose)                            Verbose mode\n"
+                << std::endl;
+            exit(0);
+        }
+
         if (show_version) {
             version_information(std::cout);
-            return 0;
+            exit(0);
         }
 
         if (debug) {
