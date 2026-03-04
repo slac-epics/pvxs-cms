@@ -21,6 +21,10 @@ pvxperf_SRCS += pvxperf.cpp
 # Bake in EPICS_BASE path for locating softIoc.dbd at runtime
 pvxperf_CPPFLAGS += -DPVXPERF_EPICS_BASE=\"$(abspath $(EPICS_BASE))\"
 
+# dbAccess.h and cadef.h redefine each other's macros (EPICS-internal conflict).
+# Downgrade to warnings so -Werror builds don't fail on this.
+pvxperf_CPPFLAGS += -Wno-error
+
 pvxperf_LIBS += pvxs Com ca dbCore dbRecStd
 
 endif # !WIN32

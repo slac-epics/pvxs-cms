@@ -354,7 +354,9 @@ void remove_temp_dir(const std::string& dir) {
     if (dir.empty() || dir == "/")
         return;
     const std::string cmd = "rm -rf " + dir;
-    (void)system(cmd.c_str());
+    if (system(cmd.c_str()) != 0) {
+        log_warn_printf(perflog, "Failed to remove temp dir: %s\n", dir.c_str());
+    }
 }
 
 // ============================================================
