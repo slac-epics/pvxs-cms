@@ -6,6 +6,8 @@
 
 #include "clustertypes.h"
 
+#include <cstring>
+
 #include <epicsTime.h>
 
 #include <pvxs/nt.h>

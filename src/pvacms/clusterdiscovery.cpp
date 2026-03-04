@@ -7,6 +7,7 @@
 #include "clusterdiscovery.h"
 
 #include <algorithm>
+#include <cstring>
 
 #include <epicsMutex.h>
 #include <epicsGuard.h>
