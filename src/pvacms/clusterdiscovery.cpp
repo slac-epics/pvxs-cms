@@ -6,8 +6,6 @@
 
 #include "clusterdiscovery.h"
 
-#include <cstring>
-#include <ctime>
 #include <algorithm>
 
 #include <epicsMutex.h>
@@ -150,7 +148,7 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     auto hwm = global_high_water_mark_.load();
     if (hwm > 0 && incoming_ts < hwm - kClockSkewTolerance) {
         log_warn_printf(pvacmscluster, "Stale/replayed sync snapshot from %s (ts=%lld, hwm=%lld)\n",
-                        peer_node_id.c_str(), (long long)incoming_ts, (long long)hwm);
+                        peer_node_id.c_str(), static_cast<long long>(incoming_ts), static_cast<long long>(hwm));
         return;
     }
 
@@ -180,7 +178,7 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     purgeExpiredDisconnects();
 
     log_debug_printf(pvacmscluster, "Applied sync snapshot from %s (%zu certs)\n",
-                     peer_node_id.c_str(), (size_t)val["certs"].as<shared_array<const Value>>().size());
+                     peer_node_id.c_str(), static_cast<size_t>(val["certs"].as<shared_array<const Value> >().size()));
 }
 
 void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::string &sync_pv) {
@@ -327,7 +325,7 @@ bool ClusterDiscovery::joinCluster() {
         auto now = static_cast<int64_t>(std::time(nullptr));
         if (std::abs(now - resp_ts) > kJoinTimestampTolerance) {
             log_warn_printf(pvacmscluster, "Join response stale timestamp (ts=%lld, now=%lld)\n",
-                            (long long)resp_ts, (long long)now);
+                            static_cast<long long>(resp_ts), static_cast<long long>(now));
             return false;
         }
 

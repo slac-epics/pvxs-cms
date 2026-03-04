@@ -6,7 +6,6 @@
 
 #include "clustersync.h"
 
-#include <ctime>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -112,7 +111,7 @@ void ClusterSyncPublisher::publishSnapshot(const std::vector<ClusterMember> &mem
 
     auto val = serializeCertsTable(certs_db_, node_id_, members_, prototype_);
 
-    auto canonical = canonicalizeSync(val);
+    const auto canonical = canonicalizeSync(val);
     clusterSign(cert_auth_pkey_, val, canonical);
 
     auto cert_count = val["certs"].as<shared_array<const Value>>().size();

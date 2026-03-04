@@ -111,7 +111,7 @@ class ConfigCms final : public Config {
      * @brief Default IOC certificate validity period
      *
      * Expressed using format: 1y 2M 3w 4d 5h 6m 7s
-     * This is the amount of time that a IOC certificate will be given to a new IOC
+     * This is the amount of time that an IOC certificate will be given to a new IOC
      * certificate unless overridden by the Authenticator verify routine.
      */
     std::string default_ioc_cert_validity="6M";

@@ -6,7 +6,6 @@
 
 #include "clusterctrl.h"
 
-#include <ctime>
 #include <algorithm>
 
 #include <pvxs/log.h>

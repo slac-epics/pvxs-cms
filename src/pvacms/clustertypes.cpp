@@ -6,8 +6,6 @@
 
 #include "clustertypes.h"
 
-#include <cstring>
-
 #include "certfactory.h"
 
 namespace {
@@ -156,16 +154,14 @@ std::string canonicalizeSync(const Value &payload) {
 
     auto members_arr = payload["members"].as<shared_array<const Value>>();
     appendU32(buf, static_cast<uint32_t>(members_arr.size()));
-    for (size_t i = 0; i < members_arr.size(); i++) {
-        auto &elem = members_arr[i];
+    for (const auto & elem : members_arr) {
         appendString(buf, elem["node_id"].as<std::string>());
         appendString(buf, elem["sync_pv"].as<std::string>());
     }
 
     auto certs_arr = payload["certs"].as<shared_array<const Value>>();
     appendU32(buf, static_cast<uint32_t>(certs_arr.size()));
-    for (size_t i = 0; i < certs_arr.size(); i++) {
-        auto &elem = certs_arr[i];
+    for (const auto & elem : certs_arr) {
         appendI64(buf, elem["serial"].as<int64_t>());
         appendString(buf, elem["skid"].as<std::string>());
         appendString(buf, elem["cn"].as<std::string>());
@@ -191,8 +187,7 @@ std::string canonicalizeCtrl(const Value &payload) {
 
     auto members_arr = payload["members"].as<shared_array<const Value>>();
     appendU32(buf, static_cast<uint32_t>(members_arr.size()));
-    for (size_t i = 0; i < members_arr.size(); i++) {
-        auto &elem = members_arr[i];
+    for (const auto & elem : members_arr) {
         appendString(buf, elem["node_id"].as<std::string>());
         appendString(buf, elem["sync_pv"].as<std::string>());
     }
@@ -216,8 +211,7 @@ std::string canonicalizeJoinResponse(const Value &payload) {
 
     auto members_arr = payload["members"].as<shared_array<const Value>>();
     appendU32(buf, static_cast<uint32_t>(members_arr.size()));
-    for (size_t i = 0; i < members_arr.size(); i++) {
-        auto &elem = members_arr[i];
+    for (const auto & elem : members_arr) {
         appendString(buf, elem["node_id"].as<std::string>());
         appendString(buf, elem["sync_pv"].as<std::string>());
     }
