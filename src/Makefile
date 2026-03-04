@@ -40,6 +40,8 @@ include $(TOP)/configure/CONFIG
 #  ADD MACRO DEFINITIONS AFTER THIS LINE
 #=============================
 
+include $(TOP)/configure/CONFIG_PVACMS_VERSION
+
 COMMON_DIR     = $(TOP)/src/common
 AUTHN_DIR      = $(TOP)/src/authn
 AUTHN_STD_DIR  = $(AUTHN_DIR)/std

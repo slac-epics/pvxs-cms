@@ -17,6 +17,8 @@
 
 #include <sqlite3.h>
 
+#include "pvacmsVersion.h"
+
 DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 
 namespace pvxs {
@@ -37,7 +39,7 @@ ClusterSyncPublisher::ClusterSyncPublisher(const std::string &node_id,
     , cert_auth_pkey_(cert_auth_pkey)
     , status_update_lock_(status_update_lock)
     , sync_pv_(server::SharedPV::buildReadonly())
-    , members_({{node_id, sync_pv_name_}})
+    , members_({{node_id, sync_pv_name_, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION}})
 {}
 
 Value serializeCertsTable(sqlite3 *certs_db,
@@ -46,13 +48,16 @@ Value serializeCertsTable(sqlite3 *certs_db,
                           const Value &prototype) {
     auto val = prototype ? prototype.cloneEmpty() : makeClusterSyncValue();
     val["node_id"] = node_id;
-    val["timestamp"] = static_cast<int64_t>(std::time(nullptr));
+    setTimeStamp(val);
 
     shared_array<Value> members_arr(members.size());
     for (size_t i = 0; i < members.size(); i++) {
         members_arr[i] = val["members"].allocMember();
         members_arr[i]["node_id"] = members[i].node_id;
         members_arr[i]["sync_pv"] = members[i].sync_pv;
+        members_arr[i]["version_major"] = members[i].version_major;
+        members_arr[i]["version_minor"] = members[i].version_minor;
+        members_arr[i]["version_patch"] = members[i].version_patch;
     }
     val["members"] = members_arr.freeze();
 
@@ -98,18 +103,25 @@ Value serializeCertsTable(sqlite3 *certs_db,
 }
 
 void ClusterSyncPublisher::publishSnapshot() {
-    publishSnapshot(members_);
+    doPublish(members_, false, true);
 }
 
 void ClusterSyncPublisher::publishSnapshot(const std::vector<ClusterMember> &members) {
+    bool members_changed = (members != members_);
+    members_ = members;
+    doPublish(members_, members_changed, false);
+}
+
+void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members,
+                                     bool members_changed,
+                                     bool certs_changed) {
     if (sync_ingestion_in_progress.load())
         return;
 
-    members_ = members;
-
     Guard G(status_update_lock_);
 
-    auto val = serializeCertsTable(certs_db_, node_id_, members_, prototype_);
+    // Always build the full Value — needed for canonicalization and signing
+    auto val = serializeCertsTable(certs_db_, node_id_, members, prototype_);
 
     const auto canonical = canonicalizeSync(val);
     clusterSign(cert_auth_pkey_, val, canonical);
@@ -117,14 +129,24 @@ void ClusterSyncPublisher::publishSnapshot(const std::vector<ClusterMember> &mem
     auto cert_count = val["certs"].as<shared_array<const Value>>().size();
 
     if (!opened_) {
+        // First open — all fields marked, full value sent to initial subscribers
         prototype_ = val;
         sync_pv_.open(val);
         opened_ = true;
     } else {
+        // Subsequent posts — unmark unchanged fields so PVA only sends the delta.
+        // The client-side cache_sync() fills in unmarked fields from its cache.
+        val["node_id"].unmark();  // never changes
+        if (!members_changed)
+            val["members"].unmark();
+        if (!certs_changed)
+            val["certs"].unmark();
+        // timestamp and signature are always marked (always change)
         sync_pv_.post(val);
     }
 
-    log_debug_printf(pvacmscluster, "Published sync snapshot with %zu certs\n", cert_count);
+    log_debug_printf(pvacmscluster, "Published sync snapshot with %zu certs (members_changed=%d, certs_changed=%d)\n",
+                     cert_count, members_changed, certs_changed);
 }
 
 std::string ClusterSyncPublisher::getSyncPvName() const {

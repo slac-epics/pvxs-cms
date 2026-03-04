@@ -40,7 +40,6 @@ public:
                      ClusterController &controller,
                      client::Context client_ctx);
 
-    bool discoverCluster();
     bool joinCluster();
     void subscribeToMember(const std::string &node_id, const std::string &sync_pv);
     void reconcileMembers(const std::vector<ClusterMember> &remote_members);

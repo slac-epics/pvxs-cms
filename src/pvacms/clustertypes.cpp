@@ -6,6 +6,10 @@
 
 #include "clustertypes.h"
 
+#include <epicsTime.h>
+
+#include <pvxs/nt.h>
+
 #include "certfactory.h"
 
 namespace {
@@ -57,13 +61,27 @@ namespace certs {
 
 using namespace pvxs::members;
 
+void setTimeStamp(Value &parent, const char *field) {
+    auto now = std::time(nullptr);
+    parent[std::string(field) + ".secondsPastEpoch"] = static_cast<int64_t>(now) - POSIX_TIME_AT_EPICS_EPOCH;
+    parent[std::string(field) + ".nanoseconds"] = static_cast<int32_t>(0);
+}
+
+int64_t getTimeStampAsUnix(const Value &parent, const char *field) {
+    auto secs = parent[std::string(field) + ".secondsPastEpoch"].as<int64_t>();
+    return secs + POSIX_TIME_AT_EPICS_EPOCH;
+}
+
 Value makeClusterSyncValue() {
     return TypeDef(TypeCode::Struct, {
         String("node_id"),
-        Int64("timestamp"),
+        nt::TimeStamp{}.build().as("timeStamp"),
         StructA("members", {
             String("node_id"),
             String("sync_pv"),
+            UInt32("version_major"),
+            UInt32("version_minor"),
+            UInt32("version_patch"),
         }),
         StructA("certs", {
             Int64("serial"),
@@ -86,11 +104,16 @@ Value makeClusterSyncValue() {
 
 Value makeClusterCtrlValue() {
     return TypeDef(TypeCode::Struct, {
-        UInt32("version"),
+        UInt32("version_major"),
+        UInt32("version_minor"),
+        UInt32("version_patch"),
         String("issuer_id"),
         StructA("members", {
             String("node_id"),
             String("sync_pv"),
+            UInt32("version_major"),
+            UInt32("version_minor"),
+            UInt32("version_patch"),
         }),
         UInt8A("signature"),
     }).create();
@@ -98,6 +121,9 @@ Value makeClusterCtrlValue() {
 
 Value makeJoinRequestValue() {
     return TypeDef(TypeCode::Struct, {
+        UInt32("version_major"),
+        UInt32("version_minor"),
+        UInt32("version_patch"),
         String("node_id"),
         String("sync_pv"),
         UInt8A("nonce"),
@@ -107,12 +133,17 @@ Value makeJoinRequestValue() {
 
 Value makeJoinResponseValue() {
     return TypeDef(TypeCode::Struct, {
-        UInt32("version"),
+        UInt32("version_major"),
+        UInt32("version_minor"),
+        UInt32("version_patch"),
         String("issuer_id"),
-        Int64("timestamp"),
+        nt::TimeStamp{}.build().as("timeStamp"),
         StructA("members", {
             String("node_id"),
             String("sync_pv"),
+            UInt32("version_major"),
+            UInt32("version_minor"),
+            UInt32("version_patch"),
         }),
         UInt8A("nonce"),
         UInt8A("signature"),
@@ -123,21 +154,20 @@ bool isValidStatusTransition(certstatus_t local_status, certstatus_t remote_stat
     if (local_status == remote_status)
         return true;
 
+    // Only operator/CCR-driven transitions are synced.  Time-based transitions
+    // (PENDING->VALID, VALID->PENDING_RENEWAL, *->EXPIRED) are computed
+    // independently by every node so they never arrive via sync.
     switch (local_status) {
     case PENDING:
-        return remote_status == PENDING_APPROVAL ||
-               remote_status == VALID ||
-               remote_status == REVOKED;
+        return remote_status == REVOKED;
     case PENDING_APPROVAL:
         return remote_status == VALID ||
+               remote_status == PENDING ||
                remote_status == REVOKED;
     case VALID:
-        return remote_status == PENDING_RENEWAL ||
-               remote_status == EXPIRED ||
-               remote_status == REVOKED;
+        return remote_status == REVOKED;
     case PENDING_RENEWAL:
         return remote_status == VALID ||
-               remote_status == EXPIRED ||
                remote_status == REVOKED;
     case EXPIRED:
     case REVOKED:
@@ -150,13 +180,17 @@ bool isValidStatusTransition(certstatus_t local_status, certstatus_t remote_stat
 std::string canonicalizeSync(const Value &payload) {
     std::string buf;
     appendString(buf, payload["node_id"].as<std::string>());
-    appendI64(buf, payload["timestamp"].as<int64_t>());
+    appendI64(buf, payload["timeStamp.secondsPastEpoch"].as<int64_t>());
+    appendI32(buf, payload["timeStamp.nanoseconds"].as<int32_t>());
 
     auto members_arr = payload["members"].as<shared_array<const Value>>();
     appendU32(buf, static_cast<uint32_t>(members_arr.size()));
     for (const auto & elem : members_arr) {
         appendString(buf, elem["node_id"].as<std::string>());
         appendString(buf, elem["sync_pv"].as<std::string>());
+        appendU32(buf, elem["version_major"].as<uint32_t>());
+        appendU32(buf, elem["version_minor"].as<uint32_t>());
+        appendU32(buf, elem["version_patch"].as<uint32_t>());
     }
 
     auto certs_arr = payload["certs"].as<shared_array<const Value>>();
@@ -182,7 +216,9 @@ std::string canonicalizeSync(const Value &payload) {
 
 std::string canonicalizeCtrl(const Value &payload) {
     std::string buf;
-    appendU32(buf, payload["version"].as<uint32_t>());
+    appendU32(buf, payload["version_major"].as<uint32_t>());
+    appendU32(buf, payload["version_minor"].as<uint32_t>());
+    appendU32(buf, payload["version_patch"].as<uint32_t>());
     appendString(buf, payload["issuer_id"].as<std::string>());
 
     auto members_arr = payload["members"].as<shared_array<const Value>>();
@@ -190,6 +226,9 @@ std::string canonicalizeCtrl(const Value &payload) {
     for (const auto & elem : members_arr) {
         appendString(buf, elem["node_id"].as<std::string>());
         appendString(buf, elem["sync_pv"].as<std::string>());
+        appendU32(buf, elem["version_major"].as<uint32_t>());
+        appendU32(buf, elem["version_minor"].as<uint32_t>());
+        appendU32(buf, elem["version_patch"].as<uint32_t>());
     }
 
     return buf;
@@ -197,6 +236,9 @@ std::string canonicalizeCtrl(const Value &payload) {
 
 std::string canonicalizeJoinRequest(const Value &payload) {
     std::string buf;
+    appendU32(buf, payload["version_major"].as<uint32_t>());
+    appendU32(buf, payload["version_minor"].as<uint32_t>());
+    appendU32(buf, payload["version_patch"].as<uint32_t>());
     appendString(buf, payload["node_id"].as<std::string>());
     appendString(buf, payload["sync_pv"].as<std::string>());
     appendBytes(buf, payload["nonce"].as<shared_array<const uint8_t>>());
@@ -205,15 +247,21 @@ std::string canonicalizeJoinRequest(const Value &payload) {
 
 std::string canonicalizeJoinResponse(const Value &payload) {
     std::string buf;
-    appendU32(buf, payload["version"].as<uint32_t>());
+    appendU32(buf, payload["version_major"].as<uint32_t>());
+    appendU32(buf, payload["version_minor"].as<uint32_t>());
+    appendU32(buf, payload["version_patch"].as<uint32_t>());
     appendString(buf, payload["issuer_id"].as<std::string>());
-    appendI64(buf, payload["timestamp"].as<int64_t>());
+    appendI64(buf, payload["timeStamp.secondsPastEpoch"].as<int64_t>());
+    appendI32(buf, payload["timeStamp.nanoseconds"].as<int32_t>());
 
     auto members_arr = payload["members"].as<shared_array<const Value>>();
     appendU32(buf, static_cast<uint32_t>(members_arr.size()));
     for (const auto & elem : members_arr) {
         appendString(buf, elem["node_id"].as<std::string>());
         appendString(buf, elem["sync_pv"].as<std::string>());
+        appendU32(buf, elem["version_major"].as<uint32_t>());
+        appendU32(buf, elem["version_minor"].as<uint32_t>());
+        appendU32(buf, elem["version_patch"].as<uint32_t>());
     }
 
     appendBytes(buf, payload["nonce"].as<shared_array<const uint8_t>>());

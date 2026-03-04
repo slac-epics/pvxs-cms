@@ -16,6 +16,8 @@
 #include <openssl/rand.h>
 #include <sqlite3.h>
 
+#include "pvacmsVersion.h"
+
 DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 
 namespace pvxs {
@@ -142,7 +144,7 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     }
 
     // Anti-replay: reject timestamps older than high-water mark minus clock skew tolerance
-    auto incoming_ts = val["timestamp"].as<int64_t>();
+    auto incoming_ts = getTimeStampAsUnix(val);
     auto hwm = global_high_water_mark_.load();
     if (hwm > 0 && incoming_ts < hwm - kClockSkewTolerance) {
         log_warn_printf(pvacmscluster, "Stale/replayed sync snapshot from %s (ts=%lld, hwm=%lld)\n",
@@ -168,7 +170,10 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     for (size_t i = 0; i < members_arr.size(); i++) {
         remote_members.push_back({
             members_arr[i]["node_id"].as<std::string>(),
-            members_arr[i]["sync_pv"].as<std::string>()
+            members_arr[i]["sync_pv"].as<std::string>(),
+            members_arr[i]["version_major"].as<uint32_t>(),
+            members_arr[i]["version_minor"].as<uint32_t>(),
+            members_arr[i]["version_patch"].as<uint32_t>()
         });
     }
     reconcileMembers(remote_members);
@@ -229,18 +234,6 @@ void ClusterDiscovery::reconcileMembers(const std::vector<ClusterMember> &remote
     }
 }
 
-bool ClusterDiscovery::discoverCluster() {
-    auto ctrl_pv_name = pv_prefix_ + ":CTRL:" + issuer_id_;
-    try {
-        client_ctx_.get(ctrl_pv_name)
-            .exec()
-            ->wait(static_cast<double>(discovery_timeout_secs_));
-        return true;
-    } catch (const client::Timeout &) {
-        return false;
-    }
-}
-
 bool ClusterDiscovery::joinCluster() {
     auto ctrl_pv_name = pv_prefix_ + ":CTRL:" + issuer_id_;
     auto sync_pv_name = sync_publisher_.getSyncPvName();
@@ -252,6 +245,9 @@ bool ClusterDiscovery::joinCluster() {
     auto frozen_nonce = nonce.freeze();
 
     auto req = makeJoinRequestValue();
+    req["version_major"] = static_cast<uint32_t>(PVACMS_MAJOR_VERSION);
+    req["version_minor"] = static_cast<uint32_t>(PVACMS_MINOR_VERSION);
+    req["version_patch"] = static_cast<uint32_t>(PVACMS_MAINTENANCE_VERSION);
     req["node_id"] = node_id_;
     req["sync_pv"] = sync_pv_name;
     req["nonce"] = frozen_nonce;
@@ -284,7 +280,7 @@ bool ClusterDiscovery::joinCluster() {
             return false;
         }
 
-        auto resp_ts = resp["timestamp"].as<int64_t>();
+        auto resp_ts = getTimeStampAsUnix(resp);
         auto now = static_cast<int64_t>(std::time(nullptr));
         if (std::abs(now - resp_ts) > kJoinTimestampTolerance) {
             log_warn_printf(pvacmscluster, "Join response stale timestamp (ts=%lld, now=%lld)\n",
@@ -292,15 +288,21 @@ bool ClusterDiscovery::joinCluster() {
             return false;
         }
 
-        log_info_printf(pvacmscluster, "Joined cluster %s (version %u)\n",
-                        issuer_id_.c_str(), resp["version"].as<uint32_t>());
+        log_info_printf(pvacmscluster, "Joined cluster %s (version %u.%u.%u)\n",
+                        issuer_id_.c_str(),
+                        resp["version_major"].as<uint32_t>(),
+                        resp["version_minor"].as<uint32_t>(),
+                        resp["version_patch"].as<uint32_t>());
 
         auto members_arr = resp["members"].as<shared_array<const Value>>();
         std::vector<ClusterMember> members;
         for (size_t i = 0; i < members_arr.size(); i++) {
             members.push_back({
                 members_arr[i]["node_id"].as<std::string>(),
-                members_arr[i]["sync_pv"].as<std::string>()
+                members_arr[i]["sync_pv"].as<std::string>(),
+                members_arr[i]["version_major"].as<uint32_t>(),
+                members_arr[i]["version_minor"].as<uint32_t>(),
+                members_arr[i]["version_patch"].as<uint32_t>()
             });
         }
 

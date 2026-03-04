@@ -63,6 +63,7 @@
 #include "clusterdiscovery.h"
 #include "clustersync.h"
 #include "configcms.h"
+#include "pvacmsVersion.h"
 #include "openssl.h"
 #include "ownedptr.h"
 #include "serverev.h"
@@ -2801,28 +2802,18 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
                                                      status_monitor_params.cert_auth_cert_chain_,
                                                      status_monitor_params.config_.cert_status_validity_mins));
 
-    bool db_changed = false;
+    postUpdateToNextCertBecomingValid(cert_status_creator, status_monitor_params);
+    postUpdateToNextCertToExpire(cert_status_creator, status_monitor_params);
+    postUpdateToNextCertToNeedRenewal(cert_status_creator, status_monitor_params);
 
-    // Search for the next cert to become valid and update it
-    db_changed |= postUpdateToNextCertBecomingValid(cert_status_creator, status_monitor_params);
-
-    // Search for all certs that have expired
-    db_changed |= postUpdateToNextCertToExpire(cert_status_creator, status_monitor_params);
-
-    // Search for all certs that need renewal
-    db_changed |= postUpdateToNextCertToNeedRenewal(cert_status_creator, status_monitor_params);
-
-    // Search for certs that are becoming invalid
     if (!status_monitor_params.active_status_validity_.empty()) {
-        db_changed |= postUpdatesToExpiredStatuses(cert_status_creator, status_monitor_params);
+        postUpdatesToExpiredStatuses(cert_status_creator, status_monitor_params);
     }
 
-    // Search for all certs whose status is becoming invalid
-    db_changed |= postUpdatesToNextCertStatusToBecomeInvalid(cert_status_creator, status_monitor_params);
+    postUpdatesToNextCertStatusToBecomeInvalid(cert_status_creator, status_monitor_params);
 
-    // Only publish sync snapshot if cert data actually changed
-    if (db_changed && status_monitor_params.cluster_sync_)
-        status_monitor_params.cluster_sync_->publishSnapshot();
+    // No cluster sync here: time-based transitions are computed independently by every node.
+    // Only CCR/admin actions (create, revoke, approve, renew) publish sync snapshots.
 
     log_debug_printf(pvacmsmonitor, "Certificate Monitor Thread Sleep%s", "\n");
     return {};
@@ -2978,7 +2969,10 @@ int readParameters(int argc,
             authn_help += authn_entry.second->getOptionsHelpText();
 
         std::cout
-            << "PVACMS: PVAccess Certificate Management Service\n"
+            << "PVACMS: PVAccess Certificate Management Service v"
+            << PVACMS_MAJOR_VERSION << "."
+            << PVACMS_MINOR_VERSION << "."
+            << PVACMS_MAINTENANCE_VERSION << "\n"
             << std::endl
             << "Manages Certificates for a Secure PVAccess network.  The Certificate Authority.  Handles Create \n"
             << "and Revoke requests.  Manages Certificate lifecycles and provides live OCSP certificate status.\n"
@@ -3425,14 +3419,13 @@ int main(int argc, char *argv[]) {
         });
 
         StatusMonitor status_monitor_params(config,
-                                            certs_db,
-                                            our_issuer_id,
-                                            status_pv,
-                                            cert_auth_cert,
-                                            cert_auth_pkey,
-                                            cert_auth_chain,
-                                            active_status_validity,
-                                            &cluster_sync);
+                                             certs_db,
+                                             our_issuer_id,
+                                             status_pv,
+                                             cert_auth_cert,
+                                             cert_auth_pkey,
+                                             cert_auth_chain,
+                                             active_status_validity);
 
         // Create a server with a certificate monitoring function attached to the cert file monitor timer
         // Return true to indicate that we want the file monitor time to run after this
@@ -3502,7 +3495,10 @@ int main(int argc, char *argv[]) {
         try {
             std::cout << "+=======================================+======================================="
                       << std::endl;
-            std::cout << "| EPICS Secure PVAccess Certificate Management Service" << std::endl;
+            std::cout << "| EPICS Secure PVAccess Certificate Management Service v"
+                      << PVACMS_MAJOR_VERSION << "."
+                      << PVACMS_MINOR_VERSION << "."
+                      << PVACMS_MAINTENANCE_VERSION << std::endl;
             std::cout << "+---------------------------------------+---------------------------------------"
                       << std::endl;
             std::cout << "| Certificate Database                  : " << config.certs_db_filename << std::endl;
@@ -3510,6 +3506,8 @@ int main(int argc, char *argv[]) {
             std::cout << "| Certificate Authority Keychain File   : " << config.cert_auth_keychain_file << std::endl;
             std::cout << "| PVACMS Keychain File                  : " << config.tls_keychain_file << std::endl;
             std::cout << "| PVACMS Access Control File            : " << config.pvacms_acf_filename << std::endl;
+            std::cout << "+---------------------------------------+---------------------------------------"
+                      << std::endl;
             std::cout << "| Cluster Node ID                       : " << our_node_id << std::endl;
             std::cout << "| Cluster Sync PV                       : " << cluster_sync.getSyncPvName() << std::endl;
             std::cout << "| Cluster Ctrl PV                       : " << cluster_ctrl.getCtrlPvName() << std::endl;

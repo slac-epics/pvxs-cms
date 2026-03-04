@@ -19,6 +19,9 @@
 namespace pvxs {
 namespace certs {
 
+void setTimeStamp(Value &parent, const char *field = "timeStamp");
+int64_t getTimeStampAsUnix(const Value &parent, const char *field = "timeStamp");
+
 Value makeClusterSyncValue();
 Value makeClusterCtrlValue();
 Value makeJoinRequestValue();

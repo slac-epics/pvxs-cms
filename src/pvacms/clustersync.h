@@ -17,6 +17,7 @@
 
 #include "clustertypes.h"
 #include "ownedptr.h"
+#include "pvacmsVersion.h"
 
 // Forward declarations
 struct sqlite3;
@@ -27,6 +28,19 @@ namespace certs {
 struct ClusterMember {
     std::string node_id;
     std::string sync_pv;
+    uint32_t version_major;
+    uint32_t version_minor;
+    uint32_t version_patch;
+
+    bool operator==(const ClusterMember &o) const {
+        return node_id == o.node_id && sync_pv == o.sync_pv &&
+               version_major == o.version_major &&
+               version_minor == o.version_minor &&
+               version_patch == o.version_patch;
+    }
+    bool operator!=(const ClusterMember &o) const {
+        return !(*this == o);
+    }
 };
 
 class ClusterSyncPublisher {
@@ -56,10 +70,13 @@ private:
     epicsMutex &status_update_lock_;
     server::SharedPV sync_pv_;
     bool opened_{false};
-    Value prototype_;  // Type prototype from first open() — post() requires matching type
+    Value prototype_;
 
-    // Current membership view — updated externally
     std::vector<ClusterMember> members_;
+
+    void doPublish(const std::vector<ClusterMember> &members,
+                   bool members_changed,
+                   bool certs_changed);
 };
 
 Value serializeCertsTable(sqlite3 *certs_db,

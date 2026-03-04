@@ -11,6 +11,7 @@
 #include <pvxs/log.h>
 
 #include "clustersync.h"
+#include "pvacmsVersion.h"
 
 DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 
@@ -35,6 +36,14 @@ ClusterController::ClusterController(const std::string &issuer_id,
 void ClusterController::setupRpcHandler() {
     ctrl_pv_.onRPC([this](server::SharedPV &, std::unique_ptr<server::ExecOp> &&op, Value &&args) {
         try {
+            auto req_major = args["version_major"].as<uint32_t>();
+            if (req_major != 1) {
+                log_warn_printf(pvacmscluster, "Join request unsupported major version %u from node %s\n",
+                                req_major, args["node_id"].as<std::string>().c_str());
+                op->error("Unsupported protocol version");
+                return;
+            }
+
             auto canonical = canonicalizeJoinRequest(args);
             if (!clusterVerify(cert_auth_pub_key_, args, canonical)) {
                 log_warn_printf(pvacmscluster, "Join request signature verification failed from node %s\n",
@@ -53,19 +62,26 @@ void ClusterController::setupRpcHandler() {
 
             auto joiner_node_id = args["node_id"].as<std::string>();
             auto joiner_sync_pv = args["sync_pv"].as<std::string>();
+            auto joiner_minor = args["version_minor"].as<uint32_t>();
+            auto joiner_patch = args["version_patch"].as<uint32_t>();
 
-            addMember({joiner_node_id, joiner_sync_pv});
+            addMember({joiner_node_id, joiner_sync_pv, req_major, joiner_minor, joiner_patch});
 
             auto resp = makeJoinResponseValue();
-            resp["version"] = static_cast<uint32_t>(1);
+            resp["version_major"] = static_cast<uint32_t>(PVACMS_MAJOR_VERSION);
+            resp["version_minor"] = static_cast<uint32_t>(PVACMS_MINOR_VERSION);
+            resp["version_patch"] = static_cast<uint32_t>(PVACMS_MAINTENANCE_VERSION);
             resp["issuer_id"] = issuer_id_;
-            resp["timestamp"] = static_cast<int64_t>(std::time(nullptr));
+            setTimeStamp(resp);
 
             shared_array<Value> members_arr(members_.size());
             for (size_t i = 0; i < members_.size(); i++) {
                 members_arr[i] = resp["members"].allocMember();
                 members_arr[i]["node_id"] = members_[i].node_id;
                 members_arr[i]["sync_pv"] = members_[i].sync_pv;
+                members_arr[i]["version_major"] = members_[i].version_major;
+                members_arr[i]["version_minor"] = members_[i].version_minor;
+                members_arr[i]["version_patch"] = members_[i].version_patch;
             }
             resp["members"] = members_arr.freeze();
 
@@ -86,7 +102,7 @@ void ClusterController::setupRpcHandler() {
 }
 
 void ClusterController::initAsSoleNode(const std::string &node_id, const std::string &sync_pv) {
-    members_ = {{node_id, sync_pv}};
+    members_ = {{node_id, sync_pv, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION}};
     postCtrlValue();
     log_info_printf(pvacmscluster, "Bootstrapped sole-node cluster %s (node %s)\n",
                     issuer_id_.c_str(), node_id.c_str());
@@ -94,7 +110,9 @@ void ClusterController::initAsSoleNode(const std::string &node_id, const std::st
 
 void ClusterController::postCtrlValue() {
     auto val = prototype_ ? prototype_.cloneEmpty() : makeClusterCtrlValue();
-    val["version"] = static_cast<uint32_t>(1);
+    val["version_major"] = static_cast<uint32_t>(PVACMS_MAJOR_VERSION);
+    val["version_minor"] = static_cast<uint32_t>(PVACMS_MINOR_VERSION);
+    val["version_patch"] = static_cast<uint32_t>(PVACMS_MAINTENANCE_VERSION);
     val["issuer_id"] = issuer_id_;
 
     shared_array<Value> members_arr(members_.size());
@@ -102,6 +120,9 @@ void ClusterController::postCtrlValue() {
         members_arr[i] = val["members"].allocMember();
         members_arr[i]["node_id"] = members_[i].node_id;
         members_arr[i]["sync_pv"] = members_[i].sync_pv;
+        members_arr[i]["version_major"] = members_[i].version_major;
+        members_arr[i]["version_minor"] = members_[i].version_minor;
+        members_arr[i]["version_patch"] = members_[i].version_patch;
     }
     val["members"] = members_arr.freeze();
 
@@ -113,6 +134,10 @@ void ClusterController::postCtrlValue() {
         ctrl_pv_.open(val);
         opened_ = true;
     } else {
+        val["version_major"].unmark();
+        val["version_minor"].unmark();
+        val["version_patch"].unmark();
+        val["issuer_id"].unmark();
         ctrl_pv_.post(val);
     }
 }
