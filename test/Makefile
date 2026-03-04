@@ -65,6 +65,20 @@ TESTS += testtlsstatus
 TESTPROD_HOST += testtlsstatus
 testtlsstatus_SRCS += testtlsstatus.cpp
 
+# Test cluster functionality
+TESTS += testcluster
+TESTPROD_HOST += testcluster
+testcluster_SRCS += testcluster.cpp
+testcluster_SRCS += clustertypes.cpp
+testcluster_SRCS += clustersync.cpp
+testcluster_SRCS += clusterctrl.cpp
+testcluster_SRCS += clusterdiscovery.cpp
+testcluster_SRCS += certfactory.cpp
+testcluster_SRCS += p12filefactory.cpp
+testcluster_SRCS += certfilefactory.cpp
+testcluster_SRCS += openssl.cpp
+testcluster_SYS_LIBS += sqlite3
+
 endif # BASE_3_15
 
 TESTSCRIPTS_HOST += $(TESTS:%=%.t)

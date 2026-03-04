@@ -285,6 +285,32 @@ class ConfigCms final : public Config {
     // Optional list of certificate files to preload into the certs DB on startup
     std::vector<std::string> preload_cert_files{};
 
+    /**
+     * @brief Prefix for cluster-related PV names.
+     *
+     * Control PV: <prefix>:CTRL:<issuer_id>
+     * Sync PVs:   <prefix>:SYNC:<issuer_id>:<node_id>
+     */
+    std::string cluster_pv_prefix = "CERT:CLUSTER";
+
+    /**
+     * @brief Timeout in seconds for cluster discovery.
+     *
+     * When a node starts with a pre-existing CA, it waits this long
+     * to discover an existing cluster before bootstrapping a new one.
+     * Not used when auto-initializing a new CA (bootstrap is immediate).
+     */
+    uint32_t cluster_discovery_timeout_secs = 10;
+
+    /**
+     * @brief Grace period in seconds before removing a departed node.
+     *
+     * When a sync PV subscription disconnects, the node waits this long
+     * before removing the peer from the membership list. If the subscription
+     * reconnects before this timeout, the peer is kept.
+     */
+    uint32_t cluster_removal_timeout_secs = 30;
+
     void applyCmsEnv(const std::map<std::string, std::string>& defs);
     static ConfigCms mockCms(int family=AF_INET);
     static ConfigCms forCms();

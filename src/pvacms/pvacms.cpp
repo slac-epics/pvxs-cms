@@ -59,6 +59,9 @@
 #include "certfilefactory.h"
 #include "certstatus.h"
 #include "certstatusfactory.h"
+#include "clusterctrl.h"
+#include "clusterdiscovery.h"
+#include "clustersync.h"
 #include "configcms.h"
 #include "openssl.h"
 #include "ownedptr.h"
@@ -123,12 +126,6 @@ struct ASMember {
 };
 
 static const std::string kCertRoot("CERT:ROOT");
-
-// The current partition number
-uint16_t partition_number = 0;
-
-// The current number of partitions
-uint16_t num_partitions = 1;
 
 // Forward decls
 
@@ -1629,6 +1626,20 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data) {
                                                             "        methods:\n"
                                                             "          - x509\n"
                                                             "        authorities:\n"
+                                                            "          - CMS_AUTH\n"
+                                                            "  - name: CLUSTER\n"
+                                                            "    rules:\n"
+                                                            "      - level: 0\n"
+                                                            "        access: READ\n"
+                                                            "        methods:\n"
+                                                            "          - x509\n"
+                                                            "        authorities:\n"
+                                                            "          - CMS_AUTH\n"
+                                                            "      - level: 1\n"
+                                                            "        access: WRITE\n"
+                                                            "        methods:\n"
+                                                            "          - x509\n"
+                                                            "        authorities:\n"
                                                             "          - CMS_AUTH"
                                                          << std::endl
                                               : out_file << toACFAuth("CMS_AUTH", cert_data)
@@ -1640,6 +1651,17 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data) {
                                                             "    RULE(0,READ)\n"
                                                             "    RULE(1,WRITE) {\n"
                                                             "        UAG(CMS_ADMIN)\n"
+                                                            "        METHOD(\"x509\")\n"
+                                                            "        AUTHORITY(CMS_AUTH)\n"
+                                                            "    }\n"
+                                                            "}\n"
+                                                            "\n"
+                                                            "ASG(CLUSTER) {\n"
+                                                            "    RULE(0,READ) {\n"
+                                                            "        METHOD(\"x509\")\n"
+                                                            "        AUTHORITY(CMS_AUTH)\n"
+                                                            "    }\n"
+                                                            "    RULE(1,WRITE) {\n"
                                                             "        METHOD(\"x509\")\n"
                                                             "        AUTHORITY(CMS_AUTH)\n"
                                                             "    }\n"
@@ -2779,6 +2801,9 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
     // Search for all certs whose status is becoming invalid
     postUpdatesToNextCertStatusToBecomeInvalid(cert_status_creator, status_monitor_params);
 
+    if (status_monitor_params.cluster_sync_)
+        status_monitor_params.cluster_sync_->publishSnapshot();
+
     log_debug_printf(pvacmsmonitor, "Certificate Monitor Thread Sleep%s", "\n");
     return {};
 }
@@ -2913,6 +2938,15 @@ int readParameters(int argc,
     app.add_option("--cert-pv-prefix",
                    cert_pv_prefix,
                    "Specifies the prefix for all PVs published by this PVACMS.  Default `CERT`");
+    app.add_option("--cluster-pv-prefix",
+                   config.cluster_pv_prefix,
+                   "Prefix for cluster PV names.  Default `CERT:CLUSTER`");
+    app.add_option("--cluster-discovery-timeout",
+                   config.cluster_discovery_timeout_secs,
+                   "Seconds to wait for cluster discovery before bootstrapping.  Default 10");
+    app.add_option("--cluster-removal-timeout",
+                   config.cluster_removal_timeout_secs,
+                   "Seconds before removing a departed cluster node.  Default 30");
 
     // Add any parameters for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry())
@@ -3166,6 +3200,10 @@ int main(int argc, char *argv[]) {
         // Create this PVACMS server's certificate if it does not already exist
         ensureServerCertificateExists(config, certs_db, cert_auth_cert, cert_auth_pkey, cert_auth_chain);
 
+        // Derive cluster node ID from the server certificate's SKID (first 8 hex chars)
+        auto server_cert_data = IdFileFactory::create(config.tls_keychain_file, config.getKeychainPassword())->getCertDataFromFile();
+        auto our_node_id = CertStatus::getSkId(server_cert_data.cert);
+
         // Preload additional certificates into DB if requested
         for (const auto &preload_path : config.preload_cert_files) {
             try {
@@ -3190,6 +3228,20 @@ int main(int argc, char *argv[]) {
 
         pvxs::ossl_ptr<EVP_PKEY> cert_auth_pub_key(X509_get_pubkey(cert_auth_cert.get()));
 
+        ASMember as_cluster_member("CLUSTER");
+
+        ClusterSyncPublisher cluster_sync(our_node_id, our_issuer_id,
+                                           config.cluster_pv_prefix,
+                                           certs_db.get(),
+                                           cert_auth_pkey,
+                                           status_update_lock);
+
+        ClusterController cluster_ctrl(our_issuer_id,
+                                         config.cluster_pv_prefix,
+                                         cert_auth_pkey,
+                                         cert_auth_pub_key,
+                                         cluster_sync);
+
         // Create the PVs
         SharedPV create_pv(SharedPV::buildReadonly());
         SharedPV root_pv(SharedPV::buildReadonly());
@@ -3207,7 +3259,8 @@ int main(int argc, char *argv[]) {
                          &cert_auth_cert,
                          cert_auth_chain,
                          &our_issuer_id,
-                         &status_pv](const SharedPV &, std::unique_ptr<ExecOp> &&op, pvxs::Value &&args) {
+                         &status_pv,
+                         &cluster_sync](const SharedPV &, std::unique_ptr<ExecOp> &&op, pvxs::Value &&args) {
             onCreateCertificate(config,
                                 certs_db,
                                 status_pv,
@@ -3217,6 +3270,7 @@ int main(int argc, char *argv[]) {
                                 cert_auth_cert,
                                 cert_auth_chain,
                                 our_issuer_id);
+            cluster_sync.publishSnapshot();
         });
 
         // Client Connect handlers GET/MONITOR
@@ -3259,11 +3313,12 @@ int main(int argc, char *argv[]) {
                          &our_issuer_id,
                          &cert_auth_pkey,
                          &cert_auth_cert,
-                         &cert_auth_chain](WildcardPV &pv,
-                                           std::unique_ptr<ExecOp> &&op,
-                                           const std::string &pv_name,
-                                           const std::list<std::string> &parameters,
-                                           pvxs::Value &&value) {
+                         &cert_auth_chain,
+                         &cluster_sync](WildcardPV &pv,
+                                        std::unique_ptr<ExecOp> &&op,
+                                        const std::string &pv_name,
+                                        const std::list<std::string> &parameters,
+                                        pvxs::Value &&value) {
             // Make sure that pv is open before any put operation
             if (!pv.isOpen(pv_name)) {
                 pv.open(pv_name, CertStatus::getStatusPrototype());
@@ -3321,6 +3376,7 @@ int main(int argc, char *argv[]) {
                          cert_auth_pkey,
                          cert_auth_cert,
                          cert_auth_chain);
+                cluster_sync.publishSnapshot();
             } else if (state == "APPROVED") {
                 onApprove(config,
                           certs_db,
@@ -3332,6 +3388,7 @@ int main(int argc, char *argv[]) {
                           cert_auth_pkey,
                           cert_auth_cert,
                           cert_auth_chain);
+                cluster_sync.publishSnapshot();
             } else if (state == "DENIED") {
                 onDeny(config,
                        certs_db,
@@ -3343,6 +3400,7 @@ int main(int argc, char *argv[]) {
                        cert_auth_pkey,
                        cert_auth_cert,
                        cert_auth_chain);
+                cluster_sync.publishSnapshot();
             } else {
                 op->error(pvxs::SB() << "Invalid certificate state requested: " << state);
             }
@@ -3355,7 +3413,8 @@ int main(int argc, char *argv[]) {
                                             cert_auth_cert,
                                             cert_auth_pkey,
                                             cert_auth_chain,
-                                            active_status_validity);
+                                            active_status_validity,
+                                            &cluster_sync);
 
         // Create a server with a certificate monitoring function attached to the cert file monitor timer
         // Return true to indicate that we want the file monitor time to run after this
@@ -3373,9 +3432,43 @@ int main(int argc, char *argv[]) {
             .addPV(getCertAuthRootPv(config.getCertPvPrefix()), root_pv)
             .addPV(getCertAuthRootPv(config.getCertPvPrefix(), our_issuer_id), root_pv)
             .addPV(getCertIssuerPv(config.getCertPvPrefix()), issuer_pv)
-            .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv);
+            .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv)
+            .addPV(cluster_sync.getSyncPvName(), cluster_sync.getPV())
+            .addPV(cluster_ctrl.getCtrlPvName(), cluster_ctrl.getPV());
         root_pv.open(root_pv_value);
         issuer_pv.open(issuer_pv_value);
+
+        auto cluster_client = pva_server.clientConfig().build();
+
+        ClusterDiscovery cluster_discovery(our_node_id, our_issuer_id,
+                                           config.cluster_pv_prefix,
+                                           config.cluster_discovery_timeout_secs,
+                                           config.cluster_removal_timeout_secs,
+                                           certs_db.get(),
+                                           cert_auth_pkey,
+                                           cert_auth_pub_key,
+                                           status_update_lock,
+                                           cluster_sync,
+                                           cluster_ctrl,
+                                           std::move(cluster_client));
+
+        std::string cluster_status;
+        if (is_initialising) {
+            log_info_printf(pvacms, "Fresh CA init — bootstrapping as sole cluster node%s", "\n");
+            cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
+            cluster_sync.publishSnapshot();
+            cluster_status = "Created new cluster";
+        } else {
+            log_info_printf(pvacms, "Attempting to join existing cluster...%s", "\n");
+            if (cluster_discovery.joinCluster()) {
+                cluster_status = "Joined existing cluster";
+            } else {
+                log_info_printf(pvacms, "No existing cluster found — bootstrapping as sole node%s", "\n");
+                cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
+                cluster_sync.publishSnapshot();
+                cluster_status = "Created new cluster (no existing cluster found)";
+            }
+        }
 
         // Log the effective config
         if (verbose) {
@@ -3400,6 +3493,10 @@ int main(int argc, char *argv[]) {
             std::cout << "| Certificate Authority Keychain File   : " << config.cert_auth_keychain_file << std::endl;
             std::cout << "| PVACMS Keychain File                  : " << config.tls_keychain_file << std::endl;
             std::cout << "| PVACMS Access Control File            : " << config.pvacms_acf_filename << std::endl;
+            std::cout << "| Cluster Node ID                       : " << our_node_id << std::endl;
+            std::cout << "| Cluster Sync PV                       : " << cluster_sync.getSyncPvName() << std::endl;
+            std::cout << "| Cluster Ctrl PV                       : " << cluster_ctrl.getCtrlPvName() << std::endl;
+            std::cout << "| Cluster Status                        : " << cluster_status << std::endl;
             std::cout << "+---------------------------------------+---------------------------------------"
                       << std::endl;
             std::cout << "| PVACMS [" << our_issuer_id << "] Service Running     |" << std::endl;

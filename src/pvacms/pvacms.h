@@ -233,6 +233,8 @@
 namespace pvxs {
 namespace certs {
 
+class ClusterSyncPublisher;
+
 /**
  * @brief Monitors the certificate status and updates the shared wildcard status pv when any become valid or expire.
  *
@@ -257,12 +259,14 @@ class StatusMonitor {
     ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     pvxs::ossl_shared_ptr<STACK_OF(X509)> &cert_auth_cert_chain_;
     std::map<serial_number_t, time_t> &active_status_validity_;
+    ClusterSyncPublisher *cluster_sync_;
   private:
     mutable epicsMutex lock_;
   public:
     StatusMonitor(ConfigCms &config, sql_ptr &certs_db, std::string &issuer_id, server::WildcardPV &status_pv, ossl_ptr<X509> &cert_auth_cert,
                   ossl_ptr<EVP_PKEY> &cert_auth_pkey, ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
-                  std::map<serial_number_t, time_t> &active_status_validity)
+                  std::map<serial_number_t, time_t> &active_status_validity,
+                  ClusterSyncPublisher *cluster_sync = nullptr)
         : config_(config),
           certs_db_(certs_db),
           issuer_id_(issuer_id),
@@ -270,7 +274,8 @@ class StatusMonitor {
           cert_auth_cert_(cert_auth_cert),
           cert_auth_pkey_(cert_auth_pkey),
           cert_auth_cert_chain_(cert_auth_chain),
-          active_status_validity_(active_status_validity) {}
+          active_status_validity_(active_status_validity),
+          cluster_sync_(cluster_sync) {}
 
     std::vector<serial_number_t> getActiveSerials() const {
         const auto cutoff{time(nullptr) - static_cast<uint64_t>(config_.getRequestTimeout())};
