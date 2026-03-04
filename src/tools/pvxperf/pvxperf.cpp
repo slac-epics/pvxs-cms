@@ -46,6 +46,12 @@
 #include <dbAddr.h>
 #include <iocshRegisterCommon.h>
 
+#ifndef HAS_registerAllRecordDeviceDrivers
+extern "C" {
+long registerAllRecordDeviceDrivers(struct dbBase *pdbbase);
+}
+#endif
+
 #include <cadef.h>
 
 #include <pvxs/client.h>
