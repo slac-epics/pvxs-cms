@@ -9,14 +9,18 @@
 
 PVXPERF_DIR = $(TOOLS_DIR)/pvxperf
 
+# pvxperf uses fork/exec (POSIX-only) — skip on Windows
+ifneq ($(OS_CLASS),WIN32)
+
 SRC_DIRS += $(PVXPERF_DIR)
 
 PROD += pvxperf
 
-# Main entrypoint
 pvxperf_SRCS += pvxperf.cpp
 
 # Bake in EPICS_BASE path for locating softIoc.dbd at runtime
 pvxperf_CPPFLAGS += -DPVXPERF_EPICS_BASE=\"$(abspath $(EPICS_BASE))\"
 
 pvxperf_LIBS += pvxs Com ca dbCore dbRecStd
+
+endif # !WIN32
