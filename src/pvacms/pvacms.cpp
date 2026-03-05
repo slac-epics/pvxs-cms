@@ -1908,7 +1908,7 @@ static void insertLoadedCertIfMissing(const ConfigCms &config,
     // Validate status extension
     std::string status_uri;
     try {
-        status_uri = CertStatusManager::getStatusPvFromCert(cert);
+        status_uri = CmsStatusManager::getStatusPvFromCert(cert);
     } catch (...) {
         // No certificate monitoring is included, so don't add
         return;

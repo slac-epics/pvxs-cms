@@ -208,7 +208,7 @@ struct CertCtx {
 
     explicit CertCtx() : name(traits::name), cert(getTestCert<Tag>()) {
         try {
-            pv_name = CertStatusManager::getStatusPvFromCert(cert.cert);
+            pv_name = CmsStatusManager::getStatusPvFromCert(cert.cert);
         } catch (const CertStatusNoExtensionException &e) {
             testOk(name == "super_server", "Expected %s to not to have custom cert extension: %s", traits::file, e.what());
         }

@@ -51,7 +51,7 @@ using cert_status_ptr = ossl_shared_ptr<T, cert_status_delete<T>>;
  * from a trusted source, is well formed, and then will return the `OCSPStatus`
  * it indicates.
  * @code
- *  auto ocsp_status(CertStatusManager::parse(ocsp_response);
+ *  auto ocsp_status(CmsStatusManager::parse(ocsp_response);
  * @endcode
  *
  * To get certificate status call the status `getStatus()` method with the
@@ -60,7 +60,7 @@ using cert_status_ptr = ossl_shared_ptr<T, cert_status_delete<T>>;
  * authenticity of the response and checking that it is from a trusted
  * source it will return `CertificateStatus`.
  * @code
- *  auto cert_status(CertStatusManager::getStatus(cert);
+ *  auto cert_status(CmsStatusManager::getStatus(cert);
  * @endcode
  *
  * To subscribe, call the subscribe method with the certificate you want to
@@ -71,7 +71,7 @@ using cert_status_ptr = ossl_shared_ptr<T, cert_status_delete<T>>;
  * source it will call the callback with a `CertificateStatus` representing the
  * updated status.
  * @code
- *  auto csm = CertStatusManager::subscribe(cert, [] (CertificateStatus &&cert_status) {
+ *  auto csm = CmsStatusManager::subscribe(cert, [] (CertificateStatus &&cert_status) {
  *      std::cout << "STATUS DATE: " << cert_status.status_date.s << std::endl;
  *  });
  *  ...
@@ -79,14 +79,14 @@ using cert_status_ptr = ossl_shared_ptr<T, cert_status_delete<T>>;
  *  // unsubscribe() automatically called when csm goes out of scope
  * @endcode
  */
-class CertStatusManager {
+class CmsStatusManager {
    public:
     friend struct OCSPStatus;
     using StatusCallback = std::function<void(const PVACertificateStatus &)>;
 
-    CertStatusManager() = delete;
+    CmsStatusManager() = delete;
 
-    ~CertStatusManager() = default;
+    ~CmsStatusManager() = default;
 
     /**
      * Parse OCSP responses from the provided ocsp_bytes response
@@ -181,7 +181,7 @@ class CertStatusManager {
      *
      * @see unsubscribe()
      */
-    static cert_status_ptr<CertStatusManager> subscribe(const client::Context& client, X509_STORE *trusted_store_ptr, const std::string &status_pv, StatusCallback &&callback);
+    static cert_status_ptr<CmsStatusManager> subscribe(const client::Context& client, X509_STORE *trusted_store_ptr, const std::string &status_pv, StatusCallback &&callback);
 
     /**
      * @brief Unsubscribe from listening to certificate status
@@ -193,7 +193,7 @@ class CertStatusManager {
     bool waitedTooLong(double timeout = 5.0) const noexcept { return (manager_start_time_ + (time_t)timeout) < std::time(nullptr); }
 
    private:
-    CertStatusManager(const client::Context &client,
+    CmsStatusManager(const client::Context &client,
                       std::shared_ptr<client::Subscription> sub = std::shared_ptr<client::Subscription>())
         : client_(client), sub_(sub)
     {};
@@ -221,8 +221,8 @@ class CertStatusManager {
 };
 
 template <>
-struct cert_status_delete<CertStatusManager> {
-    void operator()(CertStatusManager *base_pointer) {
+struct cert_status_delete<CmsStatusManager> {
+    void operator()(CmsStatusManager *base_pointer) {
         if (base_pointer) {
             base_pointer->unsubscribe();  // Idempotent unsubscribe
             delete base_pointer;

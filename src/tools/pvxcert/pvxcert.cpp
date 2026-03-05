@@ -197,7 +197,7 @@ int main(int argc, char *argv[]) {
                 }
                 std::string config_id{};
                 try {
-                    config_id = certs::CertStatusManager::getConfigPvFromCert(cert_data.cert);
+                    config_id = certs::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
                 } catch (...) {
                 }
 
@@ -206,7 +206,7 @@ int main(int argc, char *argv[]) {
                           << ossl::ShowX509{cert_data.cert.get()} << std::endl
                           << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
                           << std::endl;
-                cert_id = certs::CertStatusManager::getStatusPvFromCert(cert_data.cert);
+                cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
             } catch (std::exception &e) {
                 std::cout << "Online Certificate Status: " << std::endl
                           << "============================================" << std::endl

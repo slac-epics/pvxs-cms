@@ -44,7 +44,7 @@ void OCSPStatus::init(X509_STORE *trusted_store_ptr) {
         ocsp_status = OCSPCertStatus(OCSP_CERTSTATUS_UNKNOWN);
         status_date = time(nullptr);
     } else {
-        const auto parsed_status = CertStatusManager::parse(ocsp_bytes, trusted_store_ptr);
+        const auto parsed_status = CmsStatusManager::parse(ocsp_bytes, trusted_store_ptr);
         ocsp_status = std::move(parsed_status.ocsp_status);
         status_date = std::move(parsed_status.status_date);
         status_valid_until_date = std::move(parsed_status.status_valid_until_date);

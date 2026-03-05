@@ -40,7 +40,7 @@ struct Config;
 namespace certs {
 struct PVACertificateStatus;
 struct CertificateStatus;
-class CertStatusManager;
+class CmsStatusManager;
 struct CertData;
 template <typename T>
 struct cert_status_delete;

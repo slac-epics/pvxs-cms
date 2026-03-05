@@ -147,7 +147,7 @@ struct RenewalManager {
         sub.reset();
 
         try {
-            auto status_pv_name = CertStatusManager::getStatusPvFromCert(cert_data.cert);
+            auto status_pv_name = CmsStatusManager::getStatusPvFromCert(cert_data.cert);
 
             std::cout << "Monitoring certificate status on " << status_pv_name << " for renewal" << std::endl;
             sub = client.monitor(status_pv_name)

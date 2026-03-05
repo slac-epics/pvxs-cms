@@ -442,7 +442,7 @@ CertData getCertificate(bool &retrieved_credentials,
 
             // Get the start and end dates of the certificate
             const std::string from = std::ctime(&credentials->not_before);
-            const auto expiration_t = CertStatusManager::getExpirationDateFromCert(cert_data.cert);
+            const auto expiration_t = CmsStatusManager::getExpirationDateFromCert(cert_data.cert);
             const std::string expiration_s = std::ctime(&expiration_t);
 
             // Log the certificate info

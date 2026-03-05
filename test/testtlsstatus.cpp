@@ -105,7 +105,7 @@ struct Tester {
         testShow() << __func__;
         try {
             testDiag("Parsing OCSP Response: %s", "Client certificate");
-            auto parsed_response = CertStatusManager::parse(client1.status.ocsp_bytes, client1.cert.trusted_store.get());
+            auto parsed_response = CmsStatusManager::parse(client1.status.ocsp_bytes, client1.cert.trusted_store.get());
             testDiag("Parsed OCSP Response: %s", "Client certificate");
 
             testEq(parsed_response.serial, client1.serial());
@@ -119,7 +119,7 @@ struct Tester {
 
         try {
             testDiag("Parsing OCSP Response: %s", "Server certificate");
-            auto parsed_response = CertStatusManager::parse(server1.status.ocsp_bytes, server1.cert.trusted_store.get());
+            auto parsed_response = CmsStatusManager::parse(server1.status.ocsp_bytes, server1.cert.trusted_store.get());
             testDiag("Parsed OCSP Response: %s", "Server certificate");
 
             testEq(parsed_response.serial, server1.serial());
@@ -133,7 +133,7 @@ struct Tester {
 
         try {
             testDiag("Parsing OCSP Response: %s", "Certificate Authority Certificate");
-            auto parsed_response = CertStatusManager::parse(cert_auth.status.ocsp_bytes, cert_auth.cert.trusted_store.get());
+            auto parsed_response = CmsStatusManager::parse(cert_auth.status.ocsp_bytes, cert_auth.cert.trusted_store.get());
             testDiag("Parsed OCSP Response: %s", "Certificate Authority Certificate");
 
             testEq(parsed_response.serial, cert_auth.serial());

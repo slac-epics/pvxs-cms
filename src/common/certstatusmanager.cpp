@@ -42,7 +42,7 @@ DEFINE_LOGGER(status, "pvxs.certs.status");
  * @param ocsp_bytes A shared_array of bytes representing the OCSP response.
  * @return The OCSP response as a data structure.
  */
-ossl_ptr<OCSP_RESPONSE> CertStatusManager::getOCSPResponse(const shared_array<const uint8_t> &ocsp_bytes) {
+ossl_ptr<OCSP_RESPONSE> CmsStatusManager::getOCSPResponse(const shared_array<const uint8_t> &ocsp_bytes) {
     return getOCSPResponse(ocsp_bytes.data(), ocsp_bytes.size());
 }
 
@@ -57,7 +57,7 @@ ossl_ptr<OCSP_RESPONSE> CertStatusManager::getOCSPResponse(const shared_array<co
  * @param ocsp_bytes_len the length of the buffer
  * @return The OCSP response as a data structure.
  */
-ossl_ptr<OCSP_RESPONSE> CertStatusManager::getOCSPResponse(const uint8_t *ocsp_bytes, const size_t ocsp_bytes_len) {
+ossl_ptr<OCSP_RESPONSE> CmsStatusManager::getOCSPResponse(const uint8_t *ocsp_bytes, const size_t ocsp_bytes_len) {
     // Create a BIO for the OCSP response
     const ossl_ptr<BIO> bio(BIO_new_mem_buf(ocsp_bytes, static_cast<int>(ocsp_bytes_len)), false);
     if (!bio) {
@@ -85,7 +85,7 @@ ossl_ptr<OCSP_RESPONSE> CertStatusManager::getOCSPResponse(const uint8_t *ocsp_b
  * @param ocsp_bytes_len the length of the byte buffer
  * @param trusted_store_ptr The trusted store to be used to validate the OCSP response
  */
-ParsedOCSPStatus CertStatusManager::parse(const uint8_t *ocsp_bytes, const size_t ocsp_bytes_len, X509_STORE *trusted_store_ptr) {
+ParsedOCSPStatus CmsStatusManager::parse(const uint8_t *ocsp_bytes, const size_t ocsp_bytes_len, X509_STORE *trusted_store_ptr) {
     auto ocsp_response = getOCSPResponse(ocsp_bytes, ocsp_bytes_len);
     return parse(ocsp_response, trusted_store_ptr);
 }
@@ -101,7 +101,7 @@ ParsedOCSPStatus CertStatusManager::parse(const uint8_t *ocsp_bytes, const size_
  * @param ocsp_bytes The input byte array containing the OCSP responses data.
  * @param trusted_store_ptr The trusted store to be used to validate the OCSP response
  */
-ParsedOCSPStatus CertStatusManager::parse(const shared_array<const uint8_t> &ocsp_bytes, X509_STORE *trusted_store_ptr) {
+ParsedOCSPStatus CmsStatusManager::parse(const shared_array<const uint8_t> &ocsp_bytes, X509_STORE *trusted_store_ptr) {
     const auto ocsp_response = getOCSPResponse(ocsp_bytes);
     return parse(ocsp_response, trusted_store_ptr);
 }
@@ -117,7 +117,7 @@ ParsedOCSPStatus CertStatusManager::parse(const shared_array<const uint8_t> &ocs
  * @param ocsp_response An OCSP response object.
  * @param trusted_store_ptr The trusted store to be used to validate the OCSP response
  */
-ParsedOCSPStatus CertStatusManager::parse(const ossl_ptr<OCSP_RESPONSE> &ocsp_response, X509_STORE *trusted_store_ptr) {
+ParsedOCSPStatus CmsStatusManager::parse(const ossl_ptr<OCSP_RESPONSE> &ocsp_response, X509_STORE *trusted_store_ptr) {
     // Get the response status
     const int response_status = OCSP_response_status(ocsp_response.get());
     if (response_status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
@@ -190,7 +190,7 @@ ParsedOCSPStatus CertStatusManager::parse(const ossl_ptr<OCSP_RESPONSE> &ocsp_re
  * @param callback the callback to call
  * @return a manager of this subscription that you can use to `unsubscribe()`, `waitForValue()` and `getValue()`
  */
-cert_status_ptr<CertStatusManager> CertStatusManager::subscribe(const client::Context &client, X509_STORE *trusted_store_ptr, const std::string &status_pv, StatusCallback &&callback) {
+cert_status_ptr<CmsStatusManager> CmsStatusManager::subscribe(const client::Context &client, X509_STORE *trusted_store_ptr, const std::string &status_pv, StatusCallback &&callback) {
     // Construct the URI
     log_debug_printf(status, "Starting Status Subscription: %s\n", status_pv.c_str());
 
@@ -198,9 +198,9 @@ cert_status_ptr<CertStatusManager> CertStatusManager::subscribe(const client::Co
     auto fn = std::make_shared<StatusCallback>(std::move(callback));
 
     try {
-        cert_status_ptr<CertStatusManager> cert_status_manager(new CertStatusManager(client));
+        cert_status_ptr<CmsStatusManager> cert_status_manager(new CmsStatusManager(client));
         cert_status_manager->callback_ref = std::move(fn);
-        std::weak_ptr<CertStatusManager> weak_cert_status_manager(cert_status_manager);
+        std::weak_ptr<CmsStatusManager> weak_cert_status_manager(cert_status_manager);
 
         log_debug_printf(status, "Subscribing to status: %s\n", status_pv.c_str());
         auto sub = cert_status_manager->client_.monitor(status_pv)
@@ -247,7 +247,7 @@ cert_status_ptr<CertStatusManager> CertStatusManager::subscribe(const client::Co
 /**
  * @brief Unsubscribe from the certificate status monitoring
  */
-void CertStatusManager::unsubscribe() {
+void CmsStatusManager::unsubscribe() {
     if (sub_) sub_->cancel();
 }
 
@@ -265,7 +265,7 @@ void CertStatusManager::unsubscribe() {
  * Returns true if the OCSP response is valid, indicating that the certificate in question is from a trusted source.
  * Returns false if the OCSP response is invalid or if the certificate in question not to be trusted.
  */
-bool CertStatusManager::verifyOCSPResponse(const ossl_ptr<OCSP_BASICRESP> &basic_response, X509_STORE *trusted_store_ptr) {
+bool CmsStatusManager::verifyOCSPResponse(const ossl_ptr<OCSP_BASICRESP> &basic_response, X509_STORE *trusted_store_ptr) {
     // get cert_auth_cert_chain from the response (will be verified to see if it's ultimately signed by our trusted root certificate authority)
     const auto const_cert_auth_cert_chain_ptr = OCSP_resp_get0_certs(basic_response.get());
     ossl_ptr<STACK_OF(X509)> cert_auth_cert_chain(sk_X509_dup(const_cert_auth_cert_chain_ptr));  // remove const-ness
@@ -293,11 +293,11 @@ bool CertStatusManager::verifyOCSPResponse(const ossl_ptr<OCSP_BASICRESP> &basic
  * @param cert the certificate to examine
  * @return the PV name to call for status on that certificate
  */
-std::string CertStatusManager::getStatusPvFromCert(const ossl_ptr<X509> &cert) { return getStatusPvFromCert(cert.get()); }
+std::string CmsStatusManager::getStatusPvFromCert(const ossl_ptr<X509> &cert) { return getStatusPvFromCert(cert.get()); }
 
-std::string CertStatusManager::getConfigPvFromCert(const ossl_ptr<X509> &cert) { return getConfigPvFromCert(cert.get()); }
+std::string CmsStatusManager::getConfigPvFromCert(const ossl_ptr<X509> &cert) { return getConfigPvFromCert(cert.get()); }
 
-time_t CertStatusManager::getExpirationDateFromCert(const ossl_ptr<X509> &cert) { return getExpirationDateFromCert(cert.get()); }
+time_t CmsStatusManager::getExpirationDateFromCert(const ossl_ptr<X509> &cert) { return getExpirationDateFromCert(cert.get()); }
 
 
 /**
@@ -307,7 +307,7 @@ time_t CertStatusManager::getExpirationDateFromCert(const ossl_ptr<X509> &cert) 
  * @param certificate the certificate to retrieve the extension from
  * @return the X509_EXTENSION object, if found, otherwise throws an exception
  */
-X509_EXTENSION *CertStatusManager::getStatusExtension(const X509 *certificate) {
+X509_EXTENSION *CmsStatusManager::getStatusExtension(const X509 *certificate) {
     // Make sure the custom extensions are configured before querying them
     ossl::osslInit();
     const int extension_index = X509_get_ext_by_NID(certificate, ossl::NID_SPvaCertStatusURI, -1);
@@ -328,7 +328,7 @@ X509_EXTENSION *CertStatusManager::getStatusExtension(const X509 *certificate) {
  * @param certificate the certificate to retrieve the extension from
  * @return the X509_EXTENSION object, if found, otherwise throws an exception
  */
-X509_EXTENSION *CertStatusManager::getConfigExtension(const X509 *certificate) {
+X509_EXTENSION *CmsStatusManager::getConfigExtension(const X509 *certificate) {
     // Make sure the custom extensions are configured before querying them
     ossl::osslInit();
     const int extension_index = X509_get_ext_by_NID(certificate, ossl::NID_SPvaCertConfigURI, -1);
@@ -342,7 +342,7 @@ X509_EXTENSION *CertStatusManager::getConfigExtension(const X509 *certificate) {
     return extension;
 }
 
-std::string CertStatusManager::getIssuerIdFromCert(const X509* cert_ptr) {
+std::string CmsStatusManager::getIssuerIdFromCert(const X509* cert_ptr) {
     const ossl_ptr<AUTHORITY_KEYID> akid(static_cast<AUTHORITY_KEYID*>(X509_get_ext_d2i(cert_ptr, NID_authority_key_identifier, nullptr, nullptr)),
                                        false);
     if (!akid || !akid->keyid) throw CertStatusNoExtensionException("Failed to get Authority Key Identifier.");
@@ -356,7 +356,7 @@ std::string CertStatusManager::getIssuerIdFromCert(const X509* cert_ptr) {
     return ss.str();
 }
 
-std::string CertStatusManager::getSerialFromCert(const X509* cert_ptr) {
+std::string CmsStatusManager::getSerialFromCert(const X509* cert_ptr) {
     const ASN1_INTEGER* serial = X509_get0_serialNumber(cert_ptr);
     if (!serial) {
         throw CertStatusNoExtensionException("Failed to get Serial Number from certificate.");
@@ -381,7 +381,7 @@ std::string CertStatusManager::getSerialFromCert(const X509* cert_ptr) {
     return result;
 }
 
-std::string CertStatusManager::getCertIdFromCert(const X509 *cert) {
+std::string CmsStatusManager::getCertIdFromCert(const X509 *cert) {
     const std::string issuer_id = getIssuerIdFromCert(cert);
     const std::string serial = getSerialFromCert(cert);
 
@@ -400,7 +400,7 @@ std::string CertStatusManager::getCertIdFromCert(const X509 *cert) {
  * @param cert the certificate to examine
  * @return the PV name to call for status on that certificate
  */
-std::string CertStatusManager::getStatusPvFromCert(const X509 *cert) {
+std::string CmsStatusManager::getStatusPvFromCert(const X509 *cert) {
     const auto extension = getStatusExtension(cert);
 
     // Retrieve the extension data which is an ASN1_OCTET_STRING object containing DER-encoded IA5String
@@ -447,7 +447,7 @@ std::string CertStatusManager::getStatusPvFromCert(const X509 *cert) {
  * @param cert the certificate to examine
  * @return the PV name to call for config on that certificate
  */
-std::string CertStatusManager::getConfigPvFromCert(const X509 *cert) {
+std::string CmsStatusManager::getConfigPvFromCert(const X509 *cert) {
     const auto extension = getConfigExtension(cert);
 
     // Retrieve the extension data, which is an ASN1_OCTET_STRING object containing DER-encoded IA5String
@@ -483,7 +483,7 @@ std::string CertStatusManager::getConfigPvFromCert(const X509 *cert) {
     return {str_data, str_length};
 }
 
-time_t CertStatusManager::getExpirationDateFromCert(const X509 *cert) {
+time_t CmsStatusManager::getExpirationDateFromCert(const X509 *cert) {
     // Get the notAfter field directly from the certificate
     const auto *expiration = X509_get0_notAfter(cert);
     if (!expiration) {

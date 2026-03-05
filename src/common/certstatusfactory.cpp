@@ -22,7 +22,7 @@
 namespace pvxs {
 namespace certs {
 
-class CertStatusManager;
+class CmsStatusManager;
 
 /**
  * @brief Creates and signs an OCSP response for a given certificate.
