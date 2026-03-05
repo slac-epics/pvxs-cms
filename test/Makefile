@@ -13,7 +13,10 @@ CLI11_BUNDLE   = $(TOP)/bundle/CLI11
 
 PROD_LIBS = pvxs Com
 
+# Tests require CMS infrastructure (sqlite3, cert factories, OpenSSL).
+# Skip when PVXS_ENABLE_PVACMS=NO (e.g. Windows where sqlite3 is unavailable).
 ifdef BASE_3_15
+ifeq ($(PVXS_ENABLE_PVACMS),YES)
 USR_CPPFLAGS += -I$(COMMON_DIR)
 USR_CPPFLAGS += -I$(AUTHN_DIR)
 USR_CPPFLAGS += -I$(AUTHN_STD_DIR)
@@ -79,6 +82,7 @@ testcluster_SRCS += certfilefactory.cpp
 testcluster_SRCS += openssl.cpp
 testcluster_SYS_LIBS += sqlite3
 
+endif # PVXS_ENABLE_PVACMS
 endif # BASE_3_15
 
 TESTSCRIPTS_HOST += $(TESTS:%=%.t)

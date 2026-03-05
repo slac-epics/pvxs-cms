@@ -62,7 +62,7 @@ jobs:
             configuration: default
             base: "R7.0.2"
             set: "nofortify"
-            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES CMD_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
+            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES PVXS_ENABLE_PVXPERF=NO CMD_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
 
           - name: Linux (gcc) EPICS 3.15
             os: ubuntu-latest
@@ -70,7 +70,7 @@ jobs:
             configuration: default
             base: "3.15"
             set: "nofortify"
-            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES CMD_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
+            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES PVXS_ENABLE_PVXPERF=NO CMD_CPPFLAGS=\"-U_FORTIFY_SOURCE\""
 
           - name: Linux (clang) EPICS 7.0-secure-pvaccess
             os: ubuntu-latest
