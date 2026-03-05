@@ -12,8 +12,11 @@ include $(TOP)/configure/CONFIG
 #   setting LIBEVENT_$(T_A) for each arch
 #   leave unset to use implicit system search path
 # NOTE: only needed if not present in default search paths
+#
+# Check our own bundle first, then fall back to the PVXS module's bundle
+# (needed for cross-compilation where libevent is built inside pvxs-tls).
 LIBEVENT ?= $(LIBEVENT_$(T_A))
-LIBEVENT_$(T_A) ?= $(wildcard $(abspath $(INSTALL_LOCATION)/bundle/usr/$(T_A)))
+LIBEVENT_$(T_A) ?= $(or $(wildcard $(abspath $(INSTALL_LOCATION)/bundle/usr/$(T_A))),$(wildcard $(abspath $(PVXS)/bundle/usr/$(T_A))))
 
 INCLUDES += $(if $(LIBEVENT),-I$(LIBEVENT)/include)
 

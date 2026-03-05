@@ -46,11 +46,9 @@
 #include <dbAddr.h>
 #include <iocshRegisterCommon.h>
 
-#ifndef HAS_registerAllRecordDeviceDrivers
 extern "C" {
-long registerAllRecordDeviceDrivers(struct dbBase *pdbbase);
+int pvxperf_registerRecordDeviceDriver(struct dbBase *pdbbase);
 }
-#endif
 
 // db_access.h (included by cadef.h) redefines macros from dbFldTypes.h/dbAccessDefs.h
 #undef DBR_SHORT
@@ -716,7 +714,7 @@ public:
             return false;
         }
 
-        registerAllRecordDeviceDrivers(pdbbase);
+        pvxperf_registerRecordDeviceDriver(pdbbase);
 
         std::ostringstream rec_def;
         rec_def << "record(waveform, \"PVXPERF:CA:BENCH\") {\n"
