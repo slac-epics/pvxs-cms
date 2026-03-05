@@ -36,7 +36,7 @@ pvxperf_SRCS += pvxperf.cpp
 # Bake in EPICS_BASE path for locating softIoc.dbd at runtime
 pvxperf_CPPFLAGS += -DPVXPERF_EPICS_BASE=\"$(abspath $(EPICS_BASE))\"
 
-pvxperf_LIBS += pvxs Com ca dbCore dbRecStd
+pvxperf_LIBS += pvxs pvxsIoc $(EPICS_BASE_IOC_LIBS)
 
 endif # PVXS_ENABLE_PVXPERF
 endif # HOST
