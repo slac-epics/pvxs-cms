@@ -16,6 +16,7 @@
 
 namespace {
 
+/** @brief Append a uint32_t in big-endian byte order to a canonicalization buffer. */
 void appendU32(std::string &buf, uint32_t val) {
     uint8_t bytes[4];
     bytes[0] = static_cast<uint8_t>((val >> 24) & 0xFF);
@@ -25,10 +26,12 @@ void appendU32(std::string &buf, uint32_t val) {
     buf.append(reinterpret_cast<const char *>(bytes), 4);
 }
 
+/** @brief Append an int32_t in big-endian byte order to a canonicalization buffer. */
 void appendI32(std::string &buf, int32_t val) {
     appendU32(buf, static_cast<uint32_t>(val));
 }
 
+/** @brief Append a uint64_t in big-endian byte order to a canonicalization buffer. */
 void appendU64(std::string &buf, uint64_t val) {
     uint8_t bytes[8];
     bytes[0] = static_cast<uint8_t>((val >> 56) & 0xFF);
@@ -42,15 +45,18 @@ void appendU64(std::string &buf, uint64_t val) {
     buf.append(reinterpret_cast<const char *>(bytes), 8);
 }
 
+/** @brief Append an int64_t in big-endian byte order to a canonicalization buffer. */
 void appendI64(std::string &buf, int64_t val) {
     appendU64(buf, static_cast<uint64_t>(val));
 }
 
+/** @brief Append a length-prefixed string to a canonicalization buffer. */
 void appendString(std::string &buf, const std::string &s) {
     appendU32(buf, static_cast<uint32_t>(s.size()));
     buf.append(s);
 }
 
+/** @brief Append a length-prefixed byte array to a canonicalization buffer. */
 void appendBytes(std::string &buf, const pvxs::shared_array<const uint8_t> &bytes) {
     appendU32(buf, static_cast<uint32_t>(bytes.size()));
     buf.append(reinterpret_cast<const char *>(bytes.data()), bytes.size());
@@ -63,17 +69,20 @@ namespace certs {
 
 using namespace pvxs::members;
 
+/** @brief Set the EPICS timeStamp sub-structure to the current wall-clock time. */
 void setTimeStamp(Value &parent, const char *field) {
-    auto now = std::time(nullptr);
-    parent[std::string(field) + ".secondsPastEpoch"] = static_cast<int64_t>(now) - POSIX_TIME_AT_EPICS_EPOCH;
-    parent[std::string(field) + ".nanoseconds"] = static_cast<int32_t>(0);
+    epicsTimeStamp now;
+    epicsTimeGetCurrent(&now);
+    parent[std::string(field) + ".secondsPastEpoch"] = static_cast<int64_t>(now.secPastEpoch);
+    parent[std::string(field) + ".nanoseconds"] = static_cast<int32_t>(now.nsec);
 }
 
-int64_t getTimeStampAsUnix(const Value &parent, const char *field) {
-    auto secs = parent[std::string(field) + ".secondsPastEpoch"].as<int64_t>();
-    return secs + POSIX_TIME_AT_EPICS_EPOCH;
+/** @brief Extract the EPICS epoch secondsPastEpoch from a timeStamp sub-structure. */
+int64_t getTimeStamp(const Value &parent, const char *field) {
+    return parent[std::string(field) + ".secondsPastEpoch"].as<int64_t>();
 }
 
+/** @brief Create a PVXS Value prototype for cluster sync snapshots. */
 Value makeClusterSyncValue() {
     return TypeDef(TypeCode::Struct, {
         String("node_id"),
@@ -104,6 +113,7 @@ Value makeClusterSyncValue() {
     }).create();
 }
 
+/** @brief Create a PVXS Value prototype for the cluster control PV. */
 Value makeClusterCtrlValue() {
     return TypeDef(TypeCode::Struct, {
         UInt32("version_major"),
@@ -121,6 +131,7 @@ Value makeClusterCtrlValue() {
     }).create();
 }
 
+/** @brief Create a PVXS Value prototype for cluster join RPC requests. */
 Value makeJoinRequestValue() {
     return TypeDef(TypeCode::Struct, {
         UInt32("version_major"),
@@ -133,6 +144,7 @@ Value makeJoinRequestValue() {
     }).create();
 }
 
+/** @brief Create a PVXS Value prototype for cluster join RPC responses. */
 Value makeJoinResponseValue() {
     return TypeDef(TypeCode::Struct, {
         UInt32("version_major"),
@@ -152,6 +164,12 @@ Value makeJoinResponseValue() {
     }).create();
 }
 
+/**
+ * @brief Check whether a certificate status transition from local to remote is valid for sync.
+ * @param local_status   Current status in the local database.
+ * @param remote_status  Status received from a remote cluster peer.
+ * @return true if the transition is permitted.
+ */
 bool isValidStatusTransition(certstatus_t local_status, certstatus_t remote_status) {
     if (local_status == remote_status)
         return true;
@@ -179,6 +197,7 @@ bool isValidStatusTransition(certstatus_t local_status, certstatus_t remote_stat
     }
 }
 
+/** @brief Produce a deterministic byte sequence from a cluster sync Value for signing/verification. */
 std::string canonicalizeSync(const Value &payload) {
     std::string buf;
     appendString(buf, payload["node_id"].as<std::string>());
@@ -216,6 +235,7 @@ std::string canonicalizeSync(const Value &payload) {
     return buf;
 }
 
+/** @brief Produce a deterministic byte sequence from a cluster ctrl Value for signing/verification. */
 std::string canonicalizeCtrl(const Value &payload) {
     std::string buf;
     appendU32(buf, payload["version_major"].as<uint32_t>());
@@ -236,6 +256,7 @@ std::string canonicalizeCtrl(const Value &payload) {
     return buf;
 }
 
+/** @brief Produce a deterministic byte sequence from a join request Value for signing/verification. */
 std::string canonicalizeJoinRequest(const Value &payload) {
     std::string buf;
     appendU32(buf, payload["version_major"].as<uint32_t>());
@@ -247,6 +268,7 @@ std::string canonicalizeJoinRequest(const Value &payload) {
     return buf;
 }
 
+/** @brief Produce a deterministic byte sequence from a join response Value for signing/verification. */
 std::string canonicalizeJoinResponse(const Value &payload) {
     std::string buf;
     appendU32(buf, payload["version_major"].as<uint32_t>());
@@ -270,6 +292,7 @@ std::string canonicalizeJoinResponse(const Value &payload) {
     return buf;
 }
 
+/** @brief Sign a cluster Value by computing a signature over its canonical form. */
 void clusterSign(const ossl_ptr<EVP_PKEY> &cert_auth_pkey, Value &payload, const std::string &canonical) {
     std::string sig_str = CertFactory::sign(cert_auth_pkey, canonical);
     shared_array<uint8_t> sig_bytes(sig_str.size());
@@ -277,6 +300,7 @@ void clusterSign(const ossl_ptr<EVP_PKEY> &cert_auth_pkey, Value &payload, const
     payload["signature"] = sig_bytes.freeze();
 }
 
+/** @brief Verify the signature on a cluster Value against its canonical form. */
 bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, const Value &payload, const std::string &canonical) {
     auto sig_bytes = payload["signature"].as<shared_array<const uint8_t>>();
     std::string sig_str(reinterpret_cast<const char *>(sig_bytes.data()), sig_bytes.size());

@@ -8,9 +8,11 @@
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 #include <epicsMutex.h>
 #include <epicsGuard.h>
+#include <epicsTime.h>
 
 #include <pvxs/log.h>
 
@@ -26,20 +28,35 @@ namespace certs {
 
 typedef epicsGuard<epicsMutex> Guard;
 
-ClusterDiscovery::ClusterDiscovery(const std::string &node_id,
-                                   const std::string &issuer_id,
-                                   const std::string &pv_prefix,
-                                   uint32_t discovery_timeout_secs,
+/**
+ * @brief Constructs a ClusterDiscovery instance and registers the membership-change callback.
+ *
+ * @param node_id Unique identifier for this CMS node.
+ * @param issuer_id Certificate authority issuer identifier shared by all cluster members.
+ * @param pv_prefix PVAccess PV name prefix used to build control channel names.
+ * @param discovery_timeout_secs Timeout in seconds for the join RPC call.
+ * @param certs_db SQLite database handle used to persist certificate state.
+ * @param cert_auth_pkey CA private key used to sign outgoing cluster messages.
+ * @param cert_auth_pub_key CA public key used to verify incoming cluster messages.
+ * @param status_update_lock Mutex protecting all certificate status updates.
+ * @param sync_publisher Publisher that exposes this node's sync PV to peers.
+ * @param controller Cluster controller managing membership state.
+ * @param client_ctx PVAccess client context for RPC and monitor operations.
+ */
+ClusterDiscovery::ClusterDiscovery(std::string node_id,
+                                   std::string issuer_id,
+                                   std::string pv_prefix,
+                                   const uint32_t discovery_timeout_secs,
                                    sqlite3 *certs_db,
                                    const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                    const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                                    epicsMutex &status_update_lock,
                                    ClusterSyncPublisher &sync_publisher,
                                    ClusterController &controller,
-                                   client::Context client_ctx)
-    : node_id_(node_id)
-    , issuer_id_(issuer_id)
-    , pv_prefix_(pv_prefix)
+                                   const client::Context& client_ctx)
+    : node_id_(std::move(node_id))
+    , issuer_id_(std::move(issuer_id))
+    , pv_prefix_(std::move(pv_prefix))
     , discovery_timeout_secs_(discovery_timeout_secs)
     , certs_db_(certs_db)
     , cert_auth_pkey_(cert_auth_pkey)
@@ -47,97 +64,100 @@ ClusterDiscovery::ClusterDiscovery(const std::string &node_id,
     , status_update_lock_(status_update_lock)
     , sync_publisher_(sync_publisher)
     , controller_(controller)
-    , client_ctx_(std::move(client_ctx))
+    , client_ctx_(client_ctx)
 {
     controller_.on_membership_changed = [this](const std::vector<ClusterMember> &members) {
         reconcileMembers(members);
     };
 }
 
+/**
+ * @brief Merges a peer's certificate snapshot into the local SQLite database.
+ * @param certs_db SQLite database handle to update.
+ * @param status_update_lock Mutex that must be held during database writes.
+ * @param snapshot PVAccess Value containing the array of certificate records to merge.
+ */
 void applySyncSnapshot(sqlite3 *certs_db,
                        epicsMutex &status_update_lock,
                        const Value &snapshot) {
     Guard G(status_update_lock);
 
-    auto certs_arr = snapshot["certs"].as<shared_array<const Value>>();
-    for (size_t i = 0; i < certs_arr.size(); i++) {
-        auto &row = certs_arr[i];
-        auto serial = row["serial"].as<int64_t>();
-        auto remote_status = static_cast<certstatus_t>(row["status"].as<int32_t>());
+    const auto certs_arr = snapshot["certs"].as<shared_array<const Value>>();
+    for (const auto & row : certs_arr) {
+        const auto serial = row["serial"].as<int64_t>();
+        const auto remote_status = static_cast<certstatus_t>(row["status"].as<int32_t>());
 
         sqlite3_stmt *check_stmt;
-        const char *check_sql = "SELECT status FROM certs WHERE serial = ?";
-        if (sqlite3_prepare_v2(certs_db, check_sql, -1, &check_stmt, nullptr) != SQLITE_OK)
+        if (sqlite3_prepare_v2(certs_db, SQL_SYNC_CHECK_CERT_STATUS, -1, &check_stmt, nullptr) != SQLITE_OK)
             continue;
-        sqlite3_bind_int64(check_stmt, 1, serial);
+        sqlite3_bind_int64(check_stmt, sqlite3_bind_parameter_index(check_stmt, ":serial"), serial);
 
         if (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            auto local_status = static_cast<certstatus_t>(sqlite3_column_int(check_stmt, 0));
+            const auto local_status = static_cast<certstatus_t>(sqlite3_column_int(check_stmt, 0));
             sqlite3_finalize(check_stmt);
 
             if (!isValidStatusTransition(local_status, remote_status))
                 continue;
 
-            const char *update_sql = "UPDATE certs SET skid=?, CN=?, O=?, OU=?, C=?, "
-                                     "approved=?, not_before=?, not_after=?, renew_by=?, "
-                                     "renewal_due=?, status=?, status_date=? WHERE serial=?";
             sqlite3_stmt *upd_stmt;
-            if (sqlite3_prepare_v2(certs_db, update_sql, -1, &upd_stmt, nullptr) != SQLITE_OK)
+            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, &upd_stmt, nullptr) != SQLITE_OK)
                 continue;
 
-            auto bind_text = [&](int idx, const char *field) {
-                auto s = row[field].as<std::string>();
-                sqlite3_bind_text(upd_stmt, idx, s.c_str(), -1, SQLITE_TRANSIENT);
+            auto bind_text = [&](const char *param, const char *field) {
+                const auto s = row[field].as<std::string>();
+                sqlite3_bind_text(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, param), s.c_str(), -1, SQLITE_TRANSIENT);
             };
-            bind_text(1, "skid");
-            bind_text(2, "cn");
-            bind_text(3, "o");
-            bind_text(4, "ou");
-            bind_text(5, "c");
-            sqlite3_bind_int(upd_stmt, 6, row["approved"].as<int32_t>());
-            sqlite3_bind_int64(upd_stmt, 7, row["not_before"].as<int64_t>());
-            sqlite3_bind_int64(upd_stmt, 8, row["not_after"].as<int64_t>());
-            sqlite3_bind_int64(upd_stmt, 9, row["renew_by"].as<int64_t>());
-            sqlite3_bind_int(upd_stmt, 10, row["renewal_due"].as<int32_t>());
-            sqlite3_bind_int(upd_stmt, 11, row["status"].as<int32_t>());
-            sqlite3_bind_int64(upd_stmt, 12, row["status_date"].as<int64_t>());
-            sqlite3_bind_int64(upd_stmt, 13, serial);
+            bind_text(":skid", "skid");
+            bind_text(":CN", "cn");
+            bind_text(":O", "o");
+            bind_text(":OU", "ou");
+            bind_text(":C", "c");
+            sqlite3_bind_int(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":approved"), row["approved"].as<int32_t>());
+            sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":not_before"), row["not_before"].as<int64_t>());
+            sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":not_after"), row["not_after"].as<int64_t>());
+            sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":renew_by"), row["renew_by"].as<int64_t>());
+            sqlite3_bind_int(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":renewal_due"), row["renewal_due"].as<int32_t>());
+            sqlite3_bind_int(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":status"), row["status"].as<int32_t>());
+            sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":status_date"), row["status_date"].as<int64_t>());
+            sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), serial);
             sqlite3_step(upd_stmt);
             sqlite3_finalize(upd_stmt);
         } else {
             sqlite3_finalize(check_stmt);
-            const char *insert_sql = "INSERT INTO certs (serial, skid, CN, O, OU, C, approved, "
-                                     "not_before, not_after, renew_by, renewal_due, status, status_date) "
-                                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             sqlite3_stmt *ins_stmt;
-            if (sqlite3_prepare_v2(certs_db, insert_sql, -1, &ins_stmt, nullptr) != SQLITE_OK)
+            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_INSERT_CERT, -1, &ins_stmt, nullptr) != SQLITE_OK)
                 continue;
 
-            sqlite3_bind_int64(ins_stmt, 1, serial);
-            auto bind_text = [&](int idx, const char *field) {
-                auto s = row[field].as<std::string>();
-                sqlite3_bind_text(ins_stmt, idx, s.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), serial);
+            auto bind_text = [&](const char *param, const char *field) {
+                const auto s = row[field].as<std::string>();
+                sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, param), s.c_str(), -1, SQLITE_TRANSIENT);
             };
-            bind_text(2, "skid");
-            bind_text(3, "cn");
-            bind_text(4, "o");
-            bind_text(5, "ou");
-            bind_text(6, "c");
-            sqlite3_bind_int(ins_stmt, 7, row["approved"].as<int32_t>());
-            sqlite3_bind_int64(ins_stmt, 8, row["not_before"].as<int64_t>());
-            sqlite3_bind_int64(ins_stmt, 9, row["not_after"].as<int64_t>());
-            sqlite3_bind_int64(ins_stmt, 10, row["renew_by"].as<int64_t>());
-            sqlite3_bind_int(ins_stmt, 11, row["renewal_due"].as<int32_t>());
-            sqlite3_bind_int(ins_stmt, 12, row["status"].as<int32_t>());
-            sqlite3_bind_int64(ins_stmt, 13, row["status_date"].as<int64_t>());
+            bind_text(":skid", "skid");
+            bind_text(":CN", "cn");
+            bind_text(":O", "o");
+            bind_text(":OU", "ou");
+            bind_text(":C", "c");
+            sqlite3_bind_int(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":approved"), row["approved"].as<int32_t>());
+            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":not_before"), row["not_before"].as<int64_t>());
+            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":not_after"), row["not_after"].as<int64_t>());
+            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":renew_by"), row["renew_by"].as<int64_t>());
+            sqlite3_bind_int(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":renewal_due"), row["renewal_due"].as<int32_t>());
+            sqlite3_bind_int(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":status"), row["status"].as<int32_t>());
+            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":status_date"), row["status_date"].as<int64_t>());
             sqlite3_step(ins_stmt);
             sqlite3_finalize(ins_stmt);
         }
     }
 }
 
+/**
+ * @brief Verifies and applies an incoming sync snapshot from a peer node.
+ * @param peer_node_id Unique identifier of the node that sent the update.
+ * @param val Incoming PVAccess Value containing the signed sync snapshot.
+ */
 void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &&val) {
-    auto canonical = canonicalizeSync(val);
+    const auto canonical = canonicalizeSync(val);
     if (!clusterVerify(cert_auth_pub_key_, val, canonical)) {
         log_warn_printf(pvacmscluster, "Sync signature verification failed from node %s\n",
                         peer_node_id.c_str());
@@ -145,8 +165,8 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     }
 
     // Anti-replay: reject timestamps older than high-water mark minus clock skew tolerance
-    auto incoming_ts = getTimeStampAsUnix(val);
-    auto hwm = global_high_water_mark_.load();
+    const auto incoming_ts = getTimeStamp(val);
+    const auto hwm = global_high_water_mark_.load();
     if (hwm > 0 && incoming_ts < hwm - kClockSkewTolerance) {
         log_warn_printf(pvacmscluster, "Stale/replayed sync snapshot from %s (ts=%lld, hwm=%lld)\n",
                         peer_node_id.c_str(), static_cast<long long>(incoming_ts), static_cast<long long>(hwm));
@@ -166,15 +186,15 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     }
     sync_publisher_.sync_ingestion_in_progress.store(false);
 
-    auto members_arr = val["members"].as<shared_array<const Value>>();
+    const auto members_arr = val["members"].as<shared_array<const Value>>();
     std::vector<ClusterMember> remote_members;
-    for (size_t i = 0; i < members_arr.size(); i++) {
+    for (const auto & m : members_arr) {
         remote_members.push_back({
-            members_arr[i]["node_id"].as<std::string>(),
-            members_arr[i]["sync_pv"].as<std::string>(),
-            members_arr[i]["version_major"].as<uint32_t>(),
-            members_arr[i]["version_minor"].as<uint32_t>(),
-            members_arr[i]["version_patch"].as<uint32_t>()
+            m["node_id"].as<std::string>(),
+            m["sync_pv"].as<std::string>(),
+            m["version_major"].as<uint32_t>(),
+            m["version_minor"].as<uint32_t>(),
+            m["version_patch"].as<uint32_t>()
         });
     }
     reconcileMembers(remote_members);
@@ -183,11 +203,14 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
                      peer_node_id.c_str(), static_cast<size_t>(val["certs"].as<shared_array<const Value> >().size()));
 }
 
+/**
+ * @brief Creates a monitor subscription to a peer node's sync PV.
+ * @param node_id Unique identifier of the peer node to subscribe to.
+ * @param sync_pv PVAccess name of the peer's sync PV.
+ */
 void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::string &sync_pv) {
-    if (node_id == node_id_)
-        return;
-    if (subscriptions_.count(node_id))
-        return;
+    if (node_id == node_id_) return;
+    if (subscriptions_.count(node_id)) return;
 
     auto sub = client_ctx_.monitor(sync_pv)
         .maskConnected(false)
@@ -218,16 +241,23 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
                      sync_pv.c_str(), node_id.c_str());
 }
 
+/**
+ * @brief Removes all state for a peer node after its sync subscription disconnects.
+ * @param peer_node_id Unique identifier of the node that disconnected.
+ */
 void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
     subscriptions_.erase(peer_node_id);
     controller_.removeMember(peer_node_id);
     log_info_printf(pvacmscluster, "Removed disconnected member %s\n", peer_node_id.c_str());
 }
 
+/**
+ * @brief Subscribes to any remote cluster members not yet tracked locally.
+ * @param remote_members List of cluster members advertised by a peer in a sync snapshot.
+ */
 void ClusterDiscovery::reconcileMembers(const std::vector<ClusterMember> &remote_members) {
     for (const auto &m : remote_members) {
-        if (m.node_id == node_id_)
-            continue;
+        if (m.node_id == node_id_) continue;
         if (subscriptions_.count(m.node_id) == 0) {
             subscribeToMember(m.node_id, m.sync_pv);
             controller_.addMember(m);
@@ -235,6 +265,10 @@ void ClusterDiscovery::reconcileMembers(const std::vector<ClusterMember> &remote
     }
 }
 
+/**
+ * @brief Sends a signed join request to the cluster control PV and subscribes to member sync PVs.
+ * @return true if the join handshake succeeded and the cluster was joined; false otherwise.
+ */
 bool ClusterDiscovery::joinCluster() {
     auto ctrl_pv_name = pv_prefix_ + ":CTRL:" + issuer_id_;
     auto sync_pv_name = sync_publisher_.getSyncPvName();
@@ -259,7 +293,7 @@ bool ClusterDiscovery::joinCluster() {
     try {
         auto resp = client_ctx_.rpc(ctrl_pv_name, req)
             .exec()
-            ->wait(static_cast<double>(discovery_timeout_secs_));
+            ->wait(discovery_timeout_secs_);
 
         auto resp_canonical = canonicalizeJoinResponse(resp);
         if (!clusterVerify(cert_auth_pub_key_, resp, resp_canonical)) {
@@ -281,8 +315,9 @@ bool ClusterDiscovery::joinCluster() {
             return false;
         }
 
-        auto resp_ts = getTimeStampAsUnix(resp);
-        auto now = static_cast<int64_t>(std::time(nullptr));
+        auto resp_ts = getTimeStamp(resp);
+        epicsTimeStamp now_ts = epicsTime::getCurrent();
+        auto now = static_cast<int64_t>(now_ts.secPastEpoch);
         if (std::abs(now - resp_ts) > kJoinTimestampTolerance) {
             log_warn_printf(pvacmscluster, "Join response stale timestamp (ts=%lld, now=%lld)\n",
                             static_cast<long long>(resp_ts), static_cast<long long>(now));
@@ -297,13 +332,13 @@ bool ClusterDiscovery::joinCluster() {
 
         auto members_arr = resp["members"].as<shared_array<const Value>>();
         std::vector<ClusterMember> members;
-        for (size_t i = 0; i < members_arr.size(); i++) {
+        for (const auto & m : members_arr) {
             members.push_back({
-                members_arr[i]["node_id"].as<std::string>(),
-                members_arr[i]["sync_pv"].as<std::string>(),
-                members_arr[i]["version_major"].as<uint32_t>(),
-                members_arr[i]["version_minor"].as<uint32_t>(),
-                members_arr[i]["version_patch"].as<uint32_t>()
+                m["node_id"].as<std::string>(),
+                m["sync_pv"].as<std::string>(),
+                m["version_major"].as<uint32_t>(),
+                m["version_minor"].as<uint32_t>(),
+                m["version_patch"].as<uint32_t>()
             });
         }
 

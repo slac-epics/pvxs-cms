@@ -18,6 +18,10 @@ DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 namespace pvxs {
 namespace certs {
 
+/**
+ * @brief Constructs the controller, derives the CTRL PV name, and installs the RPC join handler.
+ *
+ */
 ClusterController::ClusterController(const std::string &issuer_id,
                                      const std::string &pv_prefix,
                                      const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
@@ -33,6 +37,12 @@ ClusterController::ClusterController(const std::string &issuer_id,
     setupRpcHandler();
 }
 
+/**
+ * @brief Registers the RPC handler on the CTRL PV to process incoming cluster join requests.
+ *
+ * Verifies the protocol version, validates the cryptographic signature and nonce,
+ * calls addMember for the joining node, signs and returns the join response.
+ */
 void ClusterController::setupRpcHandler() {
     ctrl_pv_.onRPC([this](server::SharedPV &, std::unique_ptr<server::ExecOp> &&op, Value &&args) {
         try {
@@ -84,10 +94,9 @@ void ClusterController::setupRpcHandler() {
                 members_arr[i]["version_patch"] = members_[i].version_patch;
             }
             resp["members"] = members_arr.freeze();
-
             resp["nonce"] = nonce;
 
-            auto resp_canonical = canonicalizeJoinResponse(resp);
+            const auto resp_canonical = canonicalizeJoinResponse(resp);
             clusterSign(cert_auth_pkey_, resp, resp_canonical);
 
             log_info_printf(pvacmscluster, "Node %s joined cluster %s\n",
@@ -101,6 +110,12 @@ void ClusterController::setupRpcHandler() {
     });
 }
 
+/**
+ * @brief Initializes the cluster as a single-node cluster containing only this node.
+ *
+ * @param node_id  Unique identifier of this node within the cluster.
+ * @param sync_pv  The name of the sync PV this node publishes for state replication.
+ */
 void ClusterController::initAsSoleNode(const std::string &node_id, const std::string &sync_pv) {
     members_ = {{node_id, sync_pv, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION}};
     postCtrlValue();
@@ -108,6 +123,11 @@ void ClusterController::initAsSoleNode(const std::string &node_id, const std::st
                     issuer_id_.c_str(), node_id.c_str());
 }
 
+/**
+ * @brief Builds the current membership snapshot into a signed CTRL Value and posts it to the SharedPV.
+ *
+ * On first call the PV is opened with the prototype value; subsequent calls post only the changed fields.
+ */
 void ClusterController::postCtrlValue() {
     auto val = prototype_ ? prototype_.cloneEmpty() : makeClusterCtrlValue();
     val["version_major"] = static_cast<uint32_t>(PVACMS_MAJOR_VERSION);
@@ -126,7 +146,7 @@ void ClusterController::postCtrlValue() {
     }
     val["members"] = members_arr.freeze();
 
-    auto canonical = canonicalizeCtrl(val);
+    const auto canonical = canonicalizeCtrl(val);
     clusterSign(cert_auth_pkey_, val, canonical);
 
     if (!opened_) {
@@ -142,6 +162,11 @@ void ClusterController::postCtrlValue() {
     }
 }
 
+/**
+ * @brief Adds a node to the membership list, republishes, and fires the membership-changed callback.
+ *
+ * @param member  Descriptor of the node to add; ignored if the node is already a member.
+ */
 void ClusterController::addMember(const ClusterMember &member) {
     bool already_member = false;
     for (const auto &m : members_) {
@@ -159,8 +184,13 @@ void ClusterController::addMember(const ClusterMember &member) {
         on_membership_changed(members_);
 }
 
+/**
+ * @brief Removes a node from the membership list, republishes, and fires the membership-changed callback.
+ *
+ * @param node_id  Identifier of the node to remove; no-op if not found.
+ */
 void ClusterController::removeMember(const std::string &node_id) {
-    auto it = std::remove_if(members_.begin(), members_.end(),
+    const auto it = std::remove_if(members_.begin(), members_.end(),
         [&](const ClusterMember &m) { return m.node_id == node_id; });
     if (it == members_.end())
         return;
@@ -172,15 +202,30 @@ void ClusterController::removeMember(const std::string &node_id) {
         on_membership_changed(members_);
 }
 
+/**
+ * @brief Atomically replaces the membership list and republishes the CTRL PV.
+ *
+ * @param members  Authoritative set of cluster members to replace the current list.
+ */
 void ClusterController::updateMembership(const std::vector<ClusterMember> &members) {
     members_ = members;
     postCtrlValue();
 }
 
+/**
+ * @brief Returns a copy of the current cluster membership list.
+ *
+ * @return Vector of ClusterMember descriptors representing the current members.
+ */
 std::vector<ClusterMember> ClusterController::getMembers() const {
     return members_;
 }
 
+/**
+ * @brief Returns the fully-qualified PV name of the CTRL process variable.
+ *
+ * @return The CTRL PV name string.
+ */
 std::string ClusterController::getCtrlPvName() const {
     return ctrl_pv_name_;
 }

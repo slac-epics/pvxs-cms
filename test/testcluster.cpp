@@ -8,6 +8,7 @@
 #include <cstring>
 #include <string>
 
+#include <epicsTime.h>
 #include <epicsUnitTest.h>
 #include <testMain.h>
 
@@ -29,7 +30,13 @@ using namespace pvxs::certs;
 
 namespace {
 
-// SQL to create the certs table for in-memory test DB
+/**
+ * @brief SQL DDL statement used to create the certs table in the in-memory test database.
+ *
+ * Mirrors the schema used in production so that applySyncSnapshot, serializeCertsTable,
+ * and related functions operate on a realistic table layout.  All integration tests that
+ * need a database create one via TestDb, which executes this statement on construction.
+ */
 const char *kCreateCertsTable =
     "CREATE TABLE IF NOT EXISTS certs("
     "  serial INTEGER PRIMARY KEY,"
@@ -47,7 +54,13 @@ const char *kCreateCertsTable =
     "  status_date INTEGER"
     ")";
 
-// RAII wrapper for in-memory test database
+/**
+ * @brief RAII wrapper around an in-memory SQLite database for unit and integration tests.
+ *
+ * Opens a fresh ":memory:" SQLite database on construction, creates the certs table via
+ * kCreateCertsTable, and closes the database handle on destruction.  Using a new TestDb
+ * per test function ensures complete isolation with no shared state between tests.
+ */
 struct TestDb {
     sqlite3 *db;
     TestDb() : db(nullptr) {
@@ -60,7 +73,16 @@ struct TestDb {
     sqlite3 *get() { return db; }
 };
 
-// Generate an EC key pair for signing tests
+/**
+ * @brief Generate a fresh prime256v1 EC key pair for use in signing tests.
+ *
+ * Creates a one-time ephemeral ECDSA P-256 key pair via OpenSSL EVP_PKEY_keygen.
+ * Returned as an RAII-managed ossl_ptr so the caller need not call EVP_PKEY_free.
+ * Every test that exercises clusterSign/clusterVerify calls this to obtain a
+ * self-consistent key pair without depending on external key material.
+ *
+ * @return Newly generated prime256v1 EVP_PKEY wrapped in an ossl_ptr.
+ */
 ossl_ptr<EVP_PKEY> generateTestKey() {
     ossl_ptr<EVP_PKEY_CTX> ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_EC, nullptr));
     EVP_PKEY_keygen_init(ctx.get());
@@ -70,7 +92,21 @@ ossl_ptr<EVP_PKEY> generateTestKey() {
     return ossl_ptr<EVP_PKEY>(pkey);
 }
 
-// Helper to build a sync Value with one cert row
+/**
+ * @brief Build a minimal ClusterSync PVXS Value containing a single certificate row.
+ *
+ * Constructs a fully-populated sync snapshot with one cert entry, zero members, and
+ * a fixed timestamp of 2000 seconds.  Used by Category 2 integration tests that feed
+ * a snapshot directly to applySyncSnapshot without needing a real database on the
+ * sending side.  The caller controls the cert's serial, status, and status_date so
+ * each test can exercise the specific transition scenario it cares about.
+ *
+ * @param serial       Certificate serial number to embed in the snapshot.
+ * @param status       Certificate status code (e.g. VALID, EXPIRED, PENDING_APPROVAL).
+ * @param status_date  Unix timestamp of the status change to embed.
+ * @param cn           Common Name string for the certificate (default "TestCN").
+ * @return Unsigned ClusterSync Value ready to pass to applySyncSnapshot.
+ */
 Value buildSyncWithCert(int64_t serial, int32_t status, int64_t status_date,
                         const std::string &cn = "TestCN") {
     auto val = makeClusterSyncValue();
@@ -103,6 +139,26 @@ Value buildSyncWithCert(int64_t serial, int32_t status, int64_t status_date,
 
 // ---- Category 1: Unit Tests ----
 
+/**
+ * @brief Tests the isValidStatusTransition() certificate state machine.
+ *
+ * Verifies that the cluster sync engine correctly distinguishes between transitions
+ * that are permitted to propagate across nodes and those that must not.  The test
+ * exercises three categories of transition:
+ *   - Same-to-same (always accepted for field propagation such as VALID->VALID)
+ *   - Operator/CCR-driven transitions (PENDING_APPROVAL->VALID, VALID->REVOKED, etc.)
+ *     which must be synced between nodes
+ *   - Time-based transitions (VALID->EXPIRED, VALID->PENDING_RENEWAL, etc.) which
+ *     each node computes independently and therefore must NOT be accepted via sync
+ *   - Backward or otherwise disallowed moves (e.g. VALID->PENDING) which would
+ *     corrupt the certificate lifecycle state
+ *
+ * A failure here indicates a regression in isValidStatusTransition() that would
+ * either allow stale or incorrect status from a peer to overwrite the local state
+ * (accepting something that should be rejected) or would prevent legitimate operator
+ * actions from propagating across the cluster (rejecting something that should be
+ * accepted).
+ */
 void testStateMachine() {
     testDiag("State machine transitions");
 
@@ -137,6 +193,19 @@ void testStateMachine() {
     testOk(!isValidStatusTransition(REVOKED, PENDING), "REVOKED->PENDING rejected");
 }
 
+/**
+ * @brief Tests that all cluster PVXS Value type definitions contain the expected fields.
+ *
+ * Calls makeClusterSyncValue(), makeClusterCtrlValue(), makeJoinRequestValue(), and
+ * makeJoinResponseValue() and asserts that every required field path resolves to a
+ * non-null Value.  Also checks that sub-structure members (array element prototypes)
+ * expose the expected version and identity fields.
+ *
+ * This test guards against accidental field removal or renaming in the TypeDef
+ * factory functions.  A failure would mean that other cluster code — serialization,
+ * signing, ingestion, join handshake — could silently drop or mis-read data because
+ * a field it relies on no longer exists in the Value prototype.
+ */
 void testTypeDefs() {
     testDiag("TypeDef creation");
 
@@ -197,10 +266,27 @@ void testTypeDefs() {
     }
 }
 
+/**
+ * @brief Tests ECDSA signing and verification of cluster sync snapshots.
+ *
+ * Generates a transient prime256v1 key pair, constructs a ClusterSync Value with
+ * known fields, canonicalizes it, and calls clusterSign to write the signature into
+ * the "signature" field.  Verification is then performed against a fresh
+ * canonicalization of the same Value (simulating what the receiving node does).
+ *
+ * A second pass deliberately mutates the node_id field after signing to confirm that
+ * the resulting canonical form no longer matches the signature — verifying that the
+ * canonicalization covers all significant payload fields and that clusterVerify
+ * correctly rejects tampered data.
+ *
+ * A failure here indicates a bug in clusterSign, clusterVerify, or canonicalizeSync
+ * that would allow unsigned or tampered sync snapshots to be trusted by cluster peers,
+ * undermining the integrity guarantee of the cert sync protocol.
+ */
 void testSigning() {
     testDiag("Signing and verification");
 
-    auto pkey = generateTestKey();
+    const auto pkey = generateTestKey();
 
     auto sync_val = makeClusterSyncValue();
     sync_val["node_id"] = "a1b2c3d4";
@@ -211,19 +297,38 @@ void testSigning() {
     shared_array<Value> empty_certs(0);
     sync_val["certs"] = empty_certs.freeze();
 
-    auto canonical = canonicalizeSync(sync_val);
+    const auto canonical = canonicalizeSync(sync_val);
     clusterSign(pkey, sync_val, canonical);
 
     // Verify with same key succeeds
-    auto canonical2 = canonicalizeSync(sync_val);
+    const auto canonical2 = canonicalizeSync(sync_val);
     testOk(clusterVerify(pkey, sync_val, canonical2), "Valid sync signature accepted");
 
     // Tamper with payload — old signature won't match new canonical
     sync_val["node_id"] = "tampered";
-    auto canonical3 = canonicalizeSync(sync_val);
+    const auto canonical3 = canonicalizeSync(sync_val);
     testOk(!clusterVerify(pkey, sync_val, canonical3), "Tampered sync signature rejected");
 }
 
+/**
+ * @brief Tests the high-water-mark anti-replay timestamp logic in isolation.
+ *
+ * Simulates the per-peer high-water-mark (HWM) check that handleSyncUpdate performs
+ * before ingesting a snapshot: a snapshot whose timestamp is below (HWM - tolerance)
+ * must be rejected to prevent replay attacks.  The test uses an atomic int64 to mimic
+ * the in-process HWM variable and manually advances it with accepted snapshots.
+ *
+ * Five scenarios are covered:
+ *   1. First snapshot (HWM == 0) is always accepted.
+ *   2. A newer snapshot from the same peer advances the HWM.
+ *   3. A newer snapshot from a cross-peer scenario is also accepted.
+ *   4. A stale snapshot (timestamp well below HWM) is rejected.
+ *   5. A cross-peer replay of a previously-seen timestamp is blocked.
+ *   6. A snapshot within the clock-skew tolerance window is accepted.
+ *
+ * Failure here means the anti-replay guard could be bypassed, allowing an attacker
+ * or malfunctioning peer to inject old cert-status data into a live cluster.
+ */
 void testAntiReplayLogic() {
     testDiag("Anti-replay timestamp logic");
 
@@ -231,33 +336,45 @@ void testAntiReplayLogic() {
     constexpr int64_t tolerance = 5;
 
     // First snapshot always accepted (hwm == 0)
-    int64_t ts1 = 1000;
+    constexpr int64_t ts1 = 1000;
     testOk(hwm.load() == 0 || ts1 >= hwm.load() - tolerance, "First snapshot accepted (hwm=0)");
     hwm.store(ts1);
 
     // Newer snapshot advances hwm
-    int64_t ts2 = 1050;
+    constexpr int64_t ts2 = 1050;
     testOk(ts2 >= hwm.load() - tolerance, "Newer snapshot accepted");
     hwm.store(ts2);
 
     // Cross-peer newer snapshot
-    int64_t ts3 = 1060;
+    constexpr int64_t ts3 = 1060;
     testOk(ts3 >= hwm.load() - tolerance, "Cross-peer newer snapshot accepted");
     hwm.store(ts3);
 
     // Stale snapshot rejected (replay attack)
-    int64_t ts4 = 900;
+    constexpr int64_t ts4 = 900;
     testOk(ts4 < hwm.load() - tolerance, "Stale snapshot rejected (replay)");
 
     // Cross-peer replay blocked
-    int64_t ts5 = 1050;
+    constexpr int64_t ts5 = 1050;
     testOk(ts5 < hwm.load() - tolerance, "Cross-peer replay blocked");
 
     // Within tolerance accepted
-    int64_t ts6 = 1057;
+    constexpr int64_t ts6 = 1057;
     testOk(ts6 >= hwm.load() - tolerance, "Within tolerance accepted");
 }
 
+/**
+ * @brief Tests the atomic boolean flag that prevents sync ingestion re-entrancy.
+ *
+ * Verifies the lifecycle of the flag used by handleSyncUpdate to guard against
+ * re-entrant snapshot ingestion: the flag is clear at rest, set during an active
+ * ingestion, and cleared again when ingestion completes.  The test manually
+ * manipulates a local atomic<bool> to mirror the three observable states.
+ *
+ * Failure here indicates that the guard flag transitions are broken, which could
+ * allow a second sync callback to interleave with an ongoing applySyncSnapshot call,
+ * producing partial or inconsistent database updates.
+ */
 void testSyncLoopGuard() {
     testDiag("Sync loop guard");
     std::atomic<bool> flag{false};
@@ -273,6 +390,19 @@ void testSyncLoopGuard() {
 
 // ---- Category 2: Integration Tests (in-memory SQLite) ----
 
+/**
+ * @brief Tests that applySyncSnapshot silently drops a backward status transition.
+ *
+ * Pre-populates an in-memory SQLite database with a certificate in the EXPIRED
+ * terminal state.  A sync snapshot carrying the same serial with status VALID is
+ * then fed to applySyncSnapshot.  Because EXPIRED -> VALID is a prohibited backward
+ * transition (terminal states are irreversible), the local row must remain EXPIRED.
+ *
+ * This test guards against a regression where the sync merge logic fails to consult
+ * isValidStatusTransition() and blindly overwrites the local status with whatever the
+ * remote peer reports.  Such a regression would allow revived certificates to appear
+ * valid after they have expired, a serious PKI security violation.
+ */
 void testApplySyncBackwardDropped() {
     testDiag("applySyncSnapshot: backward transition dropped");
 
@@ -281,24 +411,37 @@ void testApplySyncBackwardDropped() {
 
     // Insert cert with EXPIRED status
     {
-        std::string sql = "INSERT INTO certs VALUES(42,'skid1','CN1','O1','OU1','C1',1,1000,2000,1800,0,"
+        const std::string sql = "INSERT INTO certs VALUES(42,'skid1','CN1','O1','OU1','C1',1,1000,2000,1800,0,"
                           + std::to_string(EXPIRED) + ",1500)";
         sqlite3_exec(tdb.get(), sql.c_str(), nullptr, nullptr, nullptr);
     }
 
     // Sync snapshot tries to set VALID — backward from EXPIRED
-    auto val = buildSyncWithCert(42, static_cast<int32_t>(VALID), 1600, "CN1_updated");
+    const auto val = buildSyncWithCert(42, static_cast<int32_t>(VALID), 1600, "CN1_updated");
 
     applySyncSnapshot(tdb.get(), lock, val);
 
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(tdb.get(), "SELECT status FROM certs WHERE serial=42", -1, &stmt, nullptr);
     sqlite3_step(stmt);
-    int status = sqlite3_column_int(stmt, 0);
+    const int status = sqlite3_column_int(stmt, 0);
     sqlite3_finalize(stmt);
     testOk(status == EXPIRED, "EXPIRED cert unchanged after backward transition attempt");
 }
 
+/**
+ * @brief Tests that applySyncSnapshot applies a valid forward status transition.
+ *
+ * Pre-populates an in-memory SQLite database with a certificate in the
+ * PENDING_APPROVAL state.  A sync snapshot carrying the same serial with status
+ * VALID (which represents an operator approval decision) is then fed to
+ * applySyncSnapshot.  The test asserts that the row's status is updated to VALID,
+ * confirming that legitimate operator-driven transitions are propagated correctly.
+ *
+ * Failure here would mean that approved certificates never become VALID on nodes
+ * that did not perform the approval locally, effectively siloing operator actions
+ * to a single node and breaking cluster consistency.
+ */
 void testApplySyncForwardAccepted() {
     testDiag("applySyncSnapshot: forward transition accepted");
 
@@ -311,32 +454,45 @@ void testApplySyncForwardAccepted() {
         sqlite3_exec(tdb.get(), sql.c_str(), nullptr, nullptr, nullptr);
     }
 
-    auto val = buildSyncWithCert(42, static_cast<int32_t>(VALID), 2000);
+    const auto val = buildSyncWithCert(42, static_cast<int32_t>(VALID), 2000);
 
     applySyncSnapshot(tdb.get(), lock, val);
 
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(tdb.get(), "SELECT status FROM certs WHERE serial=42", -1, &stmt, nullptr);
     sqlite3_step(stmt);
-    int status = sqlite3_column_int(stmt, 0);
+    const int status = sqlite3_column_int(stmt, 0);
     sqlite3_finalize(stmt);
     testOk(status == VALID, "PENDING_APPROVAL->VALID forward transition applied");
 }
 
+/**
+ * @brief Tests that applySyncSnapshot inserts a certificate that is absent locally.
+ *
+ * Starts with an empty in-memory database and feeds a snapshot that contains one
+ * certificate (serial 99, CN "NewCert", status VALID).  After applySyncSnapshot
+ * returns, the test queries the database to confirm that the row was created with
+ * the correct CN and status.  Conditional testSkip calls are used when the row is
+ * unexpectedly absent to prevent cascading assertion failures.
+ *
+ * Failure here means that new certificates issued on one cluster node are never
+ * propagated to peers that were not present at issuance time, leaving those peers
+ * with an incomplete and stale certificate database.
+ */
 void testApplySyncNewCert() {
     testDiag("applySyncSnapshot: new cert inserted");
 
     TestDb tdb;
     epicsMutex lock;
 
-    auto val = buildSyncWithCert(99, static_cast<int32_t>(VALID), 600, "NewCert");
+    const auto val = buildSyncWithCert(99, static_cast<int32_t>(VALID), 600, "NewCert");
 
     applySyncSnapshot(tdb.get(), lock, val);
 
     // Verify cert was inserted
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(tdb.get(), "SELECT CN, status FROM certs WHERE serial=99", -1, &stmt, nullptr);
-    auto rc = sqlite3_step(stmt);
+    const auto rc = sqlite3_step(stmt);
     testOk(rc == SQLITE_ROW, "New cert row found");
     if (rc == SQLITE_ROW) {
         testOk(std::string(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0))) == "NewCert",
@@ -351,11 +507,28 @@ void testApplySyncNewCert() {
 
 // ---- Category 3: Integration Tests (multi-node Value passing) ----
 
-// Helper: insert a cert row into an in-memory test DB
-void insertCert(sqlite3 *db, int64_t serial, const std::string &cn, certstatus_t status,
-                int64_t not_before, int64_t not_after, int64_t renew_by, int64_t status_date) {
+/**
+ * @brief Insert a fully-specified certificate row into a test SQLite database.
+ *
+ * Binds all required certs-table columns and executes a parameterized INSERT.
+ * Fixed values are used for skid ("skid1"), O ("Org"), OU ("Unit"), C ("US"), and
+ * renewal_due (0) so that callers only need to supply the fields that vary between
+ * test scenarios.  Used by Category 3 integration tests to set up pre-existing
+ * certificate state before exercising sync, tamper-detection, or renewal logic.
+ *
+ * @param db          Open SQLite database handle.
+ * @param serial      Certificate serial number (primary key).
+ * @param cn          Certificate Common Name.
+ * @param status      Initial certificate status (e.g. VALID, PENDING_APPROVAL).
+ * @param not_before  Not-before timestamp (EPICS epoch seconds).
+ * @param not_after   Not-after (expiry) timestamp (EPICS epoch seconds).
+ * @param renew_by    Renewal deadline timestamp (EPICS epoch seconds).
+ * @param status_date Timestamp of the most recent status change (EPICS epoch seconds).
+ */
+void insertCert(sqlite3 *db, int64_t serial, const std::string &cn, const certstatus_t status,
+                const int64_t not_before, const int64_t not_after, const int64_t renew_by, const int64_t status_date) {
     sqlite3_stmt *stmt;
-    const char *sql = "INSERT INTO certs (serial, skid, CN, O, OU, C, approved, "
+    const auto sql = "INSERT INTO certs (serial, skid, CN, O, OU, C, approved, "
                       "not_before, not_after, renew_by, renewal_due, status, status_date) "
                       "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
@@ -376,9 +549,22 @@ void insertCert(sqlite3 *db, int64_t serial, const std::string &cn, certstatus_t
     sqlite3_finalize(stmt);
 }
 
-// Helper: query a single int64 column from certs table
+/**
+ * @brief Query a single integer column from the certs table for a given serial.
+ *
+ * Executes "SELECT <column> FROM certs WHERE serial = ?" with the supplied serial
+ * and returns the first result as int64_t.  Returns -1 if no matching row is found,
+ * making it easy for test assertions to detect missing rows without crashing.  Used
+ * by Category 3 integration tests as a concise post-condition checker after calling
+ * applySyncSnapshot.
+ *
+ * @param db      Open SQLite database handle.
+ * @param serial  Certificate serial number to look up.
+ * @param column  Name of the column to retrieve (e.g. "status", "renew_by").
+ * @return The column value as int64_t, or -1 if no row was found.
+ */
 int64_t queryCertInt64(sqlite3 *db, int64_t serial, const char *column) {
-    std::string sql = std::string("SELECT ") + column + " FROM certs WHERE serial = ?";
+    const std::string sql = std::string("SELECT ") + column + " FROM certs WHERE serial = ?";
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
     sqlite3_bind_int64(stmt, 1, serial);
@@ -389,16 +575,49 @@ int64_t queryCertInt64(sqlite3 *db, int64_t serial, const char *column) {
     return result;
 }
 
-// Helper: build a signed sync snapshot from a DB
+/**
+ * @brief Serialize a database's certs table into a signed ClusterSync snapshot.
+ *
+ * Calls serializeCertsTable to produce a ClusterSync PVXS Value from the given
+ * database, then canonicalizes and signs it with clusterSign using the provided
+ * private key.  This helper mimics the sequence that a real CMS node executes when
+ * publishing its sync PV, enabling Category 3 integration tests to produce realistic
+ * signed snapshots without duplicating the sign/serialize boilerplate.
+ *
+ * @param db       Open SQLite database whose certs table is to be serialized.
+ * @param node_id  Identifier of the node that is publishing the snapshot.
+ * @param members  Current cluster membership list to embed in the snapshot.
+ * @param pkey     Private key used to sign the snapshot.
+ * @return Fully signed ClusterSync Value ready to pass to clusterVerify or applySyncSnapshot.
+ */
 Value buildSignedSync(sqlite3 *db, const std::string &node_id,
                       const std::vector<ClusterMember> &members,
                       const ossl_ptr<EVP_PKEY> &pkey) {
     auto val = serializeCertsTable(db, node_id, members);
-    auto canonical = canonicalizeSync(val);
+    const auto canonical = canonicalizeSync(val);
     clusterSign(pkey, val, canonical);
     return val;
 }
 
+/**
+ * @brief Tests the full nonce-based join handshake between two cluster nodes.
+ *
+ * Simulates the sequence a joining node (node_a) and an existing node (node_b)
+ * execute when node_a requests cluster membership:
+ *   1. node_a builds a JoinRequest containing a random 16-byte nonce and signs it.
+ *   2. node_b verifies the signature and inspects the version and nonce fields.
+ *   3. node_b builds a JoinResponse that echoes the nonce, embeds the member list
+ *      and a current timestamp, then signs the response.
+ *   4. node_a verifies the response signature, confirms the issuer_id, validates that
+ *      the echoed nonce matches the one it sent, checks that the timestamp is
+ *      within a 30-second tolerance, and reads the member list.
+ *   5. A wrong nonce is confirmed to differ from the original.
+ *   6. A JoinRequest with version_major == 2 is confirmed to carry the wrong version.
+ *
+ * Failure here means the nonce echo or signature validation in the join handshake is
+ * broken, which would allow nodes to be added to the cluster without cryptographic
+ * proof of identity or open the handshake to replay-based impersonation attacks.
+ */
 void testJoinHandshake() {
     testDiag("Integration: two-node join handshake");
 
@@ -468,8 +687,9 @@ void testJoinHandshake() {
            std::memcmp(resp_nonce.data(), frozen_nonce.data(), frozen_nonce.size()) == 0,
            "Join response nonce echoed correctly");
 
-    auto resp_ts = getTimeStampAsUnix(resp);
-    auto now = static_cast<int64_t>(std::time(nullptr));
+    auto resp_ts = getTimeStamp(resp);
+    epicsTimeStamp now_ts = epicsTime::getCurrent();
+    auto now = static_cast<int64_t>(now_ts.secPastEpoch);
     testOk(std::abs(now - resp_ts) <= 30, "Join response timestamp within tolerance");
 
     auto resp_members = resp["members"].as<shared_array<const Value>>();
@@ -488,17 +708,35 @@ void testJoinHandshake() {
            std::memcmp(frozen_bad.data(), frozen_nonce.data(), frozen_nonce.size()) != 0,
            "Bad nonce differs from original");
 
-    // Wrong major version should be rejected
+    // The wrong major version should be rejected
     auto req_bad_ver = makeJoinRequestValue();
     req_bad_ver["version_major"] = static_cast<uint32_t>(2);
     testOk(req_bad_ver["version_major"].as<uint32_t>() != 1,
            "Major version 2 would be rejected by handler");
 }
 
+/**
+ * @brief Tests end-to-end cert propagation from one node's database to another.
+ *
+ * Populates node_a's database with two certificates (VALID and PENDING_APPROVAL),
+ * serializes and signs a snapshot via buildSignedSync, and feeds it to node_b's
+ * empty database via applySyncSnapshot.  The test then confirms that:
+ *   - The snapshot signature is accepted by clusterVerify.
+ *   - Both certs appear in node_b's database with the correct status and timestamps.
+ *
+ * A second scenario inserts cert 100 as VALID in node_b and then feeds a snapshot
+ * from a "stale" node_a that carries cert 100 as PENDING — a backward transition —
+ * verifying that node_b's VALID status is preserved and not clobbered.
+ *
+ * Failure here indicates that the serialize → sign → verify → ingest pipeline has a
+ * gap: either certs are lost during serialization, the signature is not properly
+ * checked before ingestion, or the backward-transition guard in applySyncSnapshot is
+ * not engaged when a cert already exists locally.
+ */
 void testCrossNodeSyncIngestion() {
     testDiag("Integration: cross-node sync ingestion");
 
-    auto pkey = generateTestKey();
+    const auto pkey = generateTestKey();
 
     // Node A has certs in its DB
     TestDb db_a;
@@ -507,10 +745,10 @@ void testCrossNodeSyncIngestion() {
 
     // Node A builds and signs a sync snapshot
     std::vector<ClusterMember> members = {{"node_a", "sync:a", 1, 0, 0}};
-    auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
+    const auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
 
     // Node B receives and verifies the snapshot
-    auto canonical = canonicalizeSync(snapshot);
+    const auto canonical = canonicalizeSync(snapshot);
     testOk(clusterVerify(pkey, snapshot, canonical), "Cross-node sync signature valid");
 
     // Node B ingests the snapshot into its own (empty) DB
@@ -534,17 +772,33 @@ void testCrossNodeSyncIngestion() {
     // Build a snapshot where Node A has cert 100 as PENDING (backward from B's VALID)
     TestDb db_a_stale;
     insertCert(db_a_stale.get(), 100, "CertA_stale", PENDING, 1000, 5000, 4000, 1200);
-    auto stale_snapshot = buildSignedSync(db_a_stale.get(), "node_a", members, pkey);
+    const auto stale_snapshot = buildSignedSync(db_a_stale.get(), "node_a", members, pkey);
     applySyncSnapshot(db_b2.get(), lock_b2, stale_snapshot);
 
     testOk(queryCertInt64(db_b2.get(), 100, "status") == VALID,
            "Backward VALID->PENDING rejected — status unchanged");
 }
 
+/**
+ * @brief Tests that cluster membership is correctly extracted from a sync snapshot.
+ *
+ * Builds a signed ClusterSync snapshot from node_a's (empty) database with a
+ * member list of three nodes (node_a, node_b, node_c) and then simulates what
+ * handleSyncUpdate does when it receives the snapshot: it iterates over the
+ * "members" array and reconstructs a vector<ClusterMember> with the node_id,
+ * sync_pv, and version fields from each entry.
+ *
+ * The test asserts that all three members are present in the correct order with
+ * the expected node_id and version_major values.
+ *
+ * Failure here means that member list serialization or deserialization is broken,
+ * which would prevent a receiving node from discovering or connecting to its peers
+ * after receiving a sync update, causing the cluster to fragment.
+ */
 void testMembershipReconciliation() {
     testDiag("Integration: membership reconciliation from sync");
 
-    auto pkey = generateTestKey();
+    const auto pkey = generateTestKey();
 
     // Node A's sync snapshot includes members A, B, and C
     TestDb db_a;
@@ -556,15 +810,15 @@ void testMembershipReconciliation() {
     auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
 
     // Extract members from the snapshot (simulating what handleSyncUpdate does)
-    auto members_arr = snapshot["members"].as<shared_array<const Value>>();
+    const auto members_arr = snapshot["members"].as<shared_array<const Value>>();
     std::vector<ClusterMember> remote_members;
-    for (size_t i = 0; i < members_arr.size(); i++) {
+    for (const auto & m : members_arr) {
         remote_members.push_back({
-            members_arr[i]["node_id"].as<std::string>(),
-            members_arr[i]["sync_pv"].as<std::string>(),
-            members_arr[i]["version_major"].as<uint32_t>(),
-            members_arr[i]["version_minor"].as<uint32_t>(),
-            members_arr[i]["version_patch"].as<uint32_t>()
+            m["node_id"].as<std::string>(),
+            m["sync_pv"].as<std::string>(),
+            m["version_major"].as<uint32_t>(),
+            m["version_minor"].as<uint32_t>(),
+            m["version_patch"].as<uint32_t>()
         });
     }
 
@@ -577,10 +831,25 @@ void testMembershipReconciliation() {
     testOk(remote_members[2].version_major == 1, "Member 2 version_major == 1");
 }
 
+/**
+ * @brief Tests the anti-replay HWM check against genuinely signed snapshots.
+ *
+ * Unlike testAntiReplayLogic which uses raw atomic variables, this test constructs
+ * two full ClusterSync snapshots from a real (in-memory) database, manually assigns
+ * them deterministic timestamps (ts=1000 and ts=500 respectively), and signs both
+ * with clusterSign.  It then simulates the handleSyncUpdate HWM gate:
+ *   - Snapshot 1 (ts=1000) is accepted first and advances the HWM.
+ *   - Snapshot 2 (ts=500) is then presented; because its timestamp is below
+ *     HWM - tolerance, it must be rejected even though its signature is valid.
+ *
+ * This test closes the gap left by the unit-level test by confirming that signed
+ * snapshots also carry timestamps that are checked by the anti-replay logic, so
+ * a valid but old signature cannot be replayed to downgrade cert state.
+ */
 void testAntiReplayIntegration() {
     testDiag("Integration: anti-replay with signed snapshots");
 
-    auto pkey = generateTestKey();
+    const auto pkey = generateTestKey();
 
     TestDb db_a;
     insertCert(db_a.get(), 200, "ReplayCert", VALID, 1000, 5000, 4000, 1500);
@@ -591,7 +860,7 @@ void testAntiReplayIntegration() {
     auto snap1 = serializeCertsTable(db_a.get(), "node_a", members);
     snap1["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(1000);
     snap1["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
-    auto can1 = canonicalizeSync(snap1);
+    const auto can1 = canonicalizeSync(snap1);
     clusterSign(pkey, snap1, can1);
 
     auto snap2 = serializeCertsTable(db_a.get(), "node_a", members);
@@ -609,21 +878,38 @@ void testAntiReplayIntegration() {
     constexpr int64_t tolerance = 5;
 
     // First snapshot (ts=1000) accepted
-    auto ts1 = getTimeStampAsUnix(snap1);
-    bool accept1 = (hwm.load() == 0 || ts1 >= hwm.load() - tolerance);
+    const auto ts1 = getTimeStamp(snap1);
+    const bool accept1 = (hwm.load() == 0 || ts1 >= hwm.load() - tolerance);
     testOk(accept1, "First snapshot (ts=1000) accepted");
     if (accept1) hwm.store(ts1);
 
     // Second snapshot (ts=500) rejected — stale
-    auto ts2 = getTimeStampAsUnix(snap2);
-    bool accept2 = (hwm.load() == 0 || ts2 >= hwm.load() - tolerance);
+    const auto ts2 = getTimeStamp(snap2);
+    const bool accept2 = (hwm.load() == 0 || ts2 >= hwm.load() - tolerance);
     testOk(!accept2, "Stale snapshot (ts=500) rejected after hwm=1000");
 }
 
+/**
+ * @brief Tests that certificate renewal metadata propagates via VALID->VALID sync.
+ *
+ * Simulates the scenario where node_a has already processed a certificate renewal
+ * for cert 300 — the cert remains VALID but its not_after and renew_by dates have
+ * been extended — while node_b still holds the old validity window.  node_a builds
+ * and signs a sync snapshot; node_b ingests it via applySyncSnapshot.
+ *
+ * The test asserts that after ingestion:
+ *   - renew_by is updated from 4000 to 8000
+ *   - not_after is updated from 5000 to 9000
+ *   - status remains VALID (no unintended status change)
+ *
+ * Failure here means that cert renewals processed on one node never propagate to
+ * peers, leaving those peers with stale expiry windows that could cause unnecessary
+ * re-issuance or premature client authentication failures.
+ */
 void testRenewalPropagation() {
     testDiag("Integration: VALID->VALID renewal propagation");
 
-    auto pkey = generateTestKey();
+    const auto pkey = generateTestKey();
 
     // Node B has cert 300 as VALID with renew_by=4000
     TestDb db_b;
@@ -634,7 +920,7 @@ void testRenewalPropagation() {
     TestDb db_a;
     insertCert(db_a.get(), 300, "RenewalCert", VALID, 1000, 9000, 8000, 2000);
     std::vector<ClusterMember> members = {{"node_a", "sync:a", 1, 0, 0}};
-    auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
+    const auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
 
     // Node B ingests the snapshot
     applySyncSnapshot(db_b.get(), lock_b, snapshot);
@@ -648,10 +934,24 @@ void testRenewalPropagation() {
            "Status remains VALID after renewal propagation");
 }
 
+/**
+ * @brief Tests that tampering with a signed snapshot is detected by clusterVerify.
+ *
+ * Builds a ClusterSync snapshot from a real database, signs it with buildSignedSync,
+ * and verifies the unmodified snapshot passes clusterVerify.  The test then mutates
+ * the node_id field of the already-signed Value and re-canonicalizes it.  Because
+ * the canonical form now differs from what was signed, clusterVerify must return false.
+ *
+ * This test confirms that the canonicalization function canonicalizeSync covers the
+ * node_id field (and by extension, all fields it serializes) and that clusterVerify
+ * does not accept a signature computed over a different canonical form.  Failure here
+ * would mean that a man-in-the-middle could alter the originating node identity or
+ * any other serialized field without invalidating the signature.
+ */
 void testSignatureTamperingRejected() {
     testDiag("Integration: signature tampering detected");
 
-    auto pkey = generateTestKey();
+    const auto pkey = generateTestKey();
 
     TestDb db_a;
     insertCert(db_a.get(), 400, "TamperCert", VALID, 1000, 5000, 4000, 1500);
@@ -659,16 +959,31 @@ void testSignatureTamperingRejected() {
     auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
 
     // Verify the unmodified snapshot
-    auto canonical = canonicalizeSync(snapshot);
+    const auto canonical = canonicalizeSync(snapshot);
     testOk(clusterVerify(pkey, snapshot, canonical), "Unmodified snapshot passes verification");
 
     // Tamper with the node_id — the canonical form changes, signature won't match
     snapshot["node_id"] = "tampered_node";
-    auto tampered_canonical = canonicalizeSync(snapshot);
+    const auto tampered_canonical = canonicalizeSync(snapshot);
     testOk(!clusterVerify(pkey, snapshot, tampered_canonical),
            "Tampered snapshot fails verification");
 }
 
+/**
+ * @brief Tests that PVXS Value delta-marking and unmark() behave as expected.
+ *
+ * Serializes a one-cert database into a ClusterSync Value via serializeCertsTable
+ * and verifies that all top-level fields (node_id, timeStamp, members, certs) are
+ * marked after the initial assignment, since PVXS marks fields when they are set.
+ * The test then calls unmark() on node_id and members and re-checks that those two
+ * fields lose their mark while certs and timeStamp.secondsPastEpoch remain marked.
+ *
+ * This test guards against regressions in the PVXS Value change-tracking semantics
+ * used by the cluster sync PV publication path: a broken mark/unmark mechanism
+ * would cause either all fields or no fields to be included in a delta PV update,
+ * resulting in unnecessary full-table retransmissions or missed cert state changes
+ * on subscribing peers.
+ */
 void testDeltaMarking() {
     testDiag("Integration: delta marking after unmark");
 

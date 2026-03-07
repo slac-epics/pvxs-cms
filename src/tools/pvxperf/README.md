@@ -12,12 +12,16 @@ EPICS Base provides Channel Access client/server APIs (`libca`, `libdbCore`, `li
 - Output machine-readable CSV that can reproduce charts matching the baseline layout.
 - Ensure repeatability on the same hardware by running server and client in-process, eliminating network stack variability.
 - Follow existing tool patterns (Makefile fragment, EPICS coding conventions, CLI11 for argument parsing).
+- Measure connection phase timing (search, tcp_connect, validation, create_channel) for PVA, SPVA, and SPVA_CERTMON, with percentage overhead comparison vs PVA baseline.
+- Distributed testing with separate server/client processes (`--role server` / `--role client`).
+- Gateway-in-the-middle topology support with config generation (`--print-gateway-config`).
+- Multiple independent measurement iterations with mean/stddev/min/max variance analysis.
 
 **Out of Scope:**
 - Network-level benchmarking (we measure application-layer data throughput only).
 - Latency distribution analysis (focus is on throughput / updates-per-second).
 - Automated chart generation (CSV output feeds external plotting tools).
-- Cross-host benchmarking or distributed test harness.
+- pvxperf does not start or manage the gateway process — operators configure and start it manually.
 
 ## Decisions
 
@@ -27,7 +31,13 @@ EPICS Base provides Channel Access client/server APIs (`libca`, `libdbCore`, `li
 
 **Rationale:** Eliminates process coordination, network jitter, and port conflict issues. The test infra in `testtlswithcms.cpp` already demonstrates in-process server+client patterns with `server::SharedPV`, `Server::start()`, and `clientConfig().build()`. For CA, EPICS Base supports programmatic IOC initialisation via `dbLoadDatabase`, `dbLoadRecords`, and `iocInit`.
 
+PVA/SPVA/SPVA_CERTMON servers use a custom `loopbackServerConfig()` helper that binds to `127.0.0.1` on ephemeral ports with `auto_beacon=false`. This is intentionally **not** `Config::isolated()` — the pvxs `isolated()` method calls `disableStatusCheck(true)` and `disableStapling(true)`, which would prevent SPVA_CERTMON from performing real certificate status monitoring. The loopback helper provides the same network isolation (no broadcast, no collision with production services) without disabling the TLS status machinery. The user is responsible for ensuring no other PVACMS is running on the same machine during benchmarks.
+
+`loopbackServerConfig()` accepts an optional `pvacms_udp_port` parameter. When non-zero (used for SPVA_CERTMON), it appends `127.0.0.1:<port>` to `beaconDestinations`. This entry propagates into the server's inner cert-status client (which derives its config from `clientConfig(effective)`, mapping `beaconDestinations` to `addressList`) so that inner client can discover PVACMS on its fixed port. The benchmark client also receives this entry via `server.clientConfig()`, but it's harmless — PVACMS never claims `PVXPERF:*` PVs and simply ignores searches for them. See D17 for the full discovery flow.
+
 **Alternative considered:** Separate server/client executables orchestrated by a shell script. Rejected because it introduces timing dependencies, port management, and reduces repeatability.
+
+**Alternative considered:** Using `Config::isolated()` for network isolation. Rejected because it explicitly disables certificate status checking and OCSP stapling, which defeats the purpose of the SPVA_CERTMON benchmark mode.
 
 ### D2: Payload structure with counter-based integrity checking
 
@@ -80,6 +90,8 @@ Embedding it in-process is impractical — it has its own `main()`, global state
 3. Benchmarks run against the server with cert monitoring contacting the real PVACMS.
 4. `pvxperf` sends SIGTERM to the child process on completion.
 
+**Port assignments for the PVACMS child process:** The child is launched with `EPICS_PVAS_BROADCAST_PORT=15076`, `EPICS_PVAS_SERVER_PORT=15075`, and `EPICS_PVAS_TLS_PORT=15076` set in its environment. These non-default ports (vs production 5075/5076) avoid collisions with any production PVACMS on the same machine. The benchmark server and client use ephemeral ports. See D17 for how the inner cert-status clients discover PVACMS on these fixed ports.
+
 **Alternative considered:** Refactoring PVACMS into a library callable from other executables. Rejected as out of scope — it would be a major refactor of pvacms.cpp's architecture and is not needed for benchmarking.
 
 **Alternative considered:** Requiring the user to start PVACMS manually before running pvxperf. Rejected for repeatability — automated child-process management ensures identical setup every time.
@@ -124,8 +136,8 @@ This keeps benchmarks fully self-contained, repeatable, and **safe** — no risk
 **Decision:** For PVA/SPVA modes, the benchmark uses **monitor subscriptions** (not repeated GETs) to receive server updates. Pipelining (`record("pipeline", true)`) provides protocol-level flow control per subscriber — each subscriber has an independent queue with a pipeline window controlling how many updates the server may send before the client must acknowledge consumption.
 
 Both modes use a **single `client::Context`** (one client connection to the server):
-- **Sequential:** A **single** monitor subscription with default `queueSize=4` (PVXS default). One subscriber receives every update. Measures single-subscriber throughput.
-- **Parallel:** **N independent monitor subscriptions** (configurable via `--subscriptions`, **default 1000**) to the **same PV**, all on the same `client::Context`. Each subscription has its own pipeline window (`queueSize=4` default). The server fans out each `SharedPV::post()` to all N subscribers independently. Each subscriber receives every update and independently verifies its counter sequence. This tests the server's ability to fan out updates to many concurrent subscribers — matching the baseline's "1000 parallel" methodology.
+- **Sequential:** A **single** monitor subscription with dynamically computed `queueSize` (see D16). One subscriber receives every update. Measures single-subscriber throughput.
+- **Parallel:** **N independent monitor subscriptions** (configurable via `--subscriptions`, **default 1000**) to the **same PV**, all on the same `client::Context`. Each subscription has its own pipeline window with dynamically computed `queueSize` (see D16). The server fans out each `SharedPV::post()` to all N subscribers independently. Each subscriber receives every update and independently verifies its counter sequence. This tests the server's ability to fan out updates to many concurrent subscribers — matching the baseline's "1000 parallel" methodology.
 
 The server uses `SharedPV::post()` for updates. Internally, `SharedPV::post()` iterates over all subscribers and calls each subscriber's `MonitorControlOp::post()` — which **squashes** onto the last queue entry if that subscriber's queue is full. This is the natural PVA behavior: a slow subscriber gets squashed updates while fast subscribers keep up. The counter-based integrity check detects squashed updates as counter gaps (drops).
 
@@ -146,7 +158,7 @@ For CA mode: CA uses multiple `ca_create_subscription` calls to the same channel
 
 1. **Server-side:** For each payload size, a server-side pump thread calls `SharedPV::post()` as fast as possible with the counter+timestamp-bearing payload. `SharedPV::post()` fans out to all active subscribers — each gets its own copy. If any subscriber's queue is full, its entry is squashed (not blocked). The server always advances the counter. The send timestamp (epoch microseconds via `epicsTime`) is written alongside the counter.
 
-2. **Client-side:** One subscription (sequential) or N subscriptions (parallel, default 1000), all with `pipeline=true` and `queueSize=4` (PVXS default). Each subscription's `event` callback calls `Subscription::pop()` in a loop to drain available updates. Each subscription independently tracks its expected counter.
+2. **Client-side:** One subscription (sequential) or N subscriptions (parallel, default 1000), all with `pipeline=true` and configurable `queueSize` (default 144 via `--pva-queue-size`; see D16). Each subscription's `event` callback calls `Subscription::pop()` in a loop to drain available updates. Each subscription independently tracks its expected counter.
 
 3. **Warm-up phase** (configurable, default 100 updates): All subscriptions consume updates to establish connections, TLS handshakes, and cert monitoring subscriptions. Counter values during warm-up are discarded.
 
@@ -171,13 +183,18 @@ Use `epicsTime` for high-resolution timing (already used throughout the codebase
 
 ### D6: CSV output schema
 
-**Decision:** Output columns:
+**Decision:** Throughput CSV columns:
 ```
-protocol,mode,payload_bytes,updates_per_second,total_updates,drops,errors,duration_seconds
+protocol,payload_mode,subscribers,payload_bytes,topology,iteration,updates_per_second,per_sub_updates_per_second,total_updates,drops,errors,duration_seconds,pva_queue_size
 ```
-Where `protocol` is `CA|PVA|SPVA|SPVA_CERTMON`, `mode` is `sequential|parallel`, `drops` is the count of counter-sequence gaps (missing values), and `errors` is the count of subscription failures.
+Where `protocol` is `CA|PVA|SPVA|SPVA_CERTMON`, `payload_mode` is `sequential|parallel`, `topology` is `loopback|direct|gateway`, `iteration` is 1..N, `drops` is the count of counter-sequence gaps, `errors` is the count of subscription failures, and `pva_queue_size` is the effective PVA monitor queue size used for this data point (0 for CA).
 
-**Rationale:** Flat CSV with one row per measurement point. The `drops` column is critical — it lets graphing tools plot "max updates/sec before drops" by filtering to rows where `drops == 0`. External tools (Python/matplotlib, R, Excel) can pivot on protocol×mode to produce the subplot grid matching the baseline chart. The `total_updates` column provides the raw count for cross-checking.
+Phase timing uses a separate CSV (see D13):
+```
+test_type,protocol,iteration,phase,duration_us
+```
+
+**Rationale:** Flat CSV with one row per measurement point. The `drops` column lets graphing tools filter to drop-free data points. The `topology` column enables cross-topology comparisons. The `iteration` column is always present (value `1` when `--throughput-iterations` is not specified) for schema consistency. External tools (Python/matplotlib, R, Excel) can pivot on protocol×topology to produce the subplot grid matching the baseline chart.
 
 ### D7: CLI interface using CLI11
 
@@ -196,6 +213,16 @@ Options:
 - `--cms-keychain <path>` — path to existing PVACMS server keychain
 - `--cms-acf <path>` — path to existing PVACMS ACF file
 - `--output <file>` — CSV output file (default: stdout)
+- `--throughput-iterations <N>` — number of independent measurement iterations per data point (default 5)
+- `--pva-queue-size <N>` — base PVA monitor queue size (default 144). Effective size scales with payload: `floor(base / 2^log10(payload_bytes))`. See D16.
+- `--benchmark-phases` — run connection phase timing benchmark
+- `--phase-iterations <N>` — number of connect/disconnect cycles for phase timing (default 50)
+- `--phase-output <file>` — separate CSV file for phase timing output
+- `--role <mode>` — operating mode: `loopback` (default), `server`, `client`
+- `--bind-addr <host:port>` — server bind address (default `0.0.0.0:0`)
+- `--server-addr <host:port>` — remote server address (required for `--role client`)
+- `--gateway` — mark benchmark topology as gateway (client mode)
+- `--print-gateway-config` — print example PVAGW gateway config and exit
 - `-d,--debug` — enable PVXS debug logging
 - `-V,--version` — print version
 
@@ -206,6 +233,188 @@ Options:
 - `src/tools/Makefile` — add `include $(TOOLS_DIR)/pvxperf/Makefile`.
 - Link libraries: `pvxs Com ca dbCore dbRecStd`.
 
+### D9: Per-phase connection timing via debug log parsing
+
+**Decision:** Measure per-phase connection timing by parsing pvxs debug log messages captured via `errlogAddListener()`. No modifications to pvxs library internals are required. Only PVA, SPVA, and SPVA_CERTMON are measured — CA is excluded because its protocol stages are not comparable to the PVA message sequence.
+
+Phases measured: `search` (UDP broadcast + response), `tcp_connect` (TCP connection + TLS handshake for SPVA), `validation` (PVA auth negotiation, includes cert status check for SPVA_CERTMON), `create_channel` (channel creation round-trip), and `total` (end-to-end). Only two loggers are set to DEBUG: `pvxs.st.cli` (state transitions) and `pvxs.cli.io` (protocol message arrivals). All other pvxs loggers remain at default level.
+
+**Rationale:** Debug log parsing avoids modifying pvxs library internals. The `status_cli` logger already emits structured state transition messages at every phase boundary with nanosecond timestamps. Since we measure *relative* differences between protocols, debug logging overhead applies equally to all modes and does not affect comparison validity.
+
+**Alternative considered:** Modifying pvxs to expose a `ConnectionTimings` struct via the `Connected` event. Rejected because it requires public API changes and is unnecessary when debug logs already provide the needed phase boundaries.
+
+### D10: Relative comparison table output
+
+**Decision:** After all phase timing benchmarks complete, pvxperf emits a summary table to stderr showing each phase with absolute mean times and percentage overhead relative to PVA baseline. Only PVA, SPVA, and SPVA_CERTMON are compared. PVA is always the baseline.
+
+Example output (real measured numbers, mean of 5 iterations on loopback):
+```
+=== Connection Phase Timing (mean of 5 iterations) ===
+Phase             PVA (baseline)      SPVA                SPVA_CERTMON        
+search            1.0 ms              1.0 ms (+7%)        2.7 ms (+185%)      
+tcp_connect       0.1 ms              3.3 ms (+2165%)     13.2 ms (+8886%)    
+validation        0.1 ms              0.5 ms (+333%)      1.0 ms (+744%)      
+create_channel    0.2 ms              0.3 ms (+33%)       14.0 ms (+5559%)    
+total             1.5 ms              5.2 ms (+253%)      30.9 ms (+2007%)    
+```
+
+What each SPVA_CERTMON phase measures:
+
+- **search** — slightly higher variance than SPVA because the benchmark client's inner cert-status client is also searching in parallel, adding occasional extra UDP traffic on the same loopback interface.
+- **tcp_connect** — TLS handshake including OCSP stapling. The server must fetch the client certificate's status from PVACMS and staple it to the TLS response before completing the handshake. This cross-process round-trip to PVACMS explains the 4x increase over SPVA's pure TLS handshake (~3.3ms).
+- **validation** — PVA protocol authentication negotiation. Similar to SPVA; the cert status check that matters for timing happens in `create_channel`, not here.
+- **create_channel** — the dominant SPVA_CERTMON overhead (~14ms). After `CONNECTION_VALIDATION`, the client's `Connection::ready` is gated on `context->isTlsReady()` (`clientconn.cpp:563`). Channel creation is deferred until the client's inner cert-status client subscribes to `CERT:STATUS:*`, receives a GOOD response from PVACMS, and `peerStatusCallback(GOOD)` fires, triggering `proceedWithCreatingChannels()`. This entire pipeline runs over a separate plain-PVA connection to PVACMS.
+- **total** — ~31ms end-to-end connection time vs ~5ms for SPVA and ~1.5ms for plain PVA.
+
+**Rationale:** Operators care about where TLS/cert overhead comes from — is it the handshake or cert validation? The numbers show that OCSP stapling during the TLS handshake and the post-validation cert-status subscription pipeline each contribute roughly equally (~13ms and ~14ms). Printing to stderr keeps CSV output clean for scripting.
+
+### D11: Distributed mode via `--role` flag
+
+**Decision:** Add `--role` with values `loopback` (default, current behavior), `server`, or `client`. Server mode creates a `SharedPV` for `PVXPERF:BENCH` and a `PVXPERF:READY` PV, binds to `--bind-addr`, and runs until SIGTERM or `--duration` timeout. Client mode connects to `--server-addr`, probes `PVXPERF:READY` before starting (30s timeout), and runs the standard benchmark loop. CA is not supported in distributed mode.
+
+**Rationale:** The `--role` flag cleanly extends the existing CLI while preserving backward compatibility. Server mode prints its listening address so the operator knows where to point the client. CA is excluded because it doesn't use TLS and gateway testing is primarily about measuring security overhead across network hops.
+
+**Alternative considered:** Two separate executables. Rejected because it doubles build complexity and the shared code (payload encoding, counter verification, CSV output) would need to be factored into a library.
+
+### D12: Gateway topology support
+
+**Decision:** pvxperf does NOT manage the gateway. `--print-gateway-config` generates a starter PVAGW v2 JSON config (plus minimal `gateway.acf` and `gateway.pvlist`) based on the in-repo gateway examples at `example/kubernetes/docker/gateway/`. The operator starts PVAGW manually. The client uses `--gateway` to mark the topology column as `gateway` in CSV output.
+
+**Rationale:** PVAGW is an external tool with its own lifecycle. Providing a config template based on the repo's own examples reduces setup friction and ensures the generated config uses current best practices (v2 format, `statusprefix`, `downstream_status` pattern) without creating a fragile coupling between pvxperf and the gateway process.
+
+### D13: Connection phase timing CSV output
+
+**Decision:** Phase timing results use a separate CSV (or separate file if `--phase-output` is specified) with columns:
+```
+test_type,protocol,iteration,phase,duration_us
+```
+Where `test_type` is `connection_phase`, `protocol` is `PVA|SPVA|SPVA_CERTMON`, `iteration` is 1..N, `phase` is `search|tcp_connect|validation|create_channel|total`, and `duration_us` is microseconds.
+
+**Rationale:** Per-iteration data enables statistical analysis (stddev, percentiles) while the stderr summary shows the mean. A separate CSV section avoids breaking existing throughput CSV consumers.
+
+### D14: Throughput CSV extended with topology column
+
+**Decision:** Add a `topology` column to the throughput CSV with values `loopback` (default, in-process), `direct` (client/server, no gateway), or `gateway` (client/gateway/server). The column is always present.
+
+**Rationale:** Allows comparing the same protocol's throughput across different deployment topologies in a single CSV file.
+
+### D15: Throughput benchmark variance via multiple iterations
+
+**Decision:** `--throughput-iterations <N>` (default 5) runs N independent measurement cycles per data point. Each iteration is a full connect → warm-up → measure → disconnect cycle. The CSV emits one row per iteration (with an `iteration` column). After all iterations complete, a stderr summary shows mean, stddev, min, and max across iterations. When `--throughput-iterations` is 1, the `iteration` column is still present (value `1`) for schema consistency.
+
+**Rationale:** Distributed topologies introduce real network jitter, making single-run numbers unreliable. Multiple independent iterations provide mean and variance so operators can assess measurement confidence. Sub-window statistics within a single connection were rejected because TCP congestion state and TLS session state carry over between windows, making them non-independent.
+
+### D16: Dynamic PVA queue depth scaling
+
+**Decision:** The PVA monitor subscription `queueSize` is computed dynamically per payload size using:
+
+```
+effective_queue_size = floor(base_queue_size / 2^log10(payload_bytes))
+```
+
+where `base_queue_size` defaults to **144** (configurable via `--pva-queue-size`), matching CA's internal event queue depth (`EVENTQUESIZE = EVENTENTRIES × EVENTSPERQUE = 4 × 36 = 144` in `dbEvent.c`).
+
+With the default base of 144, the effective queue sizes are:
+
+| Payload | log10 | 2^log10 | Effective queue |
+|---------|-------|---------|-----------------|
+| 1 B     | 0     | 1       | 144             |
+| 10 B    | 1     | 2       | 72              |
+| 100 B   | 2     | 4       | 36              |
+| 1 KB    | 3     | 8       | 18              |
+| 10 KB   | 4     | 16      | 9               |
+| 100 KB  | 5     | 32      | 4               |
+
+**Rationale:** CA's event queue is hardcoded at 144 entries — the CA client has no control over this. PVXS's default `queueSize=4` means PVA starts squashing after just 4 pending events, while CA can buffer 144. A fixed queue size of 144 produces excellent PVA results for small payloads but worse results than CA for very large payloads due to memory pressure from deeply-buffered large arrays.
+
+The dynamic formula tapers the queue depth as payload size grows: small payloads (which are cheap to buffer) get the full 144 entries matching CA, while large payloads (which are expensive to buffer) taper down toward the PVXS default of 4. This models the optimal queue depth for PVAccess — the protocol can efficiently pipeline small updates but should limit buffering of large ones.
+
+The effective `pva_queue_size` is recorded in each CSV row so operators can correlate queue depth with throughput and drop characteristics.
+
+**Alternative considered:** A fixed queue depth matching CA's 144. Rejected because it causes memory pressure and worse-than-CA throughput at large payload sizes.
+
+**Alternative considered:** Reducing CA's queue depth to match PVXS's default of 4. Rejected because CA's queue depth is compiled into EPICS Base (`dbEvent.c`) and cannot be changed at runtime.
+
+### D17: SPVA_CERTMON port architecture and inner client discovery
+
+**Decision:** Two modes of PVACMS discovery are supported, controlled by a `cms_udp_port` parameter threaded through `waitForPvacms()`, `runPvaBenchmark()`, and `runPvaPhaseTiming()`:
+
+- **`--setup-cms`** (`cms_udp_port = kPvacmsUdpPort = 15076`): PVACMS runs on fixed non-default ports (UDP 15076, TCP 15075, TLS 15076). The benchmark server uses `loopbackServerConfig(kPvacmsUdpPort)` which injects `127.0.0.1:15076` into `beaconDestinations`. `waitForPvacms()` overrides `udp_port` and `addressList` to search on `127.0.0.1:15076`.
+
+- **`--external-cms`** (`cms_udp_port = 0`): PVACMS is already running and reachable via standard EPICS environment variables (`EPICS_PVA_ADDR_LIST`, `EPICS_PVA_BROADCAST_PORT`, etc.). The benchmark server uses `server::Config::fromEnv()` instead of `loopbackServerConfig()`, so the inner cert-status client inherits the user's environment and discovers PVACMS normally. `waitForPvacms()` uses `client::Config::fromEnv()` without overriding ports or addresses.
+
+**Port layout:**
+
+| Component | UDP port | TCP port | TLS port |
+|-----------|----------|----------|----------|
+| PVACMS child process | 15076 (fixed) | 15075 (fixed) | 15076 (fixed) |
+| Benchmark server | ephemeral | ephemeral | 5076 (default) |
+| Benchmark client | derived from `server.clientConfig()` | | |
+
+PVACMS ports are set via env vars in the fork/exec: `EPICS_PVAS_BROADCAST_PORT=15076`, `EPICS_PVAS_SERVER_PORT=15075`, `EPICS_PVAS_TLS_PORT=15076`.
+
+**Inner cert-status client architecture:**
+
+When pvxs builds a TLS server or client with `disableStatusCheck(false)`, it internally creates a plain-PVA "inner client" for cert status monitoring. The inner client config is derived from the outer config — you cannot give it a separate address list:
+
+- **Server-side inner client** (`server.cpp:559`): `auto inner_conf = clientConfig(effective);` — maps `beaconDestinations` to `addressList`, inherits `udp_port`. Has `tls_disabled = true` (talks plain PVA to PVACMS).
+- **Client-side inner client** (`client.cpp:583`): `auto innerConf = effective;` — direct copy of the benchmark client's effective config. Also has `tls_disabled = true`.
+
+Both inner clients need to find PVACMS. Because their configs are derived from the outer configs, the only way to give them PVACMS's address is to include it in the outer config's address list.
+
+**Discovery flow:**
+
+1. `loopbackServerConfig(kPvacmsUdpPort=15076)` sets `beaconDestinations = ["127.0.0.1", "127.0.0.1:15076"]`.
+2. After `server.build()`, the effective config has resolved an ephemeral `udp_port` (e.g. 42000). Beacon destinations remain `"127.0.0.1"` (no port, uses ephemeral) and `"127.0.0.1:15076"` (explicit).
+3. The server's inner cert-status client gets `addressList = beaconDestinations`. It searches on both the ephemeral port (finds nothing useful) and 15076 (finds PVACMS). PVACMS responds and the inner client subscribes to `CERT:STATUS:*`.
+4. `server.clientConfig()` produces the benchmark client config with the same `addressList`. `"127.0.0.1"` uses `udp_port` (ephemeral) as default, so it finds the benchmark server. `"127.0.0.1:15076"` sends searches to PVACMS, which ignores them (PVACMS doesn't serve `PVXPERF:*` PVs).
+5. The benchmark client's inner cert-status client copies the benchmark client's effective config, so it also searches on 15076 and finds PVACMS.
+
+The extra search traffic from the benchmark client to PVACMS is harmless. PVACMS simply doesn't respond to `PVXPERF:*` searches. You can't strip the PVACMS address from the benchmark client config without also breaking the client's inner cert-status client, which inherits the same config and needs that address to find PVACMS.
+
+**TLS keychain loading:**
+
+All keychain configuration uses direct struct assignment (`config.tls_keychain_file = keychain`), not environment variables. Using `setenv("EPICS_PVAS_TLS_KEYCHAIN", ...)` doesn't work because the config struct is already constructed before the env var would be read. The `authnstd` child process uses env vars correctly because it reads them fresh via `Config::fromEnv()` — that's a different code path.
+
+**Rationale:** Fixed non-default ports for PVACMS avoid collisions with production services (5075/5076) while keeping all benchmark traffic on loopback. The `beaconDestinations` injection is the only mechanism available to route inner client discovery to a specific port without modifying pvxs internals.
+
+**Alternative considered:** Patching pvxs to accept a separate address list for the inner cert-status client. Rejected as out of scope — the inner client config derivation is an implementation detail of pvxs, and the injection approach works without any pvxs changes.
+
+### D18: Phase timing log filtering for SPVA_CERTMON
+
+**Decision:** `phaseTimingListener()` filters pvxs debug log messages to exclude transitions from inner cert-status clients, using two complementary mechanisms: PV name filtering and port-based filtering.
+
+**The problem:** In SPVA_CERTMON, three entities produce `pvxs.st.cli` log transitions:
+1. The benchmark server's inner cert-status client (subscribes to `CERT:STATUS:*` on PVACMS)
+2. The benchmark client's inner cert-status client (same)
+3. The benchmark client itself (subscribes to `PVXPERF:PHASE`)
+
+Without filtering, transitions from the inner clients contaminate phase timing measurements.
+
+**Filtering strategy:**
+
+1. **PV name filtering** — `Channel::state` messages include the PV name (e.g. `PVXPERF:PHASE`). The filter requires `PVXPERF:` in the message for `Connecting` and `Active` transitions. Inner clients subscribe to `CERT:STATUS:*` PVs, which don't match, so their channel transitions are excluded.
+
+2. **Port-based whitelist filtering** — `ConnBase::state` messages (`Connected`, `Validated`) include the peer address (e.g. `127.0.0.1:42000`). After `server.start()`, the filter records the benchmark server's actual TCP and TLS ports from `server.config().tcp_port` / `server.config().tls_port`. Only messages whose `peerName` contains one of these known server port strings are accepted. Inner cert-status clients connect to PVACMS on different ports, so their connection transitions are rejected. This whitelist approach works for both `--setup-cms` (where PVACMS ports are known constants) and `--external-cms` (where PVACMS ports are unknown and a blacklist would be impossible).
+
+**pvxs debug log modification:**
+
+The `ConnBase::state = Connected` message in `clientconn.cpp:354` originally logged an opaque pointer (`%p`, `context.get()`) which contained no port information. This was changed to log `peerName.c_str()` (`%s`) so the port-based filter can distinguish benchmark connections (ephemeral port) from PVACMS connections (port 15075). The `Disconnected` message at line 188 received the same treatment. Only debug-level messages were modified — no behavior change, no API change.
+
+**Server inner client settling:**
+
+A 500ms sleep followed by `errlogFlush()` is inserted after `server.start()` for SPVA_CERTMON. This lets the server's inner cert-status client finish its initial connection to PVACMS before phase timing capture begins. Without this pause, the server's inner client transitions appear in the log during the first iteration and can skew the `tcp_connect` timestamp. The benchmark client's inner cert-status client starts later (at `cconfig.build()`) but its transitions are filtered by port, so no settling delay is needed for it.
+
+**Search tick messages:**
+
+`Search tick` messages don't include PV names or ports. They're used only for the initial `searching` timestamp — the first occurrence wins and subsequent ticks are ignored. Extra search ticks from inner clients don't affect timing because `searching` is recorded only once per iteration.
+
+**Rationale:** Two filtering mechanisms are needed because different log message types carry different identifying information. PV name filtering handles channel-level transitions; port filtering handles connection-level transitions. Together they cleanly separate benchmark client activity from inner client activity without requiring any changes to pvxs logging infrastructure beyond the one-line `peerName` substitution.
+
+**Alternative considered:** Disabling the inner cert-status clients entirely during phase timing. Rejected because the whole point of SPVA_CERTMON is to measure the overhead of real cert status monitoring, including the inner client's connection to PVACMS.
+
+**Alternative considered:** Using a separate logger name for inner clients. Rejected because pvxs doesn't distinguish inner clients from outer clients in its logger hierarchy — both use `pvxs.st.cli`.
+
 ## Risks / Trade-offs
 
 - **[CA IOC in-process complexity]** → Embedding a full IOC requires `dbLoadDatabase`, `dbLoadRecords`, `iocInit` which pull in the EPICS database layer. Mitigation: Keep IOC setup minimal (single waveform record), teardown via `iocShutdown`. If linking proves problematic, CA mode can be made optional via a build flag.
@@ -215,3 +424,11 @@ Options:
 - **[Existing PVACMS on the network]** → If another PVACMS is already running on the same broadcast domain, PVA clients could discover it instead of the benchmark's own PVACMS, causing false results. Mitigation: (1) Bind the benchmark PVACMS, benchmark server, and benchmark client all to loopback (`127.0.0.1`) on ephemeral/non-standard ports. Since cert status monitoring respects the client/server config's interface and port settings, this isolates all benchmark traffic from the production network. (2) Document prominently (help text + source header) that pvxperf should be run on a network with no other active PVACMS as an additional safety measure.
 - **[Measurement noise]** → In-process server/client share CPU; PVACMS adds a third process for SPVA_CERTMON. Mitigation: The goal is comparative (same hardware, same conditions). The PVACMS process overhead is real production overhead and should be included in the measurement.
 - **[Large payloads may cause memory pressure]** → 1MB+ arrays at high concurrency. Mitigation: Cap max payload at 10MB, pre-allocate buffers.
+- **[Debug log parsing fragility]** → Phase timing relies on parsing pvxs debug log message format strings, which could change between pvxs versions. Mitigation: Use the structured `status_cli` logger format which is stable across pvxs versions. Add regression tests that verify expected log markers are present.
+- **[Debug overhead on timing]** → Debug logging adds overhead to all protocol modes during phase timing. Mitigation: Only two loggers are set to DEBUG; all others remain at default level. Since we measure relative differences, any remaining overhead applies equally and does not affect comparisons.
+- **[Connection timing variance]** → UDP search has inherent variance from multicast timing. Mitigation: Run 50+ iterations (configurable via `--phase-iterations`) and report mean and stddev.
+- **[Distributed mode coordination]** → Server and client must be started manually in the right order. Mitigation: Server prints its listening address and serves `PVXPERF:READY`; client probes with a 30s timeout. Help text documents the startup sequence.
+- **[Gateway not managed]** → Operator must configure and start PVAGW manually. Mitigation: `--print-gateway-config` generates a working config template based on in-repo examples, reducing setup friction.
+- **[CSV schema change]** → Adding `topology` and `iteration` columns to throughput CSV. Mitigation: Both columns are always present for schema consistency. `iteration` defaults to `1` when `--throughput-iterations` is not specified.
+- **[PVACMS port collision]** → The PVACMS child process uses fixed ports 15075/15076, which could collide with other services already bound to those ports. Mitigation: Non-default ports were chosen specifically to avoid collision with production PVA (5075/5076). All benchmark traffic runs on loopback only, so the exposure is limited to the local machine.
+- **[Inner client config coupling]** → The inner cert-status client's config is derived from the outer config and cannot be configured independently. This means the benchmark client's search destinations include the PVACMS port (15076), sending search traffic to PVACMS for `PVXPERF:*` PVs. Mitigation: The extra search traffic is harmless — PVACMS doesn't serve benchmark PVs and simply ignores those searches. Stripping the PVACMS address from the benchmark client config is not possible without also breaking the client's inner cert-status client, which needs that address to find PVACMS.
