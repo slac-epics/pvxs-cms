@@ -2,7 +2,7 @@
  * pvxperf — Performance benchmarking tool for CA, PVA, SPVA, and SPVA+CERTMON.
  *
  * Measures monitor subscription throughput (updates/second) across four protocol
- * modes, sweeping across configurable subscriber counts (default: 1,10,100,500,1000).
+ * modes using adaptive rate discovery (exponential ramp + binary search).
  *
  * WARNING: Run on a network with no other active PVACMS to avoid interference
  * with benchmark results.
@@ -280,6 +280,23 @@ uint64_t decodeCounter(const uint8_t* buf, const size_t size) {
     return fromNetworkOrder64(net_counter);
 }
 
+void encodeSteadyTimestamp(uint8_t* buf, const size_t size) {
+    if (size < kHeaderSize) return;
+    const auto now = std::chrono::steady_clock::now();
+    const uint64_t ns = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            now.time_since_epoch()).count());
+    const uint64_t net_ns = toNetworkOrder64(ns);
+    std::memcpy(buf + kCounterSize, &net_ns, kCounterSize);
+}
+
+uint64_t decodeSteadyTimestamp(const uint8_t* buf, const size_t size) {
+    if (size < kHeaderSize) return 0;
+    uint64_t net_ns;
+    std::memcpy(&net_ns, buf + kCounterSize, kCounterSize);
+    return fromNetworkOrder64(net_ns);
+}
+
 /**
  * @brief Return the current wall-clock time as microseconds since the Unix epoch.
  * @return Current timestamp in microseconds.
@@ -307,33 +324,7 @@ struct BenchmarkResult {
     uint64_t drops{0};
     uint64_t errors{0};
     double duration_seconds{0.0};
-    uint32_t pva_queue_size{0};
 };
-
-/**
- * @brief Compute the effective PVA monitor queue size for a given payload size.
- *
- * Uses the formula: floor(base_queue_size / 2^log10(payload_size)).
- * This tapers the queue depth as payload size increases — larger payloads
- * consume more memory per queued entry, so fewer entries are needed.
- * The result is clamped to a minimum of 1.
- *
- * @param base_queue_size  The base queue size (default 144, matching CA's
- *                         internal event queue depth).
- * @param payload_size     The payload size in bytes.
- * @return Effective queue size (>= 1).
- */
-uint32_t computeEffectiveQueueSize(const uint32_t base_queue_size, const size_t payload_size)
-{
-    if (payload_size <= 1) {
-        return base_queue_size;
-    }
-    const double exponent = std::log10(static_cast<double>(payload_size));
-    const double divisor = std::pow(2.0, exponent);
-    const uint32_t result = static_cast<uint32_t>(std::floor(
-        static_cast<double>(base_queue_size) / divisor));
-    return std::max(result, uint32_t(1));
-}
 
 /**
  * @brief Holds the duration of one connection phase for one benchmark iteration.
@@ -970,6 +961,101 @@ void printComparisonTable(const std::vector<PhaseTimingResult>& results,
     std::cerr << std::endl;
 }
 
+/** @brief Result from a single measurement sub-window. */
+struct SubWindowResult {
+    uint32_t window_index{0};
+    bool omitted{false};
+    double duration_seconds{0.0};
+    uint64_t total_updates{0};
+    uint64_t drops{0};
+    uint64_t errors{0};
+    double updates_per_second{0.0};
+};
+
+/** @brief Aggregated latency benchmark result. */
+struct LatencyResult {
+    std::string protocol;
+    uint32_t subscribers{0};
+    size_t payload_bytes{0};
+    uint32_t num_samples{0};
+    double median_us{0.0};      // Median latency in microseconds
+    double mean_us{0.0};        // Mean latency in microseconds
+    double p25_us{0.0};         // 25th percentile
+    double p75_us{0.0};         // 75th percentile
+    double p99_us{0.0};         // 99th percentile
+    double min_us{0.0};
+    double max_us{0.0};
+    double cv_pct{0.0};         // Coefficient of variation
+    double theoretical_ups{0.0}; // 1,000,000 / median_us
+};
+
+/** @brief Result from a single burst measurement. */
+struct BurstSample {
+    double per_delivery_us{0.0};   // Microseconds per delivery (total_time / (burst_size * num_subs))
+    double burst_duration_us{0.0}; // Total burst duration in microseconds
+    uint64_t deliveries{0};        // B * num_subs
+};
+
+/** @brief Aggregated burst benchmark result. */
+struct BurstResult {
+    std::string protocol;
+    uint32_t subscribers{0};
+    size_t payload_bytes{0};
+    uint32_t burst_size{0};
+    uint32_t num_samples{0};
+    double median_per_delivery_us{0.0};
+    double mean_per_delivery_us{0.0};
+    double p25_per_delivery_us{0.0};
+    double p75_per_delivery_us{0.0};
+    double p99_per_delivery_us{0.0};
+    double min_per_delivery_us{0.0};
+    double max_per_delivery_us{0.0};
+    double cv_pct{0.0};
+    double theoretical_ups{0.0};  // 1,000,000 / median_per_delivery_us
+};
+
+/** @brief Per-subscription state for burst benchmark — uses atomic counter for lock-free counting. */
+struct BurstSubState {
+    std::atomic<bool> connected{false};
+    std::atomic<uint64_t> received_count{0};
+};
+
+/** @brief Compute the median of a vector (sorts in place). */
+double computeMedian(std::vector<double>& v) {
+    if (v.empty()) return 0.0;
+    std::sort(v.begin(), v.end());
+    const size_t n = v.size();
+    if (n % 2 == 0)
+        return (v[n/2 - 1] + v[n/2]) / 2.0;
+    return v[n/2];
+}
+
+/** @brief Compute percentile (0-100) of a vector (sorts in place). */
+double computePercentile(std::vector<double>& v, double pct) {
+    if (v.empty()) return 0.0;
+    std::sort(v.begin(), v.end());
+    const double rank = (pct / 100.0) * static_cast<double>(v.size() - 1);
+    const size_t lo = static_cast<size_t>(rank);
+    const size_t hi = std::min(lo + 1, v.size() - 1);
+    const double frac = rank - static_cast<double>(lo);
+    return v[lo] + frac * (v[hi] - v[lo]);
+}
+
+/** @brief Compute coefficient of variation (stddev/mean * 100). Returns 0 if fewer than 2 values. */
+double computeCV(const std::vector<double>& v) {
+    if (v.size() < 2) return 0.0;
+    const double sum = std::accumulate(v.begin(), v.end(), 0.0);
+    const double mean = sum / static_cast<double>(v.size());
+    if (mean == 0.0) return 0.0;
+    double sq_sum = 0.0;
+    for (const auto x : v) {
+        const double diff = x - mean;
+        sq_sum += diff * diff;
+    }
+    const double stddev = std::sqrt(sq_sum / static_cast<double>(v.size() - 1));
+    return (stddev / mean) * 100.0;
+}
+
 /**
  * @brief Per-subscription state for PVA/SPVA counter verification during benchmarks.
  */
@@ -982,6 +1068,14 @@ struct SubscriptionState {
     uint64_t success_count{0};
     uint64_t drop_count{0};
     uint64_t error_count{0};
+};
+
+struct LatencySubState {
+    std::mutex mtx;
+    bool first_update_seen{false};
+    uint64_t last_received_counter{0};
+    uint64_t recv_timestamp_ns{0};
+    bool update_ready{false};
 };
 
 /**
@@ -1177,6 +1271,7 @@ void removeTempDir(const std::string& dir) {
  * @param nt_payload        If true, encode the timestamp in NTScalar fields instead of the raw array.
  * @param cms_udp_port      PVACMS UDP port for --setup-cms (e.g. 15076); 0 means external CMS
  *                          reachable via standard EPICS_PVA_* environment variables.
+ * @param post_delay_ns     Nanoseconds to sleep between each post(); 0 = fire as fast as possible.
  * @return                  BenchmarkResult populated with throughput and drop statistics.
  */
 BenchmarkResult runPvaBenchmark(
@@ -1188,15 +1283,14 @@ BenchmarkResult runPvaBenchmark(
     const std::string& server_keychain,
     const std::string& client_keychain,
     const bool nt_payload,
-    const uint32_t pva_queue_size,
-    const uint16_t cms_udp_port = 0u)
+    const uint16_t cms_udp_port = 0u,
+    const uint64_t post_delay_ns = 0u)
 {
     BenchmarkResult result;
     result.protocol = protocolModeStr(mode);
     result.payload_mode = nt_payload ? "nt" : "raw";
     result.subscribers = num_subscriptions;
     result.payload_bytes = payload_size;
-    result.pva_queue_size = pva_queue_size;
 
     // In raw mode, minimum payload = kHeaderSize (counter + timestamp in array).
     // In NT mode, timestamp lives in NT fields, so minimum = kCounterSize.
@@ -1288,7 +1382,7 @@ BenchmarkResult runPvaBenchmark(
          const auto& st = states[i];
          subs[i] = ctxt.monitor(pvname)
                        .record("pipeline", true)
-                       .record("queueSize", int32_t(pva_queue_size))
+                       .record("queueSize", int32_t(4))
                        .maskConnected(true)
                        .maskDisconnected(true)
                        .event([st, &connected_subs](client::Subscription& sub) {
@@ -1362,6 +1456,8 @@ BenchmarkResult runPvaBenchmark(
         ring[i]["value"] = buf.freeze().castTo<const void>();
     }
 
+    const auto delay = std::chrono::nanoseconds(post_delay_ns);
+
     std::thread pump_thread([&]() {
         uint64_t cnt = 0;
 
@@ -1393,6 +1489,9 @@ BenchmarkResult runPvaBenchmark(
                 log_debug_printf(perflog, "post() error: %s\n", e.what());
             }
             cnt++;
+            if (post_delay_ns > 0u) {
+                std::this_thread::sleep_for(delay);
+            }
         }
     });
 
@@ -1459,6 +1558,1041 @@ BenchmarkResult runPvaBenchmark(
 }
 
 /**
+ * @brief Find the maximum sustainable update rate (zero drops) using exponential
+ *        ramp followed by binary search.
+ *
+ * Phase 1 (ramp): Start at initial_rate, double each probe until drops appear.
+ *   Each probe runs for probe_sec seconds. This brackets the max rate in
+ *   [last_clean_rate, first_drop_rate].
+ *
+ * Phase 2 (binary search): Narrow the bracket to within 2% precision.
+ *   Each probe runs for probe_sec seconds.
+ *
+ * Phase 3 (confirm): Run at the discovered rate for confirm_sec seconds to
+ *   verify stability. If drops appear, back off by 10% and retry once.
+ *
+ * @param mode              Protocol mode.
+ * @param payload_size      Payload size in bytes.
+ * @param num_subscriptions Number of parallel monitor subscriptions.
+ * @param server_keychain   TLS keychain for server.
+ * @param client_keychain   TLS keychain for client.
+ * @param nt_payload        Use NTScalar timestamp encoding.
+ * @param cms_udp_port      PVACMS UDP port (0 = external).
+ * @param probe_sec         Duration of each probing trial in seconds.
+ * @param confirm_sec       Duration of final confirmation run.
+ * @return BenchmarkResult from the confirmation run at the discovered rate.
+ */
+BenchmarkResult runAdaptiveBenchmark(
+    const ProtocolMode mode,
+    const size_t payload_size,
+    const uint32_t num_subscriptions,
+    const std::string& server_keychain,
+    const std::string& client_keychain,
+    const bool nt_payload,
+    const uint16_t cms_udp_port,
+    const double probe_sec = 1.0,
+    const double confirm_sec = 3.0)
+{
+    const uint64_t warmup = 50;
+
+    auto rate_to_delay = [](double rate) -> uint64_t {
+        if (rate <= 0.0) return 0u;
+        return static_cast<uint64_t>(1.0e9 / rate);
+    };
+
+    auto run_probe = [&](double target_rate, double dur) -> BenchmarkResult {
+        const uint64_t delay = rate_to_delay(target_rate);
+        log_info_printf(perflog, "  Adaptive probe: %.0f ups target (delay %lu ns, %.1fs)\n",
+                       target_rate, (unsigned long)delay, dur);
+        return runPvaBenchmark(mode, payload_size, dur, warmup,
+                              num_subscriptions, server_keychain, client_keychain,
+                              nt_payload, cms_udp_port, delay);
+    };
+
+    // Phase 1: Exponential ramp to find the bracket [low, high]
+    // Start at 1000 ups/sec, double each step
+    double low_rate = 0.0;
+    double high_rate = 0.0;
+    double rate = 1000.0;
+
+    log_info_printf(perflog, "Adaptive Phase 1: exponential ramp for %s %zu bytes %u subs\n",
+                   protocolModeStr(mode), payload_size, num_subscriptions);
+
+    for (int step = 0; step < 30; ++step) {
+        auto r = run_probe(rate, probe_sec);
+        log_info_printf(perflog, "    rate=%.0f -> %.0f ups, %lu drops\n",
+                       rate, r.updates_per_second, (unsigned long)r.drops);
+
+        if (r.drops == 0 && r.errors == 0) {
+            low_rate = rate;
+            rate *= 2.0;
+        } else {
+            high_rate = rate;
+            break;
+        }
+    }
+
+    if (high_rate == 0.0) {
+        // Never got drops — the system can handle our max probed rate.
+        // Run flood (delay=0) as confirmation.
+        log_info_printf(perflog, "Adaptive: never saturated at %.0f ups, running flood confirmation\n", low_rate);
+        return run_probe(0.0, confirm_sec);
+    }
+
+    if (low_rate == 0.0) {
+        // Even 1000 ups/sec caused drops — start lower
+        low_rate = 100.0;
+        high_rate = 1000.0;
+    }
+
+    // Phase 2: Binary search within [low_rate, high_rate] to 2% precision
+    log_info_printf(perflog, "Adaptive Phase 2: binary search [%.0f, %.0f]\n", low_rate, high_rate);
+
+    double best_rate = low_rate;
+    while ((high_rate - low_rate) / low_rate > 0.02) {
+        const double mid = (low_rate + high_rate) / 2.0;
+        auto r = run_probe(mid, probe_sec);
+        log_info_printf(perflog, "    mid=%.0f -> %.0f ups, %lu drops\n",
+                       mid, r.updates_per_second, (unsigned long)r.drops);
+
+        if (r.drops == 0 && r.errors == 0) {
+            best_rate = mid;
+            low_rate = mid;
+        } else {
+            high_rate = mid;
+        }
+    }
+
+    // Phase 3: Confirmation run at best_rate
+    log_info_printf(perflog, "Adaptive Phase 3: confirm at %.0f ups (%.1fs)\n", best_rate, confirm_sec);
+    auto result = run_probe(best_rate, confirm_sec);
+
+    // Iterative backoff: if drops persist, keep reducing by 10% (up to 5 attempts)
+    for (int backoff = 0; backoff < 5 && result.drops > 0; ++backoff) {
+        best_rate *= 0.9;
+        log_info_printf(perflog, "  Drops in confirmation (attempt %d), backing off to %.0f ups\n", backoff + 1, best_rate);
+        result = run_probe(best_rate, confirm_sec);
+    }
+
+    return result;
+}
+
+/**
+ * @brief Print a per-window summary table for a steady-state benchmark to stderr.
+ */
+void printLatencySummary(const LatencyResult& r) {
+    std::cerr << "\n=== Latency: " << r.protocol << " " << r.subscribers
+              << " subs " << r.payload_bytes << " bytes ===" << std::endl;
+    std::cerr << std::fixed << std::setprecision(1)
+              << "  Samples:    " << r.num_samples << std::endl
+              << "  Median:     " << r.median_us << " us" << std::endl
+              << "  Mean:       " << r.mean_us << " us" << std::endl
+              << "  p25:        " << r.p25_us << " us" << std::endl
+              << "  p75:        " << r.p75_us << " us" << std::endl
+              << "  p99:        " << r.p99_us << " us" << std::endl
+              << "  Min:        " << r.min_us << " us" << std::endl
+              << "  Max:        " << r.max_us << " us" << std::endl
+              << "  CV:         " << r.cv_pct << "%" << std::endl
+              << std::setprecision(0)
+              << "  Theoretical throughput: " << r.theoretical_ups << " updates/sec" << std::endl
+              << std::endl;
+}
+
+void printBurstSummary(const BurstResult& r) {
+    std::cerr << "\n=== Burst: " << r.protocol << " " << r.subscribers
+              << " subs " << r.payload_bytes << " bytes (burst=" << r.burst_size << ") ===" << std::endl;
+    std::cerr << std::fixed << std::setprecision(2)
+              << "  Samples:    " << r.num_samples << std::endl
+              << "  Per-delivery cost:" << std::endl
+              << "    Median:   " << r.median_per_delivery_us << " us" << std::endl
+              << "    Mean:     " << r.mean_per_delivery_us << " us" << std::endl
+              << "    p25:      " << r.p25_per_delivery_us << " us" << std::endl
+              << "    p75:      " << r.p75_per_delivery_us << " us" << std::endl
+              << "    p99:      " << r.p99_per_delivery_us << " us" << std::endl
+              << "    Min:      " << r.min_per_delivery_us << " us" << std::endl
+              << "    Max:      " << r.max_per_delivery_us << " us" << std::endl
+              << std::setprecision(1)
+              << "  CV:         " << r.cv_pct << "%" << std::endl
+              << std::setprecision(0)
+              << "  Theoretical throughput: " << r.theoretical_ups << " updates/sec" << std::endl
+              << std::endl;
+}
+
+void printSteadyStateSummary(const std::vector<SubWindowResult>& windows,
+                              const char* protocol,
+                              uint32_t num_subs,
+                              size_t payload_bytes)
+{
+    std::cerr << "\n=== Steady-State: " << protocol << " " << num_subs
+              << " subs " << payload_bytes << " bytes ===" << std::endl;
+    std::cerr << std::left
+              << std::setw(8)  << "Window"
+              << std::setw(12) << "Duration"
+              << std::setw(16) << "Updates/sec"
+              << std::setw(10) << "Drops"
+              << std::setw(12) << "Status"
+              << std::endl;
+
+    std::vector<double> measured_rates;
+    for (const auto& w : windows) {
+        std::cerr << std::left
+                  << std::setw(8) << (w.window_index + 1)
+                  << std::setw(12) << (std::to_string(w.duration_seconds).substr(0, 5) + "s")
+                  << std::setw(16) << std::fixed << std::setprecision(0) << w.updates_per_second
+                  << std::setw(10) << w.drops
+                  << (w.omitted ? "[omitted]" : "")
+                  << std::endl;
+        if (!w.omitted) {
+            measured_rates.push_back(w.updates_per_second);
+        }
+    }
+
+    if (!measured_rates.empty()) {
+        auto rates_copy = measured_rates;
+        const double median = computeMedian(rates_copy);
+        rates_copy = measured_rates;
+        const double p25 = computePercentile(rates_copy, 25.0);
+        rates_copy = measured_rates;
+        const double p75 = computePercentile(rates_copy, 75.0);
+        const double cv = computeCV(measured_rates);
+        const double mean = std::accumulate(measured_rates.begin(), measured_rates.end(), 0.0) / measured_rates.size();
+
+        std::cerr << "\n  Measured windows: " << measured_rates.size() << std::endl;
+        std::cerr << std::fixed << std::setprecision(0)
+                  << "  Median: " << median << " ups"
+                  << "   p25: " << p25
+                  << "   p75: " << p75 << std::endl;
+        std::cerr << std::fixed << std::setprecision(1)
+                  << "  Mean: " << mean << " ups"
+                  << "   CV: " << cv << "%" << std::endl;
+    }
+    std::cerr << std::endl;
+}
+
+/**
+ * @brief Run a steady-state PVA/SPVA throughput benchmark with sub-window measurement.
+ *
+ * Floods updates at maximum rate and measures throughput in fixed-duration
+ * sub-windows, discarding the first omit_windows as warmup. This produces
+ * lower-variance results than the adaptive rate-finding approach.
+ */
+std::vector<SubWindowResult> runSteadyStateBenchmark(
+    const ProtocolMode mode,
+    const size_t payload_size,
+    const uint32_t num_subscriptions,
+    const std::string& server_keychain,
+    const std::string& client_keychain,
+    const bool nt_payload,
+    const uint16_t cms_udp_port,
+    const uint32_t num_windows = 10,
+    const double window_sec = 3.0,
+    const uint32_t omit_windows = 2)
+{
+    std::vector<SubWindowResult> results;
+
+    const size_t min_size = nt_payload ? kCounterSize : kHeaderSize;
+    const size_t effective_size = std::max(payload_size, min_size);
+    const uint64_t warmup_count = 100;
+
+    // --- Server setup (same as runPvaBenchmark) ---
+    server::Config sconfig;
+    if (mode == ProtocolMode::SPVA_CERTMON && cms_udp_port == 0u) {
+        sconfig = server::Config::fromEnv();
+    } else {
+        sconfig = loopbackServerConfig(
+            (mode == ProtocolMode::SPVA_CERTMON) ? cms_udp_port : 0u);
+    }
+
+    if (mode == ProtocolMode::PVA) {
+        sconfig.tls_disabled = true;
+    } else {
+        sconfig.tls_disabled = false;
+        sconfig.tls_keychain_file = server_keychain;
+#ifdef PVXS_ENABLE_EXPERT_API
+        if (mode == ProtocolMode::SPVA) {
+            sconfig.disableStatusCheck(true);
+        } else {
+            sconfig.disableStatusCheck(false);
+        }
+#endif
+    }
+
+    auto pv = server::SharedPV::buildReadonly();
+
+    auto prototype = nt::NTScalar{TypeCode::UInt8A}.create();
+    {
+        shared_array<uint8_t> initial_data(effective_size);
+        if (nt_payload) {
+            const uint64_t net_counter = toNetworkOrder64(0);
+            std::memcpy(initial_data.data(), &net_counter, kCounterSize);
+            std::memset(initial_data.data() + kCounterSize, 0, effective_size - kCounterSize);
+        } else {
+            encodePayload(initial_data.data(), effective_size, 0, currentTimestampUs());
+        }
+        prototype["value"] = initial_data.freeze().castTo<const void>();
+        if (nt_payload) {
+            const auto now = std::chrono::system_clock::now();
+            const auto secs = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch());
+            const auto nsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()) - secs;
+            prototype["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(secs.count());
+            prototype["timeStamp.nanoseconds"] = static_cast<int32_t>(nsecs.count());
+        }
+    }
+    pv.open(prototype);
+
+    const std::string pvname = "PVXPERF:BENCH";
+    const auto server = sconfig.build()
+                      .addPV(pvname, pv)
+                      .start();
+
+    // --- Client setup ---
+    auto cconfig = server.clientConfig();
+    if (mode == ProtocolMode::PVA) {
+        cconfig.tls_disabled = true;
+    } else {
+        cconfig.tls_disabled = false;
+        cconfig.tls_keychain_file = client_keychain.empty() ? server_keychain : client_keychain;
+#ifdef PVXS_ENABLE_EXPERT_API
+        if (mode == ProtocolMode::SPVA) {
+            cconfig.disableStatusCheck(true);
+        } else {
+            cconfig.disableStatusCheck(false);
+        }
+#endif
+    }
+
+    auto ctxt = cconfig.build();
+
+    const uint32_t num_subs = num_subscriptions;
+
+    std::vector<std::shared_ptr<SubscriptionState>> states(num_subs);
+    std::vector<std::shared_ptr<client::Subscription>> subs(num_subs);
+    std::atomic<uint32_t> connected_subs{0};
+
+    for (uint32_t i = 0; i < num_subs; i++) {
+        states[i] = std::make_shared<SubscriptionState>();
+        states[i]->warmup_remaining = warmup_count;
+    }
+
+    for (uint32_t i = 0; i < num_subs; i++) {
+        const auto& st = states[i];
+        subs[i] = ctxt.monitor(pvname)
+                      .record("pipeline", true)
+                      .record("queueSize", int32_t(4))
+                      .maskConnected(true)
+                      .maskDisconnected(true)
+                      .event([st, &connected_subs](client::Subscription& sub) {
+                          try {
+                              while (auto val = sub.pop()) {
+                                  const auto arr = val["value"].as<shared_array<const uint8_t>>();
+                                  if (arr.empty())
+                                      continue;
+
+                                  const uint64_t counter = decodeCounter(arr.data(), arr.size());
+
+                                  std::lock_guard<std::mutex> lk(st->mtx);
+
+                                  if (!st->first_update_seen) {
+                                      st->first_update_seen = true;
+                                      connected_subs.fetch_add(1, std::memory_order_relaxed);
+                                  }
+
+                                  if (st->warmup_remaining > 0) {
+                                      st->warmup_remaining--;
+                                      if (st->warmup_remaining == 0) {
+                                          st->warmup_done = true;
+                                          st->expected_counter = counter + 1;
+                                      }
+                                      continue;
+                                  }
+
+                                  if (counter == st->expected_counter) {
+                                      st->success_count++;
+                                      st->expected_counter++;
+                                  } else if (counter > st->expected_counter) {
+                                      const uint64_t gap = counter - st->expected_counter;
+                                      st->drop_count += gap;
+                                      st->success_count++;
+                                      st->expected_counter = counter + 1;
+                                  }
+                              }
+                          } catch (std::exception& e) {
+                              std::lock_guard<std::mutex> lk(st->mtx);
+                              st->error_count++;
+                          }
+                      })
+                      .exec();
+    }
+
+    // Wait for all subscriptions to connect
+    {
+        const auto conn_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (connected_subs.load(std::memory_order_relaxed) < num_subs &&
+               std::chrono::steady_clock::now() < conn_deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        const uint32_t connected = connected_subs.load(std::memory_order_relaxed);
+        if (connected < num_subs) {
+            log_warn_printf(perflog, "Steady-state: only %u/%u subscriptions connected\n", connected, num_subs);
+        }
+        log_debug_printf(perflog, "Steady-state: %u/%u subscriptions connected, starting pump\n", connected, num_subs);
+    }
+
+    std::atomic<bool> stop_pump{false};
+
+    // Pre-allocate ring of Values (same as runPvaBenchmark)
+    constexpr size_t kRingSize = 64;
+    std::vector<Value> ring(kRingSize);
+    for (size_t i = 0; i < kRingSize; i++) {
+        ring[i] = prototype.cloneEmpty();
+        shared_array<uint8_t> buf(effective_size);
+        ring[i]["value"] = buf.freeze().castTo<const void>();
+    }
+
+    // Flood mode: no delay
+    std::thread pump_thread([&]() {
+        uint64_t cnt = 0;
+
+        while (!stop_pump.load(std::memory_order_relaxed)) {
+            auto& val = ring[cnt % kRingSize];
+            {
+                shared_array<uint8_t> buf(effective_size);
+                if (nt_payload) {
+                    const uint64_t net_counter = toNetworkOrder64(cnt);
+                    std::memcpy(buf.data(), &net_counter, kCounterSize);
+                    const auto fill = static_cast<uint8_t>(cnt & 0xFF);
+                    std::memset(buf.data() + kCounterSize, fill, effective_size - kCounterSize);
+                } else {
+                    encodePayload(buf.data(), effective_size, cnt, currentTimestampUs());
+                }
+                val["value"] = buf.freeze().castTo<const void>();
+
+                if (nt_payload) {
+                    const auto now = std::chrono::system_clock::now();
+                    const auto secs = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch());
+                    const auto nsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()) - secs;
+                    val["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(secs.count());
+                    val["timeStamp.nanoseconds"] = static_cast<int32_t>(nsecs.count());
+                }
+            }
+            try {
+                pv.post(val);
+            } catch (std::exception& e) {
+                log_debug_printf(perflog, "post() error: %s\n", e.what());
+            }
+            cnt++;
+        }
+    });
+
+    // Wait for warmup to complete
+    {
+        auto warmup_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        bool all_warmed_up = false;
+        while (std::chrono::steady_clock::now() < warmup_deadline) {
+            all_warmed_up = true;
+            for (auto& st : states) {
+                std::lock_guard<std::mutex> lk(st->mtx);
+                if (!st->warmup_done) {
+                    all_warmed_up = false;
+                    break;
+                }
+            }
+            if (all_warmed_up)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        if (!all_warmed_up) {
+            log_warn_printf(perflog, "%s\n", "Steady-state: warm-up did not complete for all subscriptions");
+        }
+    }
+
+    // Sub-window measurement loop
+    for (uint32_t win = 0; win < num_windows; ++win) {
+        // Reset counters for this window
+        for (auto& st : states) {
+            std::lock_guard<std::mutex> lk(st->mtx);
+            st->success_count = 0;
+            st->drop_count = 0;
+            st->error_count = 0;
+        }
+
+        const auto win_start = std::chrono::steady_clock::now();
+        std::this_thread::sleep_for(std::chrono::milliseconds(
+            static_cast<int64_t>(window_sec * 1000)));
+        const auto win_end = std::chrono::steady_clock::now();
+
+        const double elapsed = std::chrono::duration<double>(win_end - win_start).count();
+        uint64_t total_success = 0, total_drops = 0, total_errors = 0;
+        for (auto& st : states) {
+            std::lock_guard<std::mutex> lk(st->mtx);
+            total_success += st->success_count;
+            total_drops += st->drop_count;
+            total_errors += st->error_count;
+        }
+
+        SubWindowResult w;
+        w.window_index = win;
+        w.omitted = (win < omit_windows);
+        w.duration_seconds = elapsed;
+        w.total_updates = total_success;
+        w.drops = total_drops;
+        w.errors = total_errors;
+        w.updates_per_second = (elapsed > 0.0) ? (static_cast<double>(total_success) / elapsed) : 0.0;
+        results.push_back(w);
+    }
+
+    stop_pump.store(true, std::memory_order_relaxed);
+    pump_thread.join();
+
+    for (auto& sub : subs) {
+        if (sub)
+            sub->cancel();
+    }
+
+    return results;
+}
+
+LatencyResult runLatencyBenchmark(
+    const ProtocolMode mode,
+    const size_t payload_size,
+    const uint32_t num_subscriptions,
+    const std::string& server_keychain,
+    const std::string& client_keychain,
+    const bool nt_payload,
+    const uint16_t cms_udp_port,
+    const uint32_t num_samples = 500,
+    const uint32_t warmup_samples = 50,
+    const uint32_t send_interval_us = 1000)
+{
+    const size_t min_size = nt_payload ? kCounterSize : kHeaderSize;
+    const size_t effective_size = std::max(payload_size, min_size);
+
+    // --- Server setup (same as runSteadyStateBenchmark) ---
+    server::Config sconfig;
+    if (mode == ProtocolMode::SPVA_CERTMON && cms_udp_port == 0u) {
+        sconfig = server::Config::fromEnv();
+    } else {
+        sconfig = loopbackServerConfig(
+            (mode == ProtocolMode::SPVA_CERTMON) ? cms_udp_port : 0u);
+    }
+
+    if (mode == ProtocolMode::PVA) {
+        sconfig.tls_disabled = true;
+    } else {
+        sconfig.tls_disabled = false;
+        sconfig.tls_keychain_file = server_keychain;
+#ifdef PVXS_ENABLE_EXPERT_API
+        if (mode == ProtocolMode::SPVA) {
+            sconfig.disableStatusCheck(true);
+        } else {
+            sconfig.disableStatusCheck(false);
+        }
+#endif
+    }
+
+    auto pv = server::SharedPV::buildReadonly();
+
+    auto prototype = nt::NTScalar{TypeCode::UInt8A}.create();
+    {
+        shared_array<uint8_t> initial_data(effective_size);
+        if (nt_payload) {
+            const uint64_t net_counter = toNetworkOrder64(0);
+            std::memcpy(initial_data.data(), &net_counter, kCounterSize);
+            std::memset(initial_data.data() + kCounterSize, 0, effective_size - kCounterSize);
+        } else {
+            encodePayload(initial_data.data(), effective_size, 0, currentTimestampUs());
+        }
+        prototype["value"] = initial_data.freeze().castTo<const void>();
+        if (nt_payload) {
+            const auto now = std::chrono::system_clock::now();
+            const auto secs = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch());
+            const auto nsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()) - secs;
+            prototype["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(secs.count());
+            prototype["timeStamp.nanoseconds"] = static_cast<int32_t>(nsecs.count());
+        }
+    }
+    pv.open(prototype);
+
+    const std::string pvname = "PVXPERF:BENCH";
+    const auto server = sconfig.build()
+                      .addPV(pvname, pv)
+                      .start();
+
+    // --- Client setup ---
+    auto cconfig = server.clientConfig();
+    if (mode == ProtocolMode::PVA) {
+        cconfig.tls_disabled = true;
+    } else {
+        cconfig.tls_disabled = false;
+        cconfig.tls_keychain_file = client_keychain.empty() ? server_keychain : client_keychain;
+#ifdef PVXS_ENABLE_EXPERT_API
+        if (mode == ProtocolMode::SPVA) {
+            cconfig.disableStatusCheck(true);
+        } else {
+            cconfig.disableStatusCheck(false);
+        }
+#endif
+    }
+
+    auto ctxt = cconfig.build();
+
+    const uint32_t num_subs = num_subscriptions;
+
+    std::vector<std::shared_ptr<LatencySubState>> states(num_subs);
+    std::vector<std::shared_ptr<client::Subscription>> subs(num_subs);
+    std::atomic<uint32_t> connected_subs{0};
+
+    for (uint32_t i = 0; i < num_subs; i++) {
+        states[i] = std::make_shared<LatencySubState>();
+    }
+
+    for (uint32_t i = 0; i < num_subs; i++) {
+        const auto& st = states[i];
+        subs[i] = ctxt.monitor(pvname)
+                      .record("pipeline", true)
+                      .record("queueSize", int32_t(4))
+                      .maskConnected(true)
+                      .maskDisconnected(true)
+                      .event([st, &connected_subs](client::Subscription& sub) {
+                          try {
+                              while (auto val = sub.pop()) {
+                                  const auto recv_time = std::chrono::steady_clock::now();
+                                  const uint64_t recv_ns = static_cast<uint64_t>(
+                                      std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                          recv_time.time_since_epoch()).count());
+
+                                  const auto arr = val["value"].as<shared_array<const uint8_t>>();
+                                  if (arr.empty()) continue;
+
+                                  const uint64_t counter = decodeCounter(arr.data(), arr.size());
+
+                                  std::lock_guard<std::mutex> lk(st->mtx);
+                                  if (!st->first_update_seen) {
+                                      st->first_update_seen = true;
+                                      connected_subs.fetch_add(1, std::memory_order_relaxed);
+                                  }
+                                  st->last_received_counter = counter;
+                                  st->recv_timestamp_ns = recv_ns;
+                                  st->update_ready = true;
+                              }
+                          } catch (...) {}
+                      })
+                      .exec();
+    }
+
+    // Wait for all subscriptions to connect
+    {
+        const auto conn_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (connected_subs.load(std::memory_order_relaxed) < num_subs &&
+               std::chrono::steady_clock::now() < conn_deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        const uint32_t connected = connected_subs.load(std::memory_order_relaxed);
+        if (connected < num_subs) {
+            log_warn_printf(perflog, "Latency: only %u/%u subscriptions connected\n", connected, num_subs);
+        }
+    }
+
+    // Seed: post a few updates so all subscribers see initial data
+    for (uint32_t seed = 0; seed < 10; ++seed) {
+        auto seed_val = prototype.cloneEmpty();
+        {
+            shared_array<uint8_t> buf(effective_size);
+            encodePayload(buf.data(), effective_size, 0, currentTimestampUs());
+            seed_val["value"] = buf.freeze().castTo<const void>();
+        }
+        pv.post(seed_val);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    // Pre-allocate ring of Values
+    constexpr size_t kRingSize = 64;
+    std::vector<Value> ring(kRingSize);
+    for (size_t i = 0; i < kRingSize; i++) {
+        ring[i] = prototype.cloneEmpty();
+        shared_array<uint8_t> buf(effective_size);
+        ring[i]["value"] = buf.freeze().castTo<const void>();
+    }
+
+    const uint32_t total_samples = warmup_samples + num_samples;
+    std::vector<double> latencies_us;
+    latencies_us.reserve(num_samples);
+
+    for (uint32_t sample = 0; sample < total_samples; ++sample) {
+        // Reset all subscriber ready flags
+        for (auto& st : states) {
+            std::lock_guard<std::mutex> lk(st->mtx);
+            st->update_ready = false;
+        }
+
+        // Encode counter + steady_clock timestamp into payload
+        auto& val = ring[sample % kRingSize];
+        uint64_t send_ns;
+        {
+            shared_array<uint8_t> buf(effective_size);
+            const uint64_t net_counter = toNetworkOrder64(static_cast<uint64_t>(sample));
+            std::memcpy(buf.data(), &net_counter, kCounterSize);
+            const auto send_time = std::chrono::steady_clock::now();
+            send_ns = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    send_time.time_since_epoch()).count());
+            const uint64_t net_ns = toNetworkOrder64(send_ns);
+            std::memcpy(buf.data() + kCounterSize, &net_ns, kCounterSize);
+            const auto fill = static_cast<uint8_t>(sample & 0xFF);
+            if (effective_size > kHeaderSize)
+                std::memset(buf.data() + kHeaderSize, fill, effective_size - kHeaderSize);
+            val["value"] = buf.freeze().castTo<const void>();
+        }
+
+        pv.post(val);
+
+        // Wait for ALL subscribers to receive this update (timeout 5 seconds)
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        bool all_received = false;
+        while (std::chrono::steady_clock::now() < deadline) {
+            all_received = true;
+            for (auto& st : states) {
+                std::lock_guard<std::mutex> lk(st->mtx);
+                if (!st->update_ready || st->last_received_counter != static_cast<uint64_t>(sample)) {
+                    all_received = false;
+                    break;
+                }
+            }
+            if (all_received) break;
+            std::this_thread::sleep_for(std::chrono::microseconds(10));
+        }
+
+        if (!all_received) {
+            log_warn_printf(perflog, "Latency sample %u: not all subscribers received (timeout)\n", sample);
+            continue;
+        }
+
+        // Find the LAST subscriber to receive (worst-case fan-out latency)
+        uint64_t max_recv_ns = 0;
+        for (auto& st : states) {
+            std::lock_guard<std::mutex> lk(st->mtx);
+            if (st->recv_timestamp_ns > max_recv_ns)
+                max_recv_ns = st->recv_timestamp_ns;
+        }
+
+        const double latency_us = static_cast<double>(max_recv_ns - send_ns) / 1000.0;
+
+        if (sample >= warmup_samples) {
+            latencies_us.push_back(latency_us);
+        }
+
+        if (send_interval_us > 0) {
+            std::this_thread::sleep_for(std::chrono::microseconds(send_interval_us));
+        }
+    }
+
+    // Cancel subscriptions
+    for (auto& sub : subs) {
+        if (sub)
+            sub->cancel();
+    }
+
+    LatencyResult result;
+    result.protocol = protocolModeStr(mode);
+    result.subscribers = num_subscriptions;
+    result.payload_bytes = payload_size;
+    result.num_samples = static_cast<uint32_t>(latencies_us.size());
+
+    if (!latencies_us.empty()) {
+        auto sorted = latencies_us;
+        result.median_us = computeMedian(sorted);
+        sorted = latencies_us;
+        result.p25_us = computePercentile(sorted, 25.0);
+        sorted = latencies_us;
+        result.p75_us = computePercentile(sorted, 75.0);
+        sorted = latencies_us;
+        result.p99_us = computePercentile(sorted, 99.0);
+        result.cv_pct = computeCV(latencies_us);
+        result.mean_us = std::accumulate(latencies_us.begin(), latencies_us.end(), 0.0)
+                         / static_cast<double>(latencies_us.size());
+        result.min_us = *std::min_element(latencies_us.begin(), latencies_us.end());
+        result.max_us = *std::max_element(latencies_us.begin(), latencies_us.end());
+        result.theoretical_ups = (result.median_us > 0.0) ? (1000000.0 / result.median_us) : 0.0;
+    }
+
+    return result;
+}
+
+BurstResult runBurstBenchmark(
+    const ProtocolMode mode,
+    const size_t payload_size,
+    const uint32_t num_subscriptions,
+    const std::string& server_keychain,
+    const std::string& client_keychain,
+    const bool nt_payload,
+    const uint16_t cms_udp_port,
+    const uint32_t burst_size = 100,
+    const uint32_t num_samples = 50,
+    const uint32_t warmup_bursts = 5,
+    const uint32_t burst_send_interval_us = 0)
+{
+    const size_t min_size = nt_payload ? kCounterSize : kHeaderSize;
+    const size_t effective_size = std::max(payload_size, min_size);
+
+    // --- Server setup (same as runSteadyStateBenchmark) ---
+    server::Config sconfig;
+    if (mode == ProtocolMode::SPVA_CERTMON && cms_udp_port == 0u) {
+        sconfig = server::Config::fromEnv();
+    } else {
+        sconfig = loopbackServerConfig(
+            (mode == ProtocolMode::SPVA_CERTMON) ? cms_udp_port : 0u);
+    }
+
+    if (mode == ProtocolMode::PVA) {
+        sconfig.tls_disabled = true;
+    } else {
+        sconfig.tls_disabled = false;
+        sconfig.tls_keychain_file = server_keychain;
+#ifdef PVXS_ENABLE_EXPERT_API
+        if (mode == ProtocolMode::SPVA) {
+            sconfig.disableStatusCheck(true);
+        } else {
+            sconfig.disableStatusCheck(false);
+        }
+#endif
+    }
+
+    auto pv = server::SharedPV::buildReadonly();
+
+    auto prototype = nt::NTScalar{TypeCode::UInt8A}.create();
+    {
+        shared_array<uint8_t> initial_data(effective_size);
+        if (nt_payload) {
+            const uint64_t net_counter = toNetworkOrder64(0);
+            std::memcpy(initial_data.data(), &net_counter, kCounterSize);
+            std::memset(initial_data.data() + kCounterSize, 0, effective_size - kCounterSize);
+        } else {
+            encodePayload(initial_data.data(), effective_size, 0, currentTimestampUs());
+        }
+        prototype["value"] = initial_data.freeze().castTo<const void>();
+        if (nt_payload) {
+            const auto now = std::chrono::system_clock::now();
+            const auto secs = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch());
+            const auto nsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()) - secs;
+            prototype["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(secs.count());
+            prototype["timeStamp.nanoseconds"] = static_cast<int32_t>(nsecs.count());
+        }
+    }
+    pv.open(prototype);
+
+    const std::string pvname = "PVXPERF:BENCH";
+    const auto server = sconfig.build()
+                      .addPV(pvname, pv)
+                      .start();
+
+    // --- Client setup ---
+    auto cconfig = server.clientConfig();
+    if (mode == ProtocolMode::PVA) {
+        cconfig.tls_disabled = true;
+    } else {
+        cconfig.tls_disabled = false;
+        cconfig.tls_keychain_file = client_keychain.empty() ? server_keychain : client_keychain;
+#ifdef PVXS_ENABLE_EXPERT_API
+        if (mode == ProtocolMode::SPVA) {
+            cconfig.disableStatusCheck(true);
+        } else {
+            cconfig.disableStatusCheck(false);
+        }
+#endif
+    }
+
+    auto ctxt = cconfig.build();
+
+    const uint32_t num_subs = num_subscriptions;
+
+    std::vector<std::shared_ptr<BurstSubState>> states(num_subs);
+    std::vector<std::shared_ptr<client::Subscription>> subs(num_subs);
+
+    for (uint32_t i = 0; i < num_subs; i++) {
+        states[i] = std::make_shared<BurstSubState>();
+    }
+
+    for (uint32_t i = 0; i < num_subs; i++) {
+        const auto& st = states[i];
+        subs[i] = ctxt.monitor(pvname)
+                      .record("pipeline", true)
+                      .record("queueSize", int32_t(4))
+                      .maskConnected(true)
+                      .maskDisconnected(true)
+                      .event([st](client::Subscription& sub) {
+                          try {
+                              while (auto val = sub.pop()) {
+                                  if (!st->connected.load(std::memory_order_relaxed)) {
+                                      st->connected.store(true, std::memory_order_release);
+                                  }
+                                  st->received_count.fetch_add(1, std::memory_order_release);
+                              }
+                          } catch (...) {}
+                      })
+                      .exec();
+    }
+
+    // Wait for all subscriptions to connect (initial value from pv.open())
+    {
+        const auto conn_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (std::chrono::steady_clock::now() < conn_deadline) {
+            bool all_connected = true;
+            for (const auto& st : states) {
+                if (!st->connected.load(std::memory_order_acquire)) {
+                    all_connected = false;
+                    break;
+                }
+            }
+            if (all_connected) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+
+    // Pre-allocate ring of Values
+    constexpr size_t kRingSize = 64;
+    std::vector<Value> ring(kRingSize);
+    for (size_t i = 0; i < kRingSize; i++) {
+        ring[i] = prototype.cloneEmpty();
+        shared_array<uint8_t> buf(effective_size);
+        ring[i]["value"] = buf.freeze().castTo<const void>();
+    }
+
+    // Helper: check if all subscribers have received >= target updates
+    auto all_received = [&](uint32_t target) -> bool {
+        for (const auto& st : states) {
+            if (st->received_count.load(std::memory_order_acquire) < target) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // Warmup: continuous paced feed until all subs have burst_size deliveries
+    for (uint32_t w = 0; w < warmup_bursts; ++w) {
+        for (auto& st : states) {
+            st->received_count.store(0, std::memory_order_release);
+        }
+        std::atomic<bool> warmup_stop{false};
+        std::thread warmup_sender([&]() {
+            uint32_t counter = 0;
+            while (!warmup_stop.load(std::memory_order_acquire)) {
+                auto& val = ring[counter % kRingSize];
+                shared_array<uint8_t> buf(effective_size);
+                encodePayload(buf.data(), effective_size, counter, 0);
+                val["value"] = buf.freeze().castTo<const void>();
+                pv.post(val);
+                ++counter;
+                if (burst_send_interval_us > 0) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(burst_send_interval_us));
+                }
+            }
+        });
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (all_received(burst_size)) break;
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+        warmup_stop.store(true, std::memory_order_release);
+        warmup_sender.join();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    // Measurement loop: continuous paced feed per sample
+    std::vector<double> per_delivery_samples;
+    per_delivery_samples.reserve(num_samples);
+
+    for (uint32_t s = 0; s < num_samples; ++s) {
+        for (auto& st : states) {
+            st->received_count.store(0, std::memory_order_release);
+        }
+
+        std::atomic<bool> stop{false};
+        const auto burst_start = std::chrono::steady_clock::now();
+
+        // Sender thread: post continuously until stop flag
+        std::thread sender([&]() {
+            uint32_t counter = 0;
+            while (!stop.load(std::memory_order_acquire)) {
+                auto& val = ring[counter % kRingSize];
+                shared_array<uint8_t> buf(effective_size);
+                encodePayload(buf.data(), effective_size, counter, 0);
+                val["value"] = buf.freeze().castTo<const void>();
+                pv.post(val);
+                ++counter;
+                if (burst_send_interval_us > 0) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(burst_send_interval_us));
+                }
+            }
+        });
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        bool all_done = false;
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (all_received(burst_size)) {
+                all_done = true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(10));
+        }
+
+        stop.store(true, std::memory_order_release);
+        sender.join();
+
+        const auto burst_end = std::chrono::steady_clock::now();
+
+        if (!all_done) {
+            log_warn_printf(perflog, "Burst sample %u: timeout waiting for deliveries\n", s);
+            continue;
+        }
+
+        const double burst_us = std::chrono::duration<double, std::micro>(burst_end - burst_start).count();
+        const uint64_t total_deliveries = static_cast<uint64_t>(burst_size) * num_subscriptions;
+        const double per_delivery_us = burst_us / static_cast<double>(total_deliveries);
+
+        per_delivery_samples.push_back(per_delivery_us);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    for (auto& sub : subs) {
+        if (sub)
+            sub->cancel();
+    }
+
+    BurstResult result;
+    result.protocol = protocolModeStr(mode);
+    result.subscribers = num_subscriptions;
+    result.payload_bytes = payload_size;
+    result.burst_size = burst_size;
+    result.num_samples = static_cast<uint32_t>(per_delivery_samples.size());
+
+    if (!per_delivery_samples.empty()) {
+        auto sorted = per_delivery_samples;
+        result.median_per_delivery_us = computeMedian(sorted);
+        sorted = per_delivery_samples;
+        result.p25_per_delivery_us = computePercentile(sorted, 25.0);
+        sorted = per_delivery_samples;
+        result.p75_per_delivery_us = computePercentile(sorted, 75.0);
+        sorted = per_delivery_samples;
+        result.p99_per_delivery_us = computePercentile(sorted, 99.0);
+        result.cv_pct = computeCV(per_delivery_samples);
+        result.mean_per_delivery_us = std::accumulate(per_delivery_samples.begin(),
+                                                       per_delivery_samples.end(), 0.0)
+                                       / static_cast<double>(per_delivery_samples.size());
+        result.min_per_delivery_us = *std::min_element(per_delivery_samples.begin(),
+                                                        per_delivery_samples.end());
+        result.max_per_delivery_us = *std::max_element(per_delivery_samples.begin(),
+                                                        per_delivery_samples.end());
+        result.theoretical_ups = (result.median_per_delivery_us > 0.0)
+                                     ? (1000000.0 / result.median_per_delivery_us)
+                                     : 0.0;
+    }
+
+    return result;
+}
+
+/**
  * @brief Per-subscription state for Channel Access counter verification during CA benchmarks.
  */
 struct CaSubState {
@@ -1507,6 +2641,37 @@ static void caMonitorCallback(struct event_handler_args args) {
         st->success_count++;
         st->expected_counter = counter + 1;
     }
+}
+
+struct CaLatencySubState {
+    std::mutex mtx;
+    bool first_update_seen{false};
+    uint64_t last_received_counter{0};
+    uint64_t recv_timestamp_ns{0};
+    bool update_ready{false};
+};
+
+static void caLatencyCallback(struct event_handler_args args) {
+    if (args.status != ECA_NORMAL || !args.usr) return;
+    const auto recv_time = std::chrono::steady_clock::now();
+    const uint64_t recv_ns = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            recv_time.time_since_epoch()).count());
+
+    auto* st = static_cast<CaLatencySubState*>(args.usr);
+    const auto* data = static_cast<const uint8_t*>(args.dbr);
+    const auto count = args.count;
+    if (count < static_cast<long>(kCounterSize)) return;
+
+    const uint64_t counter = decodeCounter(data, static_cast<size_t>(count));
+
+    std::lock_guard<std::mutex> lk(st->mtx);
+    if (!st->first_update_seen) {
+        st->first_update_seen = true;
+    }
+    st->last_received_counter = counter;
+    st->recv_timestamp_ns = recv_ns;
+    st->update_ready = true;
 }
 
 /**
@@ -1772,13 +2937,594 @@ BenchmarkResult runCaBenchmark(
 }
 
 /**
- * @brief Write the throughput CSV header row to the given output stream.
- * @param out  Output stream to write the header to.
+ * @brief Run a steady-state CA throughput benchmark with sub-window measurement.
  */
+std::vector<SubWindowResult> runCaSteadyStateBenchmark(
+    EmbeddedIoc& ioc,
+    const size_t payload_size,
+    const uint32_t num_subscriptions,
+    const uint32_t num_windows = 10,
+    const double window_sec = 3.0,
+    const uint32_t omit_windows = 2)
+{
+    std::vector<SubWindowResult> results;
+
+    if (!ioc.is_initialized()) {
+        return results;
+    }
+
+    const size_t effective_size = std::max(payload_size, kHeaderSize);
+    const uint64_t warmup_count = 100;
+
+    int ca_status = ca_context_create(ca_enable_preemptive_callback);
+    if (ca_status != ECA_NORMAL) {
+        log_warn_printf(perflog, "%s\n", "CA steady-state: ca_context_create failed");
+        return results;
+    }
+
+    chid chan_id = nullptr;
+    ca_status = ca_create_channel("PVXPERF:CA:BENCH", nullptr, nullptr, 0, &chan_id);
+    if (ca_status != ECA_NORMAL || !chan_id) {
+        log_warn_printf(perflog, "%s\n", "CA steady-state: ca_create_channel failed");
+        ca_context_destroy();
+        return results;
+    }
+    ca_pend_io(5.0);
+
+    const uint32_t num_subs = num_subscriptions;
+
+    std::vector<std::shared_ptr<CaSubState>> states(num_subs);
+    std::vector<evid> evids(num_subs, nullptr);
+
+    for (uint32_t i = 0; i < num_subs; i++) {
+        states[i] = std::make_shared<CaSubState>();
+        states[i]->warmup_remaining = warmup_count;
+
+        ca_status = ca_create_subscription(
+            DBR_CHAR,
+            static_cast<unsigned long>(effective_size),
+            chan_id,
+            DBE_VALUE,
+            caMonitorCallback,
+            states[i].get(),
+            &evids[i]);
+
+        if (ca_status != ECA_NORMAL) {
+            log_warn_printf(perflog, "CA steady-state: ca_create_subscription %u failed\n", i);
+        }
+    }
+    ca_flush_io();
+
+    std::atomic<bool> stop_pump{false};
+
+    // Seed phase (same as runCaBenchmark)
+    {
+        std::vector<uint8_t> seed_buf(effective_size);
+        const uint32_t seed_count = std::max(uint32_t(20), num_subs / 10);
+        for (uint32_t i = 0; i < seed_count; i++) {
+            encodePayload(seed_buf.data(), effective_size, 0, currentTimestampUs());
+            dbPutField(ioc.addr(), DBF_UCHAR, seed_buf.data(), static_cast<long>(effective_size));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+
+    // Flood pump thread
+    std::thread pump_thread([&]() {
+        std::vector<uint8_t> buf(effective_size);
+        uint64_t cnt = 0;
+
+        while (!stop_pump.load(std::memory_order_relaxed)) {
+            encodePayload(buf.data(), effective_size, cnt, currentTimestampUs());
+            dbPutField(ioc.addr(), DBF_UCHAR, buf.data(), static_cast<long>(effective_size));
+            cnt++;
+            if (num_subs > 100 && (cnt & 0xFF) == 0) {
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            }
+        }
+    });
+
+    // Wait for warmup
+    {
+        const double warmup_timeout_sec = std::max(30.0, static_cast<double>(num_subs) / 10.0);
+        const auto warmup_deadline = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(static_cast<int>(warmup_timeout_sec * 1000));
+        bool all_warmed_up = false;
+        while (std::chrono::steady_clock::now() < warmup_deadline) {
+            all_warmed_up = true;
+            for (auto& st : states) {
+                std::lock_guard<std::mutex> lk(st->mtx);
+                if (!st->warmup_done) {
+                    all_warmed_up = false;
+                    break;
+                }
+            }
+            if (all_warmed_up)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        if (!all_warmed_up) {
+            uint32_t warmed_count = 0;
+            for (auto& st : states) {
+                std::lock_guard<std::mutex> lk(st->mtx);
+                if (st->warmup_done) warmed_count++;
+            }
+            log_warn_printf(perflog, "CA steady-state warm-up: only %u/%u subscriptions warmed up\n",
+                            warmed_count, num_subs);
+        }
+    }
+
+    // Sub-window measurement loop
+    for (uint32_t win = 0; win < num_windows; ++win) {
+        for (auto& st : states) {
+            std::lock_guard<std::mutex> lk(st->mtx);
+            st->success_count = 0;
+            st->drop_count = 0;
+            st->error_count = 0;
+        }
+
+        const auto win_start = std::chrono::steady_clock::now();
+        std::this_thread::sleep_for(std::chrono::milliseconds(
+            static_cast<int64_t>(window_sec * 1000)));
+        const auto win_end = std::chrono::steady_clock::now();
+
+        const double win_elapsed = std::chrono::duration<double>(win_end - win_start).count();
+        uint64_t total_success = 0, total_drops = 0, total_errors = 0;
+        for (auto& st : states) {
+            std::lock_guard<std::mutex> lk(st->mtx);
+            total_success += st->success_count;
+            total_drops += st->drop_count;
+            total_errors += st->error_count;
+        }
+
+        SubWindowResult w;
+        w.window_index = win;
+        w.omitted = (win < omit_windows);
+        w.duration_seconds = win_elapsed;
+        w.total_updates = total_success;
+        w.drops = total_drops;
+        w.errors = total_errors;
+        w.updates_per_second = (win_elapsed > 0.0) ? (static_cast<double>(total_success) / win_elapsed) : 0.0;
+        results.push_back(w);
+    }
+
+    stop_pump.store(true, std::memory_order_relaxed);
+    pump_thread.join();
+
+    for (auto& eid : evids) {
+        if (eid)
+            ca_clear_subscription(eid);
+    }
+    ca_clear_channel(chan_id);
+    ca_context_destroy();
+
+    return results;
+}
+
+LatencyResult runCaLatencyBenchmark(
+    EmbeddedIoc& ioc,
+    const size_t payload_size,
+    const uint32_t num_subscriptions,
+    const uint32_t num_samples = 500,
+    const uint32_t warmup_samples = 50,
+    const uint32_t send_interval_us = 1000)
+{
+    LatencyResult result;
+    result.protocol = "CA";
+    result.subscribers = num_subscriptions;
+    result.payload_bytes = payload_size;
+
+    if (!ioc.is_initialized()) {
+        return result;
+    }
+
+    const size_t effective_size = std::max(payload_size, kHeaderSize);
+
+    int ca_status = ca_context_create(ca_enable_preemptive_callback);
+    if (ca_status != ECA_NORMAL) {
+        log_warn_printf(perflog, "%s\n", "CA latency: ca_context_create failed");
+        return result;
+    }
+
+    chid chan_id = nullptr;
+    ca_status = ca_create_channel("PVXPERF:CA:BENCH", nullptr, nullptr, 0, &chan_id);
+    if (ca_status != ECA_NORMAL || !chan_id) {
+        log_warn_printf(perflog, "%s\n", "CA latency: ca_create_channel failed");
+        ca_context_destroy();
+        return result;
+    }
+    ca_pend_io(5.0);
+
+    const uint32_t num_subs = num_subscriptions;
+
+    std::vector<std::shared_ptr<CaLatencySubState>> states(num_subs);
+    std::vector<evid> evids(num_subs, nullptr);
+
+    for (uint32_t i = 0; i < num_subs; i++) {
+        states[i] = std::make_shared<CaLatencySubState>();
+
+        ca_status = ca_create_subscription(
+            DBR_CHAR,
+            static_cast<unsigned long>(effective_size),
+            chan_id,
+            DBE_VALUE,
+            caLatencyCallback,
+            states[i].get(),
+            &evids[i]);
+
+        if (ca_status != ECA_NORMAL) {
+            log_warn_printf(perflog, "CA latency: ca_create_subscription %u failed\n", i);
+        }
+    }
+    ca_flush_io();
+
+    // Seed phase
+    {
+        std::vector<uint8_t> seed_buf(effective_size);
+        const uint32_t seed_count = std::max(uint32_t(20), num_subs / 10);
+        for (uint32_t i = 0; i < seed_count; i++) {
+            encodePayload(seed_buf.data(), effective_size, 0, currentTimestampUs());
+            dbPutField(ioc.addr(), DBF_UCHAR, seed_buf.data(), static_cast<long>(effective_size));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+
+    // Wait for all subscribers to see at least one update
+    {
+        const auto conn_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (std::chrono::steady_clock::now() < conn_deadline) {
+            bool all_seen = true;
+            for (auto& st : states) {
+                std::lock_guard<std::mutex> lk(st->mtx);
+                if (!st->first_update_seen) {
+                    all_seen = false;
+                    break;
+                }
+            }
+            if (all_seen) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+
+    const uint32_t total_samples = warmup_samples + num_samples;
+    std::vector<double> latencies_us;
+    latencies_us.reserve(num_samples);
+
+    std::vector<uint8_t> buf(effective_size);
+
+    for (uint32_t sample = 0; sample < total_samples; ++sample) {
+        for (auto& st : states) {
+            std::lock_guard<std::mutex> lk(st->mtx);
+            st->update_ready = false;
+        }
+
+        const uint64_t net_counter = toNetworkOrder64(static_cast<uint64_t>(sample));
+        std::memcpy(buf.data(), &net_counter, kCounterSize);
+        const auto send_time = std::chrono::steady_clock::now();
+        const uint64_t send_ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                send_time.time_since_epoch()).count());
+        const uint64_t net_ns = toNetworkOrder64(send_ns);
+        std::memcpy(buf.data() + kCounterSize, &net_ns, kCounterSize);
+        const auto fill = static_cast<uint8_t>(sample & 0xFF);
+        if (effective_size > kHeaderSize)
+            std::memset(buf.data() + kHeaderSize, fill, effective_size - kHeaderSize);
+
+        dbPutField(ioc.addr(), DBF_UCHAR, buf.data(), static_cast<long>(effective_size));
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        bool all_received = false;
+        while (std::chrono::steady_clock::now() < deadline) {
+            all_received = true;
+            for (auto& st : states) {
+                std::lock_guard<std::mutex> lk(st->mtx);
+                if (!st->update_ready || st->last_received_counter != static_cast<uint64_t>(sample)) {
+                    all_received = false;
+                    break;
+                }
+            }
+            if (all_received) break;
+            std::this_thread::sleep_for(std::chrono::microseconds(10));
+        }
+
+        if (!all_received) {
+            log_warn_printf(perflog, "CA latency sample %u: not all subscribers received (timeout)\n", sample);
+            continue;
+        }
+
+        uint64_t max_recv_ns = 0;
+        for (auto& st : states) {
+            std::lock_guard<std::mutex> lk(st->mtx);
+            if (st->recv_timestamp_ns > max_recv_ns)
+                max_recv_ns = st->recv_timestamp_ns;
+        }
+
+        const double latency_us = static_cast<double>(max_recv_ns - send_ns) / 1000.0;
+
+        if (sample >= warmup_samples) {
+            latencies_us.push_back(latency_us);
+        }
+
+        if (send_interval_us > 0) {
+            std::this_thread::sleep_for(std::chrono::microseconds(send_interval_us));
+        }
+    }
+
+    for (auto& eid : evids) {
+        if (eid)
+            ca_clear_subscription(eid);
+    }
+    ca_clear_channel(chan_id);
+    ca_context_destroy();
+
+    result.num_samples = static_cast<uint32_t>(latencies_us.size());
+
+    if (!latencies_us.empty()) {
+        auto sorted = latencies_us;
+        result.median_us = computeMedian(sorted);
+        sorted = latencies_us;
+        result.p25_us = computePercentile(sorted, 25.0);
+        sorted = latencies_us;
+        result.p75_us = computePercentile(sorted, 75.0);
+        sorted = latencies_us;
+        result.p99_us = computePercentile(sorted, 99.0);
+        result.cv_pct = computeCV(latencies_us);
+        result.mean_us = std::accumulate(latencies_us.begin(), latencies_us.end(), 0.0)
+                         / static_cast<double>(latencies_us.size());
+        result.min_us = *std::min_element(latencies_us.begin(), latencies_us.end());
+        result.max_us = *std::max_element(latencies_us.begin(), latencies_us.end());
+        result.theoretical_ups = (result.median_us > 0.0) ? (1000000.0 / result.median_us) : 0.0;
+    }
+
+    return result;
+}
+
+struct CaBurstSubState {
+    std::atomic<bool> connected{false};
+    std::atomic<uint64_t> received_count{0};
+    std::atomic<uint64_t> last_counter{0};
+};
+
+static void caBurstCallback(struct event_handler_args args) {
+    if (args.status != ECA_NORMAL || !args.usr) return;
+    auto* st = static_cast<CaBurstSubState*>(args.usr);
+    if (!st->connected.load(std::memory_order_relaxed)) {
+        st->connected.store(true, std::memory_order_release);
+    }
+    st->received_count.fetch_add(1, std::memory_order_release);
+
+    // Track last counter seen (for debugging)
+    const auto* data = static_cast<const uint8_t*>(args.dbr);
+    const auto count = args.count;
+    if (count >= static_cast<long>(kCounterSize)) {
+        const uint64_t counter = decodeCounter(data, static_cast<size_t>(count));
+        st->last_counter.store(counter, std::memory_order_release);
+    }
+}
+
+BurstResult runCaBurstBenchmark(
+    EmbeddedIoc& ioc,
+    const size_t payload_size,
+    const uint32_t num_subscriptions,
+    const uint32_t burst_size = 100,
+    const uint32_t num_samples = 50,
+    const uint32_t warmup_bursts = 5,
+    const uint32_t burst_send_interval_us = 100)
+{
+    BurstResult result;
+    result.protocol = "CA";
+    result.subscribers = num_subscriptions;
+    result.payload_bytes = payload_size;
+    result.burst_size = burst_size;
+
+    if (!ioc.is_initialized()) {
+        return result;
+    }
+
+    const size_t effective_size = std::max(payload_size, kHeaderSize);
+
+    int ca_status = ca_context_create(ca_enable_preemptive_callback);
+    if (ca_status != ECA_NORMAL) {
+        log_warn_printf(perflog, "%s\n", "CA burst: ca_context_create failed");
+        return result;
+    }
+
+    chid chan_id = nullptr;
+    ca_status = ca_create_channel("PVXPERF:CA:BENCH", nullptr, nullptr, 0, &chan_id);
+    if (ca_status != ECA_NORMAL || !chan_id) {
+        log_warn_printf(perflog, "%s\n", "CA burst: ca_create_channel failed");
+        ca_context_destroy();
+        return result;
+    }
+    ca_pend_io(5.0);
+
+    const uint32_t num_subs = num_subscriptions;
+
+    std::vector<std::shared_ptr<CaBurstSubState>> states(num_subs);
+    std::vector<evid> evids(num_subs, nullptr);
+
+    for (uint32_t i = 0; i < num_subs; i++) {
+        states[i] = std::make_shared<CaBurstSubState>();
+
+        ca_status = ca_create_subscription(
+            DBR_CHAR,
+            static_cast<unsigned long>(effective_size),
+            chan_id,
+            DBE_VALUE,
+            caBurstCallback,
+            states[i].get(),
+            &evids[i]);
+
+        if (ca_status != ECA_NORMAL) {
+            log_warn_printf(perflog, "CA burst: ca_create_subscription %u failed\n", i);
+        }
+    }
+    ca_flush_io();
+
+    // Seed: slow updates so CA dispatches to all subscriptions
+    {
+        std::vector<uint8_t> seed_buf(effective_size);
+        const uint32_t seed_count = std::max(uint32_t(20), num_subs / 10);
+        for (uint32_t i = 0; i < seed_count; i++) {
+            encodePayload(seed_buf.data(), effective_size, 0, currentTimestampUs());
+            dbPutField(ioc.addr(), DBF_UCHAR, seed_buf.data(), static_cast<long>(effective_size));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+
+    // Wait for all subscribers to connect
+    {
+        const auto conn_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (std::chrono::steady_clock::now() < conn_deadline) {
+            ca_pend_event(0.01);
+            bool all_connected = true;
+            for (const auto& st : states) {
+                if (!st->connected.load(std::memory_order_acquire)) {
+                    all_connected = false;
+                    break;
+                }
+            }
+            if (all_connected) break;
+        }
+    }
+
+    auto ca_all_received = [&](uint32_t target) -> bool {
+        for (const auto& st : states) {
+            if (st->received_count.load(std::memory_order_acquire) < target) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // Warmup: continuous paced feed until all subs have burst_size deliveries
+    for (uint32_t w = 0; w < warmup_bursts; ++w) {
+        for (auto& st : states) {
+            st->received_count.store(0, std::memory_order_release);
+            st->last_counter.store(0, std::memory_order_release);
+        }
+        std::atomic<bool> warmup_stop{false};
+        std::thread warmup_sender([&]() {
+            std::vector<uint8_t> send_buf(effective_size);
+            uint32_t counter = 0;
+            while (!warmup_stop.load(std::memory_order_acquire)) {
+                encodePayload(send_buf.data(), effective_size, counter, 0);
+                dbPutField(ioc.addr(), DBF_UCHAR, send_buf.data(), static_cast<long>(effective_size));
+                ++counter;
+                if (burst_send_interval_us > 0) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(burst_send_interval_us));
+                }
+            }
+        });
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (std::chrono::steady_clock::now() < deadline) {
+            ca_pend_event(0.0001);
+            if (ca_all_received(burst_size)) break;
+        }
+        warmup_stop.store(true, std::memory_order_release);
+        warmup_sender.join();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    std::vector<double> per_delivery_samples;
+    per_delivery_samples.reserve(num_samples);
+
+    for (uint32_t s = 0; s < num_samples; ++s) {
+        for (auto& st : states) {
+            st->received_count.store(0, std::memory_order_release);
+            st->last_counter.store(0, std::memory_order_release);
+        }
+
+        std::atomic<bool> stop{false};
+        const auto burst_start = std::chrono::steady_clock::now();
+
+        std::thread sender([&]() {
+            std::vector<uint8_t> send_buf(effective_size);
+            uint32_t counter = 0;
+            while (!stop.load(std::memory_order_acquire)) {
+                encodePayload(send_buf.data(), effective_size, counter, 0);
+                dbPutField(ioc.addr(), DBF_UCHAR, send_buf.data(), static_cast<long>(effective_size));
+                ++counter;
+                if (burst_send_interval_us > 0) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(burst_send_interval_us));
+                }
+            }
+        });
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        bool all_done = false;
+        while (std::chrono::steady_clock::now() < deadline) {
+            ca_pend_event(0.0001);
+            if (ca_all_received(burst_size)) {
+                all_done = true;
+                break;
+            }
+        }
+
+        stop.store(true, std::memory_order_release);
+        sender.join();
+
+        const auto burst_end = std::chrono::steady_clock::now();
+
+        if (!all_done) {
+            for (uint32_t i = 0; i < num_subs; ++i) {
+                const uint64_t got = states[i]->received_count.load(std::memory_order_acquire);
+                if (got < burst_size) {
+                    log_warn_printf(perflog,
+                        "CA burst sample %u: sub[%u] lagging: received %llu/%u\n",
+                        s, i, static_cast<unsigned long long>(got), burst_size);
+                }
+            }
+            log_warn_printf(perflog, "CA burst sample %u: timeout waiting for deliveries\n", s);
+            continue;
+        }
+
+        const double burst_us = std::chrono::duration<double, std::micro>(burst_end - burst_start).count();
+        const uint64_t total_deliveries = static_cast<uint64_t>(burst_size) * num_subscriptions;
+        const double per_delivery_us = burst_us / static_cast<double>(total_deliveries);
+
+        per_delivery_samples.push_back(per_delivery_us);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    for (auto& eid : evids) {
+        if (eid)
+            ca_clear_subscription(eid);
+    }
+    ca_clear_channel(chan_id);
+    ca_context_destroy();
+
+    result.num_samples = static_cast<uint32_t>(per_delivery_samples.size());
+
+    if (!per_delivery_samples.empty()) {
+        auto sorted = per_delivery_samples;
+        result.median_per_delivery_us = computeMedian(sorted);
+        sorted = per_delivery_samples;
+        result.p25_per_delivery_us = computePercentile(sorted, 25.0);
+        sorted = per_delivery_samples;
+        result.p75_per_delivery_us = computePercentile(sorted, 75.0);
+        sorted = per_delivery_samples;
+        result.p99_per_delivery_us = computePercentile(sorted, 99.0);
+        result.cv_pct = computeCV(per_delivery_samples);
+        result.mean_per_delivery_us = std::accumulate(per_delivery_samples.begin(),
+                                                       per_delivery_samples.end(), 0.0)
+                                       / static_cast<double>(per_delivery_samples.size());
+        result.min_per_delivery_us = *std::min_element(per_delivery_samples.begin(),
+                                                        per_delivery_samples.end());
+        result.max_per_delivery_us = *std::max_element(per_delivery_samples.begin(),
+                                                        per_delivery_samples.end());
+        result.theoretical_ups = (result.median_per_delivery_us > 0.0)
+                                     ? (1000000.0 / result.median_per_delivery_us)
+                                     : 0.0;
+    }
+
+    return result;
+}
+
 void writeCsvHeader(std::ostream& out) {
     out << "protocol,payload_mode,subscribers,payload_bytes,topology,iteration,"
-           "updates_per_second,per_sub_updates_per_second,total_updates,drops,errors,duration_seconds,"
-           "pva_queue_size"
+           "updates_per_second,per_sub_updates_per_second,total_updates,drops,errors,duration_seconds"
         << std::endl;
 }
 
@@ -1799,8 +3545,7 @@ void writeCsvRow(std::ostream& out, const BenchmarkResult& r) {
         << r.total_updates << ","
         << r.drops << ","
         << r.errors << ","
-        << r.duration_seconds << ","
-        << r.pva_queue_size
+        << r.duration_seconds
         << std::endl;
     out.flush();
 }
@@ -2014,7 +3759,6 @@ BenchmarkResult runPvaBenchmarkClient(
     const uint32_t num_subscriptions,
     const std::string& client_keychain,
     const bool nt_payload,
-    const uint32_t pva_queue_size,
     client::Context& ctxt)
 {
     BenchmarkResult result;
@@ -2022,7 +3766,6 @@ BenchmarkResult runPvaBenchmarkClient(
     result.payload_mode = nt_payload ? "nt" : "raw";
     result.subscribers = num_subscriptions;
     result.payload_bytes = payload_size;
-    result.pva_queue_size = pva_queue_size;
 
     const std::string pvname = "PVXPERF:BENCH";
     const uint32_t num_subs = num_subscriptions;
@@ -2040,7 +3783,7 @@ BenchmarkResult runPvaBenchmarkClient(
          const auto st = states[i];
          subs[i] = ctxt.monitor(pvname)
                        .record("pipeline", true)
-                       .record("queueSize", int32_t(pva_queue_size))
+                       .record("queueSize", int32_t(4))
                        .maskConnected(true)
                        .maskDisconnected(true)
                        .event([st, &connected_subs](client::Subscription& sub) {
@@ -2269,7 +4012,6 @@ int main(int argc, char* argv[]) {
         bool show_version = false;
         bool nt_payload = false;
         uint32_t throughput_iterations = 5;
-        uint32_t pva_queue_size = 144;
         bool benchmark_phases = false;
         uint32_t phase_iterations = 50;
         std::string phase_output;
@@ -2278,6 +4020,17 @@ int main(int argc, char* argv[]) {
         std::string server_addr;
         bool use_gateway = false;
         bool print_gateway_config = false;
+        std::string bench_mode = "steady-state";
+        uint32_t num_windows = 10;
+        double window_duration = 3.0;
+        uint32_t omit_windows = 2;
+        uint32_t latency_samples = 500;
+        uint32_t latency_warmup = 50;
+        uint32_t send_interval_us_opt = 1000;
+        uint32_t burst_size = 100;
+        uint32_t burst_samples = 50;
+        uint32_t burst_warmup = 5;
+        uint32_t burst_send_interval_us = 100;
 
         app.add_option("--duration", duration, "Measurement duration per data point in seconds");
         app.add_option("--warmup", warmup, "Number of warm-up updates before measurement");
@@ -2289,10 +4042,28 @@ int main(int argc, char* argv[]) {
         app.add_option("--output", output_file, "CSV output file (default: stdout)");
         app.add_option("--throughput-iterations", throughput_iterations,
                        "Number of independent measurement iterations per data point");
-        app.add_option("--pva-queue-size", pva_queue_size,
-                       "Base PVA monitor queue size. Effective size per payload:\n"
-                       "floor(base / 2^log10(payload_bytes)). Default 144 (CA's\n"
-                       "internal queue depth). PVXS default is 4.");
+        app.add_option("--bench-mode", bench_mode,
+                       "Benchmark mode: adaptive, steady-state (default), latency, or burst");
+        app.add_option("--num-windows", num_windows,
+                       "Number of measurement sub-windows per data point");
+        app.add_option("--window-duration", window_duration,
+                       "Duration of each measurement sub-window in seconds");
+        app.add_option("--omit-windows", omit_windows,
+                       "Number of initial sub-windows to omit as warmup");
+        app.add_option("--latency-samples", latency_samples,
+                       "Number of measured latency samples (after warmup)");
+        app.add_option("--latency-warmup", latency_warmup,
+                       "Number of warmup samples to discard");
+        app.add_option("--send-interval", send_interval_us_opt,
+                       "Microseconds between latency sample sends (default 1000 = 1ms)");
+        app.add_option("--burst-size", burst_size,
+                       "Updates per burst (burst mode)");
+        app.add_option("--burst-samples", burst_samples,
+                       "Number of burst measurements");
+        app.add_option("--burst-warmup", burst_warmup,
+                       "Warmup bursts to discard");
+        app.add_option("--burst-send-interval", burst_send_interval_us,
+                       "Microseconds between sends in CA burst mode (default: 100). Prevents CA squashing.")->default_val(100);
         app.add_flag("--setup-cms", setup_cms,
                      "Auto-bootstrap PVACMS with temp certs for SPVA_CERTMON");
         app.add_flag("--external-cms", external_cms,
@@ -2323,8 +4094,7 @@ int main(int argc, char* argv[]) {
                 << "pvxperf - PVAccess Performance Benchmarking Tool\n"
                 << std::endl
                 << "Measures monitor subscription throughput (updates/second) across four protocol\n"
-                << "modes: CA, PVA, SPVA, and SPVA+CERTMON, sweeping across configurable subscriber\n"
-                << "counts.\n"
+                << "modes: CA, PVA, SPVA, and SPVA+CERTMON using adaptive rate discovery.\n"
                 << std::endl
                 << "WARNING: Run on a network with no other active PVACMS to avoid interference\n"
                 << "with benchmark results.\n"
@@ -2345,12 +4115,23 @@ int main(int argc, char* argv[]) {
                 << "                                              ca,pva,spva,spva_certmon. Default all\n"
                 << "        --throughput-iterations <N>            Number of independent measurement iterations per\n"
                 << "                                              data point. Default 5\n"
-                << "        --pva-queue-size <N>                  Base PVA monitor queue size. Default 144 (matches\n"
-                << "                                              CA's internal 144-entry event queue; PVXS default\n"
-                << "                                              is 4). Effective size scales with payload:\n"
-                << "                                              floor(base / 2^log10(payload_bytes)).\n"
-                << "                                              e.g. base=144: 144@1B, 72@10B, 36@100B,\n"
-                << "                                              18@1KB, 9@10KB, 4@100KB\n"
+                << "        --bench-mode <mode>                   Benchmark mode: adaptive (legacy),\n"
+                << "                                              steady-state (default), latency, or burst.\n"
+                << "                                              Burst sends B updates back-to-back for low-CV\n"
+                << "                                              per-delivery cost measurement\n"
+                << "        --num-windows <N>                     Number of measurement sub-windows per data\n"
+                << "                                              point (steady-state mode). Default 10\n"
+                << "        --window-duration <seconds>           Duration of each sub-window. Default 3.0\n"
+                << "        --omit-windows <N>                    Initial sub-windows to discard as warmup.\n"
+                << "                                              Default 2\n"
+                << "        --latency-samples <N>                 Number of measured latency samples. Default 500\n"
+                << "        --latency-warmup <N>                  Warmup samples to discard. Default 50\n"
+                << "        --send-interval <us>                  Microseconds between latency sends. Default 1000\n"
+                << "        --burst-size <N>                      Updates per burst (burst mode). Default 100\n"
+                << "        --burst-samples <N>                   Number of burst measurements. Default 50\n"
+                << "        --burst-warmup <N>                    Warmup bursts to discard. Default 5\n"
+                << "        --burst-send-interval <us>            Microseconds between sends in CA burst mode.\n"
+                << "                                              Prevents CA queue squashing. Default 100\n"
                 << "        --nt-payload                          Use NT types for PVA payload (adds timestamp/alarm\n"
                 << "                                              metadata overhead)\n"
                 << "        --output <file>                       CSV output file. Default stdout\n"
@@ -2559,11 +4340,10 @@ int main(int argc, char* argv[]) {
                                            protocolModeStr(mode), num_subs, payload_size,
                                            iter, throughput_iterations);
 
-                            const uint32_t eff_queue = computeEffectiveQueueSize(pva_queue_size, payload_size);
                             BenchmarkResult result = runPvaBenchmarkClient(
                                 mode, payload_size, duration, warmup, num_subs,
                                 client_keychain.empty() ? keychain : client_keychain,
-                                nt_payload, eff_queue, ctxt);
+                                nt_payload, ctxt);
 
                             result.topology = topology;
                             result.iteration = iter;
@@ -2616,36 +4396,168 @@ int main(int argc, char* argv[]) {
 
                 for (const auto payload_size : sizes) {
                     for (const auto num_subs : sub_counts) {
-                        for (uint32_t iter = 1; iter <= throughput_iterations; ++iter) {
-                            log_info_printf(perflog, "Benchmarking %s %u subs %zu bytes (iter %u/%u)...\n",
+                        const uint32_t effective_iterations =
+                            (bench_mode == "steady-state" || bench_mode == "latency" || bench_mode == "burst") ? 1 : throughput_iterations;
+                        for (uint32_t iter = 1; iter <= effective_iterations; ++iter) {
+                            log_info_printf(perflog, "Benchmarking %s %u subs %zu bytes (%s)...\n",
                                            protocolModeStr(mode), num_subs, payload_size,
-                                           iter, throughput_iterations);
+                                           bench_mode.c_str());
 
-                            BenchmarkResult result;
-
-                            if (mode == ProtocolMode::CA) {
-                                result = runCaBenchmark(ca_ioc, payload_size, duration,
-                                                          warmup, num_subs);
+                            if (bench_mode == "latency") {
+                                if (mode == ProtocolMode::CA) {
+                                    auto lr = runCaLatencyBenchmark(ca_ioc, payload_size,
+                                        num_subs, latency_samples, latency_warmup, send_interval_us_opt);
+                                    printLatencySummary(lr);
+                                    BenchmarkResult r;
+                                    r.protocol = "CA";
+                                    r.payload_mode = "raw";
+                                    r.subscribers = num_subs;
+                                    r.payload_bytes = payload_size;
+                                    r.iteration = 1;
+                                    r.updates_per_second = lr.theoretical_ups;
+                                    r.per_sub_updates_per_second = (num_subs > 0) ? (lr.theoretical_ups / num_subs) : 0.0;
+                                    r.total_updates = lr.num_samples;
+                                    r.drops = 0;
+                                    r.errors = 0;
+                                    r.duration_seconds = lr.median_us / 1e6;
+                                    writeCsvRow(*out, r);
+                                    all_results.push_back(r);
+                                } else {
+                                    const uint16_t cms_port = setup_cms ? kPvacmsUdpPort : 0u;
+                                    auto lr = runLatencyBenchmark(mode, payload_size,
+                                        num_subs, keychain, client_keychain, nt_payload, cms_port,
+                                        latency_samples, latency_warmup, send_interval_us_opt);
+                                    printLatencySummary(lr);
+                                    BenchmarkResult r;
+                                    r.protocol = protocolModeStr(mode);
+                                    r.payload_mode = nt_payload ? "nt" : "raw";
+                                    r.subscribers = num_subs;
+                                    r.payload_bytes = payload_size;
+                                    r.iteration = 1;
+                                    r.updates_per_second = lr.theoretical_ups;
+                                    r.per_sub_updates_per_second = (num_subs > 0) ? (lr.theoretical_ups / num_subs) : 0.0;
+                                    r.total_updates = lr.num_samples;
+                                    r.drops = 0;
+                                    r.errors = 0;
+                                    r.duration_seconds = lr.median_us / 1e6;
+                                    writeCsvRow(*out, r);
+                                    all_results.push_back(r);
+                                }
+                            } else if (bench_mode == "steady-state") {
+                                if (mode == ProtocolMode::CA) {
+                                    auto windows = runCaSteadyStateBenchmark(ca_ioc, payload_size,
+                                        num_subs, num_windows, window_duration, omit_windows);
+                                    printSteadyStateSummary(windows, "CA", num_subs, payload_size);
+                                    uint32_t csv_iter = 1;
+                                    for (const auto& w : windows) {
+                                        if (w.omitted) continue;
+                                        BenchmarkResult r;
+                                        r.protocol = "CA";
+                                        r.payload_mode = "raw";
+                                        r.subscribers = num_subs;
+                                        r.payload_bytes = payload_size;
+                                        r.iteration = csv_iter++;
+                                        r.updates_per_second = w.updates_per_second;
+                                        r.per_sub_updates_per_second = (num_subs > 0) ? (w.updates_per_second / num_subs) : 0.0;
+                                        r.total_updates = w.total_updates;
+                                        r.drops = w.drops;
+                                        r.errors = w.errors;
+                                        r.duration_seconds = w.duration_seconds;
+                                        writeCsvRow(*out, r);
+                                        all_results.push_back(r);
+                                    }
+                                } else {
+                                    const uint16_t cms_port = setup_cms ? kPvacmsUdpPort : 0u;
+                                    auto windows = runSteadyStateBenchmark(mode, payload_size,
+                                        num_subs, keychain, client_keychain, nt_payload, cms_port,
+                                        num_windows, window_duration, omit_windows);
+                                    printSteadyStateSummary(windows, protocolModeStr(mode), num_subs, payload_size);
+                                    uint32_t csv_iter = 1;
+                                    for (const auto& w : windows) {
+                                        if (w.omitted) continue;
+                                        BenchmarkResult r;
+                                        r.protocol = protocolModeStr(mode);
+                                        r.payload_mode = nt_payload ? "nt" : "raw";
+                                        r.subscribers = num_subs;
+                                        r.payload_bytes = payload_size;
+                                        r.iteration = csv_iter++;
+                                        r.updates_per_second = w.updates_per_second;
+                                        r.per_sub_updates_per_second = (num_subs > 0) ? (w.updates_per_second / num_subs) : 0.0;
+                                        r.total_updates = w.total_updates;
+                                        r.drops = w.drops;
+                                        r.errors = w.errors;
+                                        r.duration_seconds = w.duration_seconds;
+                                        writeCsvRow(*out, r);
+                                        all_results.push_back(r);
+                                    }
+                                }
+                            } else if (bench_mode == "burst") {
+                                if (mode == ProtocolMode::CA) {
+                                    auto br = runCaBurstBenchmark(ca_ioc, payload_size,
+                                        num_subs, burst_size, burst_samples, burst_warmup,
+                                        burst_send_interval_us);
+                                    printBurstSummary(br);
+                                    BenchmarkResult r;
+                                    r.protocol = "CA";
+                                    r.payload_mode = "raw";
+                                    r.subscribers = num_subs;
+                                    r.payload_bytes = payload_size;
+                                    r.iteration = 1;
+                                    r.updates_per_second = br.theoretical_ups;
+                                    r.per_sub_updates_per_second = (num_subs > 0) ? (br.theoretical_ups / num_subs) : 0.0;
+                                    r.total_updates = static_cast<uint64_t>(br.num_samples) * burst_size;
+                                    r.drops = 0;
+                                    r.errors = 0;
+                                    r.duration_seconds = br.median_per_delivery_us / 1e6;
+                                    writeCsvRow(*out, r);
+                                    all_results.push_back(r);
+                                } else {
+                                    const uint16_t cms_port = setup_cms ? kPvacmsUdpPort : 0u;
+                                    auto br = runBurstBenchmark(mode, payload_size,
+                                        num_subs, keychain, client_keychain, nt_payload, cms_port,
+                                        burst_size, burst_samples, burst_warmup,
+                                        burst_send_interval_us);
+                                    printBurstSummary(br);
+                                    BenchmarkResult r;
+                                    r.protocol = protocolModeStr(mode);
+                                    r.payload_mode = nt_payload ? "nt" : "raw";
+                                    r.subscribers = num_subs;
+                                    r.payload_bytes = payload_size;
+                                    r.iteration = 1;
+                                    r.updates_per_second = br.theoretical_ups;
+                                    r.per_sub_updates_per_second = (num_subs > 0) ? (br.theoretical_ups / num_subs) : 0.0;
+                                    r.total_updates = static_cast<uint64_t>(br.num_samples) * burst_size;
+                                    r.drops = 0;
+                                    r.errors = 0;
+                                    r.duration_seconds = br.median_per_delivery_us / 1e6;
+                                    writeCsvRow(*out, r);
+                                    all_results.push_back(r);
+                                }
                             } else {
-                                const uint32_t eff_queue = computeEffectiveQueueSize(pva_queue_size, payload_size);
-                                const uint16_t cms_port = setup_cms ? kPvacmsUdpPort : 0u;
-                                result = runPvaBenchmark(mode, payload_size, duration,
-                                                           warmup, num_subs, keychain,
-                                                           client_keychain, nt_payload,
-                                                           eff_queue, cms_port);
+                                BenchmarkResult result;
+                                if (mode == ProtocolMode::CA) {
+                                    result = runCaBenchmark(ca_ioc, payload_size, duration,
+                                                              warmup, num_subs);
+                                } else {
+                                    const uint16_t cms_port = setup_cms ? kPvacmsUdpPort : 0u;
+                                    result = runAdaptiveBenchmark(mode, payload_size,
+                                                                    num_subs, keychain,
+                                                                    client_keychain, nt_payload,
+                                                                    cms_port);
+                                }
+
+                                result.iteration = iter;
+
+                                writeCsvRow(*out, result);
+                                all_results.push_back(result);
+
+                                log_info_printf(perflog, "  -> %.1f updates/sec (%.1f/sub), %lu total, %lu drops, %lu errors\n",
+                                               result.updates_per_second,
+                                               result.per_sub_updates_per_second,
+                                               (unsigned long)result.total_updates,
+                                               (unsigned long)result.drops,
+                                               (unsigned long)result.errors);
                             }
-
-                            result.iteration = iter;
-
-                            writeCsvRow(*out, result);
-                            all_results.push_back(result);
-
-                            log_info_printf(perflog, "  -> %.1f updates/sec (%.1f/sub), %lu total, %lu drops, %lu errors\n",
-                                           result.updates_per_second,
-                                           result.per_sub_updates_per_second,
-                                           (unsigned long)result.total_updates,
-                                           (unsigned long)result.drops,
-                                           (unsigned long)result.errors);
                         }
                     }
                 }

@@ -7,7 +7,7 @@ EPICS Base provides Channel Access client/server APIs (`libca`, `libdbCore`, `li
 ## Features
 
 - A single, self-contained host executable (`pvxperf`) that benchmarks update throughput across CA, PVA, SPVA (no cert monitoring), and SPVA (with cert monitoring).
-- Support both sequential (one update consumed at a time) and parallel (pipelined monitor subscription with configurable window) execution modes.
+- Use adaptive rate discovery (exponential ramp + binary search) to find maximum sustainable throughput with zero drops.
 - Sweep across configurable payload sizes (bytes).
 - Output machine-readable CSV that can reproduce charts matching the baseline layout.
 - Ensure repeatability on the same hardware by running server and client in-process, eliminating network stack variability.
@@ -133,11 +133,11 @@ This keeps benchmarks fully self-contained, repeatable, and **safe** — no risk
 
 ### D4: Monitor-based measurement with per-subscriber pipelining
 
-**Decision:** For PVA/SPVA modes, the benchmark uses **monitor subscriptions** (not repeated GETs) to receive server updates. Pipelining (`record("pipeline", true)`) provides protocol-level flow control per subscriber — each subscriber has an independent queue with a pipeline window controlling how many updates the server may send before the client must acknowledge consumption.
+**Decision:** For PVA/SPVA modes, the benchmark uses **monitor subscriptions** (not repeated GETs) to receive server updates. Pipelining (`record("pipeline", true)`) provides protocol-level flow control per subscriber — each subscriber has an independent queue with a pipeline window controlling how many updates the server may send before the client must acknowledge consumption. All subscriptions use the PVXS default `queueSize` of 4.
 
 Both modes use a **single `client::Context`** (one client connection to the server):
-- **Sequential:** A **single** monitor subscription with dynamically computed `queueSize` (see D16). One subscriber receives every update. Measures single-subscriber throughput.
-- **Parallel:** **N independent monitor subscriptions** (configurable via `--subscriptions`, **default 1000**) to the **same PV**, all on the same `client::Context`. Each subscription has its own pipeline window with dynamically computed `queueSize` (see D16). The server fans out each `SharedPV::post()` to all N subscribers independently. Each subscriber receives every update and independently verifies its counter sequence. This tests the server's ability to fan out updates to many concurrent subscribers — matching the baseline's "1000 parallel" methodology.
+- **Single subscriber:** A **single** monitor subscription. One subscriber receives every update. Measures single-subscriber throughput.
+- **Multi-subscriber:** **N independent monitor subscriptions** (configurable via `--subscriptions`, **default 1000**) to the **same PV**, all on the same `client::Context`. Each subscription has its own pipeline window with the default `queueSize` of 4. The server fans out each `SharedPV::post()` to all N subscribers independently. Each subscriber receives every update and independently verifies its counter sequence. This tests the server's ability to fan out updates to many concurrent subscribers — matching the baseline's "1000 parallel" methodology.
 
 The server uses `SharedPV::post()` for updates. Internally, `SharedPV::post()` iterates over all subscribers and calls each subscriber's `MonitorControlOp::post()` — which **squashes** onto the last queue entry if that subscriber's queue is full. This is the natural PVA behavior: a slow subscriber gets squashed updates while fast subscribers keep up. The counter-based integrity check detects squashed updates as counter gaps (drops).
 
@@ -148,36 +148,39 @@ Key insight from PVXS source code (`sharedpv.cpp` line 438, `servermon.cpp` line
 - Each subscriber has its own `window`, `queue`, and `limit` — completely independent
 - The server is **never blocked** by any subscriber — it always advances the counter
 
-For CA mode: CA uses multiple `ca_create_subscription` calls to the same channel (1 for sequential, N for parallel). CA monitors have their own queue semantics — if the queue overflows, CA squashes updates. The counter pattern detects this.
+For CA mode: CA uses multiple `ca_create_subscription` calls to the same channel (1 for single, N for multi). CA monitors have their own queue semantics — if the queue overflows, CA squashes updates. The counter pattern detects this.
 
 **Rationale:** The "1000 parallel" in the baseline measures fan-out throughput: can the server deliver updates to 1000 concurrent subscribers without any of them seeing drops? This is fundamentally different from a single subscription with a large pipeline window (which would only measure single-stream throughput with deep buffering). With 1000 subscriptions, the server must serialize and send each update 1000 times, and any subscriber that falls behind gets squashed — exactly the load pattern that matters for production PV servers.
 
-### D5: Measurement methodology — max clean throughput via monitor fan-out with counter verification
+### D5: Measurement methodology — adaptive rate discovery with counter verification
 
-**Decision:** The benchmark finds the **maximum update rate achievable without any drops or errors** for each (mode × payload_size × execution_style) triple. The algorithm:
+**Decision:** The benchmark finds the **maximum sustainable update rate with zero drops or errors** for each (mode × payload_size × subscriber_count) triple using adaptive rate discovery. The algorithm:
 
-1. **Server-side:** For each payload size, a server-side pump thread calls `SharedPV::post()` as fast as possible with the counter+timestamp-bearing payload. `SharedPV::post()` fans out to all active subscribers — each gets its own copy. If any subscriber's queue is full, its entry is squashed (not blocked). The server always advances the counter. The send timestamp (epoch microseconds via `epicsTime`) is written alongside the counter.
+1. **Adaptive rate discovery:** Instead of flooding updates as fast as possible (which causes queue overflow and obscures the true sustainable rate), the benchmark uses a three-phase approach:
+   - **Phase 1 (Exponential ramp):** Start at 1,000 updates/sec, double each probe (1-second duration) until drops appear. This brackets the max rate in `[last_clean_rate, first_drop_rate]`.
+   - **Phase 2 (Binary search):** Narrow the bracket to within 2% precision with additional 1-second probes.
+   - **Phase 3 (Confirmation):** Run at the discovered rate for 3 seconds to verify stability. If drops appear, back off 10% and retry.
 
-2. **Client-side:** One subscription (sequential) or N subscriptions (parallel, default 1000), all with `pipeline=true` and configurable `queueSize` (default 144 via `--pva-queue-size`; see D16). Each subscription's `event` callback calls `Subscription::pop()` in a loop to drain available updates. Each subscription independently tracks its expected counter.
+2. **Server-side:** A pump thread calls `SharedPV::post()` with a configurable inter-post delay (`post_delay_ns`) calculated from the target rate. `SharedPV::post()` fans out to all active subscribers — each gets its own copy. If any subscriber's queue is full, its entry is squashed (not blocked). The server always advances the counter.
 
-3. **Warm-up phase** (configurable, default 100 updates): All subscriptions consume updates to establish connections, TLS handshakes, and cert monitoring subscriptions. Counter values during warm-up are discarded.
+3. **Client-side:** One or N subscriptions (configurable via `--subscriptions`, default 1000), all with `pipeline=true` and the default `queueSize` of 4 (PVXS default). Each subscription's `event` callback calls `Subscription::pop()` in a loop to drain available updates. Each subscription independently tracks its expected counter.
 
-4. **Measurement phase:** After warm-up, each subscription records the counter value from its first measurement `pop()`. On every subsequent `pop()`, it verifies the received counter equals `expected_counter` (previous + 1). The measurement runs for a configurable duration (default 5 seconds).
+4. **Warm-up phase** (50 updates per probe): All subscriptions consume updates to establish connections, TLS handshakes, and cert monitoring subscriptions. Counter values during warm-up are discarded.
+
+5. **Counter verification:** After warm-up, each subscription records the counter value from its first measurement `pop()`. On every subsequent `pop()`, it verifies the received counter equals `expected_counter` (previous + 1).
    - If the counter matches: success, increment expected.
    - If the counter is ahead (gap): **drop detected** — one or more values were squashed by `SharedPV::post()` because that subscriber's queue was full.
    - If the subscription delivers an error: **error detected**.
 
-5. **Stopping condition:** The measurement runs for the full duration. Drops and errors are counted but do not stop the run early.
+6. **Recording:** For each data point, record: total successful updates (summed across all subscriptions), drops, errors, elapsed wall-clock time.
 
-6. **Recording:** For each measurement point, record: total successful updates (summed across all subscriptions), drops (summed across all subscriptions), errors, elapsed wall-clock time.
+7. **Computation:** `updates_per_second = total_successful_updates / elapsed_seconds`.
 
-7. **Computation:** `updates_per_second = total_successful_updates / elapsed_seconds`. The CSV includes the drop count so graphing tools can filter to only drop-free data points.
+**Rationale:** The adaptive approach eliminates flooding artifacts and queue backpressure effects. When the server floods as fast as possible, the measured rate depends heavily on queue depth, CPU scheduling, and buffer management — not on the true maximum sustainable throughput. The adaptive method discovers the actual clean rate where all subscribers receive every update without squashes. This produces stable, reproducible numbers that directly reflect the protocol's throughput capacity.
 
-Use `epicsTime` for high-resolution timing (already used throughout the codebase).
+Earlier experiments with fixed flood-mode benchmarks showed that varying queue depth (4, 144, 288) and queue scaling formulas had no effect on the TLS/PVA ratio — confirming that the adaptive approach correctly isolates the protocol overhead.
 
-**Rationale:** `SharedPV::post()` with squash-on-full is the natural PVA server behavior. In production, a PV server doesn't use `tryPost()` — it posts updates and slow subscribers get squashed. The benchmark should measure this real-world scenario: what is the maximum rate the server can post updates such that all N subscribers receive every update without any squashes? The counter-based integrity check directly detects squashes as counter gaps, making the metric "clean throughput" (updates/sec with zero drops) meaningful.
-
-**Alternative considered:** Using `MonitorControlOp::tryPost()` on each subscriber individually (server slows down to slowest subscriber). Rejected because (a) `SharedPV::post()` doesn't expose per-subscriber `tryPost()` — it calls `sub->post()` which squashes, and (b) real PV servers use `SharedPV::post()`, so the benchmark should match production behavior.
+**Alternative considered:** Flooding updates as fast as possible with configurable queue depth (`SharedPV::post()` + squash-on-full). Rejected because it makes measurements dependent on queue configuration rather than protocol throughput.
 
 **Alternative considered:** Using repeated GETs instead of monitors. Rejected because GETs don't test fan-out to multiple subscribers and have no flow control mechanism.
 
@@ -185,9 +188,9 @@ Use `epicsTime` for high-resolution timing (already used throughout the codebase
 
 **Decision:** Throughput CSV columns:
 ```
-protocol,payload_mode,subscribers,payload_bytes,topology,iteration,updates_per_second,per_sub_updates_per_second,total_updates,drops,errors,duration_seconds,pva_queue_size
+protocol,payload_mode,subscribers,payload_bytes,topology,iteration,updates_per_second,per_sub_updates_per_second,total_updates,drops,errors,duration_seconds
 ```
-Where `protocol` is `CA|PVA|SPVA|SPVA_CERTMON`, `payload_mode` is `sequential|parallel`, `topology` is `loopback|direct|gateway`, `iteration` is 1..N, `drops` is the count of counter-sequence gaps, `errors` is the count of subscription failures, and `pva_queue_size` is the effective PVA monitor queue size used for this data point (0 for CA).
+Where `protocol` is `CA|PVA|SPVA|SPVA_CERTMON`, `payload_mode` is `raw|nt`, `topology` is `loopback|direct|gateway`, `iteration` is 1..N, `drops` is the count of counter-sequence gaps, and `errors` is the count of subscription failures.
 
 Phase timing uses a separate CSV (see D13):
 ```
@@ -214,7 +217,6 @@ Options:
 - `--cms-acf <path>` — path to existing PVACMS ACF file
 - `--output <file>` — CSV output file (default: stdout)
 - `--throughput-iterations <N>` — number of independent measurement iterations per data point (default 5)
-- `--pva-queue-size <N>` — base PVA monitor queue size (default 144). Effective size scales with payload: `floor(base / 2^log10(payload_bytes))`. See D16.
 - `--benchmark-phases` — run connection phase timing benchmark
 - `--phase-iterations <N>` — number of connect/disconnect cycles for phase timing (default 50)
 - `--phase-output <file>` — separate CSV file for phase timing output
@@ -304,36 +306,11 @@ Where `test_type` is `connection_phase`, `protocol` is `PVA|SPVA|SPVA_CERTMON`, 
 
 **Rationale:** Distributed topologies introduce real network jitter, making single-run numbers unreliable. Multiple independent iterations provide mean and variance so operators can assess measurement confidence. Sub-window statistics within a single connection were rejected because TCP congestion state and TLS session state carry over between windows, making them non-independent.
 
-### D16: Dynamic PVA queue depth scaling
+### D16: PVA queue depth (removed — using PVXS default)
 
-**Decision:** The PVA monitor subscription `queueSize` is computed dynamically per payload size using:
+**Decision:** All PVA/SPVA/SPVA_CERTMON monitor subscriptions use the PVXS default `queueSize` of 4. No dynamic queue scaling.
 
-```
-effective_queue_size = floor(base_queue_size / 2^log10(payload_bytes))
-```
-
-where `base_queue_size` defaults to **144** (configurable via `--pva-queue-size`), matching CA's internal event queue depth (`EVENTQUESIZE = EVENTENTRIES × EVENTSPERQUE = 4 × 36 = 144` in `dbEvent.c`).
-
-With the default base of 144, the effective queue sizes are:
-
-| Payload | log10 | 2^log10 | Effective queue |
-|---------|-------|---------|-----------------|
-| 1 B     | 0     | 1       | 144             |
-| 10 B    | 1     | 2       | 72              |
-| 100 B   | 2     | 4       | 36              |
-| 1 KB    | 3     | 8       | 18              |
-| 10 KB   | 4     | 16      | 9               |
-| 100 KB  | 5     | 32      | 4               |
-
-**Rationale:** CA's event queue is hardcoded at 144 entries — the CA client has no control over this. PVXS's default `queueSize=4` means PVA starts squashing after just 4 pending events, while CA can buffer 144. A fixed queue size of 144 produces excellent PVA results for small payloads but worse results than CA for very large payloads due to memory pressure from deeply-buffered large arrays.
-
-The dynamic formula tapers the queue depth as payload size grows: small payloads (which are cheap to buffer) get the full 144 entries matching CA, while large payloads (which are expensive to buffer) taper down toward the PVXS default of 4. This models the optimal queue depth for PVAccess — the protocol can efficiently pipeline small updates but should limit buffering of large ones.
-
-The effective `pva_queue_size` is recorded in each CSV row so operators can correlate queue depth with throughput and drop characteristics.
-
-**Alternative considered:** A fixed queue depth matching CA's 144. Rejected because it causes memory pressure and worse-than-CA throughput at large payload sizes.
-
-**Alternative considered:** Reducing CA's queue depth to match PVXS's default of 4. Rejected because CA's queue depth is compiled into EPICS Base (`dbEvent.c`) and cannot be changed at runtime.
+**Rationale:** Experiments with queue depths of 4, 144, and 288 — including a subscriber-aware scaling formula — showed that queue depth has **no effect on the TLS/PVA throughput ratio**. The TLS overhead comes from the write path (per-message TLS record framing), not the application-layer buffer. The adaptive rate-finding methodology eliminates flooding artifacts that previously made queue depth seem relevant. With adaptive discovery, the server pumps at exactly the sustainable rate, so queue overflow is naturally avoided regardless of queue size.
 
 ### D17: SPVA_CERTMON port architecture and inner client discovery
 
