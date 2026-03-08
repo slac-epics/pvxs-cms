@@ -16,10 +16,6 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -31,11 +27,11 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <signal.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -94,9 +90,9 @@ DEFINE_LOGGER(perflog, "pvxs.perf");
  * server's inner cert-status client must search on this UDP port to discover
  * PVACMS for certificate status monitoring in SPVA_CERTMON mode.
  */
-static constexpr uint16_t kPvacmsUdpPort = 15076u;
-static constexpr uint16_t kPvacmsTcpPort = 15075u;
-static constexpr uint16_t kPvacmsTlsPort = 15076u;
+constexpr uint16_t kPvacmsUdpPort = 15076u;
+constexpr uint16_t kPvacmsTcpPort = 15075u;
+constexpr uint16_t kPvacmsTlsPort = 15076u;
 
 /**
  * @brief Create a server config on loopback with ephemeral ports.
@@ -139,8 +135,7 @@ Value buildBenchType(const uint32_t array_size) {
     };
     auto val = def.create();
     shared_array<double> arr(array_size);
-    for (uint32_t i = 0; i < array_size; i++)
-        arr[i] = 1.0;
+    for (uint32_t i = 0; i < array_size; i++) arr[i] = 1.0;
     val["value"] = arr.freeze().castTo<const void>();
     return val;
 }
@@ -160,8 +155,8 @@ public:
      * @param pvname      PV name to serve (e.g. "PVXPERF:BENCH").
      * @param array_size  Number of doubles in the response array.
      */
-    BenchmarkSource(const std::string& pvname, const uint32_t array_size)
-        : pvname_(pvname)
+    BenchmarkSource(std::string  pvname, const uint32_t array_size)
+        : pvname_(std::move(pvname))
         , prototype_(buildBenchType(array_size))
         , counter_(0)
     {}
@@ -191,7 +186,7 @@ public:
         });
     }
 
-    server::Source::List onList() override {
+    List onList() override {
         auto names = std::make_shared<std::set<std::string>>();
         names->insert(pvname_);
         return {names, false};
@@ -231,7 +226,7 @@ const char* protocolModeStr(const ProtocolMode m) {
 ProtocolMode parseProtocolMode(const std::string& s) {
     if (s == "ca" || s == "CA")                               return ProtocolMode::CA;
     if (s == "epics_pva" || s == "EPICS_PVA")                 return ProtocolMode::EPICS_PVA;
-    if (s == "pvxs_pva" || s == "PVXS_PVA")                    return ProtocolMode::PVXS_PVA;
+    if (s == "pvxs_pva" || s == "PVXS_PVA")                   return ProtocolMode::PVXS_PVA;
     if (s == "spva" || s == "SPVA")                           return ProtocolMode::SPVA;
     if (s == "spva_certmon" || s == "SPVA_CERTMON")           return ProtocolMode::SPVA_CERTMON;
     throw std::runtime_error(std::string("Unknown protocol mode: ") + s);
@@ -1738,6 +1733,46 @@ void printComparisonTable(const std::vector<PhaseTimingResult>& results,
     std::cerr << std::endl;
 }
 
+void showHelp(const char *program_name) {
+    std::cout << "pvxperf - GET-based performance benchmarking tool\n"
+              << std::endl
+              << "Measures GET throughput (gets/second) across five protocol modes (CA, EPICS_PVA,\n"
+              << "PVXS_PVA, SPVA, SPVA_CERTMON) using sequential and parallel GET operations.\n"
+              << std::endl
+              << "usage:\n"
+              << "  " << program_name << " [options]                          Run benchmark\n"
+              << "  " << program_name << " (-h | --help)                      Show this help message and exit\n"
+              << "  " << program_name << " (-V | --version)                   Print version and exit\n"
+              << std::endl
+              << "options:\n"
+              << "  (-h | --help)                              Show this help message and exit\n"
+              << "  (-V | --version)                           Print version and exit\n"
+              << "  (-v | --verbose)                           Verbose mode\n"
+              << "  (-d | --debug)                             Enable PVXS debug logging\n"
+              << std::endl
+              << "benchmark options:\n"
+              << "        --modes <list>                       Comma-separated protocol modes. Default: ca,epics_pva,pvxs_pva,spva,spva_certmon\n"
+              << "        --sizes <list>                       Comma-separated array sizes in doubles. Default: 1,10,100,1000,10000,100000\n"
+              << "        --parallelism <list>                 Comma-separated parallelism values. Default: 1,1000\n"
+              << "        --samples <N>                        Number of measured GETs per data point. Default: 1000\n"
+              << "        --warmup <N>                         Number of warmup GETs to discard. Default: 100\n"
+              << "        --output <file>                      CSV output file (default: stdout)\n"
+              << std::endl
+              << "CMS options:\n"
+              << "        --keychain <path>                    TLS keychain file for SPVA modes\n"
+              << "        --setup-cms                          Auto-bootstrap PVACMS with temp certs for SPVA_CERTMON\n"
+              << "        --external-cms                       Use already-running PVACMS for SPVA_CERTMON\n"
+              << "        --cms-db <path>                      Path to existing PVACMS SQLite database\n"
+              << "        --cms-keychain <path>                Path to existing PVACMS server keychain\n"
+              << "        --cms-acf <path>                     Path to existing PVACMS ACF file\n"
+              << std::endl
+              << "phase timing options:\n"
+              << "        --benchmark-phases                   After GET benchmark, run connect/disconnect cycles and report phase timing\n"
+              << "        --phase-iterations <N>               Number of connect/disconnect cycles for phase timing. Default: 50\n"
+              << "        --phase-output <file>                CSV output file for phase timing results (default: stderr table only)\n"
+              << std::endl;
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -1811,7 +1846,7 @@ int main(int argc, char* argv[]) {
         CLI11_PARSE(app, argc, argv);
 
         if (help) {
-            std::cout << app.help() << std::endl;
+            showHelp(argv[0]);
             return 0;
         }
 

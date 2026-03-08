@@ -22,7 +22,7 @@ This report presents GET-based throughput benchmarks comparing five EPICS protoc
 - **Certificate monitoring overhead is negligible in steady state** - SPVA_CERTMON ≈ SPVA across all configurations (within 1–4%)
 - **Array size has minimal impact** on pvxs-based modes - the bottleneck is event loop dispatch, not data serialization
 
-**Recommendations:** Section 5 contains optimization opportunities for pvxs GET performance, including connection phase improvements (CP-1 through CP-3) and architectural analysis of the pvxs vs EPICS Base PVA performance gap.
+**Recommendations:** Section 5 contains optimization opportunities for pvxs GET performance, including connection phase improvements (CP-1 and CP-2) and architectural analysis of the pvxs vs EPICS Base PVA performance gap.
 
 ---
 
@@ -78,78 +78,78 @@ All results from a single benchmark run: 5 modes × 6 array sizes × 4 paralleli
 
 ### 2.1 Summary by Mode (array_size=1, all parallelisms)
 
-| Mode | par=1 gets/sec | par=1 median µs | par=10 gets/sec | par=100 gets/sec | par=1000 gets/sec |
-|------|---------------:|----------------:|----------------:|-----------------:|------------------:|
-| **CA** | 33,287 | 30.0 | 6,529 | 7,051 | 3,735 |
-| **EPICS_PVA** | 28,520 | 35.1 | 96,463 | 252,605 | 308,315 |
-| **PVXS_PVA** | 14,371 | 69.6 | 55,568 | 99,757 | 119,469 |
-| **SPVA** | 12,618 | 79.3 | 38,996 | 61,730 | 76,278 |
-| **SPVA_CERTMON** | 12,186 | 82.1 | 39,085 | 62,549 | 78,317 |
+| Mode             | par=1 gets/sec | par=1 median µs | par=10 gets/sec | par=100 gets/sec | par=1000 gets/sec |
+|------------------|---------------:|----------------:|----------------:|-----------------:|------------------:|
+| **CA**           |         33,287 |            30.0 |           6,529 |            7,051 |             3,735 |
+| **EPICS_PVA**    |         28,520 |            35.1 |          96,463 |          252,605 |           308,315 |
+| **PVXS_PVA**     |         14,371 |            69.6 |          55,568 |           99,757 |           119,469 |
+| **SPVA**         |         12,618 |            79.3 |          38,996 |           61,730 |            76,278 |
+| **SPVA_CERTMON** |         12,186 |            82.1 |          39,085 |           62,549 |            78,317 |
 
 ### 2.2 Key Ratios
 
-| Comparison | par=1 | par=10 | par=100 | par=1000 |
-|-----------|------:|-------:|--------:|---------:|
-| EPICS_PVA / PVXS_PVA | 1.98× | 1.74× | 2.53× | 2.58× |
-| PVXS_PVA / SPVA (TLS overhead) | 1.14× | 1.42× | 1.62× | 1.57× |
-| SPVA / SPVA_CERTMON | 1.04× | 1.00× | 0.99× | 0.97× |
+| Comparison                     | par=1 | par=10 | par=100 | par=1000 |
+|--------------------------------|------:|-------:|--------:|---------:|
+| EPICS_PVA / PVXS_PVA           | 1.98× |  1.74× |   2.53× |    2.58× |
+| PVXS_PVA / SPVA (TLS overhead) | 1.14× |  1.42× |   1.62× |    1.57× |
+| SPVA / SPVA_CERTMON            | 1.04× |  1.00× |   0.99× |    0.97× |
 
 ### 2.3 Full Benchmark Results
 
 #### CA
 
 | Array Size | par=1 µs | par=1 get/s | par=10 µs | par=10 get/s | par=100 µs | par=100 get/s | par=1000 µs | par=1000 get/s |
-|----------:|---------:|----------:|----------:|-----------:|----------:|------------:|-----------:|-------------:|
-| 1 | 30.0 | 33,287 | 153.2 | 6,529 | 141.8 | 7,051 | 267.8 | 3,735 |
-| 10 | 27.7 | 36,172 | 133.6 | 7,488 | 166.9 | 5,991 | 483.4 | 2,069 |
-| 100 | 27.9 | 35,874 | 138.1 | 7,242 | 239.7 | 4,173 | 342.3 | 2,921 |
-| 1,000 | 28.6 | 34,985 | 130.3 | 7,673 | 254.8 | 3,924 | 1,546.7 | 647 |
-| 10,000 | 49.7 | 20,143 | 472.4 | 2,117 | 1,187.6 | 842 | 10,031.2 | 100 |
-| 100,000 | 239.3 | 4,178 | 1,354.8 | 738 | 9,375.4 | 107 | 85,940.6 | 12 |
+|-----------:|---------:|------------:|----------:|-------------:|-----------:|--------------:|------------:|---------------:|
+|          1 |     30.0 |      33,287 |     153.2 |        6,529 |      141.8 |         7,051 |       267.8 |          3,735 |
+|         10 |     27.7 |      36,172 |     133.6 |        7,488 |      166.9 |         5,991 |       483.4 |          2,069 |
+|        100 |     27.9 |      35,874 |     138.1 |        7,242 |      239.7 |         4,173 |       342.3 |          2,921 |
+|      1,000 |     28.6 |      34,985 |     130.3 |        7,673 |      254.8 |         3,924 |     1,546.7 |            647 |
+|     10,000 |     49.7 |      20,143 |     472.4 |        2,117 |    1,187.6 |           842 |    10,031.2 |            100 |
+|    100,000 |    239.3 |       4,178 |   1,354.8 |          738 |    9,375.4 |           107 |    85,940.6 |             12 |
 
 #### EPICS_PVA
 
 | Array Size | par=1 µs | par=1 get/s | par=10 µs | par=10 get/s | par=100 µs | par=100 get/s | par=1000 µs | par=1000 get/s |
-|----------:|---------:|----------:|----------:|-----------:|----------:|------------:|-----------:|-------------:|
-| 1 | 35.1 | 28,520 | 10.4 | 96,463 | 4.0 | 252,605 | 3.2 | 308,315 |
-| 10 | 34.0 | 29,394 | 6.4 | 156,812 | 4.0 | 248,267 | 3.3 | 302,292 |
-| 100 | 36.1 | 27,713 | 11.3 | 88,643 | 4.4 | 225,691 | 3.4 | 290,978 |
-| 1,000 | 36.3 | 27,586 | 6.6 | 150,659 | 4.6 | 219,238 | 3.5 | 287,677 |
-| 10,000 | 34.9 | 28,691 | 6.8 | 147,330 | 4.1 | 242,547 | 3.3 | 304,915 |
-| 100,000 | 35.9 | 27,891 | 8.7 | 115,108 | 4.6 | 218,122 | 3.5 | 282,365 |
+|-----------:|---------:|------------:|----------:|-------------:|-----------:|--------------:|------------:|---------------:|
+|          1 |     35.1 |      28,520 |      10.4 |       96,463 |        4.0 |       252,605 |         3.2 |        308,315 |
+|         10 |     34.0 |      29,394 |       6.4 |      156,812 |        4.0 |       248,267 |         3.3 |        302,292 |
+|        100 |     36.1 |      27,713 |      11.3 |       88,643 |        4.4 |       225,691 |         3.4 |        290,978 |
+|      1,000 |     36.3 |      27,586 |       6.6 |      150,659 |        4.6 |       219,238 |         3.5 |        287,677 |
+|     10,000 |     34.9 |      28,691 |       6.8 |      147,330 |        4.1 |       242,547 |         3.3 |        304,915 |
+|    100,000 |     35.9 |      27,891 |       8.7 |      115,108 |        4.6 |       218,122 |         3.5 |        282,365 |
 
 #### PVXS_PVA
 
 | Array Size | par=1 µs | par=1 get/s | par=10 µs | par=10 get/s | par=100 µs | par=100 get/s | par=1000 µs | par=1000 get/s |
-|----------:|---------:|----------:|----------:|-----------:|----------:|------------:|-----------:|-------------:|
-| 1 | 69.6 | 14,371 | 18.0 | 55,568 | 10.0 | 99,757 | 8.4 | 119,469 |
-| 10 | 68.6 | 14,585 | 20.1 | 49,777 | 10.5 | 95,042 | 8.3 | 120,885 |
-| 100 | 64.4 | 15,524 | 17.2 | 57,992 | 9.7 | 102,837 | 8.4 | 118,529 |
-| 1,000 | 64.6 | 15,489 | 15.5 | 64,742 | 9.4 | 106,854 | 7.9 | 127,190 |
-| 10,000 | 61.1 | 16,371 | 14.4 | 69,384 | 9.5 | 105,862 | 7.9 | 126,815 |
-| 100,000 | 57.0 | 17,544 | 15.2 | 65,601 | 9.4 | 106,308 | 7.9 | 126,646 |
+|-----------:|---------:|------------:|----------:|-------------:|-----------:|--------------:|------------:|---------------:|
+|          1 |     69.6 |      14,371 |      18.0 |       55,568 |       10.0 |        99,757 |         8.4 |        119,469 |
+|         10 |     68.6 |      14,585 |      20.1 |       49,777 |       10.5 |        95,042 |         8.3 |        120,885 |
+|        100 |     64.4 |      15,524 |      17.2 |       57,992 |        9.7 |       102,837 |         8.4 |        118,529 |
+|      1,000 |     64.6 |      15,489 |      15.5 |       64,742 |        9.4 |       106,854 |         7.9 |        127,190 |
+|     10,000 |     61.1 |      16,371 |      14.4 |       69,384 |        9.5 |       105,862 |         7.9 |        126,815 |
+|    100,000 |     57.0 |      17,544 |      15.2 |       65,601 |        9.4 |       106,308 |         7.9 |        126,646 |
 
 #### SPVA
 
 | Array Size | par=1 µs | par=1 get/s | par=10 µs | par=10 get/s | par=100 µs | par=100 get/s | par=1000 µs | par=1000 get/s |
-|----------:|---------:|----------:|----------:|-----------:|----------:|------------:|-----------:|-------------:|
-| 1 | 79.3 | 12,618 | 25.6 | 38,996 | 16.2 | 61,730 | 13.1 | 76,278 |
-| 10 | 91.3 | 10,954 | 26.7 | 37,529 | 16.5 | 60,717 | 13.0 | 76,697 |
-| 100 | 83.5 | 11,976 | 25.4 | 39,445 | 16.8 | 59,426 | 13.0 | 77,192 |
-| 1,000 | 80.5 | 12,419 | 30.4 | 32,942 | 16.0 | 62,374 | 12.8 | 78,378 |
-| 10,000 | 83.6 | 11,958 | 25.5 | 39,206 | 16.1 | 62,101 | 12.8 | 77,912 |
-| 100,000 | 78.5 | 12,746 | 25.7 | 38,904 | 16.0 | 62,662 | 12.9 | 77,715 |
+|-----------:|---------:|------------:|----------:|-------------:|-----------:|--------------:|------------:|---------------:|
+|          1 |     79.3 |      12,618 |      25.6 |       38,996 |       16.2 |        61,730 |        13.1 |         76,278 |
+|         10 |     91.3 |      10,954 |      26.7 |       37,529 |       16.5 |        60,717 |        13.0 |         76,697 |
+|        100 |     83.5 |      11,976 |      25.4 |       39,445 |       16.8 |        59,426 |        13.0 |         77,192 |
+|      1,000 |     80.5 |      12,419 |      30.4 |       32,942 |       16.0 |        62,374 |        12.8 |         78,378 |
+|     10,000 |     83.6 |      11,958 |      25.5 |       39,206 |       16.1 |        62,101 |        12.8 |         77,912 |
+|    100,000 |     78.5 |      12,746 |      25.7 |       38,904 |       16.0 |        62,662 |        12.9 |         77,715 |
 
 #### SPVA_CERTMON
 
 | Array Size | par=1 µs | par=1 get/s | par=10 µs | par=10 get/s | par=100 µs | par=100 get/s | par=1000 µs | par=1000 get/s |
-|----------:|---------:|----------:|----------:|-----------:|----------:|------------:|-----------:|-------------:|
-| 1 | 82.1 | 12,186 | 25.6 | 39,085 | 16.0 | 62,549 | 12.8 | 78,317 |
-| 10 | 96.6 | 10,356 | 26.6 | 37,638 | 16.0 | 62,551 | 12.8 | 78,367 |
-| 100 | 73.4 | 13,621 | 25.2 | 39,669 | 15.8 | 63,262 | 12.8 | 78,386 |
-| 1,000 | 78.0 | 12,824 | 26.1 | 38,262 | 15.9 | 62,845 | 12.8 | 78,127 |
-| 10,000 | 78.5 | 12,742 | 24.7 | 40,472 | 15.9 | 62,981 | 12.9 | 77,321 |
-| 100,000 | 77.0 | 12,987 | 25.9 | 38,632 | 16.1 | 62,152 | 12.9 | 77,571 |
+|-----------:|---------:|------------:|----------:|-------------:|-----------:|--------------:|------------:|---------------:|
+|          1 |     82.1 |      12,186 |      25.6 |       39,085 |       16.0 |        62,549 |        12.8 |         78,317 |
+|         10 |     96.6 |      10,356 |      26.6 |       37,638 |       16.0 |        62,551 |        12.8 |         78,367 |
+|        100 |     73.4 |      13,621 |      25.2 |       39,669 |       15.8 |        63,262 |        12.8 |         78,386 |
+|      1,000 |     78.0 |      12,824 |      26.1 |       38,262 |       15.9 |        62,845 |        12.8 |         78,127 |
+|     10,000 |     78.5 |      12,742 |      24.7 |       40,472 |       15.9 |        62,981 |        12.9 |         77,321 |
+|    100,000 |     77.0 |      12,987 |      25.9 |       38,632 |       16.1 |        62,152 |        12.9 |         77,571 |
 
 ### 2.4 Key Observations
 
@@ -244,25 +244,25 @@ For 100 parallel GETs: 100 × 310ns = 31µs of pure dispatch overhead - signific
 
 ### 4.1 Phase Definitions
 
-| Phase | What It Measures |
-|-------|-----------------|
-| **search** | UDP broadcast + response time (PVA name resolution) |
-| **tcp_connect** | TCP connection + TLS handshake (for SPVA/SPVA_CERTMON) |
-| **validation** | PVA protocol authentication negotiation |
+| Phase              | What It Measures                                                       |
+|--------------------|------------------------------------------------------------------------|
+| **search**         | UDP broadcast + response time (PVA name resolution)                    |
+| **tcp_connect**    | TCP connection + TLS handshake (for SPVA/SPVA_CERTMON)                 |
+| **validation**     | PVA protocol authentication negotiation                                |
 | **create_channel** | Channel creation round-trip. For SPVA_CERTMON, gated on `isTlsReady()` |
-| **total** | End-to-end from first search to channel active |
+| **total**          | End-to-end from first search to channel active                         |
 
 ### 4.2 Connection Phase Results
 
 Median of 50 connect/disconnect cycles per mode. All measurements on loopback (darwin-aarch64, Apple Silicon).
 
-| Phase | PVXS_PVA (ms) | SPVA (ms) | SPVA/PVXS_PVA | SPVA_CERTMON (ms) | CERTMON/PVXS_PVA |
-|-------|----------:|------:|-----:|----------:|-----:|
-| search | 0.9 | 1.0 | 1.0× | 1.5 | 1.6× |
-| tcp_connect | 0.1 | 3.0 | 25× | 3.6 | 30× |
-| validation | 0.1 | 0.4 | 3.2× | 0.4 | 3.3× |
-| create_channel | 0.3 | 0.3 | 1.1× | 12.4 | 44× |
-| **total** | **1.5** | **4.7** | **3.2×** | **21.4** | **14.4×** |
+| Phase          | PVXS_PVA (ms) | SPVA (ms) | SPVA/PVXS_PVA | SPVA_CERTMON (ms) | CERTMON/PVXS_PVA |
+|----------------|--------------:|----------:|--------------:|------------------:|-----------------:|
+| search         |           0.9 |       1.0 |          1.0× |               1.5 |             1.6× |
+| tcp_connect    |           0.1 |       3.0 |           25× |               3.6 |              30× |
+| validation     |           0.1 |       0.4 |          3.2× |               0.4 |             3.3× |
+| create_channel |           0.3 |       0.3 |          1.1× |              12.4 |              44× |
+| **total**      |       **1.5** |   **4.7** |      **3.2×** |          **21.4** |        **14.4×** |
 
 ### 4.3 SPVA_CERTMON create_channel Overhead
 
@@ -278,80 +278,19 @@ The dominant SPVA_CERTMON overhead (median 12.4ms) in `create_channel` is caused
 
 The measured 12.4ms median overhead is **inherent to real certificate monitoring** and only affects connection setup - not steady-state throughput.
 
-### 4.4 OCSP Stapling Bug (weak_ptr Lifetime)
+### 4.4 OCSP Stapling
 
-OCSP stapling is fully implemented but **broken due to a `weak_ptr` lifetime bug** on the client side.
+OCSP stapling is fully implemented.
 
-`clientOCSPCallback()` successfully receives and validates the server's stapled OCSP response during the TLS handshake. However, the `shared_ptr<SSLPeerStatusAndMonitor>` returned by `setPeerStatus()` is **discarded** - not stored. The `peer_statuses` map stores only `weak_ptr`, which expires immediately. When `subscribeToPeerCertStatus()` runs later, it finds the expired `weak_ptr`, creates a brand new object with UNKNOWN status, and starts a fresh PVACMS subscription - completely wasting the stapled GOOD status.
-
-**Fix:** Store the `shared_ptr` returned by `setPeerStatus()` in the connection's `peer_status` member. See CP-1 in Section 5.
+`clientOCSPCallback()` successfully receives and validates the server's stapled OCSP response during the TLS handshake. `setPeerStatus()` stores the `shared_ptr` in the `peer_statuses` map. When `subscribeToPeerCertStatus()` runs later, it finds the `shared_ptr`, uses the result, and skips a fresh PVACMS subscription.
 
 ---
 
 ## 5. Recommendations
 
-### 5.1 Connection Phase Optimizations
+### 5.1 GET Throughput Optimizations
 
-#### CP-1: Fix OCSP Stapling Bug - Retain Stapled GOOD Status (Bug Fix)
-
-**What:** Fix the `weak_ptr` lifetime bug that causes the client to discard OCSP stapled GOOD status, then leverage the fix to skip the peer-cert subscription wait on first connection.
-
-**Fix (two parts):**
-1. **Retain the `shared_ptr`** - Store it in the `Connection`'s `peer_status` member at `clientconn.cpp:69`
-2. **Skip wait when GOOD is cached** - When the found entry already has GOOD status, fire the callback immediately and start the background subscription for ongoing monitoring without gating channel creation on it
-
-**Expected improvement:** Could eliminate 5–10ms from `create_channel` on first connection (currently 12.4ms median).
-
-**Where:** `clientconn.cpp:69`, `openssl.cpp:780`, `conn.cpp:159`
-
-#### CP-2: Direct PVACMS Connection for Inner Client (Eliminate UDP Search)
-
-**What:** Configure the inner cert-status client to connect directly to PVACMS via TCP nameserver instead of UDP broadcast search.
-
-**Expected improvement:** 3–7ms reduction in own-cert subscription latency.
-
-**Where:** `client.cpp:583` - populate `innerConf.nameServers` before `build()`
-
-#### CP-3: Reduce Event-Loop Hops in Status Propagation
-
-**What:** Use `loop.dispatch()` instead of `loop.tryCall()` in `SSLPeerStatusAndMonitor::updateStatus()` for synchronous execution when already on the correct thread.
-
-**Expected improvement:** 1–2ms per connection.
-
-**Where:** `openssl.cpp:854`
-
-#### Connection Phase Priority
-
-| # | Change | Effort | Risk | Expected Gain | Dependency |
-|---|--------|--------|------|---------------|------------|
-| CP-1 | Fix OCSP stapling weak_ptr bug | Hours | Low | 5–10ms | None (bug fix) |
-| CP-2 | Direct PVACMS connection | Hours | Low | 3–7ms | None |
-| CP-3 | Reduce event-loop hops | Hours | Medium | 1–2ms | None |
-
-### 5.2 GET Throughput Optimizations
-
-The primary throughput gap is between PVXS_PVA and EPICS_PVA at high parallelism (~2×). The root cause is pvxs's single-threaded event loop with `dispatch()` overhead (Section 3). These optimizations are listed in order of implementation feasibility.
-
-#### T1: Reduce per-GET dispatch overhead in reExecGet()
-
-**Root cause:** Each `reExecGet()` call goes through `loop.dispatch()` which constructs a `std::function`, copies a `shared_ptr`, acquires a mutex, and pushes to a deque. For high-parallelism workloads, this serialized overhead dominates.
-
-**Potential approaches:**
-- Use `loop.call()` where safe (inline execution when already on the event loop thread) - but this changes blocking semantics and was vetoed for `reply()` in server context
-- Batch multiple `reExecGet()` calls into a single dispatch
-- Use a lock-free queue instead of mutex + deque in `_dispatch()`
-
-**Risk:** Medium-High. The event loop dispatch model is fundamental to pvxs. Changes here affect all pvxs operations, not just benchmarks.
-
-#### T2: Server-side reply optimization
-
-**Root cause:** `ServerGPRExec::reply()` uses `dispatch()` back to the event loop - even when the GET handler is already executing on the event loop thread. This adds an unnecessary event loop iteration per GET response.
-
-**Potential fix:** Use `loop.call()` in `reply()` which executes inline when on the event loop thread. However, this was identified as changing blocking semantics and **should be evaluated carefully** before implementing.
-
-**Where:** `serverget.cpp:285-296`
-
-#### T3: kTLS kernel offload (Linux only)
+#### T1: kTLS kernel offload (Linux only)
 
 **What:** Use Linux kTLS to offload symmetric encryption from userspace to kernel space, eliminating the `SSL_write()` overhead in the TLS path.
 
@@ -361,7 +300,7 @@ The primary throughput gap is between PVXS_PVA and EPICS_PVA at high parallelism
 
 **Where:** `serverconn.cpp`, `clientconn.cpp`, `openssl.cpp`
 
-#### T4: io_uring + kTLS (Future)
+#### T2: io_uring + kTLS (Future)
 
 **What:** Replace libevent's `epoll` + `read`/`write` pattern with io_uring for batched async I/O combined with kTLS for zero-copy encryption.
 
@@ -371,84 +310,22 @@ The primary throughput gap is between PVXS_PVA and EPICS_PVA at high parallelism
 
 ### 5.3 Throughput Optimization Priority
 
-| # | Change | Effort | Risk | Expected Impact | Dependency |
-|---|--------|--------|------|----------------|------------|
-| T1 | Reduce dispatch overhead | Days | Medium-High | 10–30% PVXS_PVA improvement | None |
-| T2 | Server reply optimization | Days | Medium | 5–15% all pvxs modes | Careful evaluation needed |
-| T3 | kTLS offload | Weeks | High | SPVA → ~PVXS_PVA levels | Linux only |
-| T4 | io_uring + kTLS | Months | Very High | Near-plaintext TLS | Linux 5.19+ |
-
----
-
-## 6. pvxs vs EPICS Base PVA: Detailed Comparison
-
-### 6.1 Event Loop Model
-
-| Aspect | pvxs | EPICS Base pvAccessCPP |
-|--------|------|----------------------|
-| Thread model | Single event loop per context | Sender + receiver threads per transport |
-| Dispatch mechanism | `loop.dispatch()` - mutex + deque + event | `fair_queue` - intrusive lock-free CAS |
-| Send/receive parallelism | Serialized on one thread | True parallel |
-| Allocation per operation | `std::function` + `shared_ptr` copy | Zero (intrusive queue node) |
-| Event loop iterations per GET | ~7 | ~0 |
-
-### 6.2 Implications
-
-The pvxs single-thread model provides **simplicity and safety** - no race conditions between send and receive paths. The EPICS Base dual-thread model provides **throughput** at the cost of complexity (the `fair_queue` + dual-thread coordination is harder to reason about).
-
-For control system workloads where connections are long-lived and individual GET latency matters less than connection reliability, the pvxs model is well-suited. For throughput-sensitive workloads with many concurrent operations, the EPICS Base model has a structural advantage.
-
----
-
-## 7. Files Reference
-
-### pvxs Source Code - GET Path
-
-- `clientget.cpp:207-236` - `_reExecImpl()`: dispatch path with `std::function` + `shared_ptr` overhead
-- `clientget.cpp:158-172` - `notify()`: callback invocation on event loop
-- `clientget.cpp:256-268` - `_reExec()` / `sendReply()`: serializes GET message
-- `serverget.cpp:285-296` - `ServerGPRExec::reply()`: uses `dispatch()` (not `call()`)
-- `serverget.cpp:347-517` - `handle_GPR()`: server-side GET processing
-- `evhelper.cpp:297-316` - `_dispatch()`: mutex + deque push + `event_add()`
-- `evhelper.cpp:318-347` - `_call()`: `isCurrentThread()` check + inline exec
-- `evhelper.cpp:219-242` - `doWork()`: processes action queue
-
-### pvxs Source Code - Connection Phase / Cert Status
-
-- `clientconn.cpp:40-84` - `clientOCSPCallback()`: OCSP stapling (has weak_ptr bug)
-- `clientconn.cpp:232-241` - `createChannels()`: peer-cert GOOD gate
-- `clientconn.cpp:540-576` - `handle_CONNECTION_VALIDATED()`: sets `ready` from `isTlsReady()`
-- `conn.cpp:155-177` - `bevEvent(BEV_EVENT_CONNECTED)`: triggers `subscribeToPeerCertStatus()`
-- `openssl.cpp:764-806` - `setPeerStatus()` / `getOrCreatePeerStatus()`: peer status cache
-- `openssl.cpp:845-874` - `SSLPeerStatusAndMonitor::updateStatus()`: cross-loop dispatch
-- `client.cpp:583-587` - Inner client creation
-
-### pvxperf Benchmark Tool
-
-- `pvxperf.cpp` - GET-based benchmark with 5 protocol modes
-- `BenchmarkSource` class - Custom `server::Source` for in-process GET serving
-- `runPvaGetBenchmarkWithContext()` - Core `reExecGet()` benchmark loop
-- `runEpicsPvaGetBenchmark()` - EPICS Base native `ChannelGet` benchmark
-- `runCaGetBenchmark()` - CA benchmark with `ca_array_get()` / `ca_array_get_callback()`
-
-### External References
-
-- [Ruby OpenSSL #706](https://github.com/ruby/openssl/pull/706) - Buffer write optimization
-- [OpenSSL #23388](https://github.com/openssl/openssl/issues/23388) - HAProxy performance regression with OpenSSL 3.0
-- [F5 NGINX kTLS Blog](https://www.f5.com/company/blog/nginx/improving-nginx-performance-with-kernel-tls) - kTLS performance improvement
-- [io_uring + kTLS](https://blog.habets.se/2025/04/io-uring-ktls-and-rust-for-zero-syscall-https-server.html) - Zero-syscall HTTPS
+| #  | Change          | Effort | Risk      | Expected Impact         | Dependency  |
+|----|-----------------|--------|-----------|-------------------------|-------------|
+| T1 | kTLS offload    | Weeks  | High      | SPVA → ~PVXS_PVA levels | Linux only  |
+| T2 | io_uring + kTLS | Months | Very High | Near-plaintext TLS      | Linux 5.19+ |
 
 ---
 
 ## Appendix A: Protocol Mode Details
 
-| Mode | Client | Server | PV Name | Transport | Notes |
-|------|--------|--------|---------|-----------|-------|
-| CA | libca | softIoc (fork, EPICS Base) | PVXPERF:CA:BENCH | TCP | Real out-of-process IOC |
-| EPICS_PVA | pvAccessCPP `ChannelGet` | softIocPVA (fork, EPICS Base) | PVXPERF:CA:BENCH | TCP | Real out-of-process IOC |
-| PVXS_PVA | pvxs `reExecGet()` | In-process `BenchmarkSource` | PVXPERF:PVXS_PVA:BENCH | TCP | In-process server |
-| SPVA | pvxs `reExecGet()` | In-process `BenchmarkSource` | PVXPERF:SPVA:BENCH | TLS | `disableStatusCheck(true)` |
-| SPVA_CERTMON | pvxs `reExecGet()` | In-process `BenchmarkSource` | PVXPERF:SPVA_CERTMON:BENCH | TLS | Real PVACMS child process |
+| Mode         | Client                   | Server                        | PV Name                    | Transport | Notes                      |
+|--------------|--------------------------|-------------------------------|----------------------------|-----------|----------------------------|
+| CA           | libca                    | softIoc (fork, EPICS Base)    | PVXPERF:CA:BENCH           | TCP       | Real out-of-process IOC    |
+| EPICS_PVA    | pvAccessCPP `ChannelGet` | softIocPVA (fork, EPICS Base) | PVXPERF:CA:BENCH           | TCP       | Real out-of-process IOC    |
+| PVXS_PVA     | pvxs `reExecGet()`       | In-process `BenchmarkSource`  | PVXPERF:PVXS_PVA:BENCH     | TCP       | In-process server          |
+| SPVA         | pvxs `reExecGet()`       | In-process `BenchmarkSource`  | PVXPERF:SPVA:BENCH         | TLS       | `disableStatusCheck(true)` |
+| SPVA_CERTMON | pvxs `reExecGet()`       | In-process `BenchmarkSource`  | PVXPERF:SPVA_CERTMON:BENCH | TLS       | Real PVACMS child process  |
 
 ## Appendix B: reExecGet() Expert API
 
