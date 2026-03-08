@@ -311,7 +311,7 @@ bool ClusterDiscovery::joinCluster() {
         auto resp_nonce = resp["nonce"].as<shared_array<const uint8_t>>();
         if (resp_nonce.size() != frozen_nonce.size() ||
             std::memcmp(resp_nonce.data(), frozen_nonce.data(), frozen_nonce.size()) != 0) {
-            log_warn_printf(pvacmscluster, "Join response nonce mismatch — possible replay/relay attack%s\n", "");
+            log_warn_printf(pvacmscluster, "Join response nonce mismatch - possible replay/relay attack%s\n", "");
             return false;
         }
 

@@ -3,16 +3,16 @@
 ## Overview
 
 PVACMS runs as an always-on, auto-scaling cluster using PVAccess (PVA) as the
-communication protocol.  Clustering is not optional — every PVACMS instance
+communication protocol.  Clustering is not optional - every PVACMS instance
 participates in a cluster, even if it is the sole node.  All nodes in a cluster
 share the same Certificate Authority (CA) identity (`issuer_id`) and
 independently serve certificate operations (create, revoke, approve, renew).
 
 The cluster uses two PV channels per cluster:
 
-- **CTRL PV** — One shared PV for the cluster.  Carries the authoritative
+- **CTRL PV** - One shared PV for the cluster.  Carries the authoritative
   membership list and handles join requests via RPC.
-- **SYNC PV** — One per node.  Each node publishes its local certificate
+- **SYNC PV** - One per node.  Each node publishes its local certificate
   database state on its own SYNC PV.
 
 ## Architecture
@@ -29,8 +29,8 @@ The cluster uses two PV channels per cluster:
 ### PV Naming
 
 ```
-CERT:CLUSTER:CTRL:<issuer_id>                — Cluster control (shared)
-CERT:CLUSTER:SYNC:<issuer_id>:<node_id>      — Per-node sync
+CERT:CLUSTER:CTRL:<issuer_id>                - Cluster control (shared)
+CERT:CLUSTER:SYNC:<issuer_id>:<node_id>      - Per-node sync
 ```
 
 The prefix `CERT:CLUSTER` is configurable via `--cluster-pv-prefix`.
@@ -38,7 +38,7 @@ The prefix `CERT:CLUSTER` is configurable via `--cluster-pv-prefix`.
 ### Node Identity
 
 Each node derives its `node_id` from the Subject Key Identifier (SKID) of its
-PVACMS server certificate — a deterministic, certificate-bound identifier.
+PVACMS server certificate - a deterministic, certificate-bound identifier.
 
 ## Protocol
 
@@ -65,12 +65,12 @@ PVACMS server certificate — a deterministic, certificate-bound identifier.
 The join handshake is a single RPC round-trip on the CTRL PV:
 
 1. **Joiner** constructs a `JoinRequest`:
-   - `version_major`, `version_minor`, `version_patch` — the joiner's protocol
+   - `version_major`, `version_minor`, `version_patch` - the joiner's protocol
      version (semver)
-   - `node_id` — its SKID-derived identifier
-   - `sync_pv` — the PV name it will publish sync data on
-   - `nonce` — 16 bytes of cryptographic randomness (replay protection)
-   - `signature` — ECDSA signature over the canonicalized request, using the
+   - `node_id` - its SKID-derived identifier
+   - `sync_pv` - the PV name it will publish sync data on
+   - `nonce` - 16 bytes of cryptographic randomness (replay protection)
+   - `signature` - ECDSA signature over the canonicalized request, using the
      CA private key
 
 2. **Existing node** (whichever serves the CTRL PV) validates the request:
@@ -82,10 +82,10 @@ The join handshake is a single RPC round-trip on the CTRL PV:
    - Adds the joiner to the membership list
    - Constructs a `JoinResponse` containing:
       - `version_major`, `version_minor`, `version_patch`, `issuer_id`,
-        `timeStamp` (NT `time_t` struct — see [Timestamps](#timestamps))
-     - `members` — the full membership list (including the joiner)
-     - `nonce` — echoed back from the request
-     - `signature` — signed with the CA private key
+        `timeStamp` (NT `time_t` struct - see [Timestamps](#timestamps))
+     - `members` - the full membership list (including the joiner)
+     - `nonce` - echoed back from the request
+     - `signature` - signed with the CA private key
 
 3. **Joiner** validates the response:
    - Verifies the signature
@@ -99,14 +99,14 @@ The join handshake is a single RPC round-trip on the CTRL PV:
 
 Each node publishes a **sync snapshot** on its SYNC PV.  A snapshot contains:
 
-- `node_id` — publisher's identity
-- `timeStamp` — wall-clock time of publication (NT `time_t` struct — see
+- `node_id` - publisher's identity
+- `timeStamp` - wall-clock time of publication (NT `time_t` struct - see
   [Timestamps](#timestamps))
-- `members[]` — the node's current view of cluster membership (each member
+- `members[]` - the node's current view of cluster membership (each member
   carries `node_id`, `sync_pv`, `version_major`, `version_minor`,
   `version_patch`)
-- `certs[]` — the full contents of the node's certificate database
-- `signature` — ECDSA signature over the canonicalized payload
+- `certs[]` - the full contents of the node's certificate database
+- `signature` - ECDSA signature over the canonicalized payload
 
 **When snapshots are published:**
 - After a new certificate is created (CCR processed)
@@ -125,19 +125,19 @@ Each node publishes a **sync snapshot** on its SYNC PV.  A snapshot contains:
 
 When a node receives a sync snapshot from a peer:
 
-1. **Signature verification** — reject if the CA public key does not verify the
+1. **Signature verification** - reject if the CA public key does not verify the
    signature.
-2. **Anti-replay** — reject if the timestamp is older than the global
+2. **Anti-replay** - reject if the timestamp is older than the global
    high-water mark minus a 5-second clock-skew tolerance.  The high-water mark
    is updated atomically.
-3. **Loop guard** — a flag (`sync_ingestion_in_progress`) prevents a node from
+3. **Loop guard** - a flag (`sync_ingestion_in_progress`) prevents a node from
    re-publishing its own snapshot in response to ingesting a peer's snapshot.
-4. **Cert-by-cert application** — for each certificate in the snapshot:
+4. **Cert-by-cert application** - for each certificate in the snapshot:
    - If the cert exists locally: apply the update only if
      `isValidStatusTransition()` allows the remote status.  When allowed, all
      fields are overwritten (including `renew_by` and `status_date`).
    - If the cert does not exist locally: insert it.
-5. **Membership reconciliation** — the snapshot includes the publisher's
+5. **Membership reconciliation** - the snapshot includes the publisher's
    membership view.  The receiver subscribes to any peers it is not yet
    tracking.
 
@@ -184,7 +184,7 @@ version as three `uint32` fields: `version_major`, `version_minor`,
 
 **Compatibility rule**: The existing node rejects join requests where
 `version_major` does not equal 1.  Minor and patch versions are informational
-and do not affect acceptance — this allows rolling upgrades where nodes at
+and do not affect acceptance - this allows rolling upgrades where nodes at
 different minor/patch versions coexist freely, while a major version bump
 signals a breaking protocol change that requires a coordinated upgrade.
 
@@ -201,9 +201,9 @@ All cluster messages that carry a timestamp use the EPICS NT `time_t` struct
 
 Helper functions in `clustertypes.{h,cpp}` work directly in the EPICS epoch:
 
-- `setTimeStamp(val)` — writes the current wall-clock time as an EPICS-epoch
+- `setTimeStamp(val)` - writes the current wall-clock time as an EPICS-epoch
   NT `time_t` struct via `epicsTimeGetCurrent()`.
-- `getTimeStamp(val)` — reads the `secondsPastEpoch` field and returns an
+- `getTimeStamp(val)` - reads the `secondsPastEpoch` field and returns an
   EPICS-epoch `int64_t`.
 
 Using NT types ensures interoperability with standard EPICS tooling (e.g.
@@ -231,7 +231,7 @@ same certificate dates stored in its local database:
 
 This is safe because:
 - All nodes have the same `not_before`, `not_after`, and `renew_by` values.
-- Small timing differences between nodes are harmless — a client connecting to
+- Small timing differences between nodes are harmless - a client connecting to
   a node that hasn't yet flipped PENDING → VALID will simply retry.
 - The `renewal_due` flag is a notification hint, not a status change.
 
@@ -245,7 +245,7 @@ transitioning the cert to PENDING_RENEWAL based on stale dates.
 
 ### Immediate Disconnect Removal
 
-When a peer disconnects, it is removed from the cluster immediately — there is
+When a peer disconnects, it is removed from the cluster immediately - there is
 no grace period.  The rationale:
 
 - Every node independently detects disconnects via its own PVA subscription.
@@ -308,7 +308,7 @@ Sync snapshots are published only on operator/CCR-driven events:
 - Certificate renewal
 - New member join
 
-Membership changes (CTRL PV updates) are lightweight — they contain only the
+Membership changes (CTRL PV updates) are lightweight - they contain only the
 membership list (node IDs and sync PV names), not the certificate database.
 
 Time-based status transitions do **not** trigger any network traffic.
@@ -367,11 +367,11 @@ snapshots are well under 1 MB.
 
 ```
 src/pvacms/
-├── clustertypes.h/.cpp      — PVA type definitions, signing, verification, transition rules
-├── clustersync.h/.cpp       — Sync snapshot publishing (SYNC PV)
-├── clusterctrl.h/.cpp       — Cluster control, join handling, membership (CTRL PV)
-├── clusterdiscovery.h/.cpp  — Discovery, subscription management, snapshot ingestion
-└── CLUSTER.md               — This document
+├── clustertypes.h/.cpp      - PVA type definitions, signing, verification, transition rules
+├── clustersync.h/.cpp       - Sync snapshot publishing (SYNC PV)
+├── clusterctrl.h/.cpp       - Cluster control, join handling, membership (CTRL PV)
+├── clusterdiscovery.h/.cpp  - Discovery, subscription management, snapshot ingestion
+└── CLUSTER.md               - This document
 test/
-└── testcluster.cpp          — Unit and integration tests (119 assertions)
+└── testcluster.cpp          - Unit and integration tests (119 assertions)
 ```

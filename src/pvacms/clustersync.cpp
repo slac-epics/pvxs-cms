@@ -161,7 +161,7 @@ void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, 
 
     Guard G(status_update_lock_);
 
-    // Always build the full Value — needed for canonicalization and signing
+    // Always build the full Value - needed for canonicalization and signing
     auto val = serializeCertsTable(certs_db_, node_id_, members, prototype_);
 
     const auto canonical = canonicalizeSync(val);
@@ -170,12 +170,12 @@ void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, 
     const auto cert_count = val["certs"].as<shared_array<const Value>>().size();
 
     if (!opened_) {
-        // First, open — all fields marked, full value sent to initial subscribers
+        // First, open - all fields marked, full value sent to initial subscribers
         prototype_ = val;
         sync_pv_.open(val);
         opened_ = true;
     } else {
-        // Subsequent posts — unmark unchanged fields.
+        // Subsequent posts - unmark unchanged fields.
         val["node_id"].unmark();  // never changes
         if (!members_changed)
             val["members"].unmark();

@@ -3464,7 +3464,7 @@ int main(int argc, char *argv[]) {
 
         std::string cluster_status;
         if (is_initialising) {
-            log_info_printf(pvacms, "Fresh CA init — bootstrapping as sole cluster node%s", "\n");
+            log_info_printf(pvacms, "Fresh CA init - bootstrapping as sole cluster node%s", "\n");
             cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
             cluster_sync.publishSnapshot();
             cluster_status = "Created new cluster";
@@ -3473,7 +3473,7 @@ int main(int argc, char *argv[]) {
             if (cluster_discovery.joinCluster()) {
                 cluster_status = "Joined existing cluster";
             } else {
-                log_info_printf(pvacms, "No existing cluster found — bootstrapping as sole node%s", "\n");
+                log_info_printf(pvacms, "No existing cluster found - bootstrapping as sole node%s", "\n");
                 cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
                 cluster_sync.publishSnapshot();
                 cluster_status = "Created new cluster (no existing cluster found)";

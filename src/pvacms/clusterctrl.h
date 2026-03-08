@@ -105,7 +105,7 @@ private:
     ClusterSyncPublisher &sync_publisher_;
     server::SharedPV ctrl_pv_;
     bool opened_{false};
-    Value prototype_;  // Type prototype from first open() — post() requires matching type
+    Value prototype_;  // Type prototype from first open() - post() requires matching type
     std::vector<ClusterMember> members_;
 
     /**

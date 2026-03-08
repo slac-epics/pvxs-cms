@@ -202,8 +202,8 @@ void testStateMachine() {
  * expose the expected version and identity fields.
  *
  * This test guards against accidental field removal or renaming in the TypeDef
- * factory functions.  A failure would mean that other cluster code — serialization,
- * signing, ingestion, join handshake — could silently drop or mis-read data because
+ * factory functions.  A failure would mean that other cluster code - serialization,
+ * signing, ingestion, join handshake - could silently drop or mis-read data because
  * a field it relies on no longer exists in the Value prototype.
  */
 void testTypeDefs() {
@@ -275,7 +275,7 @@ void testTypeDefs() {
  * canonicalization of the same Value (simulating what the receiving node does).
  *
  * A second pass deliberately mutates the node_id field after signing to confirm that
- * the resulting canonical form no longer matches the signature — verifying that the
+ * the resulting canonical form no longer matches the signature - verifying that the
  * canonicalization covers all significant payload fields and that clusterVerify
  * correctly rejects tampered data.
  *
@@ -304,7 +304,7 @@ void testSigning() {
     const auto canonical2 = canonicalizeSync(sync_val);
     testOk(clusterVerify(pkey, sync_val, canonical2), "Valid sync signature accepted");
 
-    // Tamper with payload — old signature won't match new canonical
+    // Tamper with payload - old signature won't match new canonical
     sync_val["node_id"] = "tampered";
     const auto canonical3 = canonicalizeSync(sync_val);
     testOk(!clusterVerify(pkey, sync_val, canonical3), "Tampered sync signature rejected");
@@ -416,7 +416,7 @@ void testApplySyncBackwardDropped() {
         sqlite3_exec(tdb.get(), sql.c_str(), nullptr, nullptr, nullptr);
     }
 
-    // Sync snapshot tries to set VALID — backward from EXPIRED
+    // Sync snapshot tries to set VALID - backward from EXPIRED
     const auto val = buildSyncWithCert(42, static_cast<int32_t>(VALID), 1600, "CN1_updated");
 
     applySyncSnapshot(tdb.get(), lock, val);
@@ -499,8 +499,8 @@ void testApplySyncNewCert() {
                "CN matches");
         testOk(sqlite3_column_int(stmt, 1) == VALID, "Status is VALID");
     } else {
-        testSkip(1, "Row not found — skipping CN check");
-        testSkip(1, "Row not found — skipping status check");
+        testSkip(1, "Row not found - skipping CN check");
+        testSkip(1, "Row not found - skipping status check");
     }
     sqlite3_finalize(stmt);
 }
@@ -725,7 +725,7 @@ void testJoinHandshake() {
  *   - Both certs appear in node_b's database with the correct status and timestamps.
  *
  * A second scenario inserts cert 100 as VALID in node_b and then feeds a snapshot
- * from a "stale" node_a that carries cert 100 as PENDING — a backward transition —
+ * from a "stale" node_a that carries cert 100 as PENDING - a backward transition —
  * verifying that node_b's VALID status is preserved and not clobbered.
  *
  * Failure here indicates that the serialize → sign → verify → ingest pipeline has a
@@ -763,7 +763,7 @@ void testCrossNodeSyncIngestion() {
     testOk(queryCertInt64(db_b.get(), 100, "not_after") == 5000, "CertA not_after correct");
     testOk(queryCertInt64(db_b.get(), 100, "renew_by") == 4000, "CertA renew_by correct");
 
-    // Node B already has cert 100 as VALID — a second sync with PENDING should be rejected
+    // Node B already has cert 100 as VALID - a second sync with PENDING should be rejected
     // (backward transition from VALID)
     TestDb db_b2;
     epicsMutex lock_b2;
@@ -776,7 +776,7 @@ void testCrossNodeSyncIngestion() {
     applySyncSnapshot(db_b2.get(), lock_b2, stale_snapshot);
 
     testOk(queryCertInt64(db_b2.get(), 100, "status") == VALID,
-           "Backward VALID->PENDING rejected — status unchanged");
+           "Backward VALID->PENDING rejected - status unchanged");
 }
 
 /**
@@ -855,7 +855,7 @@ void testAntiReplayIntegration() {
     insertCert(db_a.get(), 200, "ReplayCert", VALID, 1000, 5000, 4000, 1500);
     std::vector<ClusterMember> members = {{"node_a", "sync:a", 1, 0, 0}};
 
-    // Build two snapshots — the type definitions use setTimeStamp which writes
+    // Build two snapshots - the type definitions use setTimeStamp which writes
     // the current time.  For deterministic testing, we manually set timestamps.
     auto snap1 = serializeCertsTable(db_a.get(), "node_a", members);
     snap1["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(1000);
@@ -883,7 +883,7 @@ void testAntiReplayIntegration() {
     testOk(accept1, "First snapshot (ts=1000) accepted");
     if (accept1) hwm.store(ts1);
 
-    // Second snapshot (ts=500) rejected — stale
+    // Second snapshot (ts=500) rejected - stale
     const auto ts2 = getTimeStamp(snap2);
     const bool accept2 = (hwm.load() == 0 || ts2 >= hwm.load() - tolerance);
     testOk(!accept2, "Stale snapshot (ts=500) rejected after hwm=1000");
@@ -893,8 +893,8 @@ void testAntiReplayIntegration() {
  * @brief Tests that certificate renewal metadata propagates via VALID->VALID sync.
  *
  * Simulates the scenario where node_a has already processed a certificate renewal
- * for cert 300 — the cert remains VALID but its not_after and renew_by dates have
- * been extended — while node_b still holds the old validity window.  node_a builds
+ * for cert 300 - the cert remains VALID but its not_after and renew_by dates have
+ * been extended - while node_b still holds the old validity window.  node_a builds
  * and signs a sync snapshot; node_b ingests it via applySyncSnapshot.
  *
  * The test asserts that after ingestion:
@@ -916,7 +916,7 @@ void testRenewalPropagation() {
     epicsMutex lock_b;
     insertCert(db_b.get(), 300, "RenewalCert", VALID, 1000, 5000, 4000, 1500);
 
-    // Node A has already processed a renewal — cert 300 is still VALID but renew_by=8000
+    // Node A has already processed a renewal - cert 300 is still VALID but renew_by=8000
     TestDb db_a;
     insertCert(db_a.get(), 300, "RenewalCert", VALID, 1000, 9000, 8000, 2000);
     std::vector<ClusterMember> members = {{"node_a", "sync:a", 1, 0, 0}};
@@ -962,7 +962,7 @@ void testSignatureTamperingRejected() {
     const auto canonical = canonicalizeSync(snapshot);
     testOk(clusterVerify(pkey, snapshot, canonical), "Unmodified snapshot passes verification");
 
-    // Tamper with the node_id — the canonical form changes, signature won't match
+    // Tamper with the node_id - the canonical form changes, signature won't match
     snapshot["node_id"] = "tampered_node";
     const auto tampered_canonical = canonicalizeSync(snapshot);
     testOk(!clusterVerify(pkey, snapshot, tampered_canonical),
