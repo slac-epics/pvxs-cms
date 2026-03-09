@@ -22,7 +22,7 @@ This report presents GET-based throughput benchmarks comparing five EPICS protoc
 - **Certificate monitoring overhead is negligible in steady state** - SPVA_CERTMON ≈ SPVA across all configurations (within 1–4%)
 - **Array size has minimal impact** on pvxs-based modes - the bottleneck is event loop dispatch, not data serialization
 
-**Recommendations:** Section 5 contains optimization opportunities for pvxs GET performance, including connection phase improvements (CP-1 and CP-2) and architectural analysis of the pvxs vs EPICS Base PVA performance gap.
+**Recommendations:** Section 5 contains optimization opportunities for pvxs GET performance, including throughput improvements (T-1 and T-2) and Section 3 contains architectural analysis.
 
 ---
 
@@ -75,6 +75,8 @@ The pvxs `reExecGet()` API (enabled via `PVXS_ENABLE_EXPERT_API`) performs the P
 All results from a single benchmark run: 5 modes × 6 array sizes × 4 parallelism levels = 120 data points, 1000 samples each. Platform: macOS darwin-aarch64 (Apple Silicon), loopback.
 
 **Throughput convention:** All "gets/sec" figures are **aggregate throughput** - the total number of GET round-trips completed per second across all parallel getters combined. For example, 252,605 gets/sec at par=100 means 100 parallel getters each completing ~2,526 GETs/sec individually.
+
+![](/Users/george/Projects/com/slac/pvxs-cms/src/tools/pvxperf/results/results.png)
 
 ### 2.1 Summary by Mode (array_size=1, all parallelisms)
 
