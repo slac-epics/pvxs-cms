@@ -4,7 +4,7 @@ BASE_REPONAME=epics-base-tls
 BASE_REPOOWNER=slac-epics
 BASE=7.0
 BASE_VARNAME=EPICS_BASE
-BASE_RECURSIVE=no
+BASE_RECURSIVE=yes
 BASE_HOOK=.ci-local/propagate_flags.sh
 
 # PVXS - Secure PVAccess library (built as dependency using system/brew/vcpkg libevent)
