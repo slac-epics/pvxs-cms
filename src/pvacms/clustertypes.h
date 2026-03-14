@@ -7,7 +7,9 @@
 #ifndef PVXS_CLUSTERTYPES_H_
 #define PVXS_CLUSTERTYPES_H_
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include <openssl/evp.h>
 
@@ -67,49 +69,39 @@ Value makeJoinResponseValue();
 bool isValidStatusTransition(certstatus_t local_status, certstatus_t remote_status);
 
 /**
- * @brief Produce a deterministic byte sequence from a cluster sync Value for signing/verification.
- * @param payload  The sync snapshot Value to canonicalize.
- * @return Binary canonical form suitable for signature input.
+ * @brief Encode a cluster Value into a deterministic byte buffer for signing/verification.
+ *
+ * Creates a copy of the payload with the "signature" field cleared, then encodes it
+ * using pvxs::xcode::encodeFull() to produce a deterministic byte representation.
+ *
+ * @param payload  The cluster message Value to encode.
+ * @return Binary encoding suitable for signature input.
  */
-std::string canonicalizeSync(const Value &payload);
+std::vector<uint8_t> clusterEncode(const Value &payload);
 
 /**
- * @brief Produce a deterministic byte sequence from a cluster ctrl Value for signing/verification.
- * @param payload  The ctrl PV Value to canonicalize.
- * @return Binary canonical form suitable for signature input.
- */
-std::string canonicalizeCtrl(const Value &payload);
-
-/**
- * @brief Produce a deterministic byte sequence from a join request Value for signing/verification.
- * @param payload  The join request Value to canonicalize.
- * @return Binary canonical form suitable for signature input.
- */
-std::string canonicalizeJoinRequest(const Value &payload);
-
-/**
- * @brief Produce a deterministic byte sequence from a join response Value for signing/verification.
- * @param payload  The join response Value to canonicalize.
- * @return Binary canonical form suitable for signature input.
- */
-std::string canonicalizeJoinResponse(const Value &payload);
-
-/**
- * @brief Sign a cluster Value by computing a signature over its canonical form.
+ * @brief Sign a cluster Value using xcode encoding.
+ *
+ * Encodes the payload (minus signature) with clusterEncode(), signs the resulting
+ * bytes with the CA private key, and stores the signature in the payload's
+ * "signature" field.
+ *
  * @param cert_auth_pkey  CA private key used for signing.
  * @param payload         Value to sign; its "signature" field is populated in place.
- * @param canonical       Pre-computed canonical byte string of the payload.
  */
-void clusterSign(const ossl_ptr<EVP_PKEY> &cert_auth_pkey, Value &payload, const std::string &canonical);
+void clusterSign(const ossl_ptr<EVP_PKEY> &cert_auth_pkey, Value &payload);
 
 /**
- * @brief Verify the signature on a cluster Value against its canonical form.
+ * @brief Verify the signature on a cluster Value using xcode encoding.
+ *
+ * Encodes the payload (minus signature) with clusterEncode() and verifies the
+ * stored signature against the CA public key.
+ *
  * @param cert_auth_pub_key  CA public key used for verification.
  * @param payload            Value whose "signature" field is checked.
- * @param canonical          Pre-computed canonical byte string of the payload.
  * @return true if the signature is valid.
  */
-bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, const Value &payload, const std::string &canonical);
+bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, const Value &payload);
 
 }  // namespace certs
 }  // namespace pvxs

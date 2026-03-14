@@ -153,40 +153,61 @@ ossl_ptr<X509> CertFactory::create() {
     return certificate;
 }
 
-std::string CertFactory::sign(const ossl_ptr<EVP_PKEY> &pkey, const std::string &data) {
-    const ossl_ptr<EVP_MD_CTX> message_digest_context(EVP_MD_CTX_new());
-    assert(message_digest_context.get() != nullptr);
+namespace {
 
-    const EVP_MD *message_digest = EVP_sha256();
-    assert(message_digest != nullptr);
+std::vector<uint8_t> signBytes(const ossl_ptr<EVP_PKEY> &pkey, const uint8_t *data, size_t data_len) {
+    const ossl_ptr<EVP_MD_CTX> ctx(EVP_MD_CTX_new());
+    assert(ctx.get() != nullptr);
 
-    assert(EVP_DigestSignInit(message_digest_context.get(), nullptr, message_digest, nullptr, pkey.get()) == 1);
-    assert(EVP_DigestSignUpdate(message_digest_context.get(), data.c_str(), data.size()) == 1);
+    const EVP_MD *md = EVP_sha256();
+    assert(md != nullptr);
+
+    assert(EVP_DigestSignInit(ctx.get(), nullptr, md, nullptr, pkey.get()) == 1);
+    assert(EVP_DigestSignUpdate(ctx.get(), data, data_len) == 1);
 
     size_t len = 0;
-    assert(EVP_DigestSignFinal(message_digest_context.get(), nullptr, &len) == 1);
+    assert(EVP_DigestSignFinal(ctx.get(), nullptr, &len) == 1);
 
-    std::string signature(len, '\0');
-    assert(EVP_DigestSignFinal(message_digest_context.get(), reinterpret_cast<unsigned char *>(&signature[0]), &len) == 1);
-    signature.resize(len);
+    std::vector<uint8_t> sig(len);
+    assert(EVP_DigestSignFinal(ctx.get(), sig.data(), &len) == 1);
+    sig.resize(len);
 
-    return signature;
+    return sig;
+}
+
+bool verifyBytes(const ossl_ptr<EVP_PKEY> &pkey, const uint8_t *data, size_t data_len,
+                 const uint8_t *sig, size_t sig_len) {
+    const ossl_ptr<EVP_MD_CTX> ctx(EVP_MD_CTX_new());
+    assert(ctx.get() != nullptr);
+
+    const EVP_MD *md = EVP_sha256();
+    assert(md != nullptr);
+
+    assert(EVP_DigestVerifyInit(ctx.get(), nullptr, md, nullptr, pkey.get()) == 1);
+    assert(EVP_DigestVerifyUpdate(ctx.get(), data, data_len) == 1);
+
+    return EVP_DigestVerifyFinal(ctx.get(), sig, sig_len) == 1;
+}
+
+}  // namespace
+
+std::string CertFactory::sign(const ossl_ptr<EVP_PKEY> &pkey, const std::string &data) {
+    auto sig = signBytes(pkey, reinterpret_cast<const uint8_t *>(data.data()), data.size());
+    return {reinterpret_cast<const char *>(sig.data()), sig.size()};
+}
+
+std::vector<uint8_t> CertFactory::sign(const ossl_ptr<EVP_PKEY> &pkey, const std::vector<uint8_t> &data) {
+    return signBytes(pkey, data.data(), data.size());
 }
 
 bool CertFactory::verifySignature(const ossl_ptr<EVP_PKEY> &pkey, const std::string &data, const std::string &signature) {
-    const ossl_ptr<EVP_MD_CTX> message_digest_context(EVP_MD_CTX_new());
-    assert(message_digest_context.get() != nullptr);
+    return verifyBytes(pkey,
+                       reinterpret_cast<const uint8_t *>(data.data()), data.size(),
+                       reinterpret_cast<const uint8_t *>(signature.data()), signature.size());
+}
 
-    const EVP_MD *message_digest = EVP_sha256();
-    assert(message_digest != nullptr);
-
-    assert(EVP_DigestVerifyInit(message_digest_context.get(), nullptr, message_digest, nullptr, pkey.get()) == 1);
-    assert(EVP_DigestVerifyUpdate(message_digest_context.get(), data.c_str(), data.size()) == 1);
-
-    if (EVP_DigestVerifyFinal(message_digest_context.get(), reinterpret_cast<const unsigned char *>(&signature[0]), signature.size()) == 1) {
-        return true;
-    }
-    return false;
+bool CertFactory::verifySignature(const ossl_ptr<EVP_PKEY> &pkey, const std::vector<uint8_t> &data, const std::vector<uint8_t> &signature) {
+    return verifyBytes(pkey, data.data(), data.size(), signature.data(), signature.size());
 }
 
 /**

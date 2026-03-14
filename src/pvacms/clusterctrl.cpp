@@ -54,8 +54,7 @@ void ClusterController::setupRpcHandler() {
                 return;
             }
 
-            auto canonical = canonicalizeJoinRequest(args);
-            if (!clusterVerify(cert_auth_pub_key_, args, canonical)) {
+            if (!clusterVerify(cert_auth_pub_key_, args)) {
                 log_warn_printf(pvacmscluster, "Join request signature verification failed from node %s\n",
                                 args["node_id"].as<std::string>().c_str());
                 op->error("Signature verification failed");
@@ -96,8 +95,7 @@ void ClusterController::setupRpcHandler() {
             resp["members"] = members_arr.freeze();
             resp["nonce"] = nonce;
 
-            const auto resp_canonical = canonicalizeJoinResponse(resp);
-            clusterSign(cert_auth_pkey_, resp, resp_canonical);
+            clusterSign(cert_auth_pkey_, resp);
 
             log_info_printf(pvacmscluster, "Node %s joined cluster %s\n",
                             joiner_node_id.c_str(), issuer_id_.c_str());
@@ -146,8 +144,7 @@ void ClusterController::postCtrlValue() {
     }
     val["members"] = members_arr.freeze();
 
-    const auto canonical = canonicalizeCtrl(val);
-    clusterSign(cert_auth_pkey_, val, canonical);
+    clusterSign(cert_auth_pkey_, val);
 
     if (!opened_) {
         prototype_ = val;

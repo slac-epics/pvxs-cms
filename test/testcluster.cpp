@@ -279,7 +279,7 @@ void testTypeDefs() {
  * canonicalization covers all significant payload fields and that clusterVerify
  * correctly rejects tampered data.
  *
- * A failure here indicates a bug in clusterSign, clusterVerify, or canonicalizeSync
+ * A failure here indicates a bug in clusterSign, clusterVerify, or clusterEncode
  * that would allow unsigned or tampered sync snapshots to be trusted by cluster peers,
  * undermining the integrity guarantee of the cert sync protocol.
  */
@@ -297,17 +297,14 @@ void testSigning() {
     shared_array<Value> empty_certs(0);
     sync_val["certs"] = empty_certs.freeze();
 
-    const auto canonical = canonicalizeSync(sync_val);
-    clusterSign(pkey, sync_val, canonical);
+    clusterSign(pkey, sync_val);
 
     // Verify with same key succeeds
-    const auto canonical2 = canonicalizeSync(sync_val);
-    testOk(clusterVerify(pkey, sync_val, canonical2), "Valid sync signature accepted");
+    testOk(clusterVerify(pkey, sync_val), "Valid sync signature accepted");
 
-    // Tamper with payload - old signature won't match new canonical
+    // Tamper with payload - encoding changes, signature won't match
     sync_val["node_id"] = "tampered";
-    const auto canonical3 = canonicalizeSync(sync_val);
-    testOk(!clusterVerify(pkey, sync_val, canonical3), "Tampered sync signature rejected");
+    testOk(!clusterVerify(pkey, sync_val), "Tampered sync signature rejected");
 }
 
 /**
@@ -594,8 +591,7 @@ Value buildSignedSync(sqlite3 *db, const std::string &node_id,
                       const std::vector<ClusterMember> &members,
                       const ossl_ptr<EVP_PKEY> &pkey) {
     auto val = serializeCertsTable(db, node_id, members);
-    const auto canonical = canonicalizeSync(val);
-    clusterSign(pkey, val, canonical);
+    clusterSign(pkey, val);
     return val;
 }
 
@@ -635,12 +631,10 @@ void testJoinHandshake() {
     req["node_id"] = "node_a";
     req["sync_pv"] = "CERT:CLUSTER:SYNC:ISSUER1:node_a";
     req["nonce"] = frozen_nonce;
-    auto req_canonical = canonicalizeJoinRequest(req);
-    clusterSign(pkey, req, req_canonical);
+    clusterSign(pkey, req);
 
     // Node B (existing) validates the request
-    auto req_canonical2 = canonicalizeJoinRequest(req);
-    testOk(clusterVerify(pkey, req, req_canonical2), "Join request signature valid");
+    testOk(clusterVerify(pkey, req), "Join request signature valid");
 
     auto req_major = req["version_major"].as<uint32_t>();
     testOk(req_major == 1, "Join request version_major == 1");
@@ -672,12 +666,10 @@ void testJoinHandshake() {
     }
     resp["members"] = members_arr.freeze();
     resp["nonce"] = frozen_nonce;
-    auto resp_canonical = canonicalizeJoinResponse(resp);
-    clusterSign(pkey, resp, resp_canonical);
+    clusterSign(pkey, resp);
 
     // Node A validates the response (simulating joinCluster validation)
-    auto resp_canonical2 = canonicalizeJoinResponse(resp);
-    testOk(clusterVerify(pkey, resp, resp_canonical2), "Join response signature valid");
+    testOk(clusterVerify(pkey, resp), "Join response signature valid");
 
     auto resp_issuer = resp["issuer_id"].as<std::string>();
     testOk(resp_issuer == "ISSUER1", "Join response issuer_id matches");
@@ -748,8 +740,7 @@ void testCrossNodeSyncIngestion() {
     const auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
 
     // Node B receives and verifies the snapshot
-    const auto canonical = canonicalizeSync(snapshot);
-    testOk(clusterVerify(pkey, snapshot, canonical), "Cross-node sync signature valid");
+    testOk(clusterVerify(pkey, snapshot), "Cross-node sync signature valid");
 
     // Node B ingests the snapshot into its own (empty) DB
     TestDb db_b;
@@ -860,18 +851,16 @@ void testAntiReplayIntegration() {
     auto snap1 = serializeCertsTable(db_a.get(), "node_a", members);
     snap1["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(1000);
     snap1["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
-    const auto can1 = canonicalizeSync(snap1);
-    clusterSign(pkey, snap1, can1);
+    clusterSign(pkey, snap1);
 
     auto snap2 = serializeCertsTable(db_a.get(), "node_a", members);
     snap2["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(500);
     snap2["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
-    auto can2 = canonicalizeSync(snap2);
-    clusterSign(pkey, snap2, can2);
+    clusterSign(pkey, snap2);
 
     // Both are validly signed
-    testOk(clusterVerify(pkey, snap1, canonicalizeSync(snap1)), "Snapshot 1 signature valid");
-    testOk(clusterVerify(pkey, snap2, canonicalizeSync(snap2)), "Snapshot 2 signature valid");
+    testOk(clusterVerify(pkey, snap1), "Snapshot 1 signature valid");
+    testOk(clusterVerify(pkey, snap2), "Snapshot 2 signature valid");
 
     // Simulate anti-replay HWM logic from handleSyncUpdate
     std::atomic<int64_t> hwm{0};
@@ -942,9 +931,9 @@ void testRenewalPropagation() {
  * the node_id field of the already-signed Value and re-canonicalizes it.  Because
  * the canonical form now differs from what was signed, clusterVerify must return false.
  *
- * This test confirms that the canonicalization function canonicalizeSync covers the
+ * This test confirms that the xcode encoding used by clusterEncode covers the
  * node_id field (and by extension, all fields it serializes) and that clusterVerify
- * does not accept a signature computed over a different canonical form.  Failure here
+ * does not accept a signature computed over a different encoding.  Failure here
  * would mean that a man-in-the-middle could alter the originating node identity or
  * any other serialized field without invalidating the signature.
  */
@@ -959,13 +948,11 @@ void testSignatureTamperingRejected() {
     auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
 
     // Verify the unmodified snapshot
-    const auto canonical = canonicalizeSync(snapshot);
-    testOk(clusterVerify(pkey, snapshot, canonical), "Unmodified snapshot passes verification");
+    testOk(clusterVerify(pkey, snapshot), "Unmodified snapshot passes verification");
 
-    // Tamper with the node_id - the canonical form changes, signature won't match
+    // Tamper with the node_id - encoding changes, signature won't match
     snapshot["node_id"] = "tampered_node";
-    const auto tampered_canonical = canonicalizeSync(snapshot);
-    testOk(!clusterVerify(pkey, snapshot, tampered_canonical),
+    testOk(!clusterVerify(pkey, snapshot),
            "Tampered snapshot fails verification");
 }
 

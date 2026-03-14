@@ -7,7 +7,9 @@
 #ifndef PVXS_CERT_FACTORY_H
 #define PVXS_CERT_FACTORY_H
 
+#include <cstdint>
 #include <tuple>
+#include <vector>
 
 #include <certfilefactory.h>
 
@@ -198,7 +200,9 @@ class CertFactory {
     static void addCustomTimeExtensionByNid(const ossl_ptr<X509> &certificate, int nid, time_t value);
 
     static std::string sign(const ossl_ptr<EVP_PKEY> &pkey, const std::string &data);
+    static std::vector<uint8_t> sign(const ossl_ptr<EVP_PKEY> &pkey, const std::vector<uint8_t> &data);
     static bool verifySignature(const ossl_ptr<EVP_PKEY> &pkey, const std::string &data, const std::string &signature);
+    static bool verifySignature(const ossl_ptr<EVP_PKEY> &pkey, const std::vector<uint8_t> &data, const std::vector<uint8_t> &signature);
 
    private:
     /**

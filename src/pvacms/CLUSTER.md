@@ -24,7 +24,7 @@ The cluster uses two PV channels per cluster:
 | `ClusterController`    | `clusterctrl.{h,cpp}`      | Manages CTRL PV, processes join RPCs, maintains membership list                      |
 | `ClusterSyncPublisher` | `clustersync.{h,cpp}`      | Publishes this node's cert database as signed snapshots on its SYNC PV               |
 | `ClusterDiscovery`     | `clusterdiscovery.{h,cpp}` | Discovers existing clusters, subscribes to peer SYNC PVs, handles connect/disconnect |
-| `clustertypes`         | `clustertypes.{h,cpp}`     | PVA type definitions, canonicalization, signing, verification, transition validation |
+| `clustertypes`         | `clustertypes.{h,cpp}`     | PVA type definitions, xcode encoding, signing, verification, transition validation  |
 
 ### PV Naming
 
@@ -267,12 +267,16 @@ with its public key.  This ensures:
   the cluster.
 - Tampered snapshots are rejected before any database writes occur.
 
-### Canonicalization
+### Encode/Decode Signing
 
-Each message type has a deterministic canonicalization function that serializes
-all fields (except the signature) into a byte buffer using big-endian encoding
-with length-prefixed strings.  The signature covers this canonical form, making
-it independent of PVA serialization order.
+Each message type is serialized for signing using `pvxs::xcode::encodeFull()`,
+which produces a deterministic byte representation of all fields.  Before
+encoding, the `signature` field is cleared so it is not included in the signed
+data.  The signature covers this encoded form.
+
+This replaces the previous custom canonicalization approach and relies on the
+pvxs xcode API ([PR #118](https://github.com/epics-base/pvxs/pull/118)) for
+deterministic serialization.
 
 ### Anti-Replay
 

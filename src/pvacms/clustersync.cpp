@@ -164,8 +164,7 @@ void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, 
     // Always build the full Value - needed for canonicalization and signing
     auto val = serializeCertsTable(certs_db_, node_id_, members, prototype_);
 
-    const auto canonical = canonicalizeSync(val);
-    clusterSign(cert_auth_pkey_, val, canonical);
+    clusterSign(cert_auth_pkey_, val);
 
     const auto cert_count = val["certs"].as<shared_array<const Value>>().size();
 

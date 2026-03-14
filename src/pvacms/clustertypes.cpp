@@ -6,63 +6,13 @@
 
 #include "clustertypes.h"
 
-#include <cstring>
+#include <vector>
 
 #include <epicsTime.h>
 
 #include <pvxs/nt.h>
 
 #include "certfactory.h"
-
-namespace {
-
-/** @brief Append a uint32_t in big-endian byte order to a canonicalization buffer. */
-void appendU32(std::string &buf, uint32_t val) {
-    uint8_t bytes[4];
-    bytes[0] = static_cast<uint8_t>((val >> 24) & 0xFF);
-    bytes[1] = static_cast<uint8_t>((val >> 16) & 0xFF);
-    bytes[2] = static_cast<uint8_t>((val >> 8) & 0xFF);
-    bytes[3] = static_cast<uint8_t>(val & 0xFF);
-    buf.append(reinterpret_cast<const char *>(bytes), 4);
-}
-
-/** @brief Append an int32_t in big-endian byte order to a canonicalization buffer. */
-void appendI32(std::string &buf, int32_t val) {
-    appendU32(buf, static_cast<uint32_t>(val));
-}
-
-/** @brief Append a uint64_t in big-endian byte order to a canonicalization buffer. */
-void appendU64(std::string &buf, uint64_t val) {
-    uint8_t bytes[8];
-    bytes[0] = static_cast<uint8_t>((val >> 56) & 0xFF);
-    bytes[1] = static_cast<uint8_t>((val >> 48) & 0xFF);
-    bytes[2] = static_cast<uint8_t>((val >> 40) & 0xFF);
-    bytes[3] = static_cast<uint8_t>((val >> 32) & 0xFF);
-    bytes[4] = static_cast<uint8_t>((val >> 24) & 0xFF);
-    bytes[5] = static_cast<uint8_t>((val >> 16) & 0xFF);
-    bytes[6] = static_cast<uint8_t>((val >> 8) & 0xFF);
-    bytes[7] = static_cast<uint8_t>(val & 0xFF);
-    buf.append(reinterpret_cast<const char *>(bytes), 8);
-}
-
-/** @brief Append an int64_t in big-endian byte order to a canonicalization buffer. */
-void appendI64(std::string &buf, int64_t val) {
-    appendU64(buf, static_cast<uint64_t>(val));
-}
-
-/** @brief Append a length-prefixed string to a canonicalization buffer. */
-void appendString(std::string &buf, const std::string &s) {
-    appendU32(buf, static_cast<uint32_t>(s.size()));
-    buf.append(s);
-}
-
-/** @brief Append a length-prefixed byte array to a canonicalization buffer. */
-void appendBytes(std::string &buf, const pvxs::shared_array<const uint8_t> &bytes) {
-    appendU32(buf, static_cast<uint32_t>(bytes.size()));
-    buf.append(reinterpret_cast<const char *>(bytes.data()), bytes.size());
-}
-
-}  // namespace
 
 namespace pvxs {
 namespace certs {
@@ -197,114 +147,29 @@ bool isValidStatusTransition(certstatus_t local_status, certstatus_t remote_stat
     }
 }
 
-/** @brief Produce a deterministic byte sequence from a cluster sync Value for signing/verification. */
-std::string canonicalizeSync(const Value &payload) {
-    std::string buf;
-    appendString(buf, payload["node_id"].as<std::string>());
-    appendI64(buf, payload["timeStamp.secondsPastEpoch"].as<int64_t>());
-    appendI32(buf, payload["timeStamp.nanoseconds"].as<int32_t>());
+std::vector<uint8_t> clusterEncode(const Value &payload) {
+    auto copy = payload.cloneEmpty();
+    copy.assign(payload);
 
-    auto members_arr = payload["members"].as<shared_array<const Value>>();
-    appendU32(buf, static_cast<uint32_t>(members_arr.size()));
-    for (const auto & elem : members_arr) {
-        appendString(buf, elem["node_id"].as<std::string>());
-        appendString(buf, elem["sync_pv"].as<std::string>());
-        appendU32(buf, elem["version_major"].as<uint32_t>());
-        appendU32(buf, elem["version_minor"].as<uint32_t>());
-        appendU32(buf, elem["version_patch"].as<uint32_t>());
-    }
+    // Clear the signature field so it is not included in the signed data
+    shared_array<uint8_t> empty_sig(0);
+    copy["signature"] = empty_sig.freeze();
 
-    auto certs_arr = payload["certs"].as<shared_array<const Value>>();
-    appendU32(buf, static_cast<uint32_t>(certs_arr.size()));
-    for (const auto & elem : certs_arr) {
-        appendI64(buf, elem["serial"].as<int64_t>());
-        appendString(buf, elem["skid"].as<std::string>());
-        appendString(buf, elem["cn"].as<std::string>());
-        appendString(buf, elem["o"].as<std::string>());
-        appendString(buf, elem["ou"].as<std::string>());
-        appendString(buf, elem["c"].as<std::string>());
-        appendI32(buf, elem["approved"].as<int32_t>());
-        appendI64(buf, elem["not_before"].as<int64_t>());
-        appendI64(buf, elem["not_after"].as<int64_t>());
-        appendI64(buf, elem["renew_by"].as<int64_t>());
-        appendI32(buf, elem["renewal_due"].as<int32_t>());
-        appendI32(buf, elem["status"].as<int32_t>());
-        appendI64(buf, elem["status_date"].as<int64_t>());
-    }
-
+    std::vector<uint8_t> buf;
+    xcode::encodeFull(buf, copy);
     return buf;
 }
 
-/** @brief Produce a deterministic byte sequence from a cluster ctrl Value for signing/verification. */
-std::string canonicalizeCtrl(const Value &payload) {
-    std::string buf;
-    appendU32(buf, payload["version_major"].as<uint32_t>());
-    appendU32(buf, payload["version_minor"].as<uint32_t>());
-    appendU32(buf, payload["version_patch"].as<uint32_t>());
-    appendString(buf, payload["issuer_id"].as<std::string>());
-
-    auto members_arr = payload["members"].as<shared_array<const Value>>();
-    appendU32(buf, static_cast<uint32_t>(members_arr.size()));
-    for (const auto & elem : members_arr) {
-        appendString(buf, elem["node_id"].as<std::string>());
-        appendString(buf, elem["sync_pv"].as<std::string>());
-        appendU32(buf, elem["version_major"].as<uint32_t>());
-        appendU32(buf, elem["version_minor"].as<uint32_t>());
-        appendU32(buf, elem["version_patch"].as<uint32_t>());
-    }
-
-    return buf;
-}
-
-/** @brief Produce a deterministic byte sequence from a join request Value for signing/verification. */
-std::string canonicalizeJoinRequest(const Value &payload) {
-    std::string buf;
-    appendU32(buf, payload["version_major"].as<uint32_t>());
-    appendU32(buf, payload["version_minor"].as<uint32_t>());
-    appendU32(buf, payload["version_patch"].as<uint32_t>());
-    appendString(buf, payload["node_id"].as<std::string>());
-    appendString(buf, payload["sync_pv"].as<std::string>());
-    appendBytes(buf, payload["nonce"].as<shared_array<const uint8_t>>());
-    return buf;
-}
-
-/** @brief Produce a deterministic byte sequence from a join response Value for signing/verification. */
-std::string canonicalizeJoinResponse(const Value &payload) {
-    std::string buf;
-    appendU32(buf, payload["version_major"].as<uint32_t>());
-    appendU32(buf, payload["version_minor"].as<uint32_t>());
-    appendU32(buf, payload["version_patch"].as<uint32_t>());
-    appendString(buf, payload["issuer_id"].as<std::string>());
-    appendI64(buf, payload["timeStamp.secondsPastEpoch"].as<int64_t>());
-    appendI32(buf, payload["timeStamp.nanoseconds"].as<int32_t>());
-
-    auto members_arr = payload["members"].as<shared_array<const Value>>();
-    appendU32(buf, static_cast<uint32_t>(members_arr.size()));
-    for (const auto & elem : members_arr) {
-        appendString(buf, elem["node_id"].as<std::string>());
-        appendString(buf, elem["sync_pv"].as<std::string>());
-        appendU32(buf, elem["version_major"].as<uint32_t>());
-        appendU32(buf, elem["version_minor"].as<uint32_t>());
-        appendU32(buf, elem["version_patch"].as<uint32_t>());
-    }
-
-    appendBytes(buf, payload["nonce"].as<shared_array<const uint8_t>>());
-    return buf;
-}
-
-/** @brief Sign a cluster Value by computing a signature over its canonical form. */
-void clusterSign(const ossl_ptr<EVP_PKEY> &cert_auth_pkey, Value &payload, const std::string &canonical) {
-    std::string sig_str = CertFactory::sign(cert_auth_pkey, canonical);
-    shared_array<uint8_t> sig_bytes(sig_str.size());
-    std::memcpy(sig_bytes.data(), sig_str.data(), sig_str.size());
+void clusterSign(const ossl_ptr<EVP_PKEY> &cert_auth_pkey, Value &payload) {
+    const auto sig = CertFactory::sign(cert_auth_pkey, clusterEncode(payload));
+    shared_array<uint8_t> sig_bytes(sig.begin(), sig.end());
     payload["signature"] = sig_bytes.freeze();
 }
 
-/** @brief Verify the signature on a cluster Value against its canonical form. */
-bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, const Value &payload, const std::string &canonical) {
-    auto sig_bytes = payload["signature"].as<shared_array<const uint8_t>>();
-    std::string sig_str(reinterpret_cast<const char *>(sig_bytes.data()), sig_bytes.size());
-    return CertFactory::verifySignature(cert_auth_pub_key, canonical, sig_str);
+bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, const Value &payload) {
+    auto sig_arr = payload["signature"].as<shared_array<const uint8_t>>();
+    std::vector<uint8_t> sig(sig_arr.begin(), sig_arr.end());
+    return CertFactory::verifySignature(cert_auth_pub_key, clusterEncode(payload), sig);
 }
 
 }  // namespace certs

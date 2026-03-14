@@ -157,8 +157,7 @@ void applySyncSnapshot(sqlite3 *certs_db,
  * @param val Incoming PVAccess Value containing the signed sync snapshot.
  */
 void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &&val) {
-    const auto canonical = canonicalizeSync(val);
-    if (!clusterVerify(cert_auth_pub_key_, val, canonical)) {
+    if (!clusterVerify(cert_auth_pub_key_, val)) {
         log_warn_printf(pvacmscluster, "Sync signature verification failed from node %s\n",
                         peer_node_id.c_str());
         return;
@@ -287,16 +286,14 @@ bool ClusterDiscovery::joinCluster() {
     req["sync_pv"] = sync_pv_name;
     req["nonce"] = frozen_nonce;
 
-    auto req_canonical = canonicalizeJoinRequest(req);
-    clusterSign(cert_auth_pkey_, req, req_canonical);
+    clusterSign(cert_auth_pkey_, req);
 
     try {
         auto resp = client_ctx_.rpc(ctrl_pv_name, req)
             .exec()
             ->wait(discovery_timeout_secs_);
 
-        auto resp_canonical = canonicalizeJoinResponse(resp);
-        if (!clusterVerify(cert_auth_pub_key_, resp, resp_canonical)) {
+        if (!clusterVerify(cert_auth_pub_key_, resp)) {
             log_warn_printf(pvacmscluster, "Join response signature verification failed%s\n", "");
             return false;
         }
