@@ -320,7 +320,7 @@ void CertFactory::addExtensions(const ossl_ptr<X509> &certificate) const {
     } else if (IS_USED_FOR_(usage_, ssl::kForIntermediateCertAuth)) {
         extended_usage = "serverAuth,clientAuth,OCSPSigning";
     } else if (IS_USED_FOR_(usage_, ssl::kForCMS)) {
-        extended_usage = "serverAuth,OCSPSigning";
+        extended_usage = "serverAuth,clientAuth,OCSPSigning";
     }
     if (!extended_usage.empty()) {
         addExtension(certificate, NID_ext_key_usage, extended_usage.c_str());

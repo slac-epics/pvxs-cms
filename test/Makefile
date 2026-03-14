@@ -80,6 +80,7 @@ testcluster_SRCS += certfactory.cpp
 testcluster_SRCS += p12filefactory.cpp
 testcluster_SRCS += certfilefactory.cpp
 testcluster_SRCS += openssl.cpp
+testcluster_LIBS += pvxsIoc dbRecStd dbCore ca
 testcluster_SYS_LIBS += sqlite3
 
 endif # PVXS_ENABLE_PVACMS

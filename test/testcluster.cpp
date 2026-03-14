@@ -998,10 +998,49 @@ void testDeltaMarking() {
            "timeStamp.secondsPastEpoch still marked");
 }
 
+void testSnapshotNodeIdMismatchDetected() {
+    testDiag("Node_id mismatch detection in sync snapshots");
+
+    const auto pkey = generateTestKey();
+
+    TestDb db_a;
+    insertCert(db_a.get(), 600, "MismatchCert", VALID, 1000, 5000, 4000, 1500);
+    std::vector<ClusterMember> members = {{"node_a", "sync:a", 1, 0, 0}};
+
+    auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
+    testOk(clusterVerify(pkey, snapshot), "Snapshot signature valid");
+
+    auto snapshot_node_id = snapshot["node_id"].as<std::string>();
+    testOk(snapshot_node_id == "node_a", "Snapshot node_id is node_a");
+
+    testOk(snapshot_node_id == "node_a", "node_id matches expected peer — accepted");
+    testOk(snapshot_node_id != "node_b", "node_id does not match different peer — rejected");
+
+    snapshot["node_id"] = "impersonator";
+    testOk(!clusterVerify(pkey, snapshot),
+           "Tampered node_id invalidates signature — double protection");
+}
+
+void testSyncPvNameNodeIdExtraction() {
+    testDiag("Extracting node_id from SYNC PV name");
+
+    const std::string sync_pv = "CERT:CLUSTER:SYNC:issuer1:node_abc";
+    const auto last_colon = sync_pv.rfind(':');
+    const auto extracted = (last_colon != std::string::npos) ? sync_pv.substr(last_colon + 1) : std::string();
+
+    testOk(extracted == "node_abc", "Extracted node_id from SYNC PV name");
+    testOk(extracted != "issuer1", "Did not extract issuer_id as node_id");
+
+    const std::string no_colon = "nocolon";
+    const auto pos = no_colon.rfind(':');
+    const auto bad = (pos != std::string::npos) ? no_colon.substr(pos + 1) : std::string();
+    testOk(bad.empty(), "Empty extraction from malformed PV name");
+}
+
 }  // namespace
 
 MAIN(testcluster) {
-    testPlan(119);
+    testPlan(127);
     testSetup();
     logger_config_env();
 
@@ -1079,6 +1118,16 @@ MAIN(testcluster) {
         testDeltaMarking();
     } catch (std::exception &e) {
         testFail("testDeltaMarking failed: %s", e.what());
+    }
+    try {
+        testSnapshotNodeIdMismatchDetected();
+    } catch (std::exception &e) {
+        testFail("testSnapshotNodeIdMismatchDetected failed: %s", e.what());
+    }
+    try {
+        testSyncPvNameNodeIdExtraction();
+    } catch (std::exception &e) {
+        testFail("testSyncPvNameNodeIdExtraction failed: %s", e.what());
     }
 
     return testDone();

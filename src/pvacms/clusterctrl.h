@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include <asLib.h>
+
 #include <pvxs/sharedpv.h>
 
 #include "clustersync.h"
@@ -37,12 +39,14 @@ public:
      * @param cert_auth_pkey    CA private key used to sign cluster messages.
      * @param cert_auth_pub_key CA public key used to verify incoming join-request signatures.
      * @param sync_publisher    Publisher used to propagate membership snapshots to peers.
+     * @param as_cluster_mem    EPICS access security member for the CLUSTER ASG.
      */
     ClusterController(const std::string &issuer_id,
                       const std::string &pv_prefix,
                       const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                       const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
-                      ClusterSyncPublisher &sync_publisher);
+                      ClusterSyncPublisher &sync_publisher,
+                      ASMEMBERPVT as_cluster_mem);
 
     /**
      * @brief Initialises the cluster with this node as the sole member and opens the CTRL PV.
@@ -103,6 +107,7 @@ private:
     const ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     const ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
     ClusterSyncPublisher &sync_publisher_;
+    ASMEMBERPVT as_cluster_mem_;
     server::SharedPV ctrl_pv_;
     bool opened_{false};
     Value prototype_;  // Type prototype from first open() - post() requires matching type

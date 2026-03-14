@@ -8,7 +8,10 @@
 
 #include <algorithm>
 
+#include <dbBase.h>
+
 #include <pvxs/log.h>
+#include <pvxs/credentials.h>
 
 #include "clustersync.h"
 #include "pvacmsVersion.h"
@@ -26,12 +29,14 @@ ClusterController::ClusterController(const std::string &issuer_id,
                                      const std::string &pv_prefix,
                                      const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                      const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
-                                     ClusterSyncPublisher &sync_publisher)
+                                     ClusterSyncPublisher &sync_publisher,
+                                     ASMEMBERPVT as_cluster_mem)
     : issuer_id_(issuer_id)
     , ctrl_pv_name_(pv_prefix + ":CTRL:" + issuer_id)
     , cert_auth_pkey_(cert_auth_pkey)
     , cert_auth_pub_key_(cert_auth_pub_key)
     , sync_publisher_(sync_publisher)
+    , as_cluster_mem_(as_cluster_mem)
     , ctrl_pv_(server::SharedPV::buildReadonly())
 {
     setupRpcHandler();
@@ -46,6 +51,18 @@ ClusterController::ClusterController(const std::string &issuer_id,
 void ClusterController::setupRpcHandler() {
     ctrl_pv_.onRPC([this](server::SharedPV &, std::unique_ptr<server::ExecOp> &&op, Value &&args) {
         try {
+            const auto creds = op->credentials();
+            ioc::Credentials credentials(*creds);
+            ioc::SecurityClient securityClient;
+            securityClient.update(as_cluster_mem_, ASL1, credentials);
+
+            if (!securityClient.canWrite()) {
+                log_warn_printf(pvacmscluster, "Join request rejected: client not authorized (%s)\n",
+                                creds->account.c_str());
+                op->error("Not authorized for cluster operations");
+                return;
+            }
+
             auto req_major = args["version_major"].as<uint32_t>();
             if (req_major != 1) {
                 log_warn_printf(pvacmscluster, "Join request unsupported major version %u from node %s\n",

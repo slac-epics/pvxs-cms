@@ -274,8 +274,7 @@ which produces a deterministic byte representation of all fields.  Before
 encoding, the `signature` field is cleared so it is not included in the signed
 data.  The signature covers this encoded form.
 
-This replaces the previous custom canonicalization approach and relies on the
-pvxs xcode API ([PR #118](https://github.com/epics-base/pvxs/pull/118)) for
+This relies on the pvxs xcode API ([PR #118](https://github.com/epics-base/pvxs/pull/118)) for
 deterministic serialization.
 
 ### Anti-Replay
@@ -287,6 +286,39 @@ deterministic serialization.
   response with a mismatched nonce.
 - **Join responses**: The joiner checks that the response timestamp is within
   30 seconds of its own clock.
+
+### Peer Certificate Verification
+
+When a node subscribes to a peer's SYNC PV, it verifies the peer's TLS
+certificate identity on connection:
+
+1. On the `Connected` event, the peer's x509 credentials (`issuer_id` and
+   `serial`) are extracted from the TLS handshake and cached.
+2. The peer's `issuer_id` is verified to match the cluster's own `issuer_id` —
+   a mismatch causes immediate disconnection and membership removal.
+3. On each received sync snapshot, the `node_id` field is verified to match the
+   expected `node_id` (from the subscription).  A mismatch triggers
+   `handleDisconnect()` which removes the peer from the membership list and
+   cancels the subscription.
+4. Snapshots received before the peer's identity has been verified (before the
+   `Connected` event) are rejected.
+
+This prevents a compromised node from replaying another node's signed snapshots
+over its own connection.  Each node independently performs this verification, so
+no explicit sync of membership removals is needed.
+
+### Access Control (ACF)
+
+The default ACF file restricts cluster PV access via `UAG(CMS_CLUSTER)`:
+
+- **`UAG(CMS_CLUSTER)`** contains the PVACMS service identity (matching
+  `config.pvacms_name`, default `"PVACMS Service"`).
+- **`ASG(CLUSTER)`** requires `UAG(CMS_CLUSTER)`, `METHOD(x509)`,
+  `AUTHORITY(CMS_AUTH)`, and `PROTOCOL(TLS)` for both READ and WRITE.
+
+The CTRL PV RPC handler enforces CLUSTER ASG rules at runtime using
+`SecurityClient.update(as_cluster_mem, ASL1, credentials)` and rejects join
+requests from clients that do not satisfy `canWrite()`.
 
 ### Sync Loop Prevention
 

@@ -157,6 +157,22 @@ void applySyncSnapshot(sqlite3 *certs_db,
  * @param val Incoming PVAccess Value containing the signed sync snapshot.
  */
 void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &&val) {
+    if (peer_cert_ids_.find(peer_node_id) == peer_cert_ids_.end()) {
+        log_warn_printf(pvacmscluster,
+            "Received snapshot from %s before peer identity was verified, rejecting\n",
+            peer_node_id.c_str());
+        return;
+    }
+
+    const auto snapshot_node_id = val["node_id"].as<std::string>();
+    if (snapshot_node_id != peer_node_id) {
+        log_warn_printf(pvacmscluster,
+            "Snapshot node_id mismatch from %s: expected %s, got %s\n",
+            peer_node_id.c_str(), peer_node_id.c_str(), snapshot_node_id.c_str());
+        handleDisconnect(peer_node_id);
+        return;
+    }
+
     if (!clusterVerify(cert_auth_pub_key_, val)) {
         log_warn_printf(pvacmscluster, "Sync signature verification failed from node %s\n",
                         peer_node_id.c_str());
@@ -214,16 +230,32 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
     auto sub = client_ctx_.monitor(sync_pv)
         .maskConnected(false)
         .maskDisconnected(false)
-        .event([this, node_id](client::Subscription &sub) {
+        .event([this, node_id, sync_pv](client::Subscription &sub) {
             while (true) {
                 try {
                     while (auto val = sub.pop()) {
                         handleSyncUpdate(node_id, std::move(val));
                     }
                     break;
-                } catch (client::Connected &) {
+                } catch (client::Connected &conn) {
+                    if (conn.cred && conn.cred->isTLS && conn.cred->method == "x509") {
+                        const auto peer_cert_id = conn.cred->issuer_id + ":" + conn.cred->serial;
+
+                        if (conn.cred->issuer_id != issuer_id_) {
+                            log_warn_printf(pvacmscluster,
+                                "Peer issuer_id mismatch on SYNC PV %s: expected %s, got %s\n",
+                                sync_pv.c_str(), issuer_id_.c_str(), conn.cred->issuer_id.c_str());
+                            handleDisconnect(node_id);
+                            break;
+                        }
+
+                        peer_cert_ids_[node_id] = peer_cert_id;
+                        log_debug_printf(pvacmscluster, "Cached peer cert identity %s for node %s\n",
+                                         peer_cert_id.c_str(), node_id.c_str());
+                    }
                     // continue loop to drain any data queued after Connected
                 } catch (client::Disconnect &) {
+                    peer_cert_ids_.erase(node_id);
                     handleDisconnect(node_id);
                     break;
                 } catch (const std::exception &e) {
@@ -245,6 +277,7 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
  * @param peer_node_id Unique identifier of the node that disconnected.
  */
 void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
+    peer_cert_ids_.erase(peer_node_id);
     subscriptions_.erase(peer_node_id);
     controller_.removeMember(peer_node_id);
     log_info_printf(pvacmscluster, "Removed disconnected member %s\n", peer_node_id.c_str());

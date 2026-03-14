@@ -89,6 +89,7 @@ private:
     client::Context client_ctx_;
 
     std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
+    std::map<std::string, std::string> peer_cert_ids_;
 
     std::atomic<int64_t> global_high_water_mark_{0};
     static constexpr int64_t kClockSkewTolerance = 5;      ///< Maximum allowed clock skew between nodes, in seconds.
