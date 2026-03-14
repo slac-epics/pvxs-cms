@@ -86,7 +86,7 @@ namespace pvxs {
 namespace certs {
 
 /**
- * @brief Represents a single member node of a CMS cluster.
+ * @brief Represents a single member node of a PVACMS cluster.
  *
  * Holds the node identity, its synchronization PV name, and the
  * pvacms version it is running.
@@ -125,7 +125,7 @@ struct ClusterMember {
 /**
  * @brief Publishes certificate database snapshots over PVAccess for cluster synchronization.
  *
- * Each CMS node hosts one ClusterSyncPublisher that serializes the local certificate
+ * Each PVACMS node hosts one ClusterSyncPublisher that serializes the local certificate
  * table and membership list into a signed, canonical PVXS Value and posts it on
  * a well-known synchronization PV so peer nodes can replicate the state.
  */
@@ -134,7 +134,7 @@ public:
     /**
      * @brief Constructs a ClusterSyncPublisher for the given node.
      *
-     * @param node_id            Unique identifier for this CMS node.
+     * @param node_id            Unique identifier for this PVACMS node.
      * @param issuer_id          Identifier of the certificate authority issuer.
      * @param pv_prefix          PV name prefix used to form the sync PV name.
      * @param certs_db           Open SQLite database handle containing the certificates table.

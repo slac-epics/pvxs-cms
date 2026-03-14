@@ -26,13 +26,13 @@ struct sqlite3;
 namespace pvxs {
 namespace certs {
 
-/** @brief Manages discovery of and synchronization with peer CMS cluster nodes. */
+/** @brief Manages discovery of and synchronization with peer PVACMS cluster nodes. */
 class ClusterDiscovery {
 public:
     /**
      * @brief Constructs a ClusterDiscovery instance and registers the membership-change callback.
      *
-     * @param node_id Unique identifier for this CMS node.
+     * @param node_id Unique identifier for this PVACMS node.
      * @param issuer_id Certificate authority issuer identifier shared by all cluster members.
      * @param pv_prefix PVAccess PV name prefix used to build control channel names.
      * @param discovery_timeout_secs Timeout in seconds for the join RPC call.
@@ -56,11 +56,13 @@ public:
                      ClusterController &controller,
                      const client::Context& client_ctx);
 
+    enum class JoinResult { Joined, NotFound, Revoked };
+
     /**
      * @brief Sends a signed join request to the cluster control PV and subscribes to member sync PVs.
-     * @return true if the join handshake succeeded and the cluster was joined; false otherwise.
+     * @return Joined on success, NotFound if no cluster exists, Revoked if this node's cert is revoked.
      */
-    bool joinCluster();
+    JoinResult joinCluster();
 
     /**
      * @brief Creates a monitor subscription to a peer node's sync PV.
@@ -74,6 +76,16 @@ public:
      * @param remote_members List of cluster members advertised by a peer in a sync snapshot.
      */
     void reconcileMembers(const std::vector<ClusterMember> &remote_members);
+
+    /**
+     * @brief Removes all state for a peer node after its sync subscription disconnects.
+     * @param peer_node_id Unique identifier of the node that disconnected.
+     */
+    void handleDisconnect(const std::string &peer_node_id);
+
+    /** @brief Callback invoked when a certificate belonging to a PVACMS cluster node is revoked.
+     *  Receives the full SKID of the revoked certificate. */
+    std::function<void(const std::string& skid)> on_node_cert_revoked;
 
 private:
     std::string node_id_;
@@ -101,12 +113,6 @@ private:
      * @param val Incoming PVAccess Value containing the signed sync snapshot.
      */
     void handleSyncUpdate(const std::string &peer_node_id, Value &&val);
-
-    /**
-     * @brief Removes all state for a peer node after its sync subscription disconnects.
-     * @param peer_node_id Unique identifier of the node that disconnected.
-     */
-    void handleDisconnect(const std::string &peer_node_id);
 };
 
 /**
@@ -114,10 +120,11 @@ private:
  * @param certs_db SQLite database handle to update.
  * @param status_update_lock Mutex that must be held during database writes.
  * @param snapshot PVAccess Value containing the array of certificate records to merge.
+ * @return Full SKIDs of certificates that transitioned to REVOKED status during this merge.
  */
-void applySyncSnapshot(sqlite3 *certs_db,
-                       epicsMutex &status_update_lock,
-                       const Value &snapshot);
+std::vector<std::string> applySyncSnapshot(sqlite3 *certs_db,
+                                           epicsMutex &status_update_lock,
+                                           const Value &snapshot);
 
 }  // namespace certs
 }  // namespace pvxs

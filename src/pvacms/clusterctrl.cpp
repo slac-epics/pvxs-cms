@@ -91,6 +91,13 @@ void ClusterController::setupRpcHandler() {
             auto joiner_minor = args["version_minor"].as<uint32_t>();
             auto joiner_patch = args["version_patch"].as<uint32_t>();
 
+            if (is_node_revoked && is_node_revoked(joiner_node_id)) {
+                log_err_printf(pvacmscluster, "Join request rejected: node %s certificate is revoked\n",
+                               joiner_node_id.c_str());
+                op->error("REVOKED: Your PVACMS certificate has been revoked");
+                return;
+            }
+
             addMember({joiner_node_id, joiner_sync_pv, req_major, joiner_minor, joiner_patch});
 
             auto resp = makeJoinResponseValue();
@@ -133,6 +140,7 @@ void ClusterController::setupRpcHandler() {
  */
 void ClusterController::initAsSoleNode(const std::string &node_id, const std::string &sync_pv) {
     members_ = {{node_id, sync_pv, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION}};
+    rebuildNodeSkids();
     postCtrlValue();
     log_info_printf(pvacmscluster, "Bootstrapped sole-node cluster %s (node %s)\n",
                     issuer_id_.c_str(), node_id.c_str());
@@ -191,6 +199,7 @@ void ClusterController::addMember(const ClusterMember &member) {
     }
     if (!already_member) {
         members_.push_back(member);
+        rebuildNodeSkids();
         postCtrlValue();
         sync_publisher_.publishSnapshot(members_);
     }
@@ -209,6 +218,7 @@ void ClusterController::removeMember(const std::string &node_id) {
     if (it == members_.end())
         return;
     members_.erase(it, members_.end());
+    rebuildNodeSkids();
     postCtrlValue();
     log_info_printf(pvacmscluster, "Removed node %s from cluster %s\n",
                     node_id.c_str(), issuer_id_.c_str());
@@ -223,6 +233,7 @@ void ClusterController::removeMember(const std::string &node_id) {
  */
 void ClusterController::updateMembership(const std::vector<ClusterMember> &members) {
     members_ = members;
+    rebuildNodeSkids();
     postCtrlValue();
 }
 
@@ -242,6 +253,20 @@ std::vector<ClusterMember> ClusterController::getMembers() const {
  */
 std::string ClusterController::getCtrlPvName() const {
     return ctrl_pv_name_;
+}
+
+void ClusterController::rebuildNodeSkids() {
+    cms_node_skids_.clear();
+    for (const auto &m : members_) {
+        cms_node_skids_.insert(m.node_id);
+    }
+}
+
+bool ClusterController::isCmsNode(const std::string &skid) const {
+    // node_id is the first 8 hex chars of the full SKID
+    if (skid.size() < 8)
+        return false;
+    return cms_node_skids_.count(skid.substr(0, 8)) > 0;
 }
 
 }  // namespace certs

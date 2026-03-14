@@ -13,7 +13,7 @@ CLI11_BUNDLE   = $(TOP)/bundle/CLI11
 
 PROD_LIBS = pvxs Com
 
-# Tests require CMS infrastructure (sqlite3, cert factories, OpenSSL).
+# Tests require PVACMS infrastructure (sqlite3, cert factories, OpenSSL).
 # Skip when PVXS_ENABLE_PVACMS=NO (e.g. Windows where sqlite3 is unavailable).
 ifdef BASE_3_15
 ifeq ($(PVXS_ENABLE_PVACMS),YES)

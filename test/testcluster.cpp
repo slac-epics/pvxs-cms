@@ -577,7 +577,7 @@ int64_t queryCertInt64(sqlite3 *db, int64_t serial, const char *column) {
  *
  * Calls serializeCertsTable to produce a ClusterSync PVXS Value from the given
  * database, then canonicalizes and signs it with clusterSign using the provided
- * private key.  This helper mimics the sequence that a real CMS node executes when
+ * private key.  This helper mimics the sequence that a real PVACMS node executes when
  * publishing its sync PV, enabling Category 3 integration tests to produce realistic
  * signed snapshots without duplicating the sign/serialize boilerplate.
  *
@@ -737,7 +737,7 @@ void testCrossNodeSyncIngestion() {
 
     // Node A builds and signs a sync snapshot
     std::vector<ClusterMember> members = {{"node_a", "sync:a", 1, 0, 0}};
-    const auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
+    auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
 
     // Node B receives and verifies the snapshot
     testOk(clusterVerify(pkey, snapshot), "Cross-node sync signature valid");
@@ -909,7 +909,7 @@ void testRenewalPropagation() {
     TestDb db_a;
     insertCert(db_a.get(), 300, "RenewalCert", VALID, 1000, 9000, 8000, 2000);
     std::vector<ClusterMember> members = {{"node_a", "sync:a", 1, 0, 0}};
-    const auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
+    auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
 
     // Node B ingests the snapshot
     applySyncSnapshot(db_b.get(), lock_b, snapshot);
@@ -1037,10 +1037,149 @@ void testSyncPvNameNodeIdExtraction() {
     testOk(bad.empty(), "Empty extraction from malformed PV name");
 }
 
+void insertCertWithSkid(sqlite3 *db, int64_t serial, const std::string &skid,
+                        const certstatus_t status, int64_t status_date) {
+    sqlite3_stmt *stmt;
+    const auto sql = "INSERT INTO certs (serial, skid, CN, O, OU, C, approved, "
+                      "not_before, not_after, renew_by, renewal_due, status, status_date) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+    sqlite3_bind_int64(stmt, 1, serial);
+    sqlite3_bind_text(stmt, 2, skid.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, "TestCN", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, "Org", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, "Unit", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 6, "US", -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 7, 1);
+    sqlite3_bind_int64(stmt, 8, 1000);
+    sqlite3_bind_int64(stmt, 9, 5000);
+    sqlite3_bind_int64(stmt, 10, 4000);
+    sqlite3_bind_int(stmt, 11, 0);
+    sqlite3_bind_int(stmt, 12, static_cast<int>(status));
+    sqlite3_bind_int64(stmt, 13, status_date);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
+Value buildSyncWithCertSkid(int64_t serial, const std::string &skid,
+                            int32_t status, int64_t status_date) {
+    auto val = makeClusterSyncValue();
+    val["node_id"] = "remote";
+    val["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(2000);
+    val["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
+
+    shared_array<Value> empty_members(0);
+    val["members"] = empty_members.freeze();
+
+    shared_array<Value> certs(1);
+    certs[0] = val["certs"].allocMember();
+    certs[0]["serial"] = serial;
+    certs[0]["skid"] = skid;
+    certs[0]["cn"] = std::string("TestCN");
+    certs[0]["o"] = std::string("Org");
+    certs[0]["ou"] = std::string("Unit");
+    certs[0]["c"] = std::string("US");
+    certs[0]["approved"] = static_cast<int32_t>(1);
+    certs[0]["not_before"] = static_cast<int64_t>(1000);
+    certs[0]["not_after"] = static_cast<int64_t>(5000);
+    certs[0]["renew_by"] = static_cast<int64_t>(4000);
+    certs[0]["renewal_due"] = static_cast<int32_t>(0);
+    certs[0]["status"] = status;
+    certs[0]["status_date"] = status_date;
+    val["certs"] = certs.freeze();
+
+    return val;
+}
+
+void testStartupWithRevokedCert() {
+    testDiag("--- testStartupWithRevokedCert ---");
+    TestDb db;
+    const std::string node_skid = "aabbccdd11223344";
+
+    insertCertWithSkid(db.get(), 700, node_skid, REVOKED, 1500);
+
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db.get(), "SELECT status FROM certs WHERE serial = 700", -1, &stmt, nullptr);
+    testOk(sqlite3_step(stmt) == SQLITE_ROW, "Cert found in DB");
+    auto status = static_cast<certstatus_t>(sqlite3_column_int(stmt, 0));
+    sqlite3_finalize(stmt);
+    testOk(status == REVOKED, "Cert status is REVOKED — startup should be refused");
+}
+
+void testPeerCertRevocationViaSync() {
+    testDiag("--- testPeerCertRevocationViaSync ---");
+    TestDb db;
+    epicsMutex lock;
+    const std::string peer_skid = "deadbeef99887766";
+
+    insertCertWithSkid(db.get(), 800, peer_skid, VALID, 1500);
+
+    auto snapshot = buildSyncWithCertSkid(800, peer_skid, static_cast<int32_t>(REVOKED), 1600);
+    auto revoked_skids = applySyncSnapshot(db.get(), lock, snapshot);
+
+    testOk(revoked_skids.size() == 1, "One cert transitioned to REVOKED");
+    if (!revoked_skids.empty()) {
+        testOk(revoked_skids[0] == peer_skid, "Revoked SKID matches peer");
+    } else {
+        testFail("Expected revoked SKID but got none");
+    }
+
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db.get(), "SELECT status FROM certs WHERE serial = 800", -1, &stmt, nullptr);
+    sqlite3_step(stmt);
+    auto new_status = static_cast<certstatus_t>(sqlite3_column_int(stmt, 0));
+    sqlite3_finalize(stmt);
+    testOk(new_status == REVOKED, "Cert status updated to REVOKED in DB");
+}
+
+void testOwnCertRevocationViaSync() {
+    testDiag("--- testOwnCertRevocationViaSync ---");
+    TestDb db;
+    epicsMutex lock;
+    const std::string own_skid = "11223344aabbccdd";
+
+    insertCertWithSkid(db.get(), 900, own_skid, VALID, 1500);
+
+    auto snapshot = buildSyncWithCertSkid(900, own_skid, static_cast<int32_t>(REVOKED), 1600);
+    auto revoked_skids = applySyncSnapshot(db.get(), lock, snapshot);
+
+    testOk(revoked_skids.size() == 1, "One cert transitioned to REVOKED");
+
+    auto short_skid = own_skid.substr(0, 8);
+    testOk(short_skid == "11223344", "Short SKID prefix extracted correctly");
+
+    if (!revoked_skids.empty()) {
+        testOk(revoked_skids[0].substr(0, 8) == short_skid, "Revoked SKID prefix matches own node_id");
+    } else {
+        testFail("Expected revoked SKID but got none");
+    }
+}
+
+void testIsCmsNode() {
+    testDiag("--- testIsCmsNode ---");
+
+    auto key = generateTestKey();
+    epicsMutex lock;
+    TestDb db;
+    ClusterSyncPublisher sync("node1", "issuer1", "CERT:CLUSTER", db.get(), key, lock);
+    ClusterController ctrl("issuer1", "CERT:CLUSTER", key, key, sync, nullptr);
+
+    ctrl.initAsSoleNode("aabbccdd", "CERT:CLUSTER:SYNC:issuer1:aabbccdd");
+    ctrl.addMember({"deadbeef", "CERT:CLUSTER:SYNC:issuer1:deadbeef", 1, 0, 0});
+
+    testOk(ctrl.isCmsNode("aabbccdd11223344"), "Full SKID matching sole node recognized");
+    testOk(ctrl.isCmsNode("deadbeef99887766"), "Full SKID matching added peer recognized");
+    testOk(!ctrl.isCmsNode("cafebabe00000000"), "Non-member SKID not recognized");
+    testOk(!ctrl.isCmsNode("short"), "Short SKID rejected");
+
+    ctrl.removeMember("deadbeef");
+    testOk(!ctrl.isCmsNode("deadbeef99887766"), "Removed peer SKID no longer recognized");
+}
+
 }  // namespace
 
 MAIN(testcluster) {
-    testPlan(127);
+    testPlan(140);
     testSetup();
     logger_config_env();
 
@@ -1128,6 +1267,26 @@ MAIN(testcluster) {
         testSyncPvNameNodeIdExtraction();
     } catch (std::exception &e) {
         testFail("testSyncPvNameNodeIdExtraction failed: %s", e.what());
+    }
+    try {
+        testStartupWithRevokedCert();
+    } catch (std::exception &e) {
+        testFail("testStartupWithRevokedCert failed: %s", e.what());
+    }
+    try {
+        testPeerCertRevocationViaSync();
+    } catch (std::exception &e) {
+        testFail("testPeerCertRevocationViaSync failed: %s", e.what());
+    }
+    try {
+        testOwnCertRevocationViaSync();
+    } catch (std::exception &e) {
+        testFail("testOwnCertRevocationViaSync failed: %s", e.what());
+    }
+    try {
+        testIsCmsNode();
+    } catch (std::exception &e) {
+        testFail("testIsCmsNode failed: %s", e.what());
     }
 
     return testDone();

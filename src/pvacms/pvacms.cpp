@@ -349,6 +349,35 @@ std::tuple<certstatus_t, time_t> getCertificateStatus(const sql_ptr &certs_db, s
     return std::make_tuple(static_cast<certstatus_t>(cert_status), status_date);
 }
 
+std::string getCertificateSkid(const sql_ptr &certs_db, serial_number_t serial) {
+    const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
+    sqlite3_stmt *stmt;
+    std::string skid;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_SKID_BY_SERIAL, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":serial"), db_serial);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const auto *text = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+            if (text)
+                skid = text;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return skid;
+}
+
+bool isNodeCertRevoked(const sql_ptr &certs_db, const std::string &node_id) {
+    sqlite3_stmt *stmt;
+    bool revoked = false;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_IS_NODE_REVOKED, -1, &stmt, nullptr) == SQLITE_OK) {
+        auto prefix = node_id + "%";
+        sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":skid_prefix"), prefix.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt, sqlite3_bind_parameter_index(stmt, ":revoked"), static_cast<int>(REVOKED));
+        revoked = (sqlite3_step(stmt) == SQLITE_ROW);
+    }
+    sqlite3_finalize(stmt);
+    return revoked;
+}
+
 /**
  * @brief Get the validity of a certificate from the database
  *
@@ -2159,7 +2188,7 @@ void createServerCertificate(const ConfigCms &config,
                                            config.getCertPvPrefix(),
                                            NO,
                                            true,
-                                           false,
+                                           true,  // allow duplicates: multiple PVACMS nodes share the same subject
                                            cert_auth_cert.get(),
                                            cert_auth_pkey.get(),
                                            cert_auth_chain.get());
@@ -3232,6 +3261,7 @@ int main(int argc, char *argv[]) {
         // Derive cluster node ID from the server certificate's SKID (first 8 hex chars)
         auto server_cert_data = IdFileFactory::create(config.tls_keychain_file, config.getKeychainPassword())->getCertDataFromFile();
         auto our_node_id = CertStatus::getSkId(server_cert_data.cert);
+        auto our_serial = CertStatusFactory::getSerialNumber(server_cert_data.cert);
 
         // Preload additional certificates into DB if requested
         for (const auto &preload_path : config.preload_cert_files) {
@@ -3337,6 +3367,8 @@ int main(int argc, char *argv[]) {
             active_status_validity.erase(getParameters(parameters));
         });
 
+        std::function<void(const std::string& skid)> check_cms_node_revocation;
+
         // PUT handlers
         status_pv.onPut([&config,
                          &certs_db,
@@ -3344,7 +3376,8 @@ int main(int argc, char *argv[]) {
                          &cert_auth_pkey,
                          &cert_auth_cert,
                          &cert_auth_chain,
-                         &cluster_sync](WildcardPV &pv,
+                         &cluster_sync,
+                         &check_cms_node_revocation](WildcardPV &pv,
                                         std::unique_ptr<ExecOp> &&op,
                                         const std::string &pv_name,
                                         const std::list<std::string> &parameters,
@@ -3407,6 +3440,11 @@ int main(int argc, char *argv[]) {
                          cert_auth_cert,
                          cert_auth_chain);
                 cluster_sync.publishSnapshot();
+                if (check_cms_node_revocation) {
+                    auto skid = getCertificateSkid(certs_db, serial);
+                    if (!skid.empty())
+                        check_cms_node_revocation(skid);
+                }
             } else if (state == "APPROVED") {
                 onApprove(config,
                           certs_db,
@@ -3431,6 +3469,11 @@ int main(int argc, char *argv[]) {
                        cert_auth_cert,
                        cert_auth_chain);
                 cluster_sync.publishSnapshot();
+                if (check_cms_node_revocation) {
+                    auto skid = getCertificateSkid(certs_db, serial);
+                    if (!skid.empty())
+                        check_cms_node_revocation(skid);
+                }
             } else {
                 op->error(pvxs::SB() << "Invalid certificate state requested: " << state);
             }
@@ -3483,6 +3526,38 @@ int main(int argc, char *argv[]) {
                                            cluster_ctrl,
                                            std::move(cluster_client));
 
+        check_cms_node_revocation = [&our_node_id, &cluster_ctrl, &cluster_discovery, &cluster_sync, &pva_server](const std::string &skid) {
+            if (skid.size() < 8)
+                return;
+            auto short_skid = skid.substr(0, 8);
+            if (!cluster_ctrl.isCmsNode(skid))
+                return;
+            if (short_skid == our_node_id) {
+                log_err_printf(pvacms, "Own PVACMS certificate has been revoked (SKID: %s), shutting down\n", skid.c_str());
+                // Allow time for the revocation status to propagate to cluster peers
+                // before shutting down. The sync snapshot was published before this
+                // callback fired, but peers need time to receive it.
+                epicsThreadSleep(1.0);
+                pva_server.interrupt();
+                return;
+            }
+            for (const auto &m : cluster_ctrl.getMembers()) {
+                if (m.node_id == short_skid) {
+                    log_err_printf(pvacms, "PVACMS peer certificate revoked, disconnecting peer %s\n", m.node_id.c_str());
+                    // Publish snapshot so the revoked peer receives its REVOKED
+                    // status and can self-shutdown before we tear down the connection.
+                    cluster_sync.publishSnapshot();
+                    epicsThreadSleep(1.0);
+                    cluster_discovery.handleDisconnect(m.node_id);
+                    return;
+                }
+            }
+        };
+        cluster_discovery.on_node_cert_revoked = check_cms_node_revocation;
+        cluster_ctrl.is_node_revoked = [&certs_db](const std::string &node_id) {
+            return isNodeCertRevoked(certs_db, node_id);
+        };
+
         std::string cluster_status;
         if (is_initialising) {
             log_info_printf(pvacms, "Fresh CA init - bootstrapping as sole cluster node%s", "\n");
@@ -3491,9 +3566,21 @@ int main(int argc, char *argv[]) {
             cluster_status = "Created new cluster";
         } else {
             log_info_printf(pvacms, "Attempting to join existing cluster...%s", "\n");
-            if (cluster_discovery.joinCluster()) {
+            auto join_result = cluster_discovery.joinCluster();
+            if (join_result == ClusterDiscovery::JoinResult::Revoked) {
+                log_err_printf(pvacms, "****EXITING****: This node's PVACMS certificate has been revoked by the cluster\n%s", "");
+                return 1;
+            } else if (join_result == ClusterDiscovery::JoinResult::Joined) {
+                cluster_sync.publishSnapshot();
                 cluster_status = "Joined existing cluster";
             } else {
+                // No cluster found — check local DB as fallback before bootstrapping
+                auto status_tuple = getCertificateStatus(certs_db, our_serial);
+                if (std::get<0>(status_tuple) == REVOKED) {
+                    log_err_printf(pvacms, "****EXITING****: Cannot start PVACMS with revoked certificate, SKID: %s\n",
+                                   our_node_id.c_str());
+                    return 1;
+                }
                 log_info_printf(pvacms, "No existing cluster found - bootstrapping as sole node%s", "\n");
                 cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
                 cluster_sync.publishSnapshot();

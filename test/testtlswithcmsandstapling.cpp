@@ -556,7 +556,7 @@ struct Tester {
     }
 
     /**
-     * @brief This test checks that tls connections are prohibited when CMS is unavailable, but configuration requires it
+     * @brief This test checks that tls connections are prohibited when PVACMS is unavailable, but configuration requires it
      *
      * The Mock PVACMS must be previously stopped prior to this test
      *
@@ -576,7 +576,7 @@ struct Tester {
 
             try {
                 auto serv_no_cms(serv_conf.build().addPV(TEST_PV, test_pv));
-                testOk(1, "Created server when CMS is unavailable");
+                testOk(1, "Created server when PVACMS is unavailable");
             } catch (std::exception& e) {
                 testFail("Unexpected Failure: %s", e.what());
             }
@@ -632,7 +632,7 @@ struct Tester {
 
     /**
      * @brief Test that if client requests stapling but server does not send it
-     * communication is established by out-of-band status request to CMS
+     * communication is established by out-of-band status request to PVACMS
      */
     void testClientStaplingNoServerStapling() {
         testShow() << __func__;
@@ -670,7 +670,7 @@ struct Tester {
 
     /**
      * @brief Test that if server sends stapling but client is not expecting it
-     * communication is established by out-of-band status request to CMS
+     * communication is established by out-of-band status request to PVACMS
      */
     void testServerStaplingNoClientStapling() {
         testShow() << __func__;

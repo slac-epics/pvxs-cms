@@ -29,7 +29,7 @@ typedef epicsGuard<epicsMutex> Guard;
 /**
  * @brief Constructs a ClusterSyncPublisher for the given node.
  *
- * @param node_id            Unique identifier for this CMS node.
+ * @param node_id            Unique identifier for this PVACMS node.
  * @param issuer_id          Identifier of the certificate authority issuer.
  * @param pv_prefix          PV name prefix used to form the sync PV name.
  * @param certs_db           Open SQLite database handle containing the certificates table.
@@ -169,18 +169,10 @@ void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, 
     const auto cert_count = val["certs"].as<shared_array<const Value>>().size();
 
     if (!opened_) {
-        // First, open - all fields marked, full value sent to initial subscribers
         prototype_ = val;
         sync_pv_.open(val);
         opened_ = true;
     } else {
-        // Subsequent posts - unmark unchanged fields.
-        val["node_id"].unmark();  // never changes
-        if (!members_changed)
-            val["members"].unmark();
-        if (!certs_changed)
-            val["certs"].unmark();
-        // timestamp and signature are always marked (always change)
         sync_pv_.post(val);
     }
 

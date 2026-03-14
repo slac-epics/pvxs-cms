@@ -31,7 +31,7 @@ typedef epicsGuard<epicsMutex> Guard;
 /**
  * @brief Constructs a ClusterDiscovery instance and registers the membership-change callback.
  *
- * @param node_id Unique identifier for this CMS node.
+ * @param node_id Unique identifier for this PVACMS node.
  * @param issuer_id Certificate authority issuer identifier shared by all cluster members.
  * @param pv_prefix PVAccess PV name prefix used to build control channel names.
  * @param discovery_timeout_secs Timeout in seconds for the join RPC call.
@@ -77,10 +77,11 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
  * @param status_update_lock Mutex that must be held during database writes.
  * @param snapshot PVAccess Value containing the array of certificate records to merge.
  */
-void applySyncSnapshot(sqlite3 *certs_db,
-                       epicsMutex &status_update_lock,
-                       const Value &snapshot) {
+std::vector<std::string> applySyncSnapshot(sqlite3 *certs_db,
+                                            epicsMutex &status_update_lock,
+                                            const Value &snapshot) {
     Guard G(status_update_lock);
+    std::vector<std::string> revoked_skids;
 
     const auto certs_arr = snapshot["certs"].as<shared_array<const Value>>();
     for (const auto & row : certs_arr) {
@@ -98,6 +99,10 @@ void applySyncSnapshot(sqlite3 *certs_db,
 
             if (!isValidStatusTransition(local_status, remote_status))
                 continue;
+
+            if (remote_status == REVOKED && local_status != REVOKED) {
+                revoked_skids.push_back(row["skid"].as<std::string>());
+            }
 
             sqlite3_stmt *upd_stmt;
             if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, &upd_stmt, nullptr) != SQLITE_OK)
@@ -147,8 +152,13 @@ void applySyncSnapshot(sqlite3 *certs_db,
             sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":status_date"), row["status_date"].as<int64_t>());
             sqlite3_step(ins_stmt);
             sqlite3_finalize(ins_stmt);
+
+            if (remote_status == REVOKED) {
+                revoked_skids.push_back(row["skid"].as<std::string>());
+            }
         }
     }
+    return revoked_skids;
 }
 
 /**
@@ -193,13 +203,24 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
            !global_high_water_mark_.compare_exchange_weak(expected, incoming_ts)) {}
 
     sync_publisher_.sync_ingestion_in_progress.store(true);
+    std::vector<std::string> revoked_skids;
     try {
-        applySyncSnapshot(certs_db_, status_update_lock_, val);
+        revoked_skids = applySyncSnapshot(certs_db_, status_update_lock_, val);
     } catch (...) {
         sync_publisher_.sync_ingestion_in_progress.store(false);
         throw;
     }
     sync_publisher_.sync_ingestion_in_progress.store(false);
+
+    auto certs_arr = val["certs"].as<shared_array<const Value>>();
+    log_debug_printf(pvacmscluster, "Ingested sync snapshot from node %s (%zu certs)\n",
+                     peer_node_id.c_str(), certs_arr.size());
+
+    if (on_node_cert_revoked) {
+        for (const auto &skid : revoked_skids) {
+            on_node_cert_revoked(skid);
+        }
+    }
 
     const auto members_arr = val["members"].as<shared_array<const Value>>();
     std::vector<ClusterMember> remote_members;
@@ -301,7 +322,7 @@ void ClusterDiscovery::reconcileMembers(const std::vector<ClusterMember> &remote
  * @brief Sends a signed join request to the cluster control PV and subscribes to member sync PVs.
  * @return true if the join handshake succeeded and the cluster was joined; false otherwise.
  */
-bool ClusterDiscovery::joinCluster() {
+ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
     auto ctrl_pv_name = pv_prefix_ + ":CTRL:" + issuer_id_;
     auto sync_pv_name = sync_publisher_.getSyncPvName();
 
@@ -328,21 +349,21 @@ bool ClusterDiscovery::joinCluster() {
 
         if (!clusterVerify(cert_auth_pub_key_, resp)) {
             log_warn_printf(pvacmscluster, "Join response signature verification failed%s\n", "");
-            return false;
+            return JoinResult::NotFound;
         }
 
         auto resp_issuer = resp["issuer_id"].as<std::string>();
         if (resp_issuer != issuer_id_) {
             log_warn_printf(pvacmscluster, "Join response issuer_id mismatch: expected %s, got %s\n",
                             issuer_id_.c_str(), resp_issuer.c_str());
-            return false;
+            return JoinResult::NotFound;
         }
 
         auto resp_nonce = resp["nonce"].as<shared_array<const uint8_t>>();
         if (resp_nonce.size() != frozen_nonce.size() ||
             std::memcmp(resp_nonce.data(), frozen_nonce.data(), frozen_nonce.size()) != 0) {
             log_warn_printf(pvacmscluster, "Join response nonce mismatch - possible replay/relay attack%s\n", "");
-            return false;
+            return JoinResult::NotFound;
         }
 
         auto resp_ts = getTimeStamp(resp);
@@ -351,7 +372,7 @@ bool ClusterDiscovery::joinCluster() {
         if (std::abs(now - resp_ts) > kJoinTimestampTolerance) {
             log_warn_printf(pvacmscluster, "Join response stale timestamp (ts=%lld, now=%lld)\n",
                             static_cast<long long>(resp_ts), static_cast<long long>(now));
-            return false;
+            return JoinResult::NotFound;
         }
 
         log_info_printf(pvacmscluster, "Joined cluster %s (version %u.%u.%u)\n",
@@ -378,10 +399,15 @@ bool ClusterDiscovery::joinCluster() {
             subscribeToMember(m.node_id, m.sync_pv);
         }
 
-        return true;
+        return JoinResult::Joined;
     } catch (const std::exception &e) {
+        std::string msg(e.what());
+        if (msg.find("REVOKED:") == 0) {
+            log_err_printf(pvacmscluster, "Join rejected: %s\n", msg.c_str());
+            return JoinResult::Revoked;
+        }
         log_warn_printf(pvacmscluster, "Join RPC failed: %s\n", e.what());
-        return false;
+        return JoinResult::NotFound;
     }
 }
 

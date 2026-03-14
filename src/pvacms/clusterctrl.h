@@ -8,6 +8,7 @@
 #define PVXS_CLUSTERCTRL_H_
 
 #include <functional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -85,6 +86,17 @@ public:
     std::vector<ClusterMember> getMembers() const;
 
     /**
+     * @brief Checks whether a certificate SKID belongs to a PVACMS cluster node.
+     *
+     * Compares the first 8 hex characters of @p skid against the set of known
+     * PVACMS node SKIDs (derived from the cluster membership list).
+     *
+     * @param skid  Full SKID string from the certificate database.
+     * @return true if the SKID prefix matches a cluster member's node_id.
+     */
+    bool isCmsNode(const std::string &skid) const;
+
+    /**
      * @brief Returns the fully-qualified PV name of the CTRL process variable.
      *
      * @return The CTRL PV name string.
@@ -101,6 +113,10 @@ public:
     /** @brief Optional callback invoked whenever cluster membership changes; receives the updated member list. */
     std::function<void(const std::vector<ClusterMember>&)> on_membership_changed;
 
+    /** @brief Optional callback to check if a joining node's cert is revoked. Receives the node_id (SKID prefix).
+     *  Returns true if the node's cert is revoked. */
+    std::function<bool(const std::string& node_id)> is_node_revoked;
+
 private:
     std::string issuer_id_;
     std::string ctrl_pv_name_;
@@ -112,15 +128,10 @@ private:
     bool opened_{false};
     Value prototype_;  // Type prototype from first open() - post() requires matching type
     std::vector<ClusterMember> members_;
+    std::set<std::string> cms_node_skids_;  // node_ids (8-char SKID prefixes) of all cluster members
 
-    /**
-     * @brief Builds and publishes the signed CTRL PV value from the current membership list.
-     */
+    void rebuildNodeSkids();
     void postCtrlValue();
-
-    /**
-     * @brief Registers the RPC handler on the CTRL PV for processing join requests.
-     */
     void setupRpcHandler();
 };
 

@@ -354,7 +354,7 @@ public:
 
     /**
      * @brief Fork and exec pvacms with all state isolated to the given temporary directory.
-     * @param tmp_dir      Temporary directory that will hold all CMS state files.
+     * @param tmp_dir      Temporary directory that will hold all PVACMS state files.
      * @param override_db  Override path for the SQLite database (empty = use tmp_dir default).
      * @param override_kc  Override path for the PVACMS server keychain (empty = use tmp_dir default).
      * @param override_acf Override path for the ACF file (empty = use tmp_dir default).
@@ -425,7 +425,7 @@ private:
 /**
  * @brief Poll for PVACMS readiness by probing the CERT:ROOT PV over plain PVA.
  * @param timeout_sec   Maximum seconds to wait before returning false.
- * @param cms_udp_port  PVACMS UDP port for --setup-cms (e.g. 15076); 0 means external CMS
+ * @param cms_udp_port  PVACMS UDP port for --setup-cms (e.g. 15076); 0 means external PVACMS
  *                      reachable via standard EPICS_PVA_* environment variables.
  * @return true if PVACMS responded successfully within the timeout; false otherwise.
  */
@@ -497,7 +497,7 @@ bool runAuthnstd(const std::string& name, const std::string& usage,
 }
 
 /**
- * @brief Create a unique temporary directory for CMS state isolation.
+ * @brief Create a unique temporary directory for PVACMS state isolation.
  * @return Absolute path to the newly created directory (e.g. /tmp/pvxperf-cms-XXXXXX).
  * @throws std::runtime_error if mkdtemp() fails.
  */
@@ -1420,7 +1420,7 @@ std::map<std::string, double> computePhaseDurations(PhaseTimingCapture& capture)
  * @param iterations        Number of independent connect/disconnect cycles to perform.
  * @param server_keychain   Path to TLS keychain for the benchmark server.
  * @param client_keychain_path  Path to TLS keychain for the client (falls back to server_keychain if empty).
- * @param cms_udp_port      PVACMS UDP port for --setup-cms (e.g. 15076); 0 means external CMS
+ * @param cms_udp_port      PVACMS UDP port for --setup-cms (e.g. 15076); 0 means external PVACMS
  *                          reachable via standard EPICS_PVA_* environment variables.
  * @return                  Vector of PhaseTimingResult, one entry per phase per iteration.
  */
@@ -1758,7 +1758,7 @@ void showHelp(const char *program_name) {
               << "        --warmup <N>                         Number of warmup GETs to discard. Default: 100\n"
               << "        --output <file>                      CSV output file (default: stdout)\n"
               << std::endl
-              << "CMS options:\n"
+              << "PVACMS options:\n"
               << "        --keychain <path>                    TLS keychain file for SPVA modes\n"
               << "        --setup-cms                          Auto-bootstrap PVACMS with temp certs for SPVA_CERTMON\n"
               << "        --external-cms                       Use already-running PVACMS for SPVA_CERTMON\n"
@@ -1883,7 +1883,7 @@ int main(int argc, char* argv[]) {
 
         if (setup_cms) {
             tmp_cms_dir = createTempDir();
-            log_info_printf(perflog, "CMS temp directory: %s\n", tmp_cms_dir.c_str());
+            log_info_printf(perflog, "PVACMS temp directory: %s\n", tmp_cms_dir.c_str());
 
             setenv("EPICS_PVA_ADDR_LIST", "127.0.0.1", 1);
             setenv("EPICS_PVA_AUTO_ADDR_LIST", "NO", 1);
@@ -1914,7 +1914,7 @@ int main(int argc, char* argv[]) {
                 have_keychain = true;
             }
 
-            log_info_printf(perflog, "%s\n", "CMS setup complete, keychains provisioned");
+            log_info_printf(perflog, "%s\n", "PVACMS setup complete, keychains provisioned");
         }
 
         auto needsMode = [&modes](ProtocolMode m) {
@@ -1957,14 +1957,14 @@ int main(int argc, char* argv[]) {
             }
 
             if (mode == ProtocolMode::SPVA_CERTMON && !setup_cms && !external_cms) {
-                std::cerr << "Warning: skipping SPVA_CERTMON - no CMS configured "
+                std::cerr << "Warning: skipping SPVA_CERTMON - no PVACMS configured "
                           << "(use --setup-cms or --external-cms)" << std::endl;
                 continue;
             }
 
             if (mode == ProtocolMode::SPVA_CERTMON && external_cms) {
                 if (!waitForPvacms(10.0, 0u)) {
-                    std::cerr << "Warning: skipping SPVA_CERTMON - external CMS not reachable"
+                    std::cerr << "Warning: skipping SPVA_CERTMON - external PVACMS not reachable"
                               << std::endl;
                     continue;
                 }
@@ -2108,7 +2108,7 @@ int main(int argc, char* argv[]) {
                     continue;
                 }
                 if (mode == ProtocolMode::SPVA_CERTMON && !setup_cms && !external_cms) {
-                    std::cerr << "Warning: skipping SPVA_CERTMON phase timing - no CMS configured"
+                    std::cerr << "Warning: skipping SPVA_CERTMON phase timing - no PVACMS configured"
                               << std::endl;
                     continue;
                 }

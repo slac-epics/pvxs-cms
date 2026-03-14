@@ -255,6 +255,36 @@ no grace period.  The rationale:
 - The departing node's certificate data is already replicated to all surviving
   nodes, so no data is lost.
 
+### CMS Node Certificate Revocation
+
+CMS server certificates intentionally omit the certificate status extension to
+avoid a circular dependency (the CMS cannot verify its own certificate status
+without itself running).  Instead, CMS node certificate revocation is handled
+as a special case of the normal certificate status transition machinery.
+
+**Detection**: The `ClusterController` maintains a set of node SKIDs derived
+from the cluster membership list.  When any certificate transitions to REVOKED
+status in the local database — whether from an admin action on this node or
+from sync ingestion of a peer's snapshot — the revoked certificate's SKID is
+checked against this set.  There is one check, not separate code paths per
+origin.
+
+**Peer revocation**: If the revoked certificate's SKID matches a peer CMS
+node, that peer's SYNC PV subscription is cancelled, the peer is removed from
+the cluster membership, and an error is logged.
+
+**Self revocation**: If the revoked certificate's SKID matches this node's own
+SKID, a critical message is logged and graceful shutdown is initiated via
+`ServerEv::interrupt()`.
+
+**Startup check**: On startup, after loading the server certificate and
+initialising the database, the node queries its own certificate status.  If the
+status is REVOKED, the node logs a critical error and refuses to start.
+
+**Operational note**: Revoking a CMS node certificate is an irreversible action
+that causes the affected node to shut down.  The node cannot rejoin the cluster
+without a new, valid certificate.
+
 ## Security and Integrity
 
 ### Cryptographic Signing

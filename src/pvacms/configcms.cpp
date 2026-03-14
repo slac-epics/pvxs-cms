@@ -54,9 +54,9 @@ ConfigCms ConfigCms::mockCms(int family) {
 }
 
 /**
- * @brief Create a Config object with default values suitable for a CMS service
+ * @brief Create a Config object with default values suitable for a PVACMS service
  *
- * @return ConfigCms for CMS
+ * @return ConfigCms for PVACMS
  */
 ConfigCms ConfigCms::forCms() {
     auto ret = ConfigCms{};

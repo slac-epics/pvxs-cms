@@ -151,6 +151,18 @@
     "FROM certs "                     \
     "WHERE serial = :serial"
 
+#define SQL_CERT_SKID_BY_SERIAL       \
+    "SELECT skid "                    \
+    "FROM certs "                     \
+    "WHERE serial = :serial"
+
+#define SQL_CERT_IS_NODE_REVOKED      \
+    "SELECT 1 "                       \
+    "FROM certs "                     \
+    "WHERE skid LIKE :skid_prefix "   \
+    "  AND status = :revoked "        \
+    "LIMIT 1"
+
 #define SQL_CERT_VALIDITY             \
     "SELECT not_before "              \
     "     , not_after "               \
@@ -320,6 +332,8 @@ uint64_t generateSerial();
 std::tuple<certstatus_t, time_t> getCertificateStatus(const sql_ptr &certs_db, uint64_t serial);
 void getWorstCertificateStatus(const sql_ptr &certs_db, uint64_t serial, certstatus_t &worst_status_so_far, time_t &worst_status_time_so_far);
 DbCert getCertificateValidity(const sql_ptr &certs_db, uint64_t serial);
+std::string getCertificateSkid(const sql_ptr &certs_db, uint64_t serial);
+bool isNodeCertRevoked(const sql_ptr &certs_db, const std::string &node_id);
 
 std::string extractCountryCode(const std::string &locale_str);
 

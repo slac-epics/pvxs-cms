@@ -618,7 +618,7 @@ struct Tester {
     }
 
     /**
-     * @brief This test checks that tls connections are prohibited when CMS is unavailable, but configuration requires it
+     * @brief This test checks that tls connections are prohibited when PVACMS is unavailable, but configuration requires it
      *
      * The Mock PVACMS must be previously stopped prior to this test
      *
@@ -637,7 +637,7 @@ struct Tester {
 
             try {
                 auto serv_no_cms(serv_conf.build().addPV(TEST_PV, test_pv));
-                testOk(1, "Created server when CMS is unavailable");
+                testOk(1, "Created server when PVACMS is unavailable");
             } catch (std::exception& e) {
                 testFail("Unexpected Failure: %s", e.what());
             }

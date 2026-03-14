@@ -147,16 +147,23 @@ bool isValidStatusTransition(certstatus_t local_status, certstatus_t remote_stat
     }
 }
 
-std::vector<uint8_t> clusterEncode(const Value &payload) {
-    auto copy = payload.cloneEmpty();
-    copy.assign(payload);
+std::vector<uint8_t> clusterEncode(Value &payload) {
+    // Mark all fields so encodeFull serializes real data, not defaults.
+    // Monitor deltas have unmarked fields filled by cache_sync, but
+    // encodeFull on a cloneEmpty+assign copy would miss them since
+    // assign() only copies marked Struct fields.
+    for (auto fld : payload.iall()) {
+        fld.mark();
+    }
 
-    // Clear the signature field so it is not included in the signed data
+    auto sig = payload["signature"].as<shared_array<const uint8_t>>();
     shared_array<uint8_t> empty_sig(0);
-    copy["signature"] = empty_sig.freeze();
+    payload["signature"] = empty_sig.freeze();
 
     std::vector<uint8_t> buf;
-    xcode::encodeFull(buf, copy);
+    xcode::encodeFull(buf, payload);
+
+    payload["signature"] = sig;
     return buf;
 }
 
@@ -166,7 +173,7 @@ void clusterSign(const ossl_ptr<EVP_PKEY> &cert_auth_pkey, Value &payload) {
     payload["signature"] = sig_bytes.freeze();
 }
 
-bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, const Value &payload) {
+bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, Value &payload) {
     auto sig_arr = payload["signature"].as<shared_array<const uint8_t>>();
     std::vector<uint8_t> sig(sig_arr.begin(), sig_arr.end());
     return CertFactory::verifySignature(cert_auth_pub_key, clusterEncode(payload), sig);

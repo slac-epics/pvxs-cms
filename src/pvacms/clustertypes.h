@@ -77,7 +77,7 @@ bool isValidStatusTransition(certstatus_t local_status, certstatus_t remote_stat
  * @param payload  The cluster message Value to encode.
  * @return Binary encoding suitable for signature input.
  */
-std::vector<uint8_t> clusterEncode(const Value &payload);
+std::vector<uint8_t> clusterEncode(Value &payload);
 
 /**
  * @brief Sign a cluster Value using xcode encoding.
@@ -101,7 +101,7 @@ void clusterSign(const ossl_ptr<EVP_PKEY> &cert_auth_pkey, Value &payload);
  * @param payload            Value whose "signature" field is checked.
  * @return true if the signature is valid.
  */
-bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, const Value &payload);
+bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, Value &payload);
 
 }  // namespace certs
 }  // namespace pvxs
