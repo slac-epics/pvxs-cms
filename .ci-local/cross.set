@@ -4,7 +4,7 @@ BASE_REPONAME=epics-base-tls
 BASE_REPOOWNER=slac-epics
 BASE=7.0
 BASE_VARNAME=EPICS_BASE
-BASE_RECURSIVE=no
+BASE_RECURSIVE=yes
 
 # Prevent defaults.set from adding PVXS to the module list.
 # Cross builds handle PVXS explicitly in the workflow steps.
