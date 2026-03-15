@@ -925,7 +925,7 @@ bool getPriorApprovalStatus(const sql_ptr &certs_db,
  * @param cert_auth_cert_chain the certificate authority certificate chain
  * @param issuer_id the issuer ID to be encoded in the certificate
  */
-void onCreateCertificate(ConfigCms &config,
+int64_t onCreateCertificate(ConfigCms &config,
                          sql_ptr &certs_db,
                          server::WildcardPV &shared_status_pv,
                          std::unique_ptr<server::ExecOp> &&op,
@@ -960,7 +960,7 @@ void onCreateCertificate(ConfigCms &config,
         setValue<uint64_t>(reply, "expiration", 0);
         setValue<std::string>(reply, "cert", pem_string);
         op->reply(reply);
-        return;
+        return 0;
     }
 
     // OK, it looks like we need to generate a certificate then ...
@@ -1172,11 +1172,13 @@ void onCreateCertificate(ConfigCms &config,
         }
         log_info_printf(pvacms, "EXPIRES ON: %s\n", expiration_s.substr(0, expiration_s.size()-1).c_str());
         op->reply(reply);
+        return static_cast<int64_t>(serial);
     } catch (std::exception &e) {
         // For any type of error return an error to the caller
         auto cert_name = NAME_STRING(name, organization);
         log_err_printf(pvacms, "Failed to create certificate for %s: %s\n", cert_name.c_str(), e.what());
         op->error(SB() << "Failed to create certificate for " << cert_name << ": " << e.what());
+        return 0;
     }
 }
 
@@ -3321,7 +3323,7 @@ int main(int argc, char *argv[]) {
                          &our_issuer_id,
                          &status_pv,
                          &cluster_sync](const SharedPV &, std::unique_ptr<ExecOp> &&op, pvxs::Value &&args) {
-            onCreateCertificate(config,
+            auto created_serial = onCreateCertificate(config,
                                 certs_db,
                                 status_pv,
                                 std::move(op),
@@ -3330,7 +3332,10 @@ int main(int argc, char *argv[]) {
                                 cert_auth_cert,
                                 cert_auth_chain,
                                 our_issuer_id);
-            cluster_sync.publishSnapshot();
+            if (created_serial > 0)
+                cluster_sync.publishCertChange(created_serial);
+            else
+                cluster_sync.publishSnapshot();
         });
 
         // Client Connect handlers GET/MONITOR
@@ -3439,7 +3444,7 @@ int main(int argc, char *argv[]) {
                          cert_auth_pkey,
                          cert_auth_cert,
                          cert_auth_chain);
-                cluster_sync.publishSnapshot();
+                cluster_sync.publishCertChange(serial);
                 if (check_cms_node_revocation) {
                     auto skid = getCertificateSkid(certs_db, serial);
                     if (!skid.empty())
@@ -3456,7 +3461,7 @@ int main(int argc, char *argv[]) {
                           cert_auth_pkey,
                           cert_auth_cert,
                           cert_auth_chain);
-                cluster_sync.publishSnapshot();
+                cluster_sync.publishCertChange(serial);
             } else if (state == "DENIED") {
                 onDeny(config,
                        certs_db,
@@ -3468,7 +3473,7 @@ int main(int argc, char *argv[]) {
                        cert_auth_pkey,
                        cert_auth_cert,
                        cert_auth_chain);
-                cluster_sync.publishSnapshot();
+                cluster_sync.publishCertChange(serial);
                 if (check_cms_node_revocation) {
                     auto skid = getCertificateSkid(certs_db, serial);
                     if (!skid.empty())
@@ -3505,8 +3510,8 @@ int main(int argc, char *argv[]) {
             .addPV(getCertAuthRootPv(config.getCertPvPrefix(), our_issuer_id), root_pv)
             .addPV(getCertIssuerPv(config.getCertPvPrefix()), issuer_pv)
             .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv)
-            .addPV(cluster_sync.getSyncPvName(), cluster_sync.getPV())
-            .addPV(cluster_ctrl.getCtrlPvName(), cluster_ctrl.getPV());
+            .addPV(cluster_ctrl.getCtrlPvName(), cluster_ctrl.getPV())
+            .addSource("syncsrc", cluster_sync.getSource());
         root_pv.open(root_pv_value);
         issuer_pv.open(issuer_pv_value);
 

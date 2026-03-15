@@ -104,6 +104,7 @@ private:
     std::map<std::string, std::string> peer_cert_ids_;
 
     std::atomic<int64_t> global_high_water_mark_{0};
+    std::map<std::string, int64_t> peer_last_sequence_;
     static constexpr int64_t kClockSkewTolerance = 5;      ///< Maximum allowed clock skew between nodes, in seconds.
     static constexpr int64_t kJoinTimestampTolerance = 30; ///< Maximum allowed age of a join response timestamp, in seconds.
 

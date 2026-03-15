@@ -1176,10 +1176,168 @@ void testIsCmsNode() {
     testOk(!ctrl.isCmsNode("deadbeef99887766"), "Removed peer SKID no longer recognized");
 }
 
+void testSyncTypeDefsIncremental() {
+    testDiag("ClusterSync type has sequence and update_type fields");
+    auto sync_val = makeClusterSyncValue();
+    testOk(!!sync_val["sequence"], "ClusterSync has sequence");
+    testOk(!!sync_val["update_type"], "ClusterSync has update_type");
+}
+
+void testUpdateLogAndCertUpdate() {
+    testDiag("CertUpdate struct and update log basics");
+
+    CertUpdate u;
+    u.sequence = 0;
+    u.serial = 42;
+    u.skid = "skid1";
+    u.cn = "CN1";
+    u.o = "Org";
+    u.ou = "Unit";
+    u.c = "US";
+    u.approved = 1;
+    u.not_before = 1000;
+    u.not_after = 3000;
+    u.renew_by = 2500;
+    u.renewal_due = 0;
+    u.status = static_cast<int32_t>(VALID);
+    u.status_date = 1500;
+
+    testOk(u.serial == 42, "CertUpdate serial stored correctly");
+    testOk(u.cn == "CN1", "CertUpdate cn stored correctly");
+    testOk(u.status == static_cast<int32_t>(VALID), "CertUpdate status stored correctly");
+}
+
+void testFullSnapshotPayloadFormat() {
+    testDiag("Full snapshot payload has update_type=1 and sequence");
+
+    TestDb tdb;
+    epicsMutex lock;
+
+    {
+        std::string sql = "INSERT INTO certs VALUES(42,'skid1','CN1','O1','OU1','C1',1,1000,2000,1800,0,"
+                          + std::to_string(VALID) + ",1500)";
+        sqlite3_exec(tdb.get(), sql.c_str(), nullptr, nullptr, nullptr);
+    }
+
+    std::vector<ClusterMember> members = {{"node1", "SYNC:1:node1", 1, 0, 0}};
+    auto val = serializeCertsTable(tdb.get(), "node1", members);
+    val["sequence"] = static_cast<int64_t>(5);
+    val["update_type"] = static_cast<int32_t>(SYNC_FULL_SNAPSHOT);
+
+    testOk(val["sequence"].as<int64_t>() == 5, "Full snapshot has sequence=5");
+    testOk(val["update_type"].as<int32_t>() == SYNC_FULL_SNAPSHOT, "Full snapshot has update_type=SYNC_FULL_SNAPSHOT");
+
+    auto certs = val["certs"].as<shared_array<const Value>>();
+    testOk(certs.size() == 1, "Full snapshot contains 1 cert");
+    testOk(certs[0]["serial"].as<int64_t>() == 42, "Cert serial is 42");
+}
+
+void testIncrementalPayloadFormat() {
+    testDiag("Incremental update payload has update_type=0 and single cert");
+
+    auto val = makeClusterSyncValue();
+    val["node_id"] = "node1";
+    setTimeStamp(val);
+    val["sequence"] = static_cast<int64_t>(10);
+    val["update_type"] = static_cast<int32_t>(SYNC_INCREMENTAL);
+
+    shared_array<Value> empty_members(0);
+    val["members"] = empty_members.freeze();
+
+    shared_array<Value> certs(1);
+    certs[0] = val["certs"].allocMember();
+    certs[0]["serial"] = static_cast<int64_t>(99);
+    certs[0]["skid"] = "skid99";
+    certs[0]["cn"] = "IncrCert";
+    certs[0]["o"] = "Org";
+    certs[0]["ou"] = "Unit";
+    certs[0]["c"] = "US";
+    certs[0]["approved"] = static_cast<int32_t>(1);
+    certs[0]["not_before"] = static_cast<int64_t>(1000);
+    certs[0]["not_after"] = static_cast<int64_t>(3000);
+    certs[0]["renew_by"] = static_cast<int64_t>(2500);
+    certs[0]["renewal_due"] = static_cast<int32_t>(0);
+    certs[0]["status"] = static_cast<int32_t>(VALID);
+    certs[0]["status_date"] = static_cast<int64_t>(1500);
+    val["certs"] = certs.freeze();
+
+    testOk(val["update_type"].as<int32_t>() == SYNC_INCREMENTAL, "Incremental has update_type=SYNC_INCREMENTAL");
+    testOk(val["sequence"].as<int64_t>() == 10, "Incremental has sequence=10");
+    auto c = val["certs"].as<shared_array<const Value>>();
+    testOk(c.size() == 1, "Incremental contains exactly 1 cert");
+    testOk(c[0]["cn"].as<std::string>() == "IncrCert", "Cert CN matches");
+}
+
+void testIncrementalSignAndVerify() {
+    testDiag("Incremental update can be signed and verified");
+
+    auto pkey = generateTestKey();
+
+    auto val = makeClusterSyncValue();
+    val["node_id"] = "node1";
+    setTimeStamp(val);
+    val["sequence"] = static_cast<int64_t>(7);
+    val["update_type"] = static_cast<int32_t>(SYNC_INCREMENTAL);
+
+    shared_array<Value> empty_members(0);
+    val["members"] = empty_members.freeze();
+    shared_array<Value> empty_certs(0);
+    val["certs"] = empty_certs.freeze();
+
+    clusterSign(pkey, val);
+    testOk(clusterVerify(pkey, val), "Incremental update signature verifies");
+
+    val["sequence"] = static_cast<int64_t>(999);
+    testOk(!clusterVerify(pkey, val), "Tampered sequence rejects");
+}
+
+void testIncrementalIngestion() {
+    testDiag("Ingestion of incremental update inserts cert without clearing others");
+
+    TestDb tdb;
+    epicsMutex lock;
+
+    {
+        std::string sql = "INSERT INTO certs VALUES(1,'skidA','ExistingCert','O','OU','C',1,1000,2000,1800,0,"
+                          + std::to_string(VALID) + ",1500)";
+        sqlite3_exec(tdb.get(), sql.c_str(), nullptr, nullptr, nullptr);
+    }
+
+    auto val = buildSyncWithCert(99, static_cast<int32_t>(VALID), 1600, "NewIncrCert");
+    val["update_type"] = static_cast<int32_t>(SYNC_INCREMENTAL);
+    val["sequence"] = static_cast<int64_t>(1);
+
+    applySyncSnapshot(tdb.get(), lock, val);
+
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(tdb.get(), "SELECT COUNT(*) FROM certs", -1, &stmt, nullptr);
+    sqlite3_step(stmt);
+    int count = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+    testOk(count == 2, "Both original and incremental certs exist (%d)", count);
+
+    sqlite3_prepare_v2(tdb.get(), "SELECT CN FROM certs WHERE serial=1", -1, &stmt, nullptr);
+    sqlite3_step(stmt);
+    std::string existing_cn(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+    sqlite3_finalize(stmt);
+    testOk(existing_cn == "ExistingCert", "Original cert unchanged");
+
+    sqlite3_prepare_v2(tdb.get(), "SELECT CN FROM certs WHERE serial=99", -1, &stmt, nullptr);
+    int rc = sqlite3_step(stmt);
+    testOk(rc == SQLITE_ROW, "Incremental cert inserted");
+    if (rc == SQLITE_ROW) {
+        std::string new_cn(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+        testOk(new_cn == "NewIncrCert", "Incremental cert CN matches");
+    } else {
+        testSkip(1, "Row not found - skipping CN check");
+    }
+    sqlite3_finalize(stmt);
+}
+
 }  // namespace
 
 MAIN(testcluster) {
-    testPlan(140);
+    testPlan(159);
     testSetup();
     logger_config_env();
 
@@ -1287,6 +1445,36 @@ MAIN(testcluster) {
         testIsCmsNode();
     } catch (std::exception &e) {
         testFail("testIsCmsNode failed: %s", e.what());
+    }
+    try {
+        testSyncTypeDefsIncremental();
+    } catch (std::exception &e) {
+        testFail("testSyncTypeDefsIncremental failed: %s", e.what());
+    }
+    try {
+        testUpdateLogAndCertUpdate();
+    } catch (std::exception &e) {
+        testFail("testUpdateLogAndCertUpdate failed: %s", e.what());
+    }
+    try {
+        testFullSnapshotPayloadFormat();
+    } catch (std::exception &e) {
+        testFail("testFullSnapshotPayloadFormat failed: %s", e.what());
+    }
+    try {
+        testIncrementalPayloadFormat();
+    } catch (std::exception &e) {
+        testFail("testIncrementalPayloadFormat failed: %s", e.what());
+    }
+    try {
+        testIncrementalSignAndVerify();
+    } catch (std::exception &e) {
+        testFail("testIncrementalSignAndVerify failed: %s", e.what());
+    }
+    try {
+        testIncrementalIngestion();
+    } catch (std::exception &e) {
+        testFail("testIncrementalIngestion failed: %s", e.what());
     }
 
     return testDone();

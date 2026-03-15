@@ -26,47 +26,96 @@ namespace certs {
 
 typedef epicsGuard<epicsMutex> Guard;
 
-/**
- * @brief Constructs a ClusterSyncPublisher for the given node.
- *
- * @param node_id            Unique identifier for this PVACMS node.
- * @param issuer_id          Identifier of the certificate authority issuer.
- * @param pv_prefix          PV name prefix used to form the sync PV name.
- * @param certs_db           Open SQLite database handle containing the certificates table.
- * @param cert_auth_pkey     Private key of the certificate authority, used to sign snapshots.
- * @param status_update_lock Mutex that serializes certificate status updates.
- */
-ClusterSyncPublisher::ClusterSyncPublisher(const std::string &node_id,
-                                           const std::string &issuer_id,
-                                           const std::string &pv_prefix,
-                                           sqlite3 *certs_db,
-                                           const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
-                                           epicsMutex &status_update_lock)
-    : node_id_(node_id)
-    , issuer_id_(issuer_id)
-    , sync_pv_name_(pv_prefix + ":SYNC:" + issuer_id + ":" + node_id)
-    , certs_db_(certs_db)
-    , cert_auth_pkey_(cert_auth_pkey)
-    , status_update_lock_(status_update_lock)
-    , sync_pv_(server::SharedPV::buildReadonly())
-    , members_({{node_id, sync_pv_name_, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION}})
+SyncSource::SyncSource(const std::string &pv_name, ClusterSyncPublisher &publisher)
+    : names_(std::make_shared<std::set<std::string>>(std::initializer_list<std::string>{pv_name}))
+    , publisher_(publisher)
 {}
 
-/**
- * @brief Serializes the certificates table and cluster membership into a PVXS Value.
- *
- * Reads all rows from the @p certs_db certificates table and combines them with
- * the provided member list and node identity into a structured PVXS Value suitable
- * for signing and publishing on the cluster sync PV.
- *
- * @param certs_db  Open SQLite database handle containing the certificates table.
- * @param node_id   Identifier of the local node to embed in the serialized value.
- * @param members   List of cluster members to embed in the serialized value.
- * @param prototype Optional existing Value whose structure is cloned; if empty a
- *                  new Value is created via makeClusterSyncValue().
- * @return          A populated PVXS Value containing node identity, member list,
- *                  and all certificate rows from the database.
- */
+void SyncSource::onSearch(Search &op) {
+    for (auto &pv : op) {
+        if (names_->count(pv.name()))
+            pv.claim();
+    }
+}
+
+void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
+    chan->onOp([this](std::unique_ptr<server::ConnectOp> &&cop) {
+        cop->onGet([](std::unique_ptr<server::ExecOp> &&op) {
+            op->error("Only monitor implemented");
+        });
+        if (prototype_)
+            cop->connect(prototype_);
+        else
+            cop->error("Sync PV not yet initialised");
+    });
+
+    chan->onSubscribe([this](std::unique_ptr<server::MonitorSetupOp> &&setup) {
+        Guard G(lock_);
+
+        if (!prototype_) {
+            setup->error("Sync PV not yet initialised");
+            return;
+        }
+
+        auto sub = setup->connect(prototype_);
+        const auto sub_id = next_sub_id_++;
+
+        auto sub_ptr = sub.get();
+
+        SubscriberState state;
+        state.op = std::move(sub);
+        state.sequence = 0;
+        state.needs_full_snapshot = true;
+
+        server::MonitorStat stats{};
+        sub_ptr->stats(stats);
+        sub_ptr->setWatermarks(0, stats.limitQueue);
+
+        sub_ptr->onHighMark([this, sub_id]() {
+            Guard G(lock_);
+            auto it = subscribers_.find(sub_id);
+            if (it == subscribers_.end())
+                return;
+            auto &s = it->second;
+            while (!s.pending.empty()) {
+                if (!s.op->tryPost(s.pending.front()))
+                    break;
+                s.pending.pop_front();
+            }
+        });
+
+        sub_ptr->onStart([this, sub_id](bool start) {
+            if (!start)
+                return;
+            Guard G(lock_);
+            auto it = subscribers_.find(sub_id);
+            if (it == subscribers_.end())
+                return;
+            publisher_.sendToSubscriber(it->second);
+        });
+
+        subscribers_.emplace(sub_id, std::move(state));
+
+        log_debug_printf(pvacmscluster, "New sync subscriber %llu from %s\n",
+                         static_cast<unsigned long long>(sub_id), sub_ptr->peerName().c_str());
+    });
+
+    {
+        Guard G(lock_);
+        auto sub_id = next_sub_id_ - 1;
+        chan->onClose([this, sub_id](const std::string &) {
+            Guard G(lock_);
+            subscribers_.erase(sub_id);
+            log_debug_printf(pvacmscluster, "Sync subscriber %llu disconnected\n",
+                             static_cast<unsigned long long>(sub_id));
+        });
+    }
+}
+
+SyncSource::List SyncSource::onList() {
+    return List{names_, false};
+}
+
 Value serializeCertsTable(sqlite3 *certs_db,
                           const std::string &node_id,
                           const std::vector<ClusterMember> &members,
@@ -122,69 +171,232 @@ Value serializeCertsTable(sqlite3 *certs_db,
     return val;
 }
 
-/**
- * @brief Publishes a snapshot of the current certificate table to the sync PV.
- *
- * Uses the previously known member list and marks the certificates as changed.
- */
+ClusterSyncPublisher::ClusterSyncPublisher(const std::string &node_id,
+                                           const std::string &issuer_id,
+                                           const std::string &pv_prefix,
+                                           sqlite3 *certs_db,
+                                           const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
+                                           epicsMutex &status_update_lock)
+    : node_id_(node_id)
+    , issuer_id_(issuer_id)
+    , sync_pv_name_(pv_prefix + ":SYNC:" + issuer_id + ":" + node_id)
+    , certs_db_(certs_db)
+    , cert_auth_pkey_(cert_auth_pkey)
+    , status_update_lock_(status_update_lock)
+    , sync_source_(std::make_shared<SyncSource>(sync_pv_name_, *this))
+    , members_({{node_id, sync_pv_name_, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION}})
+{}
+
+void ClusterSyncPublisher::appendToLog(CertUpdate update) {
+    Guard G(sync_source_->lock_);
+
+    update.sequence = next_sequence_++;
+    update_log_.push_back(std::move(update));
+
+    while (update_log_.size() > max_log_size_) {
+        const auto evicted_seq = update_log_.front().sequence;
+        update_log_.pop_front();
+
+        // Mark fallen-behind subscribers for full resync
+        for (auto &kv : sync_source_->subscribers_) {
+            if (kv.second.sequence < evicted_seq) {
+                kv.second.needs_full_snapshot = true;
+                kv.second.pending.clear();
+            }
+        }
+    }
+
+    dispatchToSubscribers();
+}
+
+void ClusterSyncPublisher::dispatchToSubscribers() {
+    // Caller must hold sync_source_->lock_
+    for (auto &kv : sync_source_->subscribers_) {
+        sendToSubscriber(kv.second);
+    }
+}
+
+void ClusterSyncPublisher::sendToSubscriber(SubscriberState &sub) {
+    // Caller must hold sync_source_->lock_
+    if (!sub.op)
+        return;
+
+    // If there are pending back-pressure retries, don't add more
+    if (!sub.pending.empty())
+        return;
+
+    auto proto = sync_source_->prototype_;
+    if (!proto)
+        return;
+
+    if (sub.needs_full_snapshot) {
+        auto val = serializeCertsTable(certs_db_, node_id_, members_, proto);
+        auto seq = update_log_.empty() ? next_sequence_ - 1 : update_log_.back().sequence;
+        val["sequence"] = seq;
+        val["update_type"] = static_cast<int32_t>(SYNC_FULL_SNAPSHOT);
+        clusterSign(cert_auth_pkey_, val);
+
+        if (sub.op->tryPost(val)) {
+            sub.needs_full_snapshot = false;
+            sub.sequence = seq;
+        } else {
+            sub.pending.push_back(std::move(val));
+        }
+        return;
+    }
+
+    // Find updates since subscriber's last sequence
+    std::vector<const CertUpdate *> updates;
+    for (const auto &entry : update_log_) {
+        if (entry.sequence > sub.sequence) {
+            updates.push_back(&entry);
+        }
+    }
+
+    if (updates.empty())
+        return;
+
+    // Build incremental Value with only changed certs
+    auto val = proto.cloneEmpty();
+    val["node_id"] = node_id_;
+    setTimeStamp(val);
+    val["sequence"] = updates.back()->sequence;
+    val["update_type"] = static_cast<int32_t>(SYNC_INCREMENTAL);
+
+    shared_array<Value> members_arr(members_.size());
+    for (size_t i = 0; i < members_.size(); i++) {
+        members_arr[i] = val["members"].allocMember();
+        members_arr[i]["node_id"] = members_[i].node_id;
+        members_arr[i]["sync_pv"] = members_[i].sync_pv;
+        members_arr[i]["version_major"] = members_[i].version_major;
+        members_arr[i]["version_minor"] = members_[i].version_minor;
+        members_arr[i]["version_patch"] = members_[i].version_patch;
+    }
+    val["members"] = members_arr.freeze();
+
+    shared_array<Value> certs_arr(updates.size());
+    for (size_t i = 0; i < updates.size(); i++) {
+        auto row = val["certs"].allocMember();
+        row["serial"] = updates[i]->serial;
+        row["skid"] = updates[i]->skid;
+        row["cn"] = updates[i]->cn;
+        row["o"] = updates[i]->o;
+        row["ou"] = updates[i]->ou;
+        row["c"] = updates[i]->c;
+        row["approved"] = updates[i]->approved;
+        row["not_before"] = updates[i]->not_before;
+        row["not_after"] = updates[i]->not_after;
+        row["renew_by"] = updates[i]->renew_by;
+        row["renewal_due"] = updates[i]->renewal_due;
+        row["status"] = updates[i]->status;
+        row["status_date"] = updates[i]->status_date;
+        certs_arr[i] = std::move(row);
+    }
+    val["certs"] = certs_arr.freeze();
+
+    clusterSign(cert_auth_pkey_, val);
+
+    if (sub.op->tryPost(val)) {
+        sub.sequence = updates.back()->sequence;
+    } else {
+        sub.pending.push_back(std::move(val));
+    }
+}
+
+void ClusterSyncPublisher::publishCertChange(int64_t serial) {
+    if (sync_ingestion_in_progress.load())
+        return;
+
+    Guard G(status_update_lock_);
+
+    if (!sync_source_->prototype_) {
+        sync_source_->prototype_ = makeClusterSyncValue();
+    }
+
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(certs_db_, SQL_SYNC_SELECT_CERT_BY_SERIAL, -1, &stmt, nullptr) != SQLITE_OK) {
+        log_err_printf(pvacmscluster, "Failed to query cert %lld: %s\n",
+                       static_cast<long long>(serial), sqlite3_errmsg(certs_db_));
+        return;
+    }
+    sqlite3_bind_int64(stmt, 1, serial);
+
+    if (sqlite3_step(stmt) != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        log_warn_printf(pvacmscluster, "Cert %lld not found for incremental publish\n",
+                        static_cast<long long>(serial));
+        return;
+    }
+
+    auto col_text = [&](int col) -> std::string {
+        const auto txt = sqlite3_column_text(stmt, col);
+        return txt ? reinterpret_cast<const char*>(txt) : "";
+    };
+
+    CertUpdate update;
+    update.serial      = sqlite3_column_int64(stmt, 0);
+    update.skid        = col_text(1);
+    update.cn          = col_text(2);
+    update.o           = col_text(3);
+    update.ou          = col_text(4);
+    update.c           = col_text(5);
+    update.approved    = sqlite3_column_int(stmt, 6);
+    update.not_before  = sqlite3_column_int64(stmt, 7);
+    update.not_after   = sqlite3_column_int64(stmt, 8);
+    update.renew_by    = sqlite3_column_int64(stmt, 9);
+    update.renewal_due = sqlite3_column_int(stmt, 10);
+    update.status      = sqlite3_column_int(stmt, 11);
+    update.status_date = sqlite3_column_int64(stmt, 12);
+    sqlite3_finalize(stmt);
+
+    appendToLog(std::move(update));
+
+    log_debug_printf(pvacmscluster, "Published incremental cert change (serial=%lld, seq=%lld) to %zu subscribers\n",
+                     static_cast<long long>(serial),
+                     static_cast<long long>(next_sequence_ - 1),
+                     sync_source_->subscribers_.size());
+}
+
 void ClusterSyncPublisher::publishSnapshot() {
     doPublish(members_, false, true);
 }
 
-/**
- * @brief Publishes a snapshot with an updated cluster member list.
- *
- * Compares @p members against the cached list to detect changes, then
- * serializes and posts the full state including certificates.
- *
- * @param members Updated list of cluster member nodes.
- */
 void ClusterSyncPublisher::publishSnapshot(const std::vector<ClusterMember> &members) {
     const bool members_changed = (members != members_);
     members_ = members;
     doPublish(members_, members_changed, false);
 }
 
-/**
- * @brief Serializes and publishes the certificate state to the sync PV.
- *
- * Builds a canonical, signed PVXS Value and either opens the PV (first call)
- * or posts a delta with only the changed fields marked.
- *
- * @param members         Current cluster member list to embed in the snapshot.
- * @param members_changed Whether the member list has changed since the last publish.
- * @param certs_changed   Whether the certificate table has changed since the last publish.
- */
 void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, const bool members_changed, const bool certs_changed) {
     if (sync_ingestion_in_progress.load())
         return;
 
     Guard G(status_update_lock_);
 
-    // Always build the full Value - needed for canonicalization and signing
-    auto val = serializeCertsTable(certs_db_, node_id_, members, prototype_);
-
-    clusterSign(cert_auth_pkey_, val);
-
-    const auto cert_count = val["certs"].as<shared_array<const Value>>().size();
-
-    if (!opened_) {
-        prototype_ = val;
-        sync_pv_.open(val);
-        opened_ = true;
-    } else {
-        sync_pv_.post(val);
+    if (!sync_source_->prototype_) {
+        sync_source_->prototype_ = makeClusterSyncValue();
     }
 
-    log_debug_printf(pvacmscluster, "Published sync snapshot with %zu certs (members_changed=%d, certs_changed=%d)\n",
-                     cert_count, members_changed, certs_changed);
+    Guard G2(sync_source_->lock_);
+
+    // Advance sequence so each publish has a unique, monotonically
+    // increasing number — even when callers don't provide specific
+    // cert change data via appendToLog().
+    auto seq = next_sequence_++;
+
+    // publishSnapshot() callers don't provide specific cert change data,
+    // so mark all subscribers for a full snapshot re-send.
+    for (auto &kv : sync_source_->subscribers_) {
+        kv.second.needs_full_snapshot = true;
+        kv.second.pending.clear();
+    }
+
+    dispatchToSubscribers();
+
+    log_debug_printf(pvacmscluster, "Dispatched sync update (seq=%lld) to %zu subscribers (members_changed=%d, certs_changed=%d)\n",
+                     static_cast<long long>(seq), sync_source_->subscribers_.size(), members_changed, certs_changed);
 }
 
-/**
- * @brief Returns the fully-qualified PV name used for cluster synchronization.
- *
- * @return The sync PV name string.
- */
 std::string ClusterSyncPublisher::getSyncPvName() const {
     return sync_pv_name_;
 }

@@ -21,6 +21,11 @@
 namespace pvxs {
 namespace certs {
 
+enum SyncUpdateType : int32_t {
+    SYNC_INCREMENTAL  = 0,
+    SYNC_FULL_SNAPSHOT = 1,
+};
+
 /**
  * @brief Set the EPICS timeStamp sub-structure to the current wall-clock time.
  * @param parent  Value containing the timeStamp field to populate.

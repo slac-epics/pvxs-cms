@@ -37,6 +37,8 @@ Value makeClusterSyncValue() {
     return TypeDef(TypeCode::Struct, {
         String("node_id"),
         nt::TimeStamp{}.build().as("timeStamp"),
+        Int64("sequence"),
+        Int32("update_type"),
         StructA("members", {
             String("node_id"),
             String("sync_pv"),

@@ -8,12 +8,16 @@
 #define PVXS_CLUSTERSYNC_H_
 
 #include <atomic>
+#include <cstdint>
+#include <deque>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include <epicsMutex.h>
 
-#include <pvxs/sharedpv.h>
+#include <pvxs/source.h>
 
 #include "clustertypes.h"
 #include "ownedptr.h"
@@ -25,6 +29,13 @@
     "renew_by, renewal_due, "              \
     "status, status_date "                 \
     "FROM certs"
+
+#define SQL_SYNC_SELECT_CERT_BY_SERIAL     \
+    "SELECT serial, skid, CN, O, OU, C, "  \
+    "approved, not_before, not_after, "    \
+    "renew_by, renewal_due, "              \
+    "status, status_date "                 \
+    "FROM certs WHERE serial = ?"
 
 #define SQL_SYNC_CHECK_CERT_STATUS         \
     "SELECT status "                       \
@@ -123,6 +134,66 @@ struct ClusterMember {
 };
 
 /**
+ * @brief Represents a single certificate change in the update log.
+ *
+ * Each entry captures a monotonic sequence number and the certificate data
+ * fields at the time of the change, for incremental sync delivery.
+ */
+struct CertUpdate {
+    int64_t sequence;       ///< Monotonic sequence number assigned by the publisher.
+    int64_t serial;
+    std::string skid;
+    std::string cn;
+    std::string o;
+    std::string ou;
+    std::string c;
+    int32_t approved;
+    int64_t not_before;
+    int64_t not_after;
+    int64_t renew_by;
+    int32_t renewal_due;
+    int32_t status;
+    int64_t status_date;
+};
+
+/**
+ * @brief Per-subscriber monitor state for the incremental sync protocol.
+ *
+ * Tracks each subscriber's position in the update log and holds the
+ * MonitorControlOp handle for per-subscriber posting.
+ */
+struct SubscriberState {
+    std::unique_ptr<server::MonitorControlOp> op;
+    int64_t sequence{0};
+    bool needs_full_snapshot{true};
+    std::deque<Value> pending;  ///< Updates queued due to back-pressure.
+};
+
+class ClusterSyncPublisher;
+
+/**
+ * @brief Custom pvxs Source that provides per-subscriber state tracking for the SYNC PV.
+ *
+ * Replaces SharedPV to enable per-subscriber incremental updates via
+ * MonitorControlOp::tryPost(), watermarks, and onHighMark() callbacks.
+ * Follows the pattern from pvxs test/spam.cpp.
+ */
+struct SyncSource : public server::Source {
+    SyncSource(const std::string &pv_name, ClusterSyncPublisher &publisher);
+
+    void onSearch(Search &op) override;
+    void onCreate(std::unique_ptr<server::ChannelControl> &&chan) override;
+    List onList() override;
+
+    epicsMutex lock_;
+    std::shared_ptr<std::set<std::string>> names_;
+    Value prototype_;
+    uint64_t next_sub_id_{0};
+    std::map<uint64_t, SubscriberState> subscribers_;
+    ClusterSyncPublisher &publisher_;
+};
+
+/**
  * @brief Publishes certificate database snapshots over PVAccess for cluster synchronization.
  *
  * Each PVACMS node hosts one ClusterSyncPublisher that serializes the local certificate
@@ -149,21 +220,30 @@ public:
                          epicsMutex &status_update_lock);
 
     /**
-     * @brief Publishes a snapshot of the current certificate table to the sync PV.
+     * @brief Publishes a full snapshot of the current certificate database.
      *
-     * Uses the previously known member list and marks the certificates as changed.
+     * Forces all subscribers to receive the complete database state.
+     * Use for bootstrap, init, and membership-only changes.
+     * For individual cert changes, prefer publishCertChange().
      */
     void publishSnapshot();
 
     /**
-     * @brief Publishes a snapshot with an updated cluster member list.
+     * @brief Publishes a full snapshot with an updated cluster membership list.
      *
-     * Compares @p members against the cached list to detect changes, then
-     * serializes and posts the full state including certificates.
-     *
-     * @param members Updated list of cluster member nodes.
+     * @param members The updated cluster member list.
      */
     void publishSnapshot(const std::vector<ClusterMember> &members);
+
+    /**
+     * @brief Publishes an incremental update for a single certificate change.
+     *
+     * Reads the specified certificate from the database, appends it to the
+     * update log, and dispatches incrementally to connected subscribers.
+     *
+     * @param serial Serial number of the certificate that changed.
+     */
+    void publishCertChange(int64_t serial);
 
     /**
      * @brief Returns the fully-qualified PV name used for cluster synchronization.
@@ -173,11 +253,11 @@ public:
     std::string getSyncPvName() const;
 
     /**
-     * @brief Returns a reference to the underlying SharedPV for this node.
+     * @brief Returns a reference to the underlying SyncSource for this node.
      *
-     * @return Reference to the PVXS SharedPV that serves the sync data.
+     * @return Shared pointer to the SyncSource that serves the sync data.
      */
-    server::SharedPV &getPV() { return sync_pv_; }
+    std::shared_ptr<SyncSource> getSource() { return sync_source_; }
 
     /**
      * @brief Indicates that an incoming cluster snapshot is currently being ingested.
@@ -187,6 +267,18 @@ public:
      */
     std::atomic<bool> sync_ingestion_in_progress{false};
 
+    /**
+     * @brief Appends a certificate change to the update log and dispatches to subscribers.
+     *
+     * Assigns the next monotonic sequence number, bounds the log, marks
+     * fallen-behind subscribers for full resync, and triggers per-subscriber dispatch.
+     *
+     * @param update Certificate change data (sequence field is set internally).
+     */
+    void appendToLog(CertUpdate update);
+
+    static constexpr size_t kDefaultMaxLogSize = 10000;
+
 private:
     std::string node_id_;
     std::string issuer_id_;
@@ -194,25 +286,23 @@ private:
     sqlite3 *certs_db_;
     const ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     epicsMutex &status_update_lock_;
-    server::SharedPV sync_pv_;
-    bool opened_{false};
+
+    std::shared_ptr<SyncSource> sync_source_;
     Value prototype_;
 
     std::vector<ClusterMember> members_;
 
-    /**
-     * @brief Serializes and publishes the certificate state to the sync PV.
-     *
-     * Builds a canonical, signed PVXS Value and either opens the PV (first call)
-     * or posts a delta with only the changed fields marked.
-     *
-     * @param members         Current cluster member list to embed in the snapshot.
-     * @param members_changed Whether the member list has changed since the last publish.
-     * @param certs_changed   Whether the certificate table has changed since the last publish.
-     */
+    std::deque<CertUpdate> update_log_;
+    int64_t next_sequence_{1};
+    size_t max_log_size_{kDefaultMaxLogSize};
+
+    void dispatchToSubscribers();
     void doPublish(const std::vector<ClusterMember> &members,
                    bool members_changed,
                    bool certs_changed);
+
+    friend struct SyncSource;
+    void sendToSubscriber(SubscriberState &sub);
 };
 
 /**

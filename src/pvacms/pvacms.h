@@ -359,7 +359,7 @@ void createAdminClientCert(const ConfigCms &config, sql_ptr &certs_db, const oss
 
 void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file);
 
-void onCreateCertificate(ConfigCms &config, sql_ptr &certs_db, const server::SharedPV &pv, std::unique_ptr<server::ExecOp> &&op, Value &&args,
+int64_t onCreateCertificate(ConfigCms &config, sql_ptr &certs_db, const server::SharedPV &pv, std::unique_ptr<server::ExecOp> &&op, Value &&args,
                          const ossl_ptr<EVP_PKEY> &cert_auth_pkey, const ossl_ptr<X509> &cert_auth_cert, const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                          const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain, std::string issuer_id);
 

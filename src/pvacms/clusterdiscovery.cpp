@@ -202,6 +202,21 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     while (incoming_ts > expected &&
            !global_high_water_mark_.compare_exchange_weak(expected, incoming_ts)) {}
 
+    const auto update_type = val["update_type"].as<int32_t>();
+    const auto sequence = val["sequence"].as<int64_t>();
+
+    auto peer_seq_it = peer_last_sequence_.find(peer_node_id);
+    if (update_type == SYNC_INCREMENTAL && peer_seq_it != peer_last_sequence_.end()) {
+        if (sequence != peer_seq_it->second + 1) {
+            log_warn_printf(pvacmscluster,
+                "Sequence gap from %s: expected %lld, got %lld\n",
+                peer_node_id.c_str(),
+                static_cast<long long>(peer_seq_it->second + 1),
+                static_cast<long long>(sequence));
+        }
+    }
+    peer_last_sequence_[peer_node_id] = sequence;
+
     sync_publisher_.sync_ingestion_in_progress.store(true);
     std::vector<std::string> revoked_skids;
     try {
@@ -213,8 +228,9 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     sync_publisher_.sync_ingestion_in_progress.store(false);
 
     auto certs_arr = val["certs"].as<shared_array<const Value>>();
-    log_debug_printf(pvacmscluster, "Ingested sync snapshot from node %s (%zu certs)\n",
-                     peer_node_id.c_str(), certs_arr.size());
+    log_debug_printf(pvacmscluster, "Ingested sync %s from node %s (seq=%lld, %zu certs)\n",
+                     update_type == SYNC_INCREMENTAL ? "incremental" : "snapshot",
+                     peer_node_id.c_str(), static_cast<long long>(sequence), certs_arr.size());
 
     if (on_node_cert_revoked) {
         for (const auto &skid : revoked_skids) {
@@ -299,6 +315,7 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
  */
 void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
     peer_cert_ids_.erase(peer_node_id);
+    peer_last_sequence_.erase(peer_node_id);
     subscriptions_.erase(peer_node_id);
     controller_.removeMember(peer_node_id);
     log_info_printf(pvacmscluster, "Removed disconnected member %s\n", peer_node_id.c_str());

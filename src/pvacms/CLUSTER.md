@@ -97,18 +97,39 @@ The join handshake is a single RPC round-trip on the CTRL PV:
 
 ### Sync Protocol
 
-Each node publishes a **sync snapshot** on its SYNC PV.  A snapshot contains:
+Each node publishes sync updates on its SYNC PV using a **per-subscriber
+incremental model**.  The publisher maintains an in-memory update log (bounded
+`std::deque<CertUpdate>`, default 10,000 entries) and tracks each subscriber's
+position independently.
+
+A sync update contains:
 
 - `node_id` - publisher's identity
 - `timeStamp` - wall-clock time of publication (NT `time_t` struct - see
   [Timestamps](#timestamps))
+- `sequence` - monotonic `Int64` sequence number
+- `update_type` - `Int32`: `0` = incremental, `1` = full snapshot
 - `members[]` - the node's current view of cluster membership (each member
   carries `node_id`, `sync_pv`, `version_major`, `version_minor`,
   `version_patch`)
-- `certs[]` - the full contents of the node's certificate database
-- `signature` - ECDSA signature over the canonicalized payload
+- `certs[]` - changed certificates (incremental) or the full database (snapshot)
+- `signature` - ECDSA signature over the encoded payload
 
-**When snapshots are published:**
+**Per-subscriber dispatch:**
+
+- **New subscriber**: receives a full snapshot (`update_type=1`) containing the
+  entire certificate database, then streams incremental updates.
+- **Up-to-date subscriber**: receives only the certificates that changed since
+  its last acknowledged sequence (`update_type=0`).
+- **Fallen-behind subscriber**: if a subscriber's position has been evicted
+  from the bounded log, it receives a full snapshot to resync.
+
+The publisher uses a custom `server::Source` implementation (`SyncSource`)
+instead of `SharedPV` to access per-subscriber `MonitorControlOp` handles.
+This enables `tryPost()` for back-pressure and `onHighMark()` callbacks for
+flow control (see [Back-Pressure](#back-pressure)).
+
+**When updates are published:**
 - After a new certificate is created (CCR processed)
 - After a certificate is revoked (admin action)
 - After a certificate is approved or denied (admin action)
@@ -116,28 +137,37 @@ Each node publishes a **sync snapshot** on its SYNC PV.  A snapshot contains:
   database so the joiner receives it)
 - At cluster bootstrap (initial snapshot)
 
-**When snapshots are NOT published:**
+**When updates are NOT published:**
 - On time-based status transitions (see [Design Decisions](#design-decisions))
-- On membership removal (the CTRL PV is updated, but no sync snapshot is sent
+- On membership removal (the CTRL PV is updated, but no sync update is sent
   because the departing node's data is already replicated)
 
 ### Ingestion
 
-When a node receives a sync snapshot from a peer:
+When a node receives a sync update from a peer:
 
-1. **Signature verification** - reject if the CA public key does not verify the
+1. **Peer SKID verification** - reject if the peer's identity has not been
+   verified via the TLS connection, or if the snapshot `node_id` does not match
+   the expected peer.
+2. **Signature verification** - reject if the CA public key does not verify the
    signature.
-2. **Anti-replay** - reject if the timestamp is older than the global
+3. **Anti-replay** - reject if the timestamp is older than the global
    high-water mark minus a 5-second clock-skew tolerance.  The high-water mark
    is updated atomically.
-3. **Loop guard** - a flag (`sync_ingestion_in_progress`) prevents a node from
-   re-publishing its own snapshot in response to ingesting a peer's snapshot.
-4. **Cert-by-cert application** - for each certificate in the snapshot:
+4. **Sequence and update type** - read `update_type` and `sequence` fields.
+   Track the last received sequence from each peer; log a warning if a gap is
+   detected (non-contiguous sequence).
+5. **Loop guard** - a flag (`sync_ingestion_in_progress`) prevents a node from
+   re-publishing its own snapshot in response to ingesting a peer's update.
+6. **Cert-by-cert application** - for each certificate in `certs[]`:
    - If the cert exists locally: apply the update only if
      `isValidStatusTransition()` allows the remote status.  When allowed, all
      fields are overwritten (including `renew_by` and `status_date`).
    - If the cert does not exist locally: insert it.
-5. **Membership reconciliation** - the snapshot includes the publisher's
+   - This logic is the same for both incremental (`update_type=0`) and full
+     snapshot (`update_type=1`) updates — the difference is only in how many
+     certs appear in `certs[]`.
+7. **Membership reconciliation** - the update includes the publisher's
    membership view.  The receiver subscribes to any peers it is not yet
    tracking.
 
@@ -352,17 +382,39 @@ requests from clients that do not satisfy `canWrite()`.
 
 ### Sync Loop Prevention
 
-When a node is ingesting a peer's sync snapshot, it sets
-`sync_ingestion_in_progress` to true.  Any attempt to publish a snapshot while
-this flag is set is suppressed, preventing A → B → A feedback loops.
+When a node is ingesting a peer's sync update, it sets
+`sync_ingestion_in_progress` to true.  Any attempt to publish while this flag
+is set is suppressed, preventing A → B → A feedback loops.
 
 ## Network Load
 
 ### Publish-Subscribe Model
 
-Sync snapshots are only transmitted when there are active subscribers.  PVA's
-`SharedPV` does not send data if no client is monitoring the PV.  In a cluster
-of N nodes, each node subscribes to (N-1) peer SYNC PVs.
+Sync updates are only transmitted when there are active subscribers.  The
+`SyncSource` does not send data if no client is monitoring the PV.  In a
+cluster of N nodes, each node subscribes to (N-1) peer SYNC PVs.
+
+### Back-Pressure
+
+The sync publisher uses `MonitorControlOp::tryPost()` to send updates to each
+subscriber individually.  If `tryPost()` returns false (the subscriber's output
+window is full), the update is queued in the subscriber's pending queue.  When
+the subscriber acknowledges earlier updates, the `onHighMark()` callback fires
+and drains the pending queue.  Watermarks are configured per-subscriber using
+`setWatermarks(0, limitQueue)` (matching the pvxs `spam.cpp` pattern).
+
+This ensures no updates are dropped under load — slow subscribers accumulate a
+backlog that is delivered in order when they catch up.
+
+### Update Log
+
+The publisher maintains a bounded in-memory `std::deque<CertUpdate>` (default
+10,000 entries).  Each entry holds a monotonic sequence number and the
+certificate data at the time of the change.  When the log exceeds its bound,
+oldest entries are evicted.  Subscribers whose position falls behind the evicted
+entries are automatically marked for full resync.
+
+Memory overhead: 10,000 entries × ~200 bytes ≈ 2 MB.
 
 ### When Data is Transmitted
 
@@ -379,9 +431,9 @@ membership list (node IDs and sync PV names), not the certificate database.
 
 Time-based status transitions do **not** trigger any network traffic.
 
-### Snapshot Payload Size
+### Payload Size
 
-A sync snapshot contains the full certificate database.  Per-cert overhead:
+Per-cert overhead in a sync update:
 
 | Field | Type | Size |
 |---|---|---|
@@ -401,16 +453,20 @@ A sync snapshot contains the full certificate database.  Per-cert overhead:
 
 **Per-cert total: ~130-220 bytes** (varies with string field lengths).
 
-Fixed overhead per snapshot:
+Fixed overhead per update:
 
 | Field | Size |
 |---|---|
 | node_id | ~12 bytes |
 | timeStamp | 16 bytes (Int64 + Int32 + Int32) |
+| sequence | 8 bytes |
+| update_type | 4 bytes |
 | members array | ~62 bytes per member |
 | signature | ~72 bytes (ECDSA P-256) |
 
-**Examples:**
+**Incremental updates** (single cert change): ~200-300 bytes total.
+
+**Full snapshot examples:**
 
 | Certs | Members | Approx payload |
 |---|---|---|
@@ -419,8 +475,9 @@ Fixed overhead per snapshot:
 | 10,000 | 3 | ~1.7 MB |
 | 100,000 | 3 | ~17 MB |
 
-For most EPICS deployments (hundreds to low thousands of certificates), sync
-snapshots are well under 1 MB.
+With incremental sync, steady-state network traffic is dominated by single-cert
+updates (~200 bytes each).  Full snapshots are only sent to new subscribers or
+subscribers that fall behind the bounded update log.
 
 ## Configuration
 
