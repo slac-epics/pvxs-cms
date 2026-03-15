@@ -3510,8 +3510,8 @@ int main(int argc, char *argv[]) {
             .addPV(getCertAuthRootPv(config.getCertPvPrefix(), our_issuer_id), root_pv)
             .addPV(getCertIssuerPv(config.getCertPvPrefix()), issuer_pv)
             .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv)
-            .addPV(cluster_ctrl.getCtrlPvName(), cluster_ctrl.getPV())
-            .addSource("syncsrc", cluster_sync.getSource());
+            .addPV(cluster_sync.getSyncPvName(), cluster_sync.getPV())
+            .addPV(cluster_ctrl.getCtrlPvName(), cluster_ctrl.getPV());
         root_pv.open(root_pv_value);
         issuer_pv.open(issuer_pv_value);
 

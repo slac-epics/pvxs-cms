@@ -39,6 +39,9 @@ void SyncSource::onSearch(Search &op) {
 }
 
 void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
+    if (!names_->count(chan->name()))
+        return;
+
     chan->onOp([this](std::unique_ptr<server::ConnectOp> &&cop) {
         cop->onGet([](std::unique_ptr<server::ExecOp> &&op) {
             op->error("Only monitor implemented");
@@ -184,6 +187,7 @@ ClusterSyncPublisher::ClusterSyncPublisher(const std::string &node_id,
     , cert_auth_pkey_(cert_auth_pkey)
     , status_update_lock_(status_update_lock)
     , sync_source_(std::make_shared<SyncSource>(sync_pv_name_, *this))
+    , sync_pv_(server::SharedPV::buildReadonly())
     , members_({{node_id, sync_pv_name_, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION}})
 {}
 
@@ -309,10 +313,6 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
 
     Guard G(status_update_lock_);
 
-    if (!sync_source_->prototype_) {
-        sync_source_->prototype_ = makeClusterSyncValue();
-    }
-
     sqlite3_stmt *stmt;
     if (sqlite3_prepare_v2(certs_db_, SQL_SYNC_SELECT_CERT_BY_SERIAL, -1, &stmt, nullptr) != SQLITE_OK) {
         log_err_printf(pvacmscluster, "Failed to query cert %lld: %s\n",
@@ -333,28 +333,50 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
         return txt ? reinterpret_cast<const char*>(txt) : "";
     };
 
-    CertUpdate update;
-    update.serial      = sqlite3_column_int64(stmt, 0);
-    update.skid        = col_text(1);
-    update.cn          = col_text(2);
-    update.o           = col_text(3);
-    update.ou          = col_text(4);
-    update.c           = col_text(5);
-    update.approved    = sqlite3_column_int(stmt, 6);
-    update.not_before  = sqlite3_column_int64(stmt, 7);
-    update.not_after   = sqlite3_column_int64(stmt, 8);
-    update.renew_by    = sqlite3_column_int64(stmt, 9);
-    update.renewal_due = sqlite3_column_int(stmt, 10);
-    update.status      = sqlite3_column_int(stmt, 11);
-    update.status_date = sqlite3_column_int64(stmt, 12);
+    auto seq = next_sequence_++;
+
+    auto val = prototype_.cloneEmpty();
+    val["node_id"] = node_id_;
+    setTimeStamp(val);
+    val["sequence"] = seq;
+    val["update_type"] = static_cast<int32_t>(SYNC_INCREMENTAL);
+
+    shared_array<Value> members_arr(members_.size());
+    for (size_t i = 0; i < members_.size(); i++) {
+        members_arr[i] = val["members"].allocMember();
+        members_arr[i]["node_id"] = members_[i].node_id;
+        members_arr[i]["sync_pv"] = members_[i].sync_pv;
+        members_arr[i]["version_major"] = members_[i].version_major;
+        members_arr[i]["version_minor"] = members_[i].version_minor;
+        members_arr[i]["version_patch"] = members_[i].version_patch;
+    }
+    val["members"] = members_arr.freeze();
+
+    shared_array<Value> certs_arr(1);
+    auto row = val["certs"].allocMember();
+    row["serial"] = sqlite3_column_int64(stmt, 0);
+    row["skid"] = col_text(1);
+    row["cn"] = col_text(2);
+    row["o"] = col_text(3);
+    row["ou"] = col_text(4);
+    row["c"] = col_text(5);
+    row["approved"] = sqlite3_column_int(stmt, 6);
+    row["not_before"] = sqlite3_column_int64(stmt, 7);
+    row["not_after"] = sqlite3_column_int64(stmt, 8);
+    row["renew_by"] = sqlite3_column_int64(stmt, 9);
+    row["renewal_due"] = sqlite3_column_int(stmt, 10);
+    row["status"] = sqlite3_column_int(stmt, 11);
+    row["status_date"] = sqlite3_column_int64(stmt, 12);
     sqlite3_finalize(stmt);
+    certs_arr[0] = std::move(row);
+    val["certs"] = certs_arr.freeze();
 
-    appendToLog(std::move(update));
+    clusterSign(cert_auth_pkey_, val);
+    sync_pv_.post(val);
 
-    log_debug_printf(pvacmscluster, "Published incremental cert change (serial=%lld, seq=%lld) to %zu subscribers\n",
+    log_debug_printf(pvacmscluster, "Published incremental cert change (serial=%lld, seq=%lld)\n",
                      static_cast<long long>(serial),
-                     static_cast<long long>(next_sequence_ - 1),
-                     sync_source_->subscribers_.size());
+                     static_cast<long long>(seq));
 }
 
 void ClusterSyncPublisher::publishSnapshot() {
@@ -377,20 +399,26 @@ void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, 
         sync_source_->prototype_ = makeClusterSyncValue();
     }
 
-    Guard G2(sync_source_->lock_);
-
-    // Advance sequence so each publish has a unique, monotonically
-    // increasing number — even when callers don't provide specific
-    // cert change data via appendToLog().
     auto seq = next_sequence_++;
 
-    // publishSnapshot() callers don't provide specific cert change data,
-    // so mark all subscribers for a full snapshot re-send.
+    auto val = serializeCertsTable(certs_db_, node_id_, members, prototype_);
+    val["sequence"] = seq;
+    val["update_type"] = static_cast<int32_t>(SYNC_FULL_SNAPSHOT);
+    clusterSign(cert_auth_pkey_, val);
+
+    if (!opened_) {
+        prototype_ = val;
+        sync_pv_.open(val);
+        opened_ = true;
+    } else {
+        sync_pv_.post(val);
+    }
+
+    Guard G2(sync_source_->lock_);
     for (auto &kv : sync_source_->subscribers_) {
         kv.second.needs_full_snapshot = true;
         kv.second.pending.clear();
     }
-
     dispatchToSubscribers();
 
     log_debug_printf(pvacmscluster, "Dispatched sync update (seq=%lld) to %zu subscribers (members_changed=%d, certs_changed=%d)\n",
