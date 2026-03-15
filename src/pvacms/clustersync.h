@@ -17,7 +17,6 @@
 
 #include <epicsMutex.h>
 
-#include <pvxs/sharedpv.h>
 #include <pvxs/source.h>
 
 #include "clustertypes.h"
@@ -259,7 +258,6 @@ public:
      * @return Shared pointer to the SyncSource that serves the sync data.
      */
     std::shared_ptr<SyncSource> getSource() { return sync_source_; }
-    server::SharedPV &getPV() { return sync_pv_; }
 
     /**
      * @brief Indicates that an incoming cluster snapshot is currently being ingested.
@@ -290,8 +288,6 @@ private:
     epicsMutex &status_update_lock_;
 
     std::shared_ptr<SyncSource> sync_source_;
-    server::SharedPV sync_pv_;
-    bool opened_{false};
     Value prototype_;
 
     std::vector<ClusterMember> members_;

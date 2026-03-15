@@ -3503,14 +3503,14 @@ int main(int argc, char *argv[]) {
         wildcard_source->add(getCertStatusPv(config.getCertPvPrefix(), our_issuer_id), status_pv);
         pva_server.addSource("__wildcard", wildcard_source);
 
-        // Add ordinary PVs to regular Sources
+        pva_server.addSource("syncsrc", cluster_sync.getSource());
+
         pva_server.addPV(getCertCreatePv(config.getCertPvPrefix()), create_pv)
             .addPV(getCertCreatePv(config.getCertPvPrefix(), our_issuer_id), create_pv)
             .addPV(getCertAuthRootPv(config.getCertPvPrefix()), root_pv)
             .addPV(getCertAuthRootPv(config.getCertPvPrefix(), our_issuer_id), root_pv)
             .addPV(getCertIssuerPv(config.getCertPvPrefix()), issuer_pv)
             .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv)
-            .addPV(cluster_sync.getSyncPvName(), cluster_sync.getPV())
             .addPV(cluster_ctrl.getCtrlPvName(), cluster_ctrl.getPV());
         root_pv.open(root_pv_value);
         issuer_pv.open(issuer_pv_value);
