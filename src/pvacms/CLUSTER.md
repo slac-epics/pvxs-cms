@@ -24,7 +24,7 @@ The cluster uses two PV channels per cluster:
 | `ClusterController`    | `clusterctrl.{h,cpp}`      | Manages CTRL PV, processes join RPCs, maintains membership list                      |
 | `ClusterSyncPublisher` | `clustersync.{h,cpp}`      | Publishes this node's cert database as signed snapshots on its SYNC PV               |
 | `ClusterDiscovery`     | `clusterdiscovery.{h,cpp}` | Discovers existing clusters, subscribes to peer SYNC PVs, handles connect/disconnect |
-| `clustertypes`         | `clustertypes.{h,cpp}`     | PVA type definitions, xcode encoding, signing, verification, transition validation  |
+| `clustertypes`         | `clustertypes.{h,cpp}`     | PVA type definitions, xcode encoding, signing, verification, transition validation   |
 
 ### PV Naming
 
@@ -223,11 +223,11 @@ signals a breaking protocol change that requires a coordinated upgrade.
 All cluster messages that carry a timestamp use the EPICS NT `time_t` struct
 (`timeStamp`) instead of a flat `Int64`.  The struct has three fields:
 
-| Field | Type | Description |
-|---|---|---|
+| Field              | Type  | Description                                    |
+|--------------------|-------|------------------------------------------------|
 | `secondsPastEpoch` | Int64 | Seconds since the EPICS epoch (1990-01-01 UTC) |
-| `nanoseconds` | Int32 | Sub-second nanoseconds |
-| `userTag` | Int32 | Reserved (always 0) |
+| `nanoseconds`      | Int32 | Sub-second nanoseconds                         |
+| `userTag`          | Int32 | Reserved (always 0)                            |
 
 Helper functions in `clustertypes.{h,cpp}` work directly in the EPICS epoch:
 
@@ -246,18 +246,18 @@ Certificate status transitions that are deterministic functions of time are
 **not** synced between nodes.  Each node computes them independently from the
 same certificate dates stored in its local database:
 
-| Transition | Trigger | Synced? |
-|---|---|---|
-| PENDING → VALID | `now >= not_before` | No |
-| VALID → PENDING_RENEWAL | `now >= renew_by` | No |
-| VALID → EXPIRED | `now >= not_after` | No |
-| PENDING_RENEWAL → EXPIRED | `now >= not_after` | No |
-| VALID (renewal_due flag) | `now >= midpoint(status_date, renew_by)` | No |
-| New cert created | CCR processed | **Yes** |
-| Any → REVOKED | Admin action | **Yes** |
-| PENDING_APPROVAL → VALID/PENDING | Admin approval | **Yes** |
-| PENDING_RENEWAL → VALID | Renewal CCR processed | **Yes** |
-| VALID → VALID | Renewal updates `renew_by` | **Yes** |
+| Transition                       | Trigger                                  | Synced? |
+|----------------------------------|------------------------------------------|---------|
+| PENDING → VALID                  | `now >= not_before`                      | No      |
+| VALID → PENDING_RENEWAL          | `now >= renew_by`                        | No      |
+| VALID → EXPIRED                  | `now >= not_after`                       | No      |
+| PENDING_RENEWAL → EXPIRED        | `now >= not_after`                       | No      |
+| VALID (renewal_due flag)         | `now >= midpoint(status_date, renew_by)` | No      |
+| New cert created                 | CCR processed                            | **Yes** |
+| Any → REVOKED                    | Admin action                             | **Yes** |
+| PENDING_APPROVAL → VALID/PENDING | Admin approval                           | **Yes** |
+| PENDING_RENEWAL → VALID          | Renewal CCR processed                    | **Yes** |
+| VALID → VALID                    | Renewal updates `renew_by`               | **Yes** |
 
 This is safe because:
 - All nodes have the same `not_before`, `not_after`, and `renew_by` values.
@@ -435,45 +435,45 @@ Time-based status transitions do **not** trigger any network traffic.
 
 Per-cert overhead in a sync update:
 
-| Field | Type | Size |
-|---|---|---|
-| serial | int64 | 8 bytes |
-| skid | string | ~12 bytes (8 hex chars + length prefix) |
-| cn | string | ~20-60 bytes |
-| o | string | ~20-40 bytes |
-| ou | string | ~20-60 bytes |
-| c | string | ~6 bytes (2-char country + length prefix) |
-| approved | int32 | 4 bytes |
-| not_before | int64 | 8 bytes |
-| not_after | int64 | 8 bytes |
-| renew_by | int64 | 8 bytes |
-| renewal_due | int32 | 4 bytes |
-| status | int32 | 4 bytes |
-| status_date | int64 | 8 bytes |
+| Field       | Type   | Size                                      |
+|-------------|--------|-------------------------------------------|
+| serial      | int64  | 8 bytes                                   |
+| skid        | string | ~12 bytes (8 hex chars + length prefix)   |
+| cn          | string | ~20-60 bytes                              |
+| o           | string | ~20-40 bytes                              |
+| ou          | string | ~20-60 bytes                              |
+| c           | string | ~6 bytes (2-char country + length prefix) |
+| approved    | int32  | 4 bytes                                   |
+| not_before  | int64  | 8 bytes                                   |
+| not_after   | int64  | 8 bytes                                   |
+| renew_by    | int64  | 8 bytes                                   |
+| renewal_due | int32  | 4 bytes                                   |
+| status      | int32  | 4 bytes                                   |
+| status_date | int64  | 8 bytes                                   |
 
 **Per-cert total: ~130-220 bytes** (varies with string field lengths).
 
 Fixed overhead per update:
 
-| Field | Size |
-|---|---|
-| node_id | ~12 bytes |
-| timeStamp | 16 bytes (Int64 + Int32 + Int32) |
-| sequence | 8 bytes |
-| update_type | 4 bytes |
-| members array | ~62 bytes per member |
-| signature | ~72 bytes (ECDSA P-256) |
+| Field         | Size                             |
+|---------------|----------------------------------|
+| node_id       | ~12 bytes                        |
+| timeStamp     | 16 bytes (Int64 + Int32 + Int32) |
+| sequence      | 8 bytes                          |
+| update_type   | 4 bytes                          |
+| members array | ~62 bytes per member             |
+| signature     | ~72 bytes (ECDSA P-256)          |
 
 **Incremental updates** (single cert change): ~200-300 bytes total.
 
 **Full snapshot examples:**
 
-| Certs | Members | Approx payload |
-|---|---|---|
-| 100 | 3 | ~17 KB |
-| 1,000 | 3 | ~170 KB |
-| 10,000 | 3 | ~1.7 MB |
-| 100,000 | 3 | ~17 MB |
+| Certs   | Members | Approx payload |
+|---------|---------|----------------|
+| 100     | 3       | ~17 KB         |
+| 1,000   | 3       | ~170 KB        |
+| 10,000  | 3       | ~1.7 MB        |
+| 100,000 | 3       | ~17 MB         |
 
 With incremental sync, steady-state network traffic is dominated by single-cert
 updates (~200 bytes each).  Full snapshots are only sent to new subscribers or
@@ -481,10 +481,10 @@ subscribers that fall behind the bounded update log.
 
 ## Configuration
 
-| CLI Option | Env Var | Default | Description |
-|---|---|---|---|
-| `--cluster-pv-prefix` | `EPICS_PVACMS_CLUSTER_PV_PREFIX` | `CERT:CLUSTER` | Prefix for cluster PV names |
-| `--cluster-discovery-timeout` | `EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT` | `10` | Seconds to wait for cluster discovery before bootstrapping |
+| CLI Option                    | Env Var                                  | Default        | Description                                                |
+|-------------------------------|------------------------------------------|----------------|------------------------------------------------------------|
+| `--cluster-pv-prefix`         | `EPICS_PVACMS_CLUSTER_PV_PREFIX`         | `CERT:CLUSTER` | Prefix for cluster PV names                                |
+| `--cluster-discovery-timeout` | `EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT` | `10`           | Seconds to wait for cluster discovery before bootstrapping |
 
 ## Source Files
 
