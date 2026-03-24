@@ -134,8 +134,7 @@ Value buildBenchType(const uint32_t array_size) {
         Member(TypeCode::Int64, "benchTimestampNs"),
     };
     auto val = def.create();
-    shared_array<double> arr(array_size);
-    for (uint32_t i = 0; i < array_size; i++) arr[i] = 1.0;
+    shared_array<double> arr(array_size, 1.0);
     val["value"] = arr.freeze().castTo<const void>();
     return val;
 }
@@ -602,6 +601,13 @@ public:
         }
 
         log_info_printf(perflog, "%s\n", "CA softIoc is ready");
+
+        if (!seedWaveform(nelm)) {
+            log_warn_printf(perflog, "%s\n", "IOC: failed to seed waveform via ca_array_put");
+            stop();
+            return false;
+        }
+
         return true;
     }
 
@@ -626,6 +632,36 @@ public:
     bool is_running() const { return pid_ > 0; }
 
 private:
+    bool seedWaveform(const size_t nelm) {
+        const int st = ca_context_create(ca_enable_preemptive_callback);
+        if (st != ECA_NORMAL) {
+            log_warn_printf(perflog, "IOC seed: ca_context_create failed (%d)\n", st);
+            return false;
+        }
+
+        chid ch = nullptr;
+        if (ca_create_channel("PVXPERF:CA:BENCH", nullptr, nullptr, 0, &ch) != ECA_NORMAL ||
+            ca_pend_io(5.0) != ECA_NORMAL || !ch) {
+            log_warn_printf(perflog, "%s\n", "IOC seed: channel connect failed");
+            ca_context_destroy();
+            return false;
+        }
+
+        std::vector<double> data(nelm, 1.0);
+        if (ca_array_put(DBR_DOUBLE, nelm, ch, data.data()) != ECA_NORMAL ||
+            ca_pend_io(5.0) != ECA_NORMAL) {
+            log_warn_printf(perflog, "%s\n", "IOC seed: ca_array_put failed");
+            ca_clear_channel(ch);
+            ca_context_destroy();
+            return false;
+        }
+
+        ca_clear_channel(ch);
+        ca_context_destroy();
+        log_info_printf(perflog, "Seeded PVXPERF:CA:BENCH with %zu doubles\n", nelm);
+        return true;
+    }
+
     pid_t pid_{-1};
     int stdin_write_fd_{-1};
     std::string tmp_db_path_;
@@ -704,6 +740,20 @@ GetResult runPvaGetBenchmarkWithContext(
             if (!done.wait(5.0))
                 throw std::runtime_error("pvxs GET warmup timeout");
         }
+        {
+            epicsEvent done;
+            Value val;
+            op->reExecGet([&val, &done](client::Result&& r) {
+                val = r();
+                done.signal();
+            });
+            if (done.wait(5.0) && val) {
+                auto arr = val["value"].as<shared_array<const double>>();
+                if (arr.size() > 0 && arr[arr.size() - 1] != 1.0)
+                    log_warn_printf(perflog, "%s smoke test failed: last element = %f\n",
+                                    label.c_str(), arr[arr.size() - 1]);
+            }
+        }
 
         for (uint32_t s = 0; s < num_samples; s++) {
             epicsEvent done;
@@ -757,6 +807,20 @@ GetResult runPvaGetBenchmarkWithContext(
             }
             batchEvent.wait(5.0);
         }
+        {
+            epicsEvent done;
+            Value val;
+            ops[0]->reExecGet([&val, &done](client::Result&& r) {
+                val = r();
+                done.signal();
+            });
+            if (done.wait(5.0) && val) {
+                auto arr = val["value"].as<shared_array<const double>>();
+                if (arr.size() > 0 && arr[arr.size() - 1] != 1.0)
+                    log_warn_printf(perflog, "%s smoke test failed: last element = %f\n",
+                                    label.c_str(), arr[arr.size() - 1]);
+            }
+        }
 
         for (uint32_t s = 0; s < num_samples; s++) {
             batchDone.store(0, std::memory_order_release);
@@ -809,6 +873,8 @@ GetResult runCaGetBenchmark(
             ca_array_get(DBR_DOUBLE, array_size, ch, buffer.data());
             ca_pend_io(5.0);
         }
+        if (array_size > 0 && buffer[array_size - 1] != 1.0)
+            log_warn_printf(perflog, "CA smoke test failed: last element = %f\n", buffer[array_size - 1]);
 
         std::vector<double> get_times;
         get_times.reserve(num_samples);
@@ -873,6 +939,13 @@ GetResult runCaGetBenchmark(
                 }
             }
         }
+    }
+    {
+        std::vector<double> check(array_size);
+        ca_array_get(DBR_DOUBLE, array_size, channels[0], check.data());
+        ca_pend_io(5.0);
+        if (array_size > 0 && check[array_size - 1] != 1.0)
+            log_warn_printf(perflog, "CA smoke test failed: last element = %f\n", check[array_size - 1]);
     }
 
     std::vector<double> get_times;
@@ -992,21 +1065,30 @@ public:
     void getDone(
         const epics::pvData::Status &status,
         epics::pvAccess::ChannelGet::shared_pointer const &,
-        epics::pvData::PVStructure::shared_pointer const &,
+        epics::pvData::PVStructure::shared_pointer const &pvStructure,
         epics::pvData::BitSet::shared_pointer const &) override
     {
         if (!status.isSuccess())
             log_err_printf(perflog, "EPICS_PVA getDone: %s\n",
                            status.getMessage().c_str());
+        else if (!smokeChecked_)
+            lastValue_ = pvStructure;
         doneEvent_.signal();
     }
 
     bool waitConnect(double timeout) { return connectEvent_.wait(timeout); }
     bool waitDone(double timeout) { return doneEvent_.wait(timeout); }
 
+    epics::pvData::PVStructure::shared_pointer consumeSmokeValue() {
+        smokeChecked_ = true;
+        return std::move(lastValue_);
+    }
+
 private:
     epics::pvData::Event connectEvent_;
     epics::pvData::Event doneEvent_;
+    epics::pvData::PVStructure::shared_pointer lastValue_;
+    bool smokeChecked_{false};
 };
 
 GetResult runEpicsPvaGetBenchmark(
@@ -1042,6 +1124,16 @@ GetResult runEpicsPvaGetBenchmark(
         for (uint32_t w = 0; w < warmup; w++) {
             channelGet->get();
             getReq->waitDone(5.0);
+        }
+        if (auto pv = getReq->consumeSmokeValue()) {
+            auto field = pv->getSubField<pvd::PVDoubleArray>("value");
+            if (field) {
+                pvd::PVDoubleArray::const_svector data;
+                field->getAs(data);
+                if (!data.empty() && data.back() != 1.0)
+                    log_warn_printf(perflog, "%s smoke test failed: last element = %f\n",
+                                    label.c_str(), data.back());
+            }
         }
 
         std::vector<double> get_times;
@@ -1084,6 +1176,16 @@ GetResult runEpicsPvaGetBenchmark(
             slots[i].getter->get();
         for (uint32_t i = 0; i < parallelism; i++)
             slots[i].getReq->waitDone(5.0);
+    }
+    if (auto pv = slots[0].getReq->consumeSmokeValue()) {
+        auto field = pv->getSubField<pvd::PVDoubleArray>("value");
+        if (field) {
+            pvd::PVDoubleArray::const_svector data;
+            field->getAs(data);
+            if (!data.empty() && data.back() != 1.0)
+                log_warn_printf(perflog, "%s smoke test failed: last element = %f\n",
+                                label.c_str(), data.back());
+        }
     }
 
     std::vector<double> get_times;
@@ -1319,6 +1421,13 @@ extern "C" void phaseTimingListener(void* pPrivate, const char* message) {
         phase = "connection_validation";
     }
 
+    if (msg.find("error") != std::string::npos || msg.find("Error") != std::string::npos) {
+        fprintf(stderr, "[pvxperf] %s", message);
+    }
+    if (msg.find("<<TRUNCATED>>") != std::string::npos) {
+        fprintf(stderr, "[pvxperf] WARNING: log message truncated — phase timing may be incomplete\n");
+    }
+
     if (!phase.empty()) {
         std::lock_guard<std::mutex> lk(capture->mtx);
         if (phase == "searching") {
@@ -1507,6 +1616,7 @@ std::vector<PhaseTimingResult> runPvaPhaseTiming(
         }
 
         enablePhaseTimingCapture(capture);
+        eltc(0); // Turn off console logging of log messages but still intercept them
 
         auto ctxt = cconfig.build();
 
