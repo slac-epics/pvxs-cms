@@ -725,7 +725,8 @@ GetResult runPvaGetBenchmarkWithContext(
     const uint32_t array_size,
     const uint32_t parallelism,
     const uint32_t num_samples,
-    const uint32_t warmup)
+    const uint32_t warmup,
+    const bool use_exec_wait = false)
 {
     std::vector<double> get_times;
     get_times.reserve(num_samples);
@@ -733,9 +734,30 @@ GetResult runPvaGetBenchmarkWithContext(
     // reExecGet(): INIT once per Operation, then single-round-trip EXEC per call
     // (vs get().exec() which does INIT+EXEC = 2 round-trips every time)
 
-    if (parallelism <= 1) {
+    if (use_exec_wait && parallelism <= 1) {
+        for (uint32_t w = 0; w < warmup; w++)
+            ctxt.get(pvname).field("value").exec()->wait(5.0);
+
+        {
+            auto val = ctxt.get(pvname).field("value").exec()->wait(5.0);
+            auto arr = val["value"].as<shared_array<const double>>();
+            if (!arr.empty() && arr[arr.size() - 1] != 1.0)
+                log_warn_printf(perflog, "%s smoke test failed: last element = %f\n",
+                                label.c_str(), arr[arr.size() - 1]);
+        }
+
+        for (uint32_t s = 0; s < num_samples; s++) {
+            const auto start = std::chrono::steady_clock::now();
+            ctxt.get(pvname).field("value").exec()->wait(5.0);
+            const auto end = std::chrono::steady_clock::now();
+            get_times.push_back(
+                std::chrono::duration<double, std::micro>(end - start).count());
+        }
+
+    } else if (parallelism <= 1) {
         epicsEvent initDone;
         auto op = ctxt.get(pvname)
+                      .field("value")
                       .autoExec(false)
                       .onInit([&initDone](const Value&) {
                           initDone.signal();
@@ -773,13 +795,14 @@ GetResult runPvaGetBenchmarkWithContext(
             }
         }
 
+        epicsEvent done;
+        auto cb = [&done](client::Result&& result) {
+            result();
+            done.signal();
+        };
         for (uint32_t s = 0; s < num_samples; s++) {
-            epicsEvent done;
             const auto start = std::chrono::steady_clock::now();
-            op->reExecGet([&done](client::Result&& result) {
-                result();
-                done.signal();
-            });
+            op->reExecGet(cb);
             if (!done.wait(5.0))
                 throw std::runtime_error("pvxs GET sample timeout");
             const auto end = std::chrono::steady_clock::now();
@@ -794,6 +817,7 @@ GetResult runPvaGetBenchmarkWithContext(
 
         for (uint32_t i = 0; i < parallelism; i++) {
             ops[i] = ctxt.get(pvname)
+                         .field("value")
                          .autoExec(false)
                          .onInit([&initCount, &initDone, parallelism](const Value&) {
                              if (initCount.fetch_add(1, std::memory_order_acq_rel) + 1 >= parallelism)
@@ -839,17 +863,18 @@ GetResult runPvaGetBenchmarkWithContext(
             }
         }
 
+        auto batchCb = [&batchDone, &batchEvent, parallelism](client::Result&& result) {
+            result();
+            if (batchDone.fetch_add(1, std::memory_order_acq_rel) + 1 >= parallelism)
+                batchEvent.signal();
+        };
         for (uint32_t s = 0; s < num_samples; s++) {
             batchDone.store(0, std::memory_order_release);
 
             const auto batch_start = std::chrono::steady_clock::now();
 
             for (uint32_t i = 0; i < parallelism; i++) {
-                ops[i]->reExecGet([&batchDone, &batchEvent, parallelism](client::Result&& result) {
-                    result();
-                    if (batchDone.fetch_add(1, std::memory_order_acq_rel) + 1 >= parallelism)
-                        batchEvent.signal();
-                });
+                ops[i]->reExecGet(batchCb);
             }
             batchEvent.wait(5.0);
 
@@ -1889,7 +1914,9 @@ void showHelp(const char *program_name) {
               << "        --output <file>                      CSV output file (default: stdout)\n"
               << std::endl
               << "server options:\n"
-              << "        --pvxs-server <mode>                 'in-process' (BenchmarkSource, default) or 'external' (softIocPVX child)\n"
+              << "        --pvxs-server <mode>                 'in-process' (BenchmarkSource, default) or 'external' (child IOC)\n"
+              << "        --pvxs-external-ioc <type>           'softIocPVA' (default, shares IOC with EPICS_PVA) or 'softIocPVX'\n"
+              << "        --pvxs-exec-wait                    Use get().exec()->wait() instead of reExecGet() for sequential GETs\n"
               << std::endl
               << "PVACMS options:\n"
               << "        --keychain <path>                    TLS keychain file for SPVA modes\n"
@@ -1946,6 +1973,8 @@ int main(int argc, char* argv[]) {
         bool setup_cms = false;
         bool external_cms = false;
         std::string pvxs_server_mode = "in-process";
+        std::string pvxs_external_ioc = "softIocPVA";
+        bool pvxs_exec_wait = false;
         std::string cms_db, cms_keychain, cms_acf;
         bool benchmark_phases{false};
         uint32_t phase_iterations{50};
@@ -1974,7 +2003,11 @@ int main(int argc, char* argv[]) {
         app.add_flag("--external-cms", external_cms,
                      "Use already-running PVACMS for SPVA_CERTMON");
         app.add_option("--pvxs-server", pvxs_server_mode,
-                       "PVXS server mode: 'in-process' (BenchmarkSource, default) or 'external' (softIocPVX child)");
+                       "PVXS server mode: 'in-process' (BenchmarkSource, default) or 'external' (child IOC)");
+        app.add_option("--pvxs-external-ioc", pvxs_external_ioc,
+                       "External IOC for --pvxs-server external: 'softIocPVA' (default) or 'softIocPVX'");
+        app.add_flag("--pvxs-exec-wait", pvxs_exec_wait,
+                     "Use get().exec()->wait() instead of reExecGet() for PVXS sequential GETs");
         app.add_option("--cms-db", cms_db,
                        "Path to existing PVACMS SQLite database");
         app.add_option("--cms-keychain", cms_keychain,
@@ -2014,6 +2047,12 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         const bool pvxs_external = (pvxs_server_mode == "external");
+
+        if (pvxs_external_ioc != "softIocPVA" && pvxs_external_ioc != "softIocPVX") {
+            std::cerr << "Error: --pvxs-external-ioc must be 'softIocPVA' or 'softIocPVX'" << std::endl;
+            return 1;
+        }
+        const bool use_pvxs_ioc = (pvxs_external_ioc == "softIocPVX");
 
         std::ofstream file_out;
         std::ostream* out = &std::cout;
@@ -2073,7 +2112,9 @@ int main(int argc, char* argv[]) {
                 [m](const ProtocolMode x) { return x == m; });
         };
 
-        const bool needs_epics_pva_on_ioc = needsMode(ProtocolMode::EPICS_PVA);
+        const bool pvxs_shares_ca_ioc = pvxs_external && !use_pvxs_ioc;
+        const bool needs_pva_on_ca_ioc = needsMode(ProtocolMode::EPICS_PVA) ||
+                                          pvxs_shares_ca_ioc;
 
         const size_t max_size = sizes.empty() ? static_cast<size_t>(1) :
             *std::max_element(sizes.begin(), sizes.end());
@@ -2088,7 +2129,7 @@ int main(int argc, char* argv[]) {
 
         auto requireCaIoc = [&]() -> bool {
             if (ca_ioc.is_running()) return true;
-            const IocType t = needs_epics_pva_on_ioc
+            const IocType t = needs_pva_on_ca_ioc
                 ? IocType::EPICS_PVA : IocType::CA_ONLY;
             if (!ca_ioc.start(max_size, t)) {
                 std::cerr << "Warning: softIoc failed to start" << std::endl;
@@ -2151,16 +2192,29 @@ int main(int argc, char* argv[]) {
             if (is_ca_mode) {
                 pvxs_ioc.stop();
                 if (!requireCaIoc()) continue;
-            } else if (is_pvxs_mode) {
+            } else if (is_pvxs_mode && !pvxs_shares_ca_ioc) {
                 ca_ioc.stop();
             }
 
             if (is_pvxs_mode && pvxs_external) {
-                if (!requirePvxsIoc()) {
-                    std::cerr << "Warning: skipping " << protocolModeStr(mode)
-                              << " - softIocPVX not running" << std::endl;
-                    continue;
+                const bool this_mode_uses_ca_ioc =
+                    pvxs_shares_ca_ioc && mode == ProtocolMode::PVXS_PVA;
+
+                if (this_mode_uses_ca_ioc) {
+                    pvxs_ioc.stop();
+                    if (!requireCaIoc()) {
+                        std::cerr << "Warning: skipping PVXS_PVA - softIocPVA not running"
+                                  << std::endl;
+                        continue;
+                    }
+                } else {
+                    if (!requirePvxsIoc()) {
+                        std::cerr << "Warning: skipping " << protocolModeStr(mode)
+                                  << " - softIocPVX not running" << std::endl;
+                        continue;
+                    }
                 }
+
                 auto cconfig = client::Config::fromEnv();
                 if (mode == ProtocolMode::PVXS_PVA) {
                     cconfig.tls_disabled = true;
@@ -2178,7 +2232,8 @@ int main(int argc, char* argv[]) {
                             "127.0.0.1:" + std::to_string(kPvacmsUdpPort));
                 }
                 bench_server.ctxt.reset(new client::Context(cconfig.build()));
-                bench_server.pvname = "PVXPERF:PVXS:BENCH";
+                bench_server.pvname = this_mode_uses_ca_ioc
+                    ? "PVXPERF:CA:BENCH" : "PVXPERF:PVXS:BENCH";
                 if (mode == ProtocolMode::SPVA_CERTMON)
                     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
@@ -2273,7 +2328,7 @@ int main(int argc, char* argv[]) {
                             *bench_server.ctxt, protocolModeStr(mode),
                             bench_server.pvname,
                             static_cast<uint32_t>(array_size), par,
-                            samples, warmup);
+                            samples, warmup, pvxs_exec_wait);
                     }
 
                     printGetSummary(result);
