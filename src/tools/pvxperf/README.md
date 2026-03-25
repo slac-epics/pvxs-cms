@@ -8,15 +8,27 @@ A single, self-contained host executable that benchmarks GET round-trip latency 
 |------|--------|--------|---------|-----|-----------------|
 | **CA** | `ca_array_get()` / `ca_array_get_callback()` | `softIoc` child process | `PVXPERF:CA:BENCH` | N/A | N/A |
 | **EPICS_PVA** | pvAccessCPP `ChannelGet::get()` | `softIocPVA` child process | `PVXPERF:CA:BENCH` | No | No |
-| **PVXS_PVA** | pvxs `reExecGet()` expert API | In-process `BenchmarkSource` | `PVXPERF:PVXS_PVA:BENCH` | No | No |
-| **SPVA** | pvxs `reExecGet()` over TLS | In-process `BenchmarkSource` | `PVXPERF:SPVA:BENCH` | Yes | `disableStatusCheck(true)` |
-| **SPVA_CERTMON** | pvxs `reExecGet()` over TLS | In-process `BenchmarkSource` | `PVXPERF:SPVA_CERTMON:BENCH` | Yes | Real PVACMS |
+| **PVXS_PVA** | pvxs `reExecGet()` expert API | In-process `BenchmarkSource` (default) or `softIocPVX` child (`--pvxs-server external`) | `PVXPERF:PVXS_PVA:BENCH` (in-process) / `PVXPERF:PVXS:BENCH` (external) | No | No |
+| **SPVA** | pvxs `reExecGet()` over TLS | In-process `BenchmarkSource` (default) or `softIocPVX` child (`--pvxs-server external`) | `PVXPERF:SPVA:BENCH` (in-process) / `PVXPERF:PVXS:BENCH` (external) | Yes | `disableStatusCheck(true)` |
+| **SPVA_CERTMON** | pvxs `reExecGet()` over TLS | In-process `BenchmarkSource` (default) or `softIocPVX` child (`--pvxs-server external`) | `PVXPERF:SPVA_CERTMON:BENCH` (in-process) / `PVXPERF:PVXS:BENCH` (external) | Yes | Real PVACMS |
 
 ### Server Implementations
 
-- **CA and EPICS_PVA** use external `softIoc` / `softIocPVA` child processes (fork/exec) serving a waveform record. This ensures real TCP loopback communication — not in-process shortcuts. The IOC executables are located via compile-time paths (`PVXPERF_EPICS_BASE` and `PVXPERF_PVXS`).
+- **CA and EPICS_PVA** use external `softIoc` / `softIocPVA` child processes (fork/exec) serving a waveform record. This ensures real TCP loopback communication — not in-process shortcuts.
 
-- **PVXS_PVA, SPVA, SPVA_CERTMON** use an in-process `BenchmarkSource` — a custom `server::Source` subclass that stamps each GET response with a `benchCounter` (monotonically incrementing `UInt64`) and `benchTimestampNs` (`Int64`, steady_clock nanoseconds). Unlike `SharedPV::buildReadonly()` which clones a cached value, `BenchmarkSource` creates a fresh response for every GET.
+- **PVXS_PVA, SPVA, SPVA_CERTMON** default to an in-process `BenchmarkSource`. Use `--pvxs-server external` to switch to a `softIocPVX` child process (pvxs-based IOC, supports TLS) for an apples-to-apples comparison with CA/EPICS_PVA. `BenchmarkSource` is — a custom `server::Source` subclass that stamps each GET response with a `benchCounter` (monotonically incrementing `UInt64`) and `benchTimestampNs` (`Int64`, steady_clock nanoseconds). Unlike `SharedPV::buildReadonly()` which clones a cached value, `BenchmarkSource` creates a fresh response for every GET.
+
+### Build-Time IOC Paths
+
+The external IOC executables are located via paths compiled into the binary at build time. These are set in the `Makefile` from EPICS build system variables, which must be defined in `configure/RELEASE.local`:
+
+| Makefile variable | IOC binary | Used by |
+|-------------------|-----------|---------|
+| `$(EPICS_BASE)/bin/$(EPICS_HOST_ARCH)/softIoc` | `softIoc` | CA |
+| `$(EPICS_BASE)/bin/$(EPICS_HOST_ARCH)/softIocPVA` | `softIocPVA` | EPICS_PVA |
+| `$(PVXS)/bin/$(EPICS_HOST_ARCH)/softIocPVX` | `softIocPVX` | PVXS_PVA, SPVA, SPVA_CERTMON (external mode) |
+
+Run `pvxperf --help` to see the actual compiled-in paths.
 
 ### Payload Structure
 
@@ -82,6 +94,7 @@ pvxperf [options]
 | `--warmup <N>` | Number of warmup GETs to discard | `100` |
 | `--output <file>` | CSV output file | stdout |
 | `--keychain <path>` | TLS keychain file for SPVA modes | — |
+| `--pvxs-server <mode>` | PVXS server: `in-process` (BenchmarkSource) or `external` (softIocPVX child) | `in-process` |
 | `--setup-cms` | Auto-bootstrap PVACMS with temp certs | — |
 | `--external-cms` | Use already-running PVACMS | — |
 | `--cms-db <path>` | Path to existing PVACMS SQLite database | — |

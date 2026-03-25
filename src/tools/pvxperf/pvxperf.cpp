@@ -16,6 +16,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -30,7 +31,6 @@
 #include <utility>
 #include <vector>
 
-#include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -71,10 +71,9 @@ volatile sig_atomic_t g_server_stop = 0;
 
 /**
  * @brief POSIX signal handler that sets the global server stop flag.
- * @param sig  Signal number received (SIGTERM or SIGINT); value is not used.
  * @note Must have external linkage for use with signal(2). Writes volatile g_server_stop.
  */
-extern "C" void serverSignalHandler(int /*sig*/) {
+extern "C" void serverSignalHandler(int) {
     g_server_stop = 1;
 }
 
@@ -122,7 +121,7 @@ server::Config loopbackServerConfig(const uint16_t pvacms_udp_port = 0u) {
  *
  * Extends NTScalar{Float64A} with:
  * - benchCounter (UInt64): monotonically incrementing counter per GET
- * - benchTimestampNs (Int64): steady_clock nanoseconds at moment server handles GET
+ * - benchTimestampNs (Int64): steady_clock nanoseconds at the moment the server handles GET
  *
  * @param array_size  Number of doubles in the value array.
  * @return A Value instance of the benchmark type with the value array pre-filled.
@@ -145,7 +144,7 @@ Value buildBenchType(const uint32_t array_size) {
  *
  * Unlike SharedPV::buildReadonly() which clones a cached value, this Source creates
  * a fresh response for every GET with the current timestamp. This allows the client
- * to measure true propagation latency: recv_time - embedded_timestamp.
+ * to measure the true propagation latency: recv_time - embedded_timestamp.
  */
 class BenchmarkSource final : public server::Source {
 public:
@@ -300,7 +299,7 @@ double computePercentile(std::vector<double>& v, double pct) {
     if (v.empty()) return 0.0;
     std::sort(v.begin(), v.end());
     const double rank = (pct / 100.0) * static_cast<double>(v.size() - 1);
-    const size_t lo = static_cast<size_t>(rank);
+    const auto lo = static_cast<size_t>(rank);
     const size_t hi = std::min(lo + 1, v.size() - 1);
     const double frac = rank - static_cast<double>(lo);
     return v[lo] + frac * (v[hi] - v[lo]);
@@ -354,9 +353,9 @@ public:
     /**
      * @brief Fork and exec pvacms with all state isolated to the given temporary directory.
      * @param tmp_dir      Temporary directory that will hold all PVACMS state files.
-     * @param override_db  Override path for the SQLite database (empty = use tmp_dir default).
-     * @param override_kc  Override path for the PVACMS server keychain (empty = use tmp_dir default).
-     * @param override_acf Override path for the ACF file (empty = use tmp_dir default).
+     * @param override_db  The override path for the SQLite database (empty = use tmp_dir default).
+     * @param override_kc  The override path for the PVACMS server keychain (empty = use tmp_dir default).
+     * @param override_acf The override path for the ACF file (empty = use tmp_dir default).
      * @throws std::runtime_error if fork() fails.
      */
     void start(const std::string& tmp_dir,
@@ -424,7 +423,7 @@ private:
 /**
  * @brief Poll for PVACMS readiness by probing the CERT:ROOT PV over plain PVA.
  * @param timeout_sec   Maximum seconds to wait before returning false.
- * @param cms_udp_port  PVACMS UDP port for --setup-cms (e.g. 15076); 0 means external PVACMS
+ * @param cms_udp_port  PVACMS UDP port for --setup-cms (e.g., 15076); 0 means external PVACMS
  *                      reachable via standard EPICS_PVA_* environment variables.
  * @return true if PVACMS responded successfully within the timeout; false otherwise.
  */
@@ -524,9 +523,11 @@ void removeTempDir(const std::string& dir) {
 /**
  * @brief Manages a softIoc child process for CA benchmarks.
  *
- * Runs the IOC as a separate process so CA client access goes through real TCP
+ * Runs the IOC as a separate process, so CA client access goes through real TCP
  * loopback (not the in-process direct-memory shortcut via dbChannelIO).
  */
+enum class IocType { CA_ONLY, EPICS_PVA, PVXS };
+
 class CaIocProcess {
 public:
     CaIocProcess() = default;
@@ -535,13 +536,17 @@ public:
     CaIocProcess(const CaIocProcess&) = delete;
     CaIocProcess& operator=(const CaIocProcess&) = delete;
 
-    bool start(const size_t max_array_size, const bool with_pva = false) {
-        const size_t nelm = std::max(max_array_size, size_t(1));
+    bool start(const size_t max_array_size, const IocType ioc_type,
+               const std::string& server_keychain = {},
+               const std::string& pvname = "PVXPERF:CA:BENCH") {
+        const size_t nelm = std::max(max_array_size, static_cast<size_t>(1));
+        pvname_ = pvname;
 
-        tmp_db_path_ = "/tmp/pvxperf_bench.db";
+        tmp_db_path_ = (ioc_type == IocType::PVXS)
+            ? "/tmp/pvxperf_pvxs_bench.db" : "/tmp/pvxperf_bench.db";
         {
             std::ofstream ofs(tmp_db_path_);
-            ofs << "record(waveform, \"PVXPERF:CA:BENCH\") {\n"
+            ofs << "record(waveform, \"" << pvname << "\") {\n"
                 << "  field(FTVL, \"DOUBLE\")\n"
                 << "  field(NELM, \"" << nelm << "\")\n"
                 << "}\n";
@@ -571,7 +576,18 @@ public:
             setenv("EPICS_CAS_AUTO_BEACON_ADDR_LIST", "NO", 1);
             setenv("EPICS_CAS_BEACON_ADDR_LIST", "127.0.0.1", 1);
 
-            if (with_pva) {
+            if (ioc_type == IocType::PVXS) {
+                setenv("EPICS_PVAS_INTF_ADDR_LIST", "127.0.0.1", 1);
+                setenv("EPICS_PVA_ADDR_LIST", "127.0.0.1", 1);
+                setenv("EPICS_PVA_AUTO_ADDR_LIST", "NO", 1);
+                setenv("EPICS_PVAS_AUTO_BEACON_ADDR_LIST", "NO", 1);
+                setenv("EPICS_PVAS_BEACON_ADDR_LIST", "127.0.0.1", 1);
+                if (!server_keychain.empty())
+                    setenv("PVXS_TLS_KEYCHAIN", server_keychain.c_str(), 1);
+                const std::string bin = std::string(PVXPERF_PVXS) +
+                    "/bin/" + PVXPERF_EPICS_HOST_ARCH + "/softIocPVX";
+                execl(bin.c_str(), "softIocPVX", "-d", tmp_db_path_.c_str(), nullptr);
+            } else if (ioc_type == IocType::EPICS_PVA) {
                 setenv("EPICS_PVAS_INTF_ADDR_LIST", "127.0.0.1", 1);
                 setenv("EPICS_PVA_ADDR_LIST", "127.0.0.1", 1);
                 setenv("EPICS_PVA_AUTO_ADDR_LIST", "NO", 1);
@@ -587,7 +603,8 @@ public:
         }
         close(pipefd[0]);
 
-        const char* ioc_name = with_pva ? "softIocPVA" : "softIoc";
+        const char* ioc_name = (ioc_type == IocType::PVXS) ? "softIocPVX" :
+                               (ioc_type == IocType::EPICS_PVA) ? "softIocPVA" : "softIoc";
         log_info_printf(perflog, "Launched %s as PID %d\n", ioc_name, pid_);
 
         std::this_thread::sleep_for(std::chrono::seconds(3));
@@ -632,7 +649,7 @@ public:
     bool is_running() const { return pid_ > 0; }
 
 private:
-    bool seedWaveform(const size_t nelm) {
+    bool seedWaveform(const size_t nelm) const {
         const int st = ca_context_create(ca_enable_preemptive_callback);
         if (st != ECA_NORMAL) {
             log_warn_printf(perflog, "IOC seed: ca_context_create failed (%d)\n", st);
@@ -640,7 +657,7 @@ private:
         }
 
         chid ch = nullptr;
-        if (ca_create_channel("PVXPERF:CA:BENCH", nullptr, nullptr, 0, &ch) != ECA_NORMAL ||
+        if (ca_create_channel(pvname_.c_str(), nullptr, nullptr, 0, &ch) != ECA_NORMAL ||
             ca_pend_io(5.0) != ECA_NORMAL || !ch) {
             log_warn_printf(perflog, "%s\n", "IOC seed: channel connect failed");
             ca_context_destroy();
@@ -665,6 +682,7 @@ private:
     pid_t pid_{-1};
     int stdin_write_fd_{-1};
     std::string tmp_db_path_;
+    std::string pvname_;
 };
 
 GetResult computeGetStats(std::vector<double>& get_times,
@@ -748,8 +766,8 @@ GetResult runPvaGetBenchmarkWithContext(
                 done.signal();
             });
             if (done.wait(5.0) && val) {
-                auto arr = val["value"].as<shared_array<const double>>();
-                if (arr.size() > 0 && arr[arr.size() - 1] != 1.0)
+                const auto arr = val["value"].as<shared_array<const double>>();
+                if (!arr.empty() && arr[arr.size() - 1] != 1.0)
                     log_warn_printf(perflog, "%s smoke test failed: last element = %f\n",
                                     label.c_str(), arr[arr.size() - 1]);
             }
@@ -795,7 +813,7 @@ GetResult runPvaGetBenchmarkWithContext(
         std::atomic<uint32_t> batchDone{0};
         epicsEvent batchEvent;
 
-        const uint32_t warmup_batches = std::max(warmup / parallelism, uint32_t(5));
+        const uint32_t warmup_batches = std::max(warmup / parallelism, static_cast<uint32_t>(5));
         for (uint32_t w = 0; w < warmup_batches; w++) {
             batchDone.store(0, std::memory_order_release);
             for (uint32_t i = 0; i < parallelism; i++) {
@@ -816,9 +834,8 @@ GetResult runPvaGetBenchmarkWithContext(
             });
             if (done.wait(5.0) && val) {
                 auto arr = val["value"].as<shared_array<const double>>();
-                if (arr.size() > 0 && arr[arr.size() - 1] != 1.0)
-                    log_warn_printf(perflog, "%s smoke test failed: last element = %f\n",
-                                    label.c_str(), arr[arr.size() - 1]);
+                if (!arr.empty() && arr[arr.size() - 1] != 1.0)
+                    log_warn_printf(perflog, "%s smoke test failed: last element = %f\n", label.c_str(), arr[arr.size() - 1]);
             }
         }
 
@@ -1111,12 +1128,12 @@ GetResult runEpicsPvaGetBenchmark(
     auto pvRequest = pvd::CreateRequest::create()->createRequest("field(value)");
 
     if (parallelism <= 1) {
-        auto chReq = std::tr1::shared_ptr<BenchChannelRequester>(new BenchChannelRequester());
+        auto chReq = std::make_shared<BenchChannelRequester>();
         auto channel = provider->createChannel(pvname, chReq);
         if (!chReq->waitConnected(10.0))
             throw std::runtime_error(label + ": channel connect timeout");
 
-        auto getReq = std::tr1::shared_ptr<BenchGetRequester>(new BenchGetRequester());
+        auto getReq = std::make_shared<BenchGetRequester>();
         auto channelGet = channel->createChannelGet(getReq, pvRequest);
         if (!getReq->waitConnect(10.0))
             throw std::runtime_error(label + ": channelGet connect timeout");
@@ -1131,8 +1148,7 @@ GetResult runEpicsPvaGetBenchmark(
                 pvd::PVDoubleArray::const_svector data;
                 field->getAs(data);
                 if (!data.empty() && data.back() != 1.0)
-                    log_warn_printf(perflog, "%s smoke test failed: last element = %f\n",
-                                    label.c_str(), data.back());
+                    log_warn_printf(perflog, "%s smoke test failed: last element = %f\n", label.c_str(), data.back());
             }
         }
 
@@ -1159,13 +1175,13 @@ GetResult runEpicsPvaGetBenchmark(
 
     std::vector<GetSlot> slots(parallelism);
     for (uint32_t i = 0; i < parallelism; i++) {
-        slots[i].chReq.reset(new BenchChannelRequester());
+        slots[i].chReq = std::make_shared<BenchChannelRequester>();
         slots[i].channel = provider->createChannel(pvname, slots[i].chReq);
     }
     for (uint32_t i = 0; i < parallelism; i++) {
         if (!slots[i].chReq->waitConnected(10.0))
             throw std::runtime_error(label + ": parallel channel connect timeout");
-        slots[i].getReq.reset(new BenchGetRequester());
+        slots[i].getReq = std::make_shared<BenchGetRequester>();
         slots[i].getter = slots[i].channel->createChannelGet(slots[i].getReq, pvRequest);
         if (!slots[i].getReq->waitConnect(10.0))
             throw std::runtime_error(label + ": parallel channelGet connect timeout");
@@ -1297,7 +1313,7 @@ struct PhaseTimingCapture {
 
     // Port suffix strings for the benchmark server (e.g. ":5076", ":52341").
     // ConnBase::state messages whose peerName matches one of these are accepted;
-    // all others (e.g. inner cert-status client -> PVACMS) are rejected.
+    // all others (e.g., inner cert-status client -> PVACMS) are rejected.
     // Empty strings disable port-based filtering (non-SPVA_CERTMON modes).
     std::string server_tcp_port_str;
     std::string server_tls_port_str;
@@ -1328,46 +1344,50 @@ int64_t parseTimestampNs(const char* msg, const size_t len) {
         msg[13] != ':' || msg[16] != ':' || msg[19] != '.')
         return -1;
 
-    struct tm tm_val;
-    std::memset(&tm_val, 0, sizeof(tm_val));
+    char buf[10];
+    char* end = nullptr;
 
-    // Parse date/time components manually (no regex, no strptime portability issues)
-    char buf[5];
-
-    // Year
     std::memcpy(buf, msg, 4); buf[4] = '\0';
-    tm_val.tm_year = std::atoi(buf) - 1900;
+    const long year = std::strtol(buf, &end, 10);
+    if (end != buf + 4) return -1;
 
-    // Month
     std::memcpy(buf, msg + 5, 2); buf[2] = '\0';
-    tm_val.tm_mon = std::atoi(buf) - 1;
+    const long mon = std::strtol(buf, &end, 10);
+    if (end != buf + 2) return -1;
 
-    // Day
     std::memcpy(buf, msg + 8, 2); buf[2] = '\0';
-    tm_val.tm_mday = std::atoi(buf);
+    const long mday = std::strtol(buf, &end, 10);
+    if (end != buf + 2) return -1;
 
-    // Hour
     std::memcpy(buf, msg + 11, 2); buf[2] = '\0';
-    tm_val.tm_hour = std::atoi(buf);
+    const long hour = std::strtol(buf, &end, 10);
+    if (end != buf + 2) return -1;
 
-    // Minute
     std::memcpy(buf, msg + 14, 2); buf[2] = '\0';
-    tm_val.tm_min = std::atoi(buf);
+    const long min = std::strtol(buf, &end, 10);
+    if (end != buf + 2) return -1;
 
-    // Second
     std::memcpy(buf, msg + 17, 2); buf[2] = '\0';
-    tm_val.tm_sec = std::atoi(buf);
+    const long sec = std::strtol(buf, &end, 10);
+    if (end != buf + 2) return -1;
 
-    tm_val.tm_isdst = -1;  // let mktime determine DST
+    std::memcpy(buf, msg + 20, 9); buf[9] = '\0';
+    const long nanos = std::strtol(buf, &end, 10);
+    if (end != buf + 9) return -1;
+
+    tm tm_val{};
+    std::memset(&tm_val, 0, sizeof(tm_val));
+    tm_val.tm_year = static_cast<int>(year) - 1900;
+    tm_val.tm_mon  = static_cast<int>(mon) - 1;
+    tm_val.tm_mday = static_cast<int>(mday);
+    tm_val.tm_hour = static_cast<int>(hour);
+    tm_val.tm_min  = static_cast<int>(min);
+    tm_val.tm_sec  = static_cast<int>(sec);
+    tm_val.tm_isdst = -1;
 
     const time_t epoch_sec = mktime(&tm_val);
     if (epoch_sec == static_cast<time_t>(-1))
         return -1;
-
-    // Parse nanosecond fraction (9 digits after '.')
-    char ns_buf[10];
-    std::memcpy(ns_buf, msg + 20, 9); ns_buf[9] = '\0';
-    const int64_t nanos = static_cast<int64_t>(std::strtol(ns_buf, nullptr, 10));
 
     return static_cast<int64_t>(epoch_sec) * 1000000000LL + nanos;
 }
@@ -1505,7 +1525,7 @@ std::map<std::string, double> computePhaseDurations(PhaseTimingCapture& capture)
     durations["search"] = static_cast<double>(connecting_ts - searching_ts) / 1000.0;
     durations["tcp_connect"] = static_cast<double>(connected_ts - connecting_ts) / 1000.0;
 
-    // Use connection_validation timestamp if available and it precedes connected
+    // Use connection_validation timestamp if available, and it precedes connected
     if (ts.count("connection_validation")) {
         const int64_t cv_ts = ts.at("connection_validation");
         if (cv_ts < connected_ts) {
@@ -1529,7 +1549,7 @@ std::map<std::string, double> computePhaseDurations(PhaseTimingCapture& capture)
  * @param iterations        Number of independent connect/disconnect cycles to perform.
  * @param server_keychain   Path to TLS keychain for the benchmark server.
  * @param client_keychain_path  Path to TLS keychain for the client (falls back to server_keychain if empty).
- * @param cms_udp_port      PVACMS UDP port for --setup-cms (e.g. 15076); 0 means external PVACMS
+ * @param cms_udp_port      PVACMS UDP port for --setup-cms (e.g., 15076); 0 means external PVACMS
  *                          reachable via standard EPICS_PVA_* environment variables.
  * @return                  Vector of PhaseTimingResult, one entry per phase per iteration.
  */
@@ -1552,7 +1572,7 @@ std::vector<PhaseTimingResult> runPvaPhaseTiming(
         // Create a fresh server for each iteration (cold connection).
         // For --setup-cms, inject the known PVACMS port into beaconDestinations.
         // For --external-cms (cms_udp_port==0), use fromEnv() so the inner
-        // cert-status client discovers PVACMS via standard PVA environment.
+        // cert-status client discovers PVACMS via the standard PVA environment.
         server::Config sconfig;
         if (mode == ProtocolMode::SPVA_CERTMON && cms_udp_port == 0u) {
             sconfig = server::Config::fromEnv();
@@ -1590,7 +1610,7 @@ std::vector<PhaseTimingResult> runPvaPhaseTiming(
             errlogFlush();
         }
 
-        // Set port whitelist for ConnBase::state log filtering.
+        // Set the port whitelist for ConnBase::state log filtering.
         // Only messages whose peerName matches the benchmark server's port
         // are accepted; inner cert-status client connections are rejected.
         if (mode == ProtocolMode::SPVA_CERTMON) {
@@ -1868,6 +1888,9 @@ void showHelp(const char *program_name) {
               << "        --warmup <N>                         Number of warmup GETs to discard. Default: 100\n"
               << "        --output <file>                      CSV output file (default: stdout)\n"
               << std::endl
+              << "server options:\n"
+              << "        --pvxs-server <mode>                 'in-process' (BenchmarkSource, default) or 'external' (softIocPVX child)\n"
+              << std::endl
               << "PVACMS options:\n"
               << "        --keychain <path>                    TLS keychain file for SPVA modes\n"
               << "        --setup-cms                          Auto-bootstrap PVACMS with temp certs for SPVA_CERTMON\n"
@@ -1880,6 +1903,15 @@ void showHelp(const char *program_name) {
               << "        --benchmark-phases                   After GET benchmark, run connect/disconnect cycles and report phase timing\n"
               << "        --phase-iterations <N>               Number of connect/disconnect cycles for phase timing. Default: 50\n"
               << "        --phase-output <file>                CSV output file for phase timing results (default: stderr table only)\n"
+              << std::endl
+              << "build-time paths (compiled in via Makefile, not runtime env vars):\n"
+              << "  EPICS_BASE = " << PVXPERF_EPICS_BASE << "\n"
+              << "  PVXS       = " << PVXPERF_PVXS << "\n"
+              << "  HOST_ARCH  = " << PVXPERF_EPICS_HOST_ARCH << "\n"
+              << std::endl
+              << "  softIoc    = $EPICS_BASE/bin/$HOST_ARCH/softIoc\n"
+              << "  softIocPVA = $EPICS_BASE/bin/$HOST_ARCH/softIocPVA\n"
+              << "  softIocPVX = $PVXS/bin/$HOST_ARCH/softIocPVX\n"
               << std::endl;
 }
 
@@ -1913,6 +1945,7 @@ int main(int argc, char* argv[]) {
         std::string output_file;
         bool setup_cms = false;
         bool external_cms = false;
+        std::string pvxs_server_mode = "in-process";
         std::string cms_db, cms_keychain, cms_acf;
         bool benchmark_phases{false};
         uint32_t phase_iterations{50};
@@ -1940,6 +1973,8 @@ int main(int argc, char* argv[]) {
                      "Auto-bootstrap PVACMS with temp certs for SPVA_CERTMON");
         app.add_flag("--external-cms", external_cms,
                      "Use already-running PVACMS for SPVA_CERTMON");
+        app.add_option("--pvxs-server", pvxs_server_mode,
+                       "PVXS server mode: 'in-process' (BenchmarkSource, default) or 'external' (softIocPVX child)");
         app.add_option("--cms-db", cms_db,
                        "Path to existing PVACMS SQLite database");
         app.add_option("--cms-keychain", cms_keychain,
@@ -1973,6 +2008,12 @@ int main(int argc, char* argv[]) {
         const auto modes = parseModes(modes_str);
         const auto sizes = parseSizes(sizes_str);
         const auto parallelisms = parseParallelism(parallelism_str);
+
+        if (pvxs_server_mode != "external" && pvxs_server_mode != "in-process") {
+            std::cerr << "Error: --pvxs-server must be 'external' or 'in-process'" << std::endl;
+            return 1;
+        }
+        const bool pvxs_external = (pvxs_server_mode == "external");
 
         std::ofstream file_out;
         std::ostream* out = &std::cout;
@@ -2032,27 +2073,39 @@ int main(int argc, char* argv[]) {
                 [m](const ProtocolMode x) { return x == m; });
         };
 
-        const bool needs_epics_ioc = needsMode(ProtocolMode::CA) ||
-                                     needsMode(ProtocolMode::EPICS_PVA);
         const bool needs_epics_pva_on_ioc = needsMode(ProtocolMode::EPICS_PVA);
 
-        CaIocProcess ca_ioc;
-        if (needs_epics_ioc) {
-            // Set client-side env vars so CA/PVA clients search on loopback only
-            setenv("EPICS_CA_ADDR_LIST", "127.0.0.1", 1);
-            setenv("EPICS_CA_AUTO_ADDR_LIST", "NO", 1);
-            if (needs_epics_pva_on_ioc) {
-                setenv("EPICS_PVA_ADDR_LIST", "127.0.0.1", 1);
-                setenv("EPICS_PVA_AUTO_ADDR_LIST", "NO", 1);
-            }
+        const size_t max_size = sizes.empty() ? static_cast<size_t>(1) :
+            *std::max_element(sizes.begin(), sizes.end());
 
-            const size_t max_size = sizes.empty() ? size_t(1) :
-                *std::max_element(sizes.begin(), sizes.end());
-            if (!ca_ioc.start(max_size, needs_epics_pva_on_ioc)) {
-                std::cerr << "Warning: softIoc failed to start, CA/EPICS_PVA benchmarks will be skipped"
-                          << std::endl;
+        setenv("EPICS_CA_ADDR_LIST", "127.0.0.1", 1);
+        setenv("EPICS_CA_AUTO_ADDR_LIST", "NO", 1);
+        setenv("EPICS_PVA_ADDR_LIST", "127.0.0.1", 1);
+        setenv("EPICS_PVA_AUTO_ADDR_LIST", "NO", 1);
+
+        CaIocProcess ca_ioc;
+        CaIocProcess pvxs_ioc;
+
+        auto requireCaIoc = [&]() -> bool {
+            if (ca_ioc.is_running()) return true;
+            const IocType t = needs_epics_pva_on_ioc
+                ? IocType::EPICS_PVA : IocType::CA_ONLY;
+            if (!ca_ioc.start(max_size, t)) {
+                std::cerr << "Warning: softIoc failed to start" << std::endl;
+                return false;
             }
-        }
+            return true;
+        };
+
+        auto requirePvxsIoc = [&]() -> bool {
+            if (pvxs_ioc.is_running()) return true;
+            if (!pvxs_ioc.start(max_size, IocType::PVXS, keychain,
+                                "PVXPERF:PVXS:BENCH")) {
+                std::cerr << "Warning: softIocPVX failed to start" << std::endl;
+                return false;
+            }
+            return true;
+        };
 
         writeGetCsvHeader(*out);
 
@@ -2089,13 +2142,54 @@ int main(int argc, char* argv[]) {
 
             PvxsBenchServer bench_server;
 
-            if (mode == ProtocolMode::PVXS_PVA) {
-                const size_t max_size = sizes.empty() ? size_t(1) :
+            const bool is_pvxs_mode = (mode == ProtocolMode::PVXS_PVA ||
+                                       mode == ProtocolMode::SPVA ||
+                                       mode == ProtocolMode::SPVA_CERTMON);
+            const bool is_ca_mode = (mode == ProtocolMode::CA ||
+                                     mode == ProtocolMode::EPICS_PVA);
+
+            if (is_ca_mode) {
+                pvxs_ioc.stop();
+                if (!requireCaIoc()) continue;
+            } else if (is_pvxs_mode) {
+                ca_ioc.stop();
+            }
+
+            if (is_pvxs_mode && pvxs_external) {
+                if (!requirePvxsIoc()) {
+                    std::cerr << "Warning: skipping " << protocolModeStr(mode)
+                              << " - softIocPVX not running" << std::endl;
+                    continue;
+                }
+                auto cconfig = client::Config::fromEnv();
+                if (mode == ProtocolMode::PVXS_PVA) {
+                    cconfig.tls_disabled = true;
+                } else {
+                    cconfig.tls_disabled = false;
+                    cconfig.tls_keychain_file = client_keychain.empty() ? keychain : client_keychain;
+#ifdef PVXS_ENABLE_EXPERT_API
+                    if (mode == ProtocolMode::SPVA)
+                        cconfig.disableStatusCheck(true);
+                    else
+                        cconfig.disableStatusCheck(false);
+#endif
+                    if (mode == ProtocolMode::SPVA_CERTMON && setup_cms)
+                        cconfig.addressList.push_back(
+                            "127.0.0.1:" + std::to_string(kPvacmsUdpPort));
+                }
+                bench_server.ctxt.reset(new client::Context(cconfig.build()));
+                bench_server.pvname = "PVXPERF:PVXS:BENCH";
+                if (mode == ProtocolMode::SPVA_CERTMON)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+            } else if (mode == ProtocolMode::PVXS_PVA) {
+                // In-process mode: BenchmarkSource server
+                const size_t pvxs_pva_max_size = sizes.empty() ? static_cast<size_t>(1) :
                     *std::max_element(sizes.begin(), sizes.end());
                 auto sconfig = loopbackServerConfig();
                 sconfig.tls_disabled = true;
                 auto src = std::make_shared<BenchmarkSource>(
-                    "PVXPERF:PVXS_PVA:BENCH", static_cast<uint32_t>(max_size));
+                    "PVXPERF:PVXS_PVA:BENCH", static_cast<uint32_t>(pvxs_pva_max_size));
                 auto srv = sconfig.build()
                     .addSource("bench", src)
                     .start();
@@ -2106,7 +2200,7 @@ int main(int argc, char* argv[]) {
                 bench_server.pvname = "PVXPERF:PVXS_PVA:BENCH";
 
             } else if (mode == ProtocolMode::SPVA) {
-                const size_t max_size = sizes.empty() ? size_t(1) :
+                const size_t spva_max_size = sizes.empty() ? static_cast<size_t>(1) :
                     *std::max_element(sizes.begin(), sizes.end());
                 auto sconfig = loopbackServerConfig();
                 sconfig.tls_disabled = false;
@@ -2115,7 +2209,7 @@ int main(int argc, char* argv[]) {
                 sconfig.disableStatusCheck(true);
 #endif
                 auto src = std::make_shared<BenchmarkSource>(
-                    "PVXPERF:SPVA:BENCH", static_cast<uint32_t>(max_size));
+                    "PVXPERF:SPVA:BENCH", static_cast<uint32_t>(spva_max_size));
                 auto srv = sconfig.build()
                     .addSource("bench", src)
                     .start();
@@ -2130,14 +2224,14 @@ int main(int argc, char* argv[]) {
                 bench_server.pvname = "PVXPERF:SPVA:BENCH";
 
             } else if (mode == ProtocolMode::SPVA_CERTMON) {
-                const size_t max_size = sizes.empty() ? size_t(1) :
+                const size_t spva_certmon_max_size = sizes.empty() ? static_cast<size_t>(1) :
                     *std::max_element(sizes.begin(), sizes.end());
                 const uint16_t cms_port = setup_cms ? kPvacmsUdpPort : 0u;
                 auto sconfig = loopbackServerConfig(cms_port);
                 sconfig.tls_disabled = false;
                 sconfig.tls_keychain_file = keychain;
                 auto src = std::make_shared<BenchmarkSource>(
-                    "PVXPERF:SPVA_CERTMON:BENCH", static_cast<uint32_t>(max_size));
+                    "PVXPERF:SPVA_CERTMON:BENCH", static_cast<uint32_t>(spva_certmon_max_size));
                 auto srv = sconfig.build()
                     .addSource("bench", src)
                     .start();
@@ -2150,7 +2244,7 @@ int main(int argc, char* argv[]) {
                 bench_server.ctxt.reset(new client::Context(cconfig.build()));
                 bench_server.srv.reset(new server::Server(std::move(srv)));
                 bench_server.pvname = "PVXPERF:SPVA_CERTMON:BENCH";
-                // Wait for cert-status client to settle
+                // Wait for the cert-status client to settle
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
             }
 
