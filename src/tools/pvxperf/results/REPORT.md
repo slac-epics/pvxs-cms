@@ -22,6 +22,8 @@ This report presents GET-based throughput benchmarks comparing five EPICS protoc
 - **SPVA_CERTMON adds no measurable steady-state throughput penalty** - SPVA and SPVA_CERTMON are within ~1-2% at par=10/100/1000
 - **EPICS_PVA remains below PVXS_PVA across all sizes and parallelism values**
 
+**Default configuration rationale:** The primary results use in-process `BenchmarkSource` + `reExecGet()` for pvxs modes — the combination that gives pvxs its best achievable throughput. Alternative modes (external `softIocPVX`, `exec()->wait()` API) are documented in Section 3.5 with anecdotal readings.
+
 **Recommendations:** Section 5 focuses on TLS cost decomposition, certificate-monitoring setup overhead, and next optimization opportunities.
 
 ---
@@ -224,6 +226,55 @@ So the practical ordering from this run is:
 ### 3.4 TLS and Cert-Monitoring Context
 
 SPVA tracks PVXS_PVA with a moderate TLS overhead, while SPVA_CERTMON tracks SPVA closely in steady state. This indicates the dominant cert-monitoring cost is in connection/setup phases (Section 4), not sustained GET throughput.
+
+### 3.5 Alternative Server Mode Observations
+
+The primary results in this report use the **default configuration**: in-process
+`BenchmarkSource` for PVXS modes, external `softIoc`/`softIocPVA` for CA/EPICS_PVA,
+and the `reExecGet()` expert API for all pvxs sequential GETs. This combination
+was selected because it gives each protocol its best achievable performance.
+
+`pvxperf` supports alternative server and API modes for comparative investigation.
+The following anecdotal readings (array_size=1, single representative runs, not
+full matrix sweeps) show what to expect:
+
+#### External softIocPVX for PVXS modes (`--pvxs-server external`)
+
+| Config                                        | par=1 (µs) | par=10 (µs) | par=1 gets/sec |
+| --------------------------------------------- | ---------: | ----------: | -------------: |
+| **Internal reExecGet** (default)              |     **56** |      **14** |     **17,745** |
+| Internal exec-wait (`--pvxs-exec-wait`)       |        143 |          13 |          6,987 |
+| External reExecGet (`--pvxs-server external`) |        585 |         514 |          1,710 |
+| External exec-wait (both flags)               |        728 |         517 |          1,374 |
+| EPICS_PVA (external softIocPVA, reference)    |        138 |          94 |          7,237 |
+
+**Observations:**
+
+- **`reExecGet()` is the fastest pvxs API** in all configurations. At par=1 it is
+  2.5× faster than `exec()->wait()` internally (56 vs 143 µs) because it skips the
+  INIT round-trip. This advantage narrows at higher parallelism where connection
+  setup is amortized.
+
+- **External mode adds ~500 µs per GET** regardless of which pvxs API is used.
+  This overhead is in the pvxs client's core I/O path when communicating with an
+  external QSRV2-based IOC. The same softIocPVA serves EPICS_PVA at 138 µs,
+  confirming the overhead is specific to the pvxs client, not the server or network.
+
+- **In-process mode is not an artificial shortcut.** The pvxs source confirms all
+  data is fully serialized (`memcpy` into TCP send buffers at `pvaproto.h:497`) and
+  deserialized (fresh `shared_array` allocation + `memcpy` at `pvaproto.h:546`) over
+  real TCP loopback — there is no shared-memory bypass. The in-process advantage
+  comes from client and server sharing the same libevent event loop, eliminating
+  cross-process scheduling overhead.
+
+- **`softIocPVX` vs `softIocPVA`** (`--pvxs-external-ioc`): both give similar
+  results for PVXS_PVA (~570-600 µs). The external overhead is in the pvxs client,
+  not the IOC implementation.
+
+The defaults (in-process `BenchmarkSource` + `reExecGet()`) represent pvxs at its
+best — the configuration a real application would use when embedding a pvxs server
+and client in the same process. The external modes are available via `--pvxs-server
+external` for apples-to-apples server-topology comparisons with CA and EPICS_PVA.
 
 ---
 
