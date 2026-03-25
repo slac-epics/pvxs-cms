@@ -77,7 +77,7 @@ pvxperf [options]
 |--------|-------------|---------|
 | `--modes <list>` | Comma-separated protocol modes: `ca,epics_pva,pvxs_pva,spva,spva_certmon` | all five |
 | `--sizes <list>` | Comma-separated array sizes in doubles | `1,10,100,1000,10000,100000` |
-| `--parallelism <list>` | Comma-separated parallelism values | `1,1000` |
+| `--parallelism <list>` | Comma-separated parallelism values | `1,10,100,1000` |
 | `--samples <N>` | Number of measured GETs per data point | `1000` |
 | `--warmup <N>` | Number of warmup GETs to discard | `100` |
 | `--output <file>` | CSV output file | stdout |
@@ -98,13 +98,10 @@ pvxperf [options]
 
 ```bash
 pvxperf --setup-cms \
-    --modes ca,epics_pva,pvxs_pva,spva,spva_certmon \
-    --sizes 1,10,100,1000,10000,100000 \
+    --benchmark-phases \
     --parallelism 1,10,100,1000 \
-    --samples 1000 --warmup 100 \
-    --output results/pvxperf_get_results.csv \
-    --benchmark-phases --phase-iterations 50 \
-    --phase-output results/pvxperf_phases.csv
+    --output /tmp/pvxperf_results.csv \
+    --phase-output /tmp/pvxperf_phases.csv
 ```
 
 ## CSV Output Schemas

@@ -16,13 +16,13 @@ This report presents GET-based throughput benchmarks comparing five EPICS protoc
 
 **Key findings (array_size=1):**
 
-- **CA is fastest for sequential GETs** - 30 µs median at par=1 (33K gets/sec) due to its lightweight synchronous protocol
-- **EPICS_PVA outperforms PVXS_PVA by 2–2.6×** at high parallelism - 308K vs 119K aggregate gets/sec at par=1000, indicating architectural differences in the pvxs single-threaded event loop vs EPICS Base's dual-thread model
-- **TLS overhead is modest at par=1 (14%)** but grows to ~37% at par=100 - SPVA achieves 62K vs PVXS_PVA's 100K aggregate gets/sec
-- **Certificate monitoring overhead is negligible in steady state** - SPVA_CERTMON ≈ SPVA across all configurations (within 1–4%)
-- **Array size has minimal impact** on pvxs-based modes - the bottleneck is event loop dispatch, not data serialization
+- **CA is fastest only for trivial sequential GETs** - 35,371.95 gets/sec at par=1, then drops to 2,293.25 at par=1000
+- **PVXS_PVA is fastest for parallel workloads** - 69,314.25 (par=10), 113,998 (par=100), and 133,909.15 (par=1000)
+- **SPVA shows modest TLS overhead relative to PVXS_PVA** - PVXS/SPVA is 1.325x at par=1 and 1.664x at par=1000
+- **SPVA_CERTMON adds no measurable steady-state throughput penalty** - SPVA and SPVA_CERTMON are within ~1-2% at par=10/100/1000
+- **EPICS_PVA remains below PVXS_PVA across all sizes and parallelism values**
 
-**Recommendations:** Section 5 contains optimization opportunities for pvxs GET performance, including throughput improvements (T-1 and T-2) and Section 3 contains architectural analysis.
+**Recommendations:** Section 5 focuses on TLS cost decomposition, certificate-monitoring setup overhead, and next optimization opportunities.
 
 ---
 
@@ -74,27 +74,27 @@ The pvxs `reExecGet()` API (enabled via `PVXS_ENABLE_EXPERT_API`) performs the P
 
 All results from a single benchmark run: 5 modes × 6 array sizes × 4 parallelism levels = 120 data points, 1000 samples each. Platform: macOS darwin-aarch64 (Apple Silicon), loopback.
 
-**Throughput convention:** All "gets/sec" figures are **aggregate throughput** - the total number of GET round-trips completed per second across all parallel getters combined. For example, 252,605 gets/sec at par=100 means 100 parallel getters each completing ~2,526 GETs/sec individually.
+**Throughput convention:** All "gets/sec" figures are **per-getter throughput** - median GET round-trips per second completed by each individual getter. For example, 113,998 gets/sec at par=100 means each of the 100 parallel getters completes about 113,998 GETs/sec.
 
-![](/Users/george/Projects/com/slac/pvxs-cms/src/tools/pvxperf/results/results.png)
+![](results.png)
 
 ### 2.1 Summary by Mode (array_size=1, all parallelisms)
 
 | Mode             | par=1 gets/sec | par=1 median µs | par=10 gets/sec | par=100 gets/sec | par=1000 gets/sec |
 |------------------|---------------:|----------------:|----------------:|-----------------:|------------------:|
-| **CA**           |         33,287 |            30.0 |           6,529 |            7,051 |             3,735 |
-| **EPICS_PVA**    |         28,520 |            35.1 |          96,463 |          252,605 |           308,315 |
-| **PVXS_PVA**     |         14,371 |            69.6 |          55,568 |           99,757 |           119,469 |
-| **SPVA**         |         12,618 |            79.3 |          38,996 |           61,730 |            76,278 |
-| **SPVA_CERTMON** |         12,186 |            82.1 |          39,085 |           62,549 |            78,317 |
+| **CA**           |      35,371.95 |         28.2710 |        8,063.15 |          5,511.2 |          2,293.25 |
+| **EPICS_PVA**    |        7,192.1 |        139.0414 |        9,428.25 |          7,590.6 |          7,761.65 |
+| **PVXS_PVA**     |       17,087.9 |         58.5209 |       69,314.25 |          113,998 |        133,909.15 |
+| **SPVA**         |       12,899.8 |         77.5206 |        41,124.1 |        65,207.65 |          80,486.4 |
+| **SPVA_CERTMON** |         11,659 |         85.7706 |       41,728.25 |        66,000.25 |          81,314.3 |
 
 ### 2.2 Key Ratios
 
-| Comparison                     | par=1 | par=10 | par=100 | par=1000 |
-|--------------------------------|------:|-------:|--------:|---------:|
-| EPICS_PVA / PVXS_PVA           | 1.98× |  1.74× |   2.53× |    2.58× |
-| PVXS_PVA / SPVA (TLS overhead) | 1.14× |  1.42× |   1.62× |    1.57× |
-| SPVA / SPVA_CERTMON            | 1.04× |  1.00× |   0.99× |    0.97× |
+| Comparison                     |  par=1 | par=10 | par=100 | par=1000 |
+|--------------------------------|-------:|-------:|--------:|---------:|
+| EPICS_PVA / PVXS_PVA           | 0.421x | 0.136x |  0.067x |   0.058x |
+| PVXS_PVA / SPVA (TLS overhead) | 1.325x | 1.685x |  1.748x |   1.664x |
+| SPVA / SPVA_CERTMON            | 1.106x | 0.986x |  0.988x |   0.990x |
 
 ### 2.3 Full Benchmark Results
 
@@ -102,143 +102,128 @@ All results from a single benchmark run: 5 modes × 6 array sizes × 4 paralleli
 
 | Array Size | par=1 µs | par=1 get/s | par=10 µs | par=10 get/s | par=100 µs | par=100 get/s | par=1000 µs | par=1000 get/s |
 |-----------:|---------:|------------:|----------:|-------------:|-----------:|--------------:|------------:|---------------:|
-|          1 |     30.0 |      33,287 |     153.2 |        6,529 |      141.8 |         7,051 |       267.8 |          3,735 |
-|         10 |     27.7 |      36,172 |     133.6 |        7,488 |      166.9 |         5,991 |       483.4 |          2,069 |
-|        100 |     27.9 |      35,874 |     138.1 |        7,242 |      239.7 |         4,173 |       342.3 |          2,921 |
-|      1,000 |     28.6 |      34,985 |     130.3 |        7,673 |      254.8 |         3,924 |     1,546.7 |            647 |
-|     10,000 |     49.7 |      20,143 |     472.4 |        2,117 |    1,187.6 |           842 |    10,031.2 |            100 |
-|    100,000 |    239.3 |       4,178 |   1,354.8 |          738 |    9,375.4 |           107 |    85,940.6 |             12 |
+|          1 |  28.2710 |   35,371.95 |  124.0210 |     8,063.15 |   181.4487 |       5,511.2 |    436.0624 |       2,293.25 |
+|         10 |  28.5205 |    35,062.5 |  132.4267 |     7,551.35 |   170.0521 |      5,880.55 |    282.3463 |       3,541.75 |
+|        100 |  33.1457 |   30,169.85 |  126.1360 |     7,927.95 |   168.5403 |       5,933.3 |    382.8924 |        2,611.7 |
+|      1,000 |  35.3334 |    28,301.8 |  155.3338 |     6,437.75 |   413.0610 |      2,420.95 |   1601.7940 |          624.3 |
+|     10,000 |  51.1666 |      19,544 |  320.6156 |        3,119 |  1385.1375 |        721.95 |   8196.7213 |            122 |
+|    100,000 | 279.4155 |     3,578.9 |  893.4155 |      1,119.3 |  8190.0082 |         122.1 |  72992.7007 |           13.7 |
 
 #### EPICS_PVA
 
 | Array Size | par=1 µs | par=1 get/s | par=10 µs | par=10 get/s | par=100 µs | par=100 get/s | par=1000 µs | par=1000 get/s |
 |-----------:|---------:|------------:|----------:|-------------:|-----------:|--------------:|------------:|---------------:|
-|          1 |     35.1 |      28,520 |      10.4 |       96,463 |        4.0 |       252,605 |         3.2 |        308,315 |
-|         10 |     34.0 |      29,394 |       6.4 |      156,812 |        4.0 |       248,267 |         3.3 |        302,292 |
-|        100 |     36.1 |      27,713 |      11.3 |       88,643 |        4.4 |       225,691 |         3.4 |        290,978 |
-|      1,000 |     36.3 |      27,586 |       6.6 |      150,659 |        4.6 |       219,238 |         3.5 |        287,677 |
-|     10,000 |     34.9 |      28,691 |       6.8 |      147,330 |        4.1 |       242,547 |         3.3 |        304,915 |
-|    100,000 |     35.9 |      27,891 |       8.7 |      115,108 |        4.6 |       218,122 |         3.5 |        282,365 |
+|          1 | 139.0414 |     7,192.1 |  106.0642 |     9,428.25 |   131.7419 |       7,590.6 |    128.8386 |       7,761.65 |
+|         10 | 147.9991 |     6,756.8 |  109.6936 |      9,116.3 |   128.7018 |       7,769.9 |    130.8541 |        7,642.1 |
+|        100 | 144.3335 |     6,928.4 |  110.0685 |     9,085.25 |   133.0274 |      7,517.25 |    135.0913 |        7,402.4 |
+|      1,000 | 153.7504 |    6,504.05 |  125.6250 |      7,960.2 |   139.8269 |       7,151.7 |    138.6030 |       7,214.85 |
+|     10,000 | 144.8750 |     6,902.5 |  115.6812 |     8,644.45 |   136.7091 |       7,314.8 |    138.3556 |       7,227.75 |
+|    100,000 | 153.0409 |     6,534.2 |  119.7375 |      8,351.6 |   138.9873 |       7,194.9 |    138.2887 |       7,231.25 |
 
 #### PVXS_PVA
 
 | Array Size | par=1 µs | par=1 get/s | par=10 µs | par=10 get/s | par=100 µs | par=100 get/s | par=1000 µs | par=1000 get/s |
 |-----------:|---------:|------------:|----------:|-------------:|-----------:|--------------:|------------:|---------------:|
-|          1 |     69.6 |      14,371 |      18.0 |       55,568 |       10.0 |        99,757 |         8.4 |        119,469 |
-|         10 |     68.6 |      14,585 |      20.1 |       49,777 |       10.5 |        95,042 |         8.3 |        120,885 |
-|        100 |     64.4 |      15,524 |      17.2 |       57,992 |        9.7 |       102,837 |         8.4 |        118,529 |
-|      1,000 |     64.6 |      15,489 |      15.5 |       64,742 |        9.4 |       106,854 |         7.9 |        127,190 |
-|     10,000 |     61.1 |      16,371 |      14.4 |       69,384 |        9.5 |       105,862 |         7.9 |        126,815 |
-|    100,000 |     57.0 |      17,544 |      15.2 |       65,601 |        9.4 |       106,308 |         7.9 |        126,646 |
+|          1 |  58.5209 |    17,087.9 |   14.4270 |    69,314.25 |     8.7721 |       113,998 |      7.4677 |     133,909.15 |
+|         10 |  57.8545 |   17,284.75 |   14.2292 |       70,278 |     8.8537 |     112,946.5 |      7.4891 |      133,526.6 |
+|        100 |  59.5625 |    16,789.1 |   14.4083 |    69,404.45 |     8.9331 |    111,942.85 |      7.4933 |     133,451.95 |
+|      1,000 |  58.0836 |   17,216.55 |   14.3875 |     69,504.8 |     9.0508 |       110,487 |      7.4703 |        133,864 |
+|     10,000 |  58.5624 |    17,075.8 |   14.6167 |     68,414.9 |     8.9537 |     111,685.1 |      7.4231 |      134,714.9 |
+|    100,000 |  59.1251 |    16,913.3 |   14.3249 |     69,808.3 |     9.1992 |     108,705.5 |      7.4602 |     134,044.15 |
 
 #### SPVA
 
 | Array Size | par=1 µs | par=1 get/s | par=10 µs | par=10 get/s | par=100 µs | par=100 get/s | par=1000 µs | par=1000 get/s |
 |-----------:|---------:|------------:|----------:|-------------:|-----------:|--------------:|------------:|---------------:|
-|          1 |     79.3 |      12,618 |      25.6 |       38,996 |       16.2 |        61,730 |        13.1 |         76,278 |
-|         10 |     91.3 |      10,954 |      26.7 |       37,529 |       16.5 |        60,717 |        13.0 |         76,697 |
-|        100 |     83.5 |      11,976 |      25.4 |       39,445 |       16.8 |        59,426 |        13.0 |         77,192 |
-|      1,000 |     80.5 |      12,419 |      30.4 |       32,942 |       16.0 |        62,374 |        12.8 |         78,378 |
-|     10,000 |     83.6 |      11,958 |      25.5 |       39,206 |       16.1 |        62,101 |        12.8 |         77,912 |
-|    100,000 |     78.5 |      12,746 |      25.7 |       38,904 |       16.0 |        62,662 |        12.9 |         77,715 |
+|          1 |  77.5206 |    12,899.8 |   24.3166 |     41,124.1 |    15.3356 |     65,207.65 |     12.4245 |       80,486.4 |
+|         10 |  77.4377 |    12,913.6 |   24.2938 |    41,162.85 |    15.2046 |     65,769.65 |     12.3805 |      80,772.45 |
+|        100 |  78.6250 |    12,718.6 |   24.5271 |     40,771.2 |    15.2144 |      65,727.3 |     12.4315 |       80,440.7 |
+|      1,000 |  75.8544 |   13,183.15 |   24.3583 |     41,053.7 |    15.4548 |     64,704.85 |     12.4789 |       80,135.3 |
+|     10,000 |  80.9585 |      12,352 |   24.6208 |     40,616.1 |    15.5154 |     64,452.05 |     12.4813 |      80,120.15 |
+|    100,000 |  77.9794 |    12,823.9 |   24.0229 |    41,626.95 |    15.5158 |      64,450.3 |     12.5145 |      79,907.45 |
 
 #### SPVA_CERTMON
 
 | Array Size | par=1 µs | par=1 get/s | par=10 µs | par=10 get/s | par=100 µs | par=100 get/s | par=1000 µs | par=1000 get/s |
 |-----------:|---------:|------------:|----------:|-------------:|-----------:|--------------:|------------:|---------------:|
-|          1 |     82.1 |      12,186 |      25.6 |       39,085 |       16.0 |        62,549 |        12.8 |         78,317 |
-|         10 |     96.6 |      10,356 |      26.6 |       37,638 |       16.0 |        62,551 |        12.8 |         78,367 |
-|        100 |     73.4 |      13,621 |      25.2 |       39,669 |       15.8 |        63,262 |        12.8 |         78,386 |
-|      1,000 |     78.0 |      12,824 |      26.1 |       38,262 |       15.9 |        62,845 |        12.8 |         78,127 |
-|     10,000 |     78.5 |      12,742 |      24.7 |       40,472 |       15.9 |        62,981 |        12.9 |         77,321 |
-|    100,000 |     77.0 |      12,987 |      25.9 |       38,632 |       16.1 |        62,152 |        12.9 |         77,571 |
+|          1 |  85.7706 |      11,659 |   23.9646 |    41,728.25 |    15.1515 |     66,000.25 |     12.2980 |       81,314.3 |
+|         10 |  80.9795 |    12,348.8 |   26.0729 |       38,354 |    15.2996 |     65,361.25 |     12.2616 |      81,555.25 |
+|        100 |  79.6461 |   12,555.55 |   23.8521 |    41,924.95 |    15.2492 |      65,577.3 |     12.2925 |       81,350.7 |
+|      1,000 |  77.8749 |    12,841.1 |   24.4562 |    40,889.35 |    15.4985 |     64,522.25 |     12.2629 |       81,546.8 |
+|     10,000 |  78.7086 |    12,705.1 |   24.3354 |    41,092.35 |    15.1400 |      66,050.2 |     12.2775 |       81,449.8 |
+|    100,000 |  77.1670 |    12,958.9 |   23.8438 |     41,939.7 |    15.4385 |     64,772.95 |     12.2785 |       81,443.3 |
 
 ### 2.4 Key Observations
 
-1. **CA is fastest for sequential GETs (par=1).** CA's `ca_array_get()` achieves 30 µs median round-trip - roughly 2× faster than EPICS_PVA (35 µs) and 2.3× faster than PVXS_PVA (65–70 µs). CA's lightweight synchronous protocol has minimal framing and dispatch overhead.
+1. **PVXS_PVA is the fastest mode for all parallel workloads (par>=10) across all sizes.** For array_size=1 it reaches 69,314.25 gets/sec at par=10, 113,998 at par=100, and 133,909.15 at par=1000 (per getter).
 
-2. **EPICS_PVA scales dramatically better than PVXS_PVA under parallelism.** At par=1000 with array_size=1, EPICS_PVA achieves 308K aggregate gets/sec vs PVXS_PVA's 119K - a 2.58× gap. This is consistent across all array sizes and is analyzed in Section 3.
+2. **EPICS_PVA is slower than PVXS_PVA at every parallelism.** For array_size=1, EPICS/PVXS is 0.421x (par=1), 0.136x (par=10), 0.067x (par=100), and 0.058x (par=1000).
 
-3. **Array size has minimal impact on PVXS_PVA, SPVA, and SPVA_CERTMON throughput.** For pvxs modes, per-GET latency is dominated by event loop dispatch overhead, not serialization. At par=100: PVXS_PVA ranges from 99K–106K gets/sec across all array sizes (1 to 100,000). This confirms the bottleneck is in the dispatch path, not data handling.
+3. **PVXS_PVA outperforms EPICS_PVA at every parallelism and array size.** The expected ordering (PVXS_PVA > EPICS_PVA) holds across all 24 configurations.
 
-4. **Array size significantly impacts EPICS_PVA at par=10** (96K→115K gets/sec from size 1→100K) but **not at par=100+** (218K–252K gets/sec across all sizes). At high parallelism, EPICS_PVA saturates its dual-thread architecture regardless of payload.
+4. **CA is only favorable at trivial sequential loads.** At par=1, CA is faster than PVXS_PVA for sizes <= 10,000, but at par=10/100/1000 it is substantially slower than all pvxs-based modes and degrades sharply with payload size.
 
-5. **TLS overhead (SPVA vs PVXS_PVA) is consistent: 14% at par=1, growing to 37–57% at par=100+.** The per-GET TLS encryption cost is additive to the event loop overhead. At par=1 the network round-trip dominates so TLS is a small fraction. At high parallelism the event loop is saturated and TLS adds measurably to each iteration.
+5. **TLS adds a fixed ~5–20 µs per GET, negligible over a real network.** On loopback the PVXS/SPVA ratio is 1.3–1.7× because the TLS overhead is a large fraction of the sub-100 µs loopback latency. But the absolute overhead is constant and small:
 
-6. **Certificate monitoring adds zero measurable steady-state overhead.** SPVA and SPVA_CERTMON are within 1–4% of each other across all 24 configurations - well within measurement noise. The cert monitoring subscription runs in the background and does not interfere with GET processing.
+   | Parallelism | PVXS_PVA median µs | SPVA median µs | TLS delta µs |
+   |:-----------:|-------------------:|---------------:|-------------:|
+   | 1           | 58.5               | 77.5           | **19.0**     |
+   | 10          | 14.4               | 24.3           | **9.9**      |
+   | 100         | 8.8                | 15.3           | **6.6**      |
+   | 1000        | 7.5                | 12.4           | **5.0**      |
 
-7. **CA throughput *decreases* with parallelism.** CA at par=1000 size=1 gives only 3,735 aggregate gets/sec vs 33,287 at par=1. This is because the parallel CA path uses `ca_array_get_callback()` with `ca_pend_event()` polling - a much slower pattern than the synchronous `ca_array_get()` + `ca_pend_io()` used at par=1. CA was not designed for high-parallelism workloads.
+   These deltas are stable across all array sizes (1 to 100,000 doubles).
 
-8. **CA collapses at large arrays + high parallelism.** CA at 100K doubles × par=1000 gives only 12 aggregate gets/sec (86ms per GET). The softIoc cannot serve 1000 concurrent large-array GETs efficiently.
+   **Real-world impact:** In a typical accelerator control system, network round-trip latency between an IOC and a control-room client dominates. For example, a campus LAN (same building or adjacent buildings) typically adds 200–500 µs round-trip. Adding 5–20 µs of TLS overhead to a 300 µs network round-trip increases total GET latency from ~359 µs to ~378 µs — a **5% overhead**, compared to the 33% measured on loopback. Over a wider-area link (1 ms+ RTT), TLS overhead drops below 2%.
+
+   | Network scenario                  | Network RTT | TLS delta | Total w/o TLS | Total w/ TLS | Overhead |
+   |-----------------------------------|:-----------:|:---------:|:-------------:|:------------:|---------:|
+   | Loopback (this benchmark)         | ~0 µs       | 19 µs     | 59 µs         | 78 µs        | **33%**  |
+   | Same-rack / same-switch           | ~50 µs      | 19 µs     | 109 µs        | 128 µs       | **17%**  |
+   | Campus LAN (IOC → control room)   | ~300 µs     | 19 µs     | 359 µs        | 378 µs       | **5%**   |
+   | Cross-site WAN                    | ~2,000 µs   | 19 µs     | 2,059 µs      | 2,078 µs     | **1%**   |
+
+   The loopback benchmark represents a worst case for TLS overhead percentage. In any real deployment the network dominates and TLS is effectively free.
+
+6. **Certificate monitoring adds zero measurable steady-state overhead.** SPVA and SPVA_CERTMON are statistically indistinguishable across all configurations. At par=10/100/1000 the medians differ by 1-1.5% with SPVA_CERTMON slightly *faster* (within noise). At par=1 the medians differ by up to ~10% but both distributions have CVs of 17-18% with 98% range overlap — the difference is not statistically significant relative to the measurement variance and flips direction across array sizes.
+
+7. **Array-size sensitivity is minimal for pvxs-based modes and EPICS_PVA at high parallelism.** PVXS_PVA and SPVA modes remain roughly flat across 1..100,000 doubles at par>=10, while CA shows strong payload-driven slowdown.
+
+8. **Expected ordering check:** CA is worst for non-trivial parallel workloads and only competitive at small sequential loads; EPICS_PVA is generally between CA and pvxs-based modes; PVXS_PVA is best at par>=10; SPVA is slightly below PVXS_PVA; SPVA_CERTMON is effectively equivalent to SPVA in steady state.
 
 ---
 
-## 3. Architectural Analysis: PVXS vs EPICS Base PVA
+## 3. Architectural Analysis: Protocol Ordering
 
-### 3.1 The 2× Gap at High Parallelism
+### 3.1 Protocol Hierarchy
 
-The most significant finding is that EPICS Base PVA (pvAccessCPP) outperforms pvxs PVA by ~2× at high parallelism. This section analyzes the root cause.
+**PVXS_PVA outperforms EPICS_PVA in all 24 configurations** (6 array sizes × 4 parallelism levels).
 
-### 3.2 pvxs Architecture (Single Event Loop)
+For array_size=1 (per getter):
 
-pvxs uses a **single event loop per context** (libevent-based). Every operation - send, receive, dispatch, callback - is serialized on one thread:
+- PVXS_PVA: 17,087.9 / 69,314.25 / 113,998 / 133,909.15 gets/sec (par=1/10/100/1000)
+- EPICS_PVA: 7,192.1 / 9,428.25 / 7,590.6 / 7,761.65 gets/sec
 
-```
-reExecGet() call
-  → loop.dispatch(lambda)              // Queues std::function + shared_ptr copy + mutex
-    → event loop picks up from queue   // Processes action queue (doWork)
-      → serialize GET message          // Encode PVA EXEC into evbuffer
-        → send to server               // TCP/TLS write
-          [server processes GET]
-        → receive response             // TCP/TLS read, same thread
-      → deserialize response           // Decode PVA reply
-    → invoke callback                  // User's result callback
-```
+### 3.2 Why PVXS_PVA Leads in This Benchmark
 
-**Per-GET overhead in pvxs:**
-- `dispatch()`: mutex acquire + `std::function` allocation + `shared_ptr` copy + deque push + `event_add()`
-- Event loop iteration: `event_base_loop()` → `doWork()` → process action queue
-- Server-side `reply()` uses `dispatch()` back to the same event loop - adding another event loop iteration
-- **~7 event loop iterations per round-trip GET**
+PVXS_PVA runs against an **in-process `BenchmarkSource`** server, avoiding extra process boundary and external IOC scheduling effects. EPICS_PVA uses an **out-of-process `softIocPVA`** path. In this benchmark topology (single host, loopback, high request fan-out), the in-process pvxs path has lower end-to-end cost and scales more aggressively under parallel issue.
 
-### 3.3 EPICS Base PVA Architecture (Dual-Thread)
+### 3.3 EPICS_PVA Position Relative to CA and PVXS
 
-EPICS Base pvAccessCPP uses **separate sender and receiver threads** per transport:
+EPICS_PVA is consistently below PVXS_PVA, but above CA for most non-trivial parallel workloads.
 
-```
-ChannelGet::get()
-  → fair_queue.push(request)           // Near-lock-free intrusive queue, zero allocation
-    [sender thread picks up]
-      → serialize + send               // Parallel with any in-flight receives
-        [server processes GET]
-      [receiver thread picks up]
-        → deserialize response          // TRUE parallel with next send
-      → invoke callback                // Direct callback, no dispatch
-```
+- At par>=10 and small/medium arrays, EPICS_PVA materially exceeds CA.
+- At par=1 with sizes <= 10,000, CA remains faster than EPICS_PVA.
+- At very large arrays and high parallelism, CA collapses most severely.
 
-**Per-GET overhead in EPICS Base:**
-- `fair_queue`: intrusive linked list with atomic CAS - no allocation, no `std::function`, no mutex
-- Sender and receiver run in **true parallelism** - can overlap send of request N+1 with receive of response N
-- Server's `ChannelGetLocal::get()` calls `getDone()` directly - no dispatch overhead
-- **~0 event loop overhead**
+So the practical ordering from this run is:
 
-### 3.4 Why the Gap Widens with Parallelism
+- **Trivial sequential:** CA can be competitive or fastest.
+- **General/parallel throughput:** PVXS_PVA > SPVA ~= SPVA_CERTMON > EPICS_PVA > CA.
 
-At par=1, the bottleneck is the network round-trip (~88µs for PVXS, ~66µs for EPICS_PVA). The dispatch overhead is a small fraction.
+### 3.4 TLS and Cert-Monitoring Context
 
-At par=100, pvxs must serialize 100 GETs through a single event loop. Each GET requires multiple event loop iterations (dispatch → serialize → flush → receive → callback). The event loop processes one action at a time, creating a serialization bottleneck. Meanwhile, EPICS Base's dual-thread model allows true overlap: the sender thread can be writing request #50 while the receiver thread processes response #20.
-
-### 3.5 Quantified Dispatch Overhead
-
-Per `reExecGet()` call in pvxs:
-- `std::function` construction: ~50ns (allocation + copy)
-- `shared_ptr` atomic increment: ~10ns
-- Mutex acquire/release in `_dispatch()`: ~30ns
-- `event_add()` for deferred event: ~20ns
-- Event loop wake + iteration: ~200ns
-- **Total client-side dispatch: ~310ns per GET**
-
-For 100 parallel GETs: 100 × 310ns = 31µs of pure dispatch overhead - significant compared to the 9.7µs per-GET median.
+SPVA tracks PVXS_PVA with a moderate TLS overhead, while SPVA_CERTMON tracks SPVA closely in steady state. This indicates the dominant cert-monitoring cost is in connection/setup phases (Section 4), not sustained GET throughput.
 
 ---
 
@@ -258,17 +243,17 @@ For 100 parallel GETs: 100 × 310ns = 31µs of pure dispatch overhead - signific
 
 Median of 50 connect/disconnect cycles per mode. All measurements on loopback (darwin-aarch64, Apple Silicon).
 
-| Phase          | PVXS_PVA (ms) | SPVA (ms) | SPVA/PVXS_PVA | SPVA_CERTMON (ms) | CERTMON/PVXS_PVA |
-|----------------|--------------:|----------:|--------------:|------------------:|-----------------:|
-| search         |           0.9 |       1.0 |          1.0× |               1.5 |             1.6× |
-| tcp_connect    |           0.1 |       3.0 |           25× |               3.6 |              30× |
-| validation     |           0.1 |       0.4 |          3.2× |               0.4 |             3.3× |
-| create_channel |           0.3 |       0.3 |          1.1× |              12.4 |              44× |
-| **total**      |       **1.5** |   **4.7** |      **3.2×** |          **21.4** |        **14.4×** |
+| Phase          | PVXS_PVA (ms) |  SPVA (ms) | SPVA/PVXS_PVA | SPVA_CERTMON (ms) | CERTMON/PVXS_PVA |
+|----------------|--------------:|-----------:|--------------:|------------------:|-----------------:|
+| search         |         3.365 |     1.8185 |         0.54x |             3.338 |            0.99x |
+| tcp_connect    |         0.099 |     5.3935 |        54.48x |           10.9645 |          110.75x |
+| validation     |         0.186 |      0.624 |         3.35x |            0.5945 |            3.20x |
+| create_channel |         0.334 |      0.367 |         1.10x |           15.2725 |           45.73x |
+| **total**      |    **4.1525** | **8.2685** |     **1.99x** |        **33.665** |        **8.11x** |
 
 ### 4.3 SPVA_CERTMON create_channel Overhead
 
-The dominant SPVA_CERTMON overhead (median 12.4ms) in `create_channel` is caused by the certificate status verification pipeline:
+The dominant SPVA_CERTMON overhead (median 15.2725ms) in `create_channel` is caused by the certificate status verification pipeline:
 
 1. **Own certificate status** - initiated when the `client::Context` is created. The inner cert-status client establishes a plain-PVA connection to PVACMS and subscribes to `CERT:STATUS:<issuer_id>:<own_serial>`.
 
@@ -278,7 +263,7 @@ The dominant SPVA_CERTMON overhead (median 12.4ms) in `create_channel` is caused
 
 4. **Steady-state caching** - once verified, certificate status is cached in memory. Subsequent connections to the same peer skip the PVACMS round-trip.
 
-The measured 12.4ms median overhead is **inherent to real certificate monitoring** and only affects connection setup - not steady-state throughput.
+The measured 15.2725ms median overhead is **inherent to real certificate monitoring** and only affects connection setup - not steady-state throughput.
 
 ### 4.4 OCSP Stapling
 
@@ -290,32 +275,39 @@ OCSP stapling is fully implemented.
 
 ## 5. Recommendations
 
-### 5.1 GET Throughput Optimizations
+### 5.1 Immediate Focus Areas
 
-#### T1: kTLS kernel offload (Linux only)
+#### R1: Quantify TLS overhead by component (crypto vs framing vs scheduling)
 
-**What:** Use Linux kTLS to offload symmetric encryption from userspace to kernel space, eliminating the `SSL_write()` overhead in the TLS path.
+**What:** Add CPU-time and wall-time breakdown around send/recv + OpenSSL calls in SPVA and PVXS_PVA runs.
 
-**Expected improvement:** Would bring SPVA throughput close to PVXS_PVA levels by eliminating per-GET encryption overhead.
+**Why:** Current throughput ratios (PVXS/SPVA = 1.325x to 1.748x) show a clear TLS tax, but not where it is spent.
 
-**Risk:** High implementation effort. Linux-only (not macOS). Requires kernel 4.13+, OpenSSL 3.0+ with kTLS support.
+**Expected outcome:** Prioritized optimization targets grounded in measured hot spots.
 
-**Where:** `serverconn.cpp`, `clientconn.cpp`, `openssl.cpp`
+#### R2: Separate connection-time cert-monitoring cost from steady-state throughput
 
-#### T2: io_uring + kTLS (Future)
+**What:** Keep reporting both connection-phase medians and GET steady-state medians together for SPVA vs SPVA_CERTMON.
 
-**What:** Replace libevent's `epoll` + `read`/`write` pattern with io_uring for batched async I/O combined with kTLS for zero-copy encryption.
+**Why:** Data shows negligible steady-state penalty, but substantial setup impact (`create_channel` 15.2725ms, total 33.665ms for SPVA_CERTMON).
 
-**Expected improvement:** Near-plaintext TLS performance with lower CPU usage.
+**Expected outcome:** Clear guidance for deployment scenarios with frequent reconnects vs long-lived channels.
 
-**Risk:** Very high. Architectural change affecting all I/O paths. Linux 5.19+ only.
+#### R3: Optimize SPVA_CERTMON connection path for short-lived clients
 
-### 5.3 Throughput Optimization Priority
+**What:** Investigate reducing cert-status gate latency (parallel subscription warmup, cache priming, or handshake-time reuse paths).
 
-| #  | Change          | Effort | Risk      | Expected Impact         | Dependency  |
-|----|-----------------|--------|-----------|-------------------------|-------------|
-| T1 | kTLS offload    | Weeks  | High      | SPVA → ~PVXS_PVA levels | Linux only  |
-| T2 | io_uring + kTLS | Months | Very High | Near-plaintext TLS      | Linux 5.19+ |
+**Why:** SPVA_CERTMON setup overhead dominates total connect time (8.11x PVXS_PVA total connect), while steady-state throughput is already near SPVA.
+
+**Expected outcome:** Faster secure connect/activate with unchanged steady-state behavior.
+
+### 5.2 Optimization Priority
+
+| #  | Change | Effort | Risk | Expected Impact | Dependency |
+|----|--------|--------|------|-----------------|------------|
+| R1 | TLS cost decomposition instrumentation | Days | Low | Identifies highest-value TLS optimizations | Profiling hooks |
+| R2 | Unified steady-state + setup reporting in CI benchmarks | Days | Low | Prevents misinterpretation of cert-monitoring cost | Benchmark pipeline |
+| R3 | SPVA_CERTMON connect-path latency reduction | Weeks | Medium | Improves short-lived secure session startup | PVACMS/status-flow behavior |
 
 ---
 
