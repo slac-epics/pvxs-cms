@@ -21,17 +21,62 @@ DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 namespace pvxs {
 namespace certs {
 
+ClusterCtrlSource::ClusterCtrlSource(const std::string &ctrl_pv_base_name,
+                                     const std::string &own_node_id,
+                                     server::SharedPV &ctrl_pv)
+    : ctrl_pv_base_name_(ctrl_pv_base_name)
+    , own_node_id_(own_node_id)
+    , ctrl_pv_(ctrl_pv)
+{}
+
+void ClusterCtrlSource::onSearch(Search &op) {
+    const std::string ctrl_pv_prefix = ctrl_pv_base_name_ + ":";
+    const auto min_discovery_name_size = ctrl_pv_prefix.size() + 1u;
+
+    for (auto &pv : op) {
+        std::string name(pv.name());
+        if (name == ctrl_pv_base_name_) {
+            pv.claim();
+        } else if (name.size() >= min_discovery_name_size
+                   && name.compare(0u, ctrl_pv_prefix.size(), ctrl_pv_prefix) == 0) {
+            // Claim join discovery PVs only for remote joiners to prevent loopback self-join.
+            auto joiner_node_id = name.substr(ctrl_pv_prefix.size());
+            if (joiner_node_id != own_node_id_) {
+                pv.claim();
+            }
+        }
+    }
+}
+
+void ClusterCtrlSource::onCreate(std::unique_ptr<server::ChannelControl> &&op) {
+    const auto &name = op->name();
+    const std::string prefix = ctrl_pv_base_name_ + ":";
+    if (name == ctrl_pv_base_name_ ||
+        (name.size() > prefix.size() &&
+         name.compare(0u, prefix.size(), prefix) == 0)) {
+        ctrl_pv_.attach(std::move(op));
+    }
+}
+
+server::Source::List ClusterCtrlSource::onList() {
+    auto names = std::make_shared<std::set<std::string>>();
+    names->insert(ctrl_pv_base_name_);
+    return List{names, true};
+}
+
 /**
  * @brief Constructs the controller, derives the CTRL PV name, and installs the RPC join handler.
  *
  */
 ClusterController::ClusterController(const std::string &issuer_id,
+                                     const std::string &node_id,
                                      const std::string &pv_prefix,
                                      const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                      const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                                      ClusterSyncPublisher &sync_publisher,
                                      ASMEMBERPVT as_cluster_mem)
     : issuer_id_(issuer_id)
+    , node_id_(node_id)
     , ctrl_pv_name_(pv_prefix + ":CTRL:" + issuer_id)
     , cert_auth_pkey_(cert_auth_pkey)
     , cert_auth_pub_key_(cert_auth_pub_key)
@@ -253,6 +298,10 @@ std::vector<ClusterMember> ClusterController::getMembers() const {
  */
 std::string ClusterController::getCtrlPvName() const {
     return ctrl_pv_name_;
+}
+
+std::shared_ptr<server::Source> ClusterController::getSource() {
+    return std::make_shared<ClusterCtrlSource>(ctrl_pv_name_, node_id_, ctrl_pv_);
 }
 
 void ClusterController::rebuildNodeSkids() {

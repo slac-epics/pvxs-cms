@@ -73,6 +73,43 @@ locate the CTRL PV.  This is a form of **protocol-native discovery** — the
 application protocol itself provides the discovery mechanism, eliminating the
 need for a separate service registry (etcd, Consul, ZooKeeper).
 
+### Startup Ordering: Pre-Opened CTRL with Self-Join Filter
+
+PVACMS now starts the server and opens the CTRL PV **before** discovery, while
+eliminating loopback self-join by construction.
+
+The CTRL channel is served by a custom `server::Source` (`ClusterCtrlSource`).
+It always claims the base monitoring PV name:
+
+`CERT:CLUSTER:CTRL:<issuer_id>`
+
+Join discovery searches a node-specific variant instead:
+
+`CERT:CLUSTER:CTRL:<issuer_id>:<joiner_node_id>`
+
+The source inspects the trailing `joiner_node_id` and refuses to claim names
+whose suffix equals its own node ID.  In other words, each node declines its
+own join-discovery search key while still serving every other node's key.
+
+This enables safe pre-open ordering:
+
+```
+Instance A: start() → initAsSoleNode() → joinCluster(search ...:A)
+Instance B: start() → initAsSoleNode() → joinCluster(search ...:B)
+```
+
+- A never claims `...:A`, so A cannot join itself.
+- B never claims `...:B`, so B cannot join itself.
+- A can claim `...:B`, and B can claim `...:A`, so both can discover each
+  other even when they start simultaneously.
+
+The base CTRL PV remains claimable by any node for backward-compatible
+monitoring via tools such as `pvget`.
+
+This is analogous to split-brain prevention patterns in distributed systems:
+identity-scoped routing keys ensure a node cannot satisfy its own discovery
+query, so peer discovery is constrained to remote responders only.
+
 ### Industry Precedent: Protocol-Native Discovery
 
 Using the application protocol for cluster management rather than a separate
@@ -94,10 +131,21 @@ property shared by Redis Cluster, Cassandra, and now PVACMS.
 
 ### PVACMS Approach
 
-Each node subscribes to peer SYNC PVs via PVAccess `monitor()`.  When a peer's
-SYNC PV disconnects, the subscription fires a disconnect event.  The node
-immediately removes the peer from the membership list — no grace period, no
-voting.  Every node independently detects disconnects via its own subscriptions.
+Each node subscribes to peer SYNC PVs via PVAccess `monitor()`.  Failure is
+detected through two complementary mechanisms:
+
+1. **Connection-level disconnect** — TCP connection loss fires a disconnect
+   event on the subscription.  This catches clean shutdowns and network
+   failures.
+2. **Echo-based keepalive** — PVAccess connections include a built-in heartbeat:
+   clients send `CMD_ECHO` every ~15 seconds and either peer times out after
+   ~40 seconds of inactivity.  This detects hung or unresponsive nodes that
+   have not cleanly disconnected (e.g. a process blocked on I/O or stuck in an
+   infinite loop).
+
+When either mechanism fires, the node immediately removes the peer from the
+membership list — no grace period, no voting.  Every node independently detects
+failures via its own subscriptions.
 
 ### Industry Patterns
 
@@ -128,19 +176,53 @@ without renewal, functioning as a server-side heartbeat mechanism.
 
 | Aspect | Industry Pattern | PVACMS |
 |--------|-----------------|--------|
-| Detection mechanism | Subscription disconnect | PVA monitor disconnect event |
-| Closest analogue | ZooKeeper ephemeral node watch / etcd lease expiry | PVA subscription lifecycle |
-| Detection latency | Bounded by protocol timeout | Bounded by PVA connection timeout |
+| Detection mechanism | Heartbeat + disconnect | PVA echo keepalive (~15s) + TCP disconnect |
+| Closest analogue | ZooKeeper ephemeral node watch / etcd lease expiry | PVA subscription lifecycle + echo timeout |
+| Detection latency | Bounded by protocol timeout | ~40s for hung nodes; immediate for TCP failures |
+| Hung process detection | Heartbeat timeout | PVA echo timeout (no echo response → connection closed) |
 | False positive handling | SWIM suspect state / phi threshold | Immediate removal + rejoin protocol |
 | Independent detection | ✓ (each node monitors independently) | ✓ (each node has its own subscriptions) |
-| No polling overhead | ✓ (event-driven) | ✓ (PVA monitor is push-based) |
+| No polling overhead | ✓ (event-driven) | ✓ (PVA monitor is push-based; echo is protocol-native) |
 
-PVACMS failure detection is most closely analogous to **ZooKeeper ephemeral
-nodes**: the subscription serves as a session, and session termination triggers
-automatic cleanup.  The choice of immediate removal (no grace period) follows
+PVACMS failure detection combines **heartbeat-based detection** (PVA echo
+keepalive catches hung processes) with **session-based detection** analogous to
+**ZooKeeper ephemeral nodes** (subscription disconnect catches crashes and
+network failures).  The choice of immediate removal (no grace period) follows
 the **crash-only design** principle (Candea & Fox, 2001) — recovery always goes
 through the full join protocol, eliminating the need for partial-state recovery
 paths.
+
+### Automatic Rejoin After Eviction
+
+A node that was temporarily unresponsive (e.g. blocked on I/O) may be evicted
+by its peers via the echo timeout, but the node itself is still running.  Two
+triggers cause the node to re-run the full join protocol on a background
+thread:
+
+1. **Any peer disconnect** — `handleDisconnect()` evicts the disconnected
+   peer, clears all remaining subscriptions, and re-runs `joinCluster()`.
+   No partial recovery, no tracking of individual peer state.
+
+2. **Self-eviction detection** — `reconcileMembers()` receives a SYNC snapshot
+   from a peer that previously acknowledged this node (included it in its
+   membership list) but no longer does.  The detection is per-peer: a stale
+   snapshot from a peer that has never acknowledged us is ignored (this
+   prevents false eviction when a newly-joined node receives a snapshot from
+   a peer that hasn't processed its join yet).
+
+In both cases the node clears all subscriptions, resets to a sole-node
+cluster, and re-runs `joinCluster()`.  Fresh subscriptions are created to
+each member in the join response.  If no cluster is found, the node remains
+as a sole-node cluster.
+
+This "any disconnect = full rejoin" approach follows the crash-only principle:
+there is exactly one recovery path (the join protocol), regardless of whether
+one peer or all peers disconnected.  It avoids partial-state recovery, stale
+subscription management, and security bypasses from subscription-level
+reconnection.
+
+A `rejoin_in_progress_` atomic flag prevents concurrent rejoin attempts when
+multiple disconnects arrive in quick succession.
 
 ### Industry Precedent: Crash-Only Design
 

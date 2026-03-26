@@ -67,7 +67,7 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
     , client_ctx_(client_ctx)
 {
     controller_.on_membership_changed = [this](const std::vector<ClusterMember> &members) {
-        reconcileMembers(members);
+        reconcileMembers(std::string(), members);
     };
 }
 
@@ -249,7 +249,7 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
             m["version_patch"].as<uint32_t>()
         });
     }
-    reconcileMembers(remote_members);
+    reconcileMembers(peer_node_id, remote_members);
 
     log_debug_printf(pvacmscluster, "Applied sync snapshot from %s (%zu certs)\n",
                      peer_node_id.c_str(), static_cast<size_t>(val["certs"].as<shared_array<const Value> >().size()));
@@ -296,8 +296,7 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
                     handleDisconnect(node_id);
                     break;
                 } catch (const std::exception &e) {
-                    log_warn_printf(pvacmscluster, "Sync subscription error from %s: %s\n",
-                                    node_id.c_str(), e.what());
+                    log_warn_printf(pvacmscluster, "Sync subscription error from %s: %s\n", node_id.c_str(), e.what());
                     break;
                 }
             }
@@ -319,20 +318,92 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
     subscriptions_.erase(peer_node_id);
     controller_.removeMember(peer_node_id);
     log_info_printf(pvacmscluster, "Removed disconnected member %s\n", peer_node_id.c_str());
+
+    rejoinCluster();
 }
 
 /**
  * @brief Subscribes to any remote cluster members not yet tracked locally.
  * @param remote_members List of cluster members advertised by a peer in a sync snapshot.
  */
-void ClusterDiscovery::reconcileMembers(const std::vector<ClusterMember> &remote_members) {
+void ClusterDiscovery::reconcileMembers(const std::string &sender_node_id,
+                                        const std::vector<ClusterMember> &remote_members) {
+    // Detect self-eviction per peer: only trigger if THIS specific peer
+    // previously included us in its membership and now does not.  Stale
+    // snapshots from peers that haven't processed our join yet are ignored.
+    if (!sender_node_id.empty() && remote_members.size() > 1) {
+        bool self_present = false;
+        for (const auto &m : remote_members) {
+            if (m.node_id == node_id_) {
+                self_present = true;
+                break;
+            }
+        }
+        if (self_present) {
+            acknowledged_by_.insert(sender_node_id);
+        } else if (acknowledged_by_.count(sender_node_id)) {
+            log_warn_printf(pvacmscluster,
+                "This node (%s) is absent from %s's membership list — evicted, rejoining%s\n",
+                node_id_.c_str(), sender_node_id.c_str(), "");
+            acknowledged_by_.clear();
+            rejoinCluster();
+            return;
+        }
+    }
+
     for (const auto &m : remote_members) {
         if (m.node_id == node_id_) continue;
         if (subscriptions_.count(m.node_id) == 0) {
+            log_info_printf(pvacmscluster, "Discovered new member %s via peer sync\n", m.node_id.c_str());
             subscribeToMember(m.node_id, m.sync_pv);
             controller_.addMember(m);
         }
     }
+}
+
+void rejoinThreadEntry(void *arg) {
+    auto *self = static_cast<ClusterDiscovery *>(arg);
+    self->doRejoin();
+}
+
+void ClusterDiscovery::rejoinCluster() {
+    if (rejoin_in_progress_.exchange(true)) {
+        return;
+    }
+
+    log_info_printf(pvacmscluster, "Membership changed — re-establishing cluster for node %s\n", node_id_.c_str());
+
+    // Run on a background thread — joinCluster() blocks for up to
+    // discovery_timeout_secs_ and must not stall the server worker thread.
+    epicsThreadCreate("pvacms-rejoin",
+        epicsThreadPriorityMedium,
+        epicsThreadGetStackSize(epicsThreadStackMedium),
+        rejoinThreadEntry,
+        this);
+}
+
+void ClusterDiscovery::doRejoin() {
+    acknowledged_by_.clear();
+    peer_cert_ids_.clear();
+    peer_last_sequence_.clear();
+    subscriptions_.clear();
+
+    controller_.initAsSoleNode(node_id_, sync_publisher_.getSyncPvName());
+    sync_publisher_.publishSnapshot();
+
+    auto result = joinCluster();
+    if (result == JoinResult::Joined) {
+        sync_publisher_.publishSnapshot();
+    }
+
+    if (controller_.getMembers().size() > 1) {
+        log_info_printf(pvacmscluster, "Cluster membership re-established%s\n", "");
+    } else {
+        log_info_printf(pvacmscluster,
+            "No peers found — continuing as sole node%s\n", "");
+    }
+
+    rejoin_in_progress_.store(false);
 }
 
 /**
@@ -340,7 +411,7 @@ void ClusterDiscovery::reconcileMembers(const std::vector<ClusterMember> &remote
  * @return true if the join handshake succeeded and the cluster was joined; false otherwise.
  */
 ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
-    auto ctrl_pv_name = pv_prefix_ + ":CTRL:" + issuer_id_;
+    auto ctrl_pv_name = pv_prefix_ + ":CTRL:" + issuer_id_ + ":" + node_id_;
     auto sync_pv_name = sync_publisher_.getSyncPvName();
 
     // Generate cryptographic nonce for replay protection

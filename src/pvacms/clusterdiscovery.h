@@ -10,10 +10,12 @@
 #include <atomic>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
 #include <epicsMutex.h>
+#include <epicsThread.h>
 
 #include <pvxs/client.h>
 
@@ -75,13 +77,23 @@ public:
      * @brief Subscribes to any remote cluster members not yet tracked locally.
      * @param remote_members List of cluster members advertised by a peer in a sync snapshot.
      */
-    void reconcileMembers(const std::vector<ClusterMember> &remote_members);
+    void reconcileMembers(const std::string &sender_node_id,
+                          const std::vector<ClusterMember> &remote_members);
 
     /**
      * @brief Removes all state for a peer node after its sync subscription disconnects.
      * @param peer_node_id Unique identifier of the node that disconnected.
      */
     void handleDisconnect(const std::string &peer_node_id);
+
+    /**
+     * @brief Clears all peer state and re-runs the join protocol on a background thread.
+     *
+     * Triggered when the node detects it has been evicted (self absent from a
+     * peer's membership list) or when all peers disconnect.  Guarded by an
+     * atomic flag to prevent concurrent rejoin attempts.
+     */
+    void rejoinCluster();
 
     /** @brief Callback invoked when a certificate belonging to a PVACMS cluster node is revoked.
      *  Receives the full SKID of the revoked certificate. */
@@ -103,6 +115,10 @@ private:
     std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
     std::map<std::string, std::string> peer_cert_ids_;
 
+    std::atomic<bool> rejoin_in_progress_{false};
+    std::set<std::string> acknowledged_by_;
+    void doRejoin();
+    friend void rejoinThreadEntry(void *arg);
     std::atomic<int64_t> global_high_water_mark_{0};
     std::map<std::string, int64_t> peer_last_sequence_;
     static constexpr int64_t kClockSkewTolerance = 5;      ///< Maximum allowed clock skew between nodes, in seconds.

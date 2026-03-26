@@ -29,8 +29,9 @@ The cluster uses two PV channels per cluster:
 ### PV Naming
 
 ```
-CERT:CLUSTER:CTRL:<issuer_id>                - Cluster control (shared)
-CERT:CLUSTER:SYNC:<issuer_id>:<node_id>      - Per-node sync
+CERT:CLUSTER:CTRL:<issuer_id>                    - Cluster control (monitoring)
+CERT:CLUSTER:CTRL:<issuer_id>:<joiner_node_id>   - Cluster join discovery
+CERT:CLUSTER:SYNC:<issuer_id>:<node_id>          - Per-node sync
 ```
 
 The prefix `CERT:CLUSTER` is configurable via `--cluster-pv-prefix`.
@@ -47,18 +48,24 @@ PVACMS server certificate - a deterministic, certificate-bound identifier.
 1. Node initialises its CA, database, and server certificate.
 2. It creates a `ClusterSyncPublisher` (its own SYNC PV) and a
    `ClusterController` (the shared CTRL PV).
-3. It sends a **join request** via RPC to the CTRL PV, with a configurable
+3. It starts the PVAccess server, initialises itself as a sole-node cluster
+   (`initAsSoleNode()`), and publishes an initial SYNC snapshot.
+4. **If the CA was freshly created** (no existing CA keychain was found), the
+   node skips discovery and remains as the sole-node cluster.  A new CA cannot
+   have peers — all cluster members must share the same CA certificate, so
+   there is nothing to discover.
+5. **If an existing CA was loaded**, the node sends a **join request** via RPC
+   to the discovery CTRL PV variant
+   (`CERT:CLUSTER:CTRL:<issuer_id>:<own_node_id>`), with a configurable
    timeout (default 10 seconds, `--cluster-discovery-timeout`).  This single
    RPC both discovers whether a cluster exists and joins it in one step.
 
-**If the join RPC times out** (no existing cluster is serving the CTRL PV):
-- The node bootstraps as a sole-node cluster.
-- It initialises the CTRL PV with itself as the only member.
-- It publishes an initial sync snapshot containing its cert database.
+   **If the join RPC times out** (no existing cluster is serving the CTRL PV):
+   - The node remains the sole cluster member it already bootstrapped as.
 
-**If the join RPC succeeds** (an existing node responds):
-- The joiner validates the signed response (see [Join Protocol](#join-protocol))
-  and subscribes to all peer SYNC PVs.
+   **If the join RPC succeeds** (an existing node responds):
+   - The joiner validates the signed response (see [Join Protocol](#join-protocol))
+     and subscribes to all peer SYNC PVs.
 
 ### Join Protocol
 
@@ -132,7 +139,7 @@ flow control (see [Back-Pressure](#back-pressure)).
 **When updates are published:**
 - After a new certificate is created (CCR processed)
 - After a certificate is revoked (admin action)
-- After a certificate is approved or denied (admin action)
+- After a certificate is approved (admin action)
 - After a new member joins the cluster (the existing node publishes its
   database so the joiner receives it)
 - At cluster bootstrap (initial snapshot)
@@ -367,6 +374,22 @@ This prevents a compromised node from replaying another node's signed snapshots
 over its own connection.  Each node independently performs this verification, so
 no explicit sync of membership removals is needed.
 
+### Automatic Rejoin
+
+Any peer disconnection triggers a full rejoin.  The disconnected peer is
+evicted (subscription destroyed, removed from membership), all remaining
+subscriptions are cleared, and the node re-runs the full join protocol on a
+background thread.  This is the same join handshake used at startup — with
+nonce, signature verification, ACF enforcement, and version negotiation.
+
+If a cluster is found, fresh subscriptions are created to all members.  If no
+cluster is found, the node remains as a sole-node cluster.
+
+Self-eviction is also detected: if a SYNC snapshot from a peer that previously
+acknowledged this node no longer includes it, the node triggers a rejoin.  The
+detection is per-peer to avoid false eviction from stale snapshots during
+initial join.
+
 ### Access Control (ACF)
 
 The default ACF file restricts cluster PV access via `UAG(CMS_CLUSTER)`:
@@ -422,7 +445,7 @@ Sync snapshots are published only on operator/CCR-driven events:
 
 - Certificate creation
 - Certificate revocation
-- Certificate approval/denial
+- Certificate approval
 - Certificate renewal
 - New member join
 

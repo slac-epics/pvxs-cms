@@ -3298,6 +3298,7 @@ int main(int argc, char *argv[]) {
                                            status_update_lock);
 
         ClusterController cluster_ctrl(our_issuer_id,
+                                         our_node_id,
                                          config.cluster_pv_prefix,
                                          cert_auth_pkey,
                                          cert_auth_pub_key,
@@ -3504,14 +3505,14 @@ int main(int argc, char *argv[]) {
         pva_server.addSource("__wildcard", wildcard_source);
 
         pva_server.addSource("syncsrc", cluster_sync.getSource());
+        pva_server.addSource("ctrlsrc", cluster_ctrl.getSource());
 
         pva_server.addPV(getCertCreatePv(config.getCertPvPrefix()), create_pv)
             .addPV(getCertCreatePv(config.getCertPvPrefix(), our_issuer_id), create_pv)
             .addPV(getCertAuthRootPv(config.getCertPvPrefix()), root_pv)
             .addPV(getCertAuthRootPv(config.getCertPvPrefix(), our_issuer_id), root_pv)
             .addPV(getCertIssuerPv(config.getCertPvPrefix()), issuer_pv)
-            .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv)
-            .addPV(cluster_ctrl.getCtrlPvName(), cluster_ctrl.getPV());
+            .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv);
         root_pv.open(root_pv_value);
         issuer_pv.open(issuer_pv_value);
 
@@ -3563,11 +3564,22 @@ int main(int argc, char *argv[]) {
             return isNodeCertRevoked(certs_db, node_id);
         };
 
+        if (!is_initialising) {
+            auto status_tuple = getCertificateStatus(certs_db, our_serial);
+            if (std::get<0>(status_tuple) == REVOKED) {
+                log_err_printf(pvacms, "****EXITING****: Cannot start PVACMS with revoked certificate, SKID: %s\n",
+                               our_node_id.c_str());
+                return 1;
+            }
+        }
+
+        cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
+        cluster_sync.publishSnapshot();
+        pva_server.start();
+
         std::string cluster_status;
         if (is_initialising) {
             log_info_printf(pvacms, "Fresh CA init - bootstrapping as sole cluster node%s", "\n");
-            cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
-            cluster_sync.publishSnapshot();
             cluster_status = "Created new cluster";
         } else {
             log_info_printf(pvacms, "Attempting to join existing cluster...%s", "\n");
@@ -3579,16 +3591,7 @@ int main(int argc, char *argv[]) {
                 cluster_sync.publishSnapshot();
                 cluster_status = "Joined existing cluster";
             } else {
-                // No cluster found — check local DB as fallback before bootstrapping
-                auto status_tuple = getCertificateStatus(certs_db, our_serial);
-                if (std::get<0>(status_tuple) == REVOKED) {
-                    log_err_printf(pvacms, "****EXITING****: Cannot start PVACMS with revoked certificate, SKID: %s\n",
-                                   our_node_id.c_str());
-                    return 1;
-                }
-                log_info_printf(pvacms, "No existing cluster found - bootstrapping as sole node%s", "\n");
-                cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
-                cluster_sync.publishSnapshot();
+                log_info_printf(pvacms, "No existing cluster found - remaining sole node%s", "\n");
                 cluster_status = "Created new cluster (no existing cluster found)";
             }
         }

@@ -169,10 +169,10 @@ All results from a single benchmark run: 5 modes × 6 array sizes × 4 paralleli
 
    | Parallelism | PVXS_PVA median µs | SPVA median µs | TLS delta µs |
    |:-----------:|-------------------:|---------------:|-------------:|
-   | 1           | 58.5               | 77.5           | **19.0**     |
-   | 10          | 14.4               | 24.3           | **9.9**      |
-   | 100         | 8.8                | 15.3           | **6.6**      |
-   | 1000        | 7.5                | 12.4           | **5.0**      |
+   |      1      |               58.5 |           77.5 |     **19.0** |
+   |     10      |               14.4 |           24.3 |      **9.9** |
+   |     100     |                8.8 |           15.3 |      **6.6** |
+   |    1000     |                7.5 |           12.4 |      **5.0** |
 
    These deltas are stable across all array sizes (1 to 100,000 doubles).
 
@@ -354,11 +354,11 @@ OCSP stapling is fully implemented.
 
 ### 5.2 Optimization Priority
 
-| #  | Change | Effort | Risk | Expected Impact | Dependency |
-|----|--------|--------|------|-----------------|------------|
-| R1 | TLS cost decomposition instrumentation | Days | Low | Identifies highest-value TLS optimizations | Profiling hooks |
-| R2 | Unified steady-state + setup reporting in CI benchmarks | Days | Low | Prevents misinterpretation of cert-monitoring cost | Benchmark pipeline |
-| R3 | SPVA_CERTMON connect-path latency reduction | Weeks | Medium | Improves short-lived secure session startup | PVACMS/status-flow behavior |
+| #  | Change                                                  | Effort | Risk   | Expected Impact                                    | Dependency                  |
+|----|---------------------------------------------------------|--------|--------|----------------------------------------------------|-----------------------------|
+| R1 | TLS cost decomposition instrumentation                  | Days   | Low    | Identifies highest-value TLS optimizations         | Profiling hooks             |
+| R2 | Unified steady-state + setup reporting in CI benchmarks | Days   | Low    | Prevents misinterpretation of cert-monitoring cost | Benchmark pipeline          |
+| R3 | SPVA_CERTMON connect-path latency reduction             | Weeks  | Medium | Improves short-lived secure session startup        | PVACMS/status-flow behavior |
 
 ---
 
