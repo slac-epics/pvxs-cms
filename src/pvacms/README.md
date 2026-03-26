@@ -15,7 +15,7 @@ PVACMS is conditionally compiled via the `PVXS_ENABLE_PVACMS` macro in
 
 ```sh
 make            # from repo root
-make -C src     # library + executable only
+make -C src     # executable only
 ```
 
 The executable is installed to `bin/<arch>/pvacms`.
@@ -86,7 +86,7 @@ The default PV prefix is `CERT`, configurable with `--cert-pv-prefix`.
 | `PENDING_APPROVAL` | Awaiting admin approval (standard auth only) |
 | `PENDING` | Approved; waiting for validity start date |
 | `VALID` | Active certificate |
-| `PENDING_RENEWAL` | Approaching the renewal window |
+| `PENDING_RENEWAL` | Renewal deadline passed; certificate invalid until renewed |
 | `EXPIRED` | Past validity end date |
 | `REVOKED` | Permanently revoked (irreversible) |
 
