@@ -2,9 +2,7 @@
 
 This document demonstrates that the PVACMS clustering implementation follows
 well-established, industry-standard patterns used in production distributed
-systems.  Each design choice maps directly to patterns found in systems such as
-HashiCorp Consul, Apache Cassandra, Redis Cluster, CockroachDB, etcd, and
-Kubernetes.
+systems.  Each design choice maps directly to patterns found in systems such as [HashiCorp Consul](https://developer.hashicorp.com/consul/docs/architecture), [Apache Cassandra](https://cassandra.apache.org/doc/latest/cassandra/architecture/), [Redis Cluster](https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/), [CockroachDB](https://www.cockroachlabs.com/docs/stable/architecture/overview), [etcd](https://etcd.io/docs/latest/learning/design-learner/), and Kubernetes.
 
 ---
 
@@ -14,14 +12,14 @@ PVACMS implements an auto-managing, peer-to-peer cluster using PVAccess as
 the communication protocol.  The design draws on six foundational patterns
 from distributed systems engineering:
 
-| Pattern | PVACMS Mechanism | Industry Precedent |
-|---------|------------------|--------------------|
-| Protocol-native discovery | PVAccess beacon + RPC join | Redis Cluster bus, Cassandra gossip |
-| Peer-to-peer membership | Signed CTRL PV with membership list | SWIM protocol (Consul/Serf), Redis gossip |
-| Subscription-based failure detection | PVA monitor disconnect events | ZooKeeper ephemeral nodes, etcd lease expiry |
-| Per-subscriber incremental sync | Bounded update log with sequence tracking | Cassandra hinted handoff, Kafka consumer offsets |
-| Deterministic conflict resolution | Convergent state machine (sync rules + time-based transitions) | CRDTs (Riak), LWW-Register (Cassandra), Cassandra TTL expiration |
-| Cryptographic message authentication | CA-signed cluster messages with anti-replay | Consul mTLS, Vault transit encryption, SPIFFE identity |
+| Pattern | Industry Precedent | PVACMS Mechanism |
+|---------|--------------------| -----------------|
+| Protocol-native discovery | Redis Cluster bus, Cassandra gossip | PVAccess beacon + RPC join |
+| Peer-to-peer membership | SWIM protocol (Consul/Serf), Redis gossip | Signed CTRL PV with membership list |
+| Subscription-based failure detection | ZooKeeper ephemeral nodes, etcd lease expiry | PVA monitor disconnect events |
+| Per-subscriber incremental sync | Cassandra hinted handoff, Kafka consumer offsets | Bounded update log with sequence tracking |
+| Deterministic conflict resolution | CRDTs (Riak), LWW-Register (Cassandra), Cassandra TTL expiration | Convergent state machine (sync rules + time-based transitions) |
+| Cryptographic message authentication | Consul mTLS, Vault transit encryption, SPIFFE identity | CA-signed cluster messages with anti-replay |
 
 None of these patterns are novel.  Each is a deliberate application of a
 technique that has been validated in production at scale across the industry.
@@ -40,16 +38,11 @@ authentication.
 
 ### Industry Pattern: Gossip-Based Membership (SWIM Protocol)
 
-The SWIM protocol (Das et al., 2002) provides the foundation for membership
-management in Consul, Cassandra, and Redis Cluster.  SWIM uses probabilistic
-peer probing where each node periodically selects a random peer to verify
-liveness, achieving O(1) per-node message complexity regardless of cluster
-size.
+The [SWIM protocol](https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf) (Das et al., 2002) provides the foundation for membership management in Consul, Cassandra, and Redis Cluster.  SWIM uses probabilistic peer probing where each
+node periodically selects a random peer to verify liveness, achieving O(1)
+per-node message complexity regardless of cluster size.
 
-HashiCorp's **Serf** library extends SWIM with Lamport clocks, full-state
-synchronization over TCP, and the **Lifeguard** enhancement for adaptive
-suspicion timeouts.  Consul uses Serf for both LAN gossip (intra-datacenter)
-and WAN gossip (inter-datacenter).
+HashiCorp's [Serf](https://www.serf.io/docs/internals/gossip.html) library extends SWIM with Lamport clocks, full-state synchronization over TCP, and the [Lifeguard](https://arxiv.org/abs/1707.00788) enhancement for adaptive suspicion timeouts.  Consul uses Serf for both LAN gossip (intra-datacenter) and WAN gossip (inter-datacenter).
 
 **Redis Cluster** implements gossip-based membership using its own Cluster Bus
 protocol.  Nodes exchange PING/PONG messages carrying node ID, address, hash
@@ -58,24 +51,70 @@ the gossip layer within seconds.
 
 ### How PVACMS Aligns
 
-| Aspect | SWIM/Gossip | PVACMS |
-|--------|-------------|--------|
-| Discovery mechanism | Random peer probing | RPC to shared CTRL PV |
-| Membership propagation | Piggybacked on heartbeats | Embedded in SYNC snapshots + CTRL PV updates |
-| New node joins | Contact any existing member | Single RPC to CTRL PV |
-| Membership view | Eventually consistent across all nodes | Eventually consistent (reconciled via SYNC snapshots) |
-| No central coordinator | ✓ (pure peer-to-peer) | ✓ (any node can serve the CTRL PV) |
-| Self-bootstrapping | Seed nodes | Timeout-based bootstrap as sole node |
+| Aspect                    | SWIM/Gossip                                        | PVACMS                                                                                      |
+| ------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Peer discovery            | Seed nodes or service registry (etcd, Consul, DNS) | PVAccess name resolution (broadcast, addr list, name server) + CTRL PV initial members list |
+| Join mechanism            | Random peer probing                                | Single RPC to shared CTRL PV                                                                |
+| Membership propagation    | Piggybacked on heartbeats                          | Embedded in SYNC snapshots (subscribed per-peer)                                            |
+| Membership view           | ✓ Eventually consistent across all nodes           | ✓ Eventually consistent (reconciled via SYNC snapshots)                                     |
+| No central coordinator    | ✓ (pure peer-to-peer)                              | ✓ (any node can serve the CTRL PV)                                                          |
+| Protocol-native discovery | ✓ (Redis Cluster Bus, Cassandra gossip port)       | ✓ (PVAccess name resolution + beacons)                                                      |
+| Self-bootstrapping        | Seed nodes                                         | Timeout-based bootstrap as sole node                                                        |
 
-PVACMS membership discovery is simpler than full gossip because the cluster
-uses PVAccess's built-in name resolution (UDP broadcast/unicast search) to
-locate the CTRL PV.  This is a form of **protocol-native discovery** — the
-application protocol itself provides the discovery mechanism, eliminating the
-need for a separate service registry (etcd, Consul, ZooKeeper).
+### Industry Precedent: Protocol-Native Discovery
+
+Using the application protocol for cluster management rather than a separate
+control plane is an established pattern:
+
+- **Redis Cluster** uses the RESP protocol + Cluster Bus for application traffic
+  AND cluster coordination on a single binary protocol.
+- **Cassandra** uses its gossip port for both failure detection and topology
+  management.
+- **PVAccess** provides name resolution (UDP broadcast, unicast address lists,
+  TCP name servers) and server beacons, which PVACMS leverages for cluster
+  discovery without any additional infrastructure.
+
+This approach eliminates external dependencies and simplifies deployment — a
+property shared by Redis Cluster, Cassandra, and now PVACMS.
+
+### Cluster Identity and Initial Connection
+
+Most distributed systems require explicit configuration to connect a new node
+to an existing cluster.  PVACMS does not.
+
+**Redis Cluster** requires an operator to run `CLUSTER MEET <ip> <port>` on a
+new node, pointing it at any existing member.  The new node then learns the
+full topology through gossip.  Without this manual introduction, a Redis node
+has no way to find its cluster.
+
+**Cassandra** requires a `seed_provider` in `cassandra.yaml` listing one or
+more known node addresses.  On startup, a new node contacts the seeds to
+bootstrap and learn the ring topology.  Seeds must be configured identically
+across all nodes.
+
+**PVACMS** requires neither seed lists nor manual introductions.  Cluster
+identity is cryptographic: all PVACMS instances sharing the same CA certificate
+belong to the same cluster.  The CA's issuer ID (a hash of the CA public key)
+is embedded in the CTRL PV name (`CERT:CLUSTER:CTRL:<issuer_id>`).  A node
+with a different CA cannot join — the join handshake's signature verification
+will reject it.
+
+The CTRL PV is located using standard PVAccess protocol-native discovery (UDP
+broadcast, `EPICS_PVA_ADDR_LIST`, or `EPICS_PVA_NAME_SERVERS`).  This means
+PVACMS clusters work across routed networks and firewalled subnets with the
+same PVAccess configuration that any other PVA client would use — no seed
+lists, no manual introductions, no cluster-specific network setup.
+
+| Aspect | Redis Cluster | Cassandra | PVACMS |
+|--------|--------------|-----------|--------|
+| Initial connection | `CLUSTER MEET` (manual) | Seed list (configured) | PVAccess name resolution (automatic) |
+| Cluster identity | Cluster ID (generated) | Cluster name (configured) | CA issuer ID (derived from CA cert) |
+| Address knowledge | Must know one peer's IP:port | Must know seed IPs | None required |
+| Configuration needed | Yes (`CLUSTER MEET` command) | Yes (`seed_provider`) | None (shared CA keychain is sufficient) |
 
 ### Startup Ordering: Pre-Opened CTRL with Self-Join Filter
 
-PVACMS now starts the server and opens the CTRL PV **before** discovery, while
+PVACMS starts the server and opens the CTRL PV **before** discovery, while
 eliminating loopback self-join by construction.
 
 The CTRL channel is served by a custom `server::Source` (`ClusterCtrlSource`).
@@ -110,20 +149,31 @@ This is analogous to split-brain prevention patterns in distributed systems:
 identity-scoped routing keys ensure a node cannot satisfy its own discovery
 query, so peer discovery is constrained to remote responders only.
 
-### Industry Precedent: Protocol-Native Discovery
+### Scaling Context: Why O(N) Is Appropriate
 
-Using the application protocol for cluster management rather than a separate
-control plane is an established pattern:
+SWIM's O(1) per-node message complexity is designed for clusters of hundreds or
+thousands of nodes (Redis Cluster supports up to 1,000; Cassandra routinely
+runs 100+).  PVACMS clusters are expected to have 2–5 nodes — a single CA
+does not need hundreds of certificate issuers.
 
-- **Redis Cluster** uses the RESP protocol + Cluster Bus for application traffic
-  AND cluster coordination on a single binary protocol.
-- **Cassandra** uses its gossip port for both failure detection and topology
-  management.
-- **PVAccess** broadcasts beacons for server presence, which PVACMS leverages
-  for cluster discovery without any additional infrastructure.
+At this scale, PVACMS's full-mesh O(N) subscription model has negligible
+overhead:
 
-This approach eliminates external dependencies and simplifies deployment — a
-property shared by Redis Cluster, Cassandra, and now PVACMS.
+- **Message count**: each node subscribes to N-1 peers, giving N×(N-1)
+  subscription channels total.  For 3 nodes that is 6 channels; for 5 nodes,
+  20.
+- **Payload size**: incremental SYNC updates are ~200–300 bytes per certificate
+  change.  Full snapshots for 1,000 certificates are ~200 KB (see the "Payload Size
+  Calculation" section in CLUSTER.md).
+- **Per-client queuing**: PVAccess monitors maintain a per-subscriber queue and
+  coalesce updates — only data not already delivered is transmitted.  Rapid
+  successive changes to the same certificate produce a single queued update,
+  not one per change.
+
+The O(1) gossip protocols add significant implementation complexity (protocol
+state machines, protocol versioning, protocol-specific failure detectors) that
+is justified at scale but unnecessary for a system where N ≤ 5 and the payload
+per update fits in a single TCP segment.
 
 ---
 
@@ -154,20 +204,20 @@ heartbeats and are considered failed after a fixed timeout.  PostgreSQL and
 MySQL replication use this model.  The fundamental tradeoff is between
 detection speed (short timeout) and false positive rate (long timeout).
 
-**Phi Accrual Failure Detector** (Hayashibara et al., 2004), used by
-Cassandra, provides an adaptive approach that outputs a continuous suspicion
-level (φ) based on the statistical distribution of heartbeat inter-arrival
-times.  Rather than a binary alive/dead decision, phi accrual adjusts to
-network conditions automatically.
+[**Phi Accrual Failure Detector**](https://doi.org/10.1109/RELDIS.2004.1353004)
+(Hayashibara et al., 2004), used by Cassandra, provides an adaptive approach
+that outputs a continuous suspicion level (φ) based on the statistical
+distribution of heartbeat inter-arrival times.  Rather than a binary alive/dead
+decision, phi accrual adjusts to network conditions automatically.
 
 **SWIM Failure Detection**, used by Consul/Serf, employs direct probing with
 indirect verification.  If a direct ping fails, k random peers are asked to
 probe the target.  Only if all probes fail is the node marked suspected.  This
 achieves constant-time detection regardless of cluster size.
 
-**ZooKeeper Ephemeral Nodes** disappear when the client session expires,
-providing automatic failure notification to watchers.  This is functionally
-equivalent to a subscription that fires on disconnect.
+[**ZooKeeper**](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html) **Ephemeral Nodes** disappear when the client session expires, providing
+automatic failure notification to watchers.  This is functionally equivalent
+to a subscription that fires on disconnect.
 
 **etcd Lease Expiry** removes keys when their associated lease TTL expires
 without renewal, functioning as a server-side heartbeat mechanism.
@@ -184,13 +234,7 @@ without renewal, functioning as a server-side heartbeat mechanism.
 | Independent detection | ✓ (each node monitors independently) | ✓ (each node has its own subscriptions) |
 | No polling overhead | ✓ (event-driven) | ✓ (PVA monitor is push-based; echo is protocol-native) |
 
-PVACMS failure detection combines **heartbeat-based detection** (PVA echo
-keepalive catches hung processes) with **session-based detection** analogous to
-**ZooKeeper ephemeral nodes** (subscription disconnect catches crashes and
-network failures).  The choice of immediate removal (no grace period) follows
-the **crash-only design** principle (Candea & Fox, 2001) — recovery always goes
-through the full join protocol, eliminating the need for partial-state recovery
-paths.
+PVACMS failure detection combines **heartbeat-based detection** (PVA echo keepalive catches hung processes) with **session-based detection** analogous to **ZooKeeper ephemeral nodes** (subscription disconnect catches crashes and network failures).  The choice of immediate removal (no grace period) follows the [**crash-only design**](https://www.usenix.org/legacy/events/hotos03/tech/full_papers/candea/candea.pdf) principle (Candea & Fox, 2003) — recovery always goes through the full join protocol, eliminating the need for partial-state recovery paths.
 
 ### Automatic Rejoin After Eviction
 
@@ -210,25 +254,16 @@ thread:
    prevents false eviction when a newly-joined node receives a snapshot from
    a peer that hasn't processed its join yet).
 
-In both cases the node clears all subscriptions, resets to a sole-node
-cluster, and re-runs `joinCluster()`.  Fresh subscriptions are created to
-each member in the join response.  If no cluster is found, the node remains
-as a sole-node cluster.
+In both cases the node clears all subscriptions, resets to a sole-node cluster, and re-runs `joinCluster()`.  Fresh subscriptions are created to each member in the join response.  If no cluster is found, the node remains as a sole-node cluster.
 
-This "any disconnect = full rejoin" approach follows the crash-only principle:
-there is exactly one recovery path (the join protocol), regardless of whether
-one peer or all peers disconnected.  It avoids partial-state recovery, stale
-subscription management, and security bypasses from subscription-level
-reconnection.
+This "any disconnect = full rejoin" approach follows the crash-only principle: there is exactly one recovery path (the join protocol), regardless of whether one peer or all peers disconnected.  It avoids partial-state recovery, stale subscription management, and security bypasses from subscription-level reconnection.
 
 A `rejoin_in_progress_` atomic flag prevents concurrent rejoin attempts when
 multiple disconnects arrive in quick succession.
 
 ### Industry Precedent: Crash-Only Design
 
-The crash-only principle states that systems should only stop via crash and
-only recover via a defined restart path.  This simplifies the state space by
-eliminating graceful-shutdown code paths that are rarely tested.
+The [crash-only](https://www.usenix.org/legacy/events/hotos03/tech/full_papers/candea/candea.pdf) principle (Candea & Fox, 2003) states that systems should only stop via crash and only recover via a defined restart path.  This simplifies the state space by eliminating graceful-shutdown code paths that are rarely tested.
 
 PVACMS applies this principle:
 - **Stop = disconnect** (subscription drops, peer removed immediately)
@@ -246,9 +281,7 @@ This is the same approach used by:
 
 ### PVACMS Approach
 
-Each node publishes its certificate database state on a per-node SYNC PV.  The
-publisher maintains a bounded in-memory update log (default 10,000 entries) and
-tracks each subscriber's position independently:
+Each node publishes its certificate database state on a per-node SYNC PV.  The publisher maintains a bounded in-memory update log (default 10,000 entries) and tracks each subscriber's position independently:
 
 - **New subscribers** receive a full snapshot, then stream incrementally.
 - **Up-to-date subscribers** receive only changed certificates.
@@ -259,23 +292,14 @@ back-pressure handling through watermarks and `onHighMark()` callbacks.
 
 ### Industry Patterns
 
-**Raft Log Replication** (etcd, CockroachDB, Consul) maintains a total-ordered
-log of all state changes.  The leader replicates log entries to followers, and
-entries are committed after a majority acknowledge.  This provides strong
-consistency but requires a leader and quorum.
+[**Raft**](https://raft.github.io/raft.pdf) **Log Replication** (Ongaro & Ousterhout, 2014; used by etcd, CockroachDB, Consul) maintains a total-ordered log of all state changes.  The leader replicates log entries to followers, and entries are committed after a majority acknowledge.  This provides strong consistency but requires a leader and quorum.
 
-**Cassandra Hinted Handoff** stores writes destined for unavailable replicas as
-"hints" on the coordinator.  When the target recovers, hints are replayed.
-This ensures writes are not lost during transient failures.
+**Cassandra Hinted Handoff** stores writes destined for unavailable replicas as "hints" on the coordinator.  When the target recovers, hints are replayed. This ensures writes are not lost during transient failures.
 
-**Kafka Consumer Offsets** track each consumer's position in a topic partition
-independently.  New consumers can start from the beginning (full replay) or
-from the latest offset (incremental).  Fallen-behind consumers can be reset.
+[**Kafka**](https://kafka.apache.org/documentation/#design) **Consumer Offsets**
+track each consumer's position in a topic partition independently.  New consumers can start from the beginning (full replay) or from the latest offset (incremental).  Fallen-behind consumers can be reset.
 
-**Redis Partial Resynchronization** tracks replication via a monotonic offset.
-When a replica reconnects, it sends its offset; if the master's replication
-backlog contains that offset, only the delta is sent.  If the offset has been
-evicted, a full resync is triggered.
+**Redis Partial Resynchronization** tracks replication via a monotonic offset. When a replica reconnects, it sends its offset; if the master's replication backlog contains that offset, only the delta is sent.  If the offset has been evicted, a full resync is triggered.
 
 ### How PVACMS Aligns
 
@@ -301,18 +325,25 @@ deliberate design choice with clear tradeoffs:
 
 | Property | Raft (etcd, CockroachDB) | PVACMS Eventual Consistency |
 |----------|--------------------------|----------------------------|
-| Write availability during partition | Requires quorum (unavailable in minority) | All nodes continue independently |
+| Write availability during network split | Requires quorum (unavailable in minority) | All nodes continue independently |
 | Consistency model | Linearizable (strong) | Eventually consistent with deterministic merge |
 | Leader requirement | Yes (single writer) | No (any node can issue certificates) |
 | Complexity | High (log replication, snapshotting, membership changes) | Lower (pub-sub with conflict rules) |
-| Certificate issuance during partition | Only on majority side | On any reachable node |
+| Certificate issuance during network split | Only on majority side | On any reachable node |
 | Convergence guarantee | Immediate (after commit) | Eventual (after sync propagation) |
 
 For a certificate authority, **availability** is more important than strong
-consistency.  A client that cannot reach the majority partition should still be
-able to obtain a certificate from a reachable node.  The deterministic
-conflict resolution rules (Section 4) ensure that all nodes converge to the
-same state once the partition heals.
+consistency.  A client that cannot reach the majority of nodes during a network
+split should still be able to obtain a certificate from a reachable node.  The
+deterministic conflict resolution rules (Section 4) ensure that all nodes
+converge to the same state once full mesh connectivity is restored.
+
+**Important**: PVACMS requires full mesh connectivity between all cluster nodes
+for complete data replication.  Each node subscribes directly to all peers —
+data is not relayed transitively.  During a partial network split where some
+nodes can reach each other but not all, each node continues issuing
+certificates independently but cert changes only propagate along connected
+paths.  Convergence is guaranteed once full connectivity is restored.
 
 This is the same tradeoff made by:
 - **Cassandra** (AP system — availability over consistency)
@@ -395,10 +426,12 @@ Key paths:
 
 ### Industry Patterns
 
-**CRDTs** (Conflict-free Replicated Data Types) provide mathematically
-guaranteed conflict-free merging through commutative, associative, and
-idempotent operations over a join-semilattice.  Riak implements CRDTs as
-built-in data types (G-Counters, PN-Counters, OR-Sets, LWW-Registers).
+[**CRDTs**](https://hal.inria.fr/inria-00555588/document) (Conflict-free
+Replicated Data Types; Shapiro et al., 2011) provide mathematically guaranteed
+conflict-free merging through commutative, associative, and idempotent
+operations over a join-semilattice.  [Riak](https://docs.riak.com/riak/kv/latest/developing/data-types/index.html)
+implements CRDTs as built-in data types (G-Counters, PN-Counters, OR-Sets,
+LWW-Registers).
 
 **Last-Writer-Wins Register (LWW-Register)** resolves conflicts by keeping
 the value with the highest timestamp.  Cassandra uses this as its default
@@ -581,9 +614,10 @@ enforce TLS on gossip and RPC channels.
 Integrated Raft storage uses mutual TLS between nodes, with certificates issued
 by Vault's own PKI engine.
 
-**SPIFFE/SPIRE**: The Secure Production Identity Framework for Everyone provides
-cryptographic identity to workloads via x509 SVIDs (SPIFFE Verifiable Identity
-Documents).  Cluster membership is gated on valid SPIFFE identity.
+[**SPIFFE/SPIRE**](https://spiffe.io/docs/latest/spiffe-about/overview/): The
+Secure Production Identity Framework for Everyone provides cryptographic
+identity to workloads via x509 SVIDs (SPIFFE Verifiable Identity Documents).
+Cluster membership is gated on valid SPIFFE identity.
 
 **Kubernetes RBAC + Service Accounts**: API server authenticates nodes via
 client certificates and authorizes operations via role-based access control.
@@ -653,7 +687,7 @@ consumer signals readiness for more data as it processes earlier messages.
 
 ## 7. Comparison with CA Clustering Solutions
 
-### HashiCorp Vault PKI
+### [HashiCorp Vault](https://developer.hashicorp.com/vault/docs/internals/integrated-storage) PKI
 
 Vault uses Raft consensus with an active-standby model.  Only the active
 node processes writes; standbys forward requests.  This provides strong

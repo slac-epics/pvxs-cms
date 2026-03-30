@@ -8,6 +8,20 @@ participates in a cluster, even if it is the sole node.  All nodes in a cluster
 share the same Certificate Authority (CA) identity (`issuer_id`) and
 independently serve certificate operations (create, revoke, approve, renew).
 
+### Network Requirements
+
+PVACMS requires **full mesh connectivity** between all cluster nodes.  Every
+node must be able to reach every other node's SYNC PV.  Each node subscribes
+directly to all peers — data is not relayed through intermediaries.
+
+If node B cannot reach node C, B's subscription to C keeps searching
+indefinitely (no crash, no disconnect loop), but B silently misses C's
+certificate changes.  There is no transitive data flow: A receiving B's updates
+does not cause A to republish them on A's own SYNC PV.
+
+This is the same requirement as Redis Cluster (all nodes must reach all other
+nodes on the Cluster Bus) and Cassandra (all nodes must participate in gossip).
+
 The cluster uses two PV channels per cluster:
 
 - **CTRL PV** - One shared PV for the cluster.  Carries the authoritative
@@ -57,8 +71,12 @@ PVACMS server certificate - a deterministic, certificate-bound identifier.
 5. **If an existing CA was loaded**, the node sends a **join request** via RPC
    to the discovery CTRL PV variant
    (`CERT:CLUSTER:CTRL:<issuer_id>:<own_node_id>`), with a configurable
-   timeout (default 10 seconds, `--cluster-discovery-timeout`).  This single
-   RPC both discovers whether a cluster exists and joins it in one step.
+   timeout (default 10 seconds, `--cluster-discovery-timeout`).  The CTRL PV
+   is located using standard PVAccess name resolution — UDP broadcast,
+   unicast address lists (`EPICS_PVA_ADDR_LIST`), or TCP name servers
+   (`EPICS_PVA_NAME_SERVERS`) — so clusters work across routed networks
+   without cluster-specific configuration.  This single RPC both discovers
+   whether a cluster exists and joins it in one step.
 
    **If the join RPC times out** (no existing cluster is serving the CTRL PV):
    - The node remains the sole cluster member it already bootstrapped as.

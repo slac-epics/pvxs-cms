@@ -156,9 +156,15 @@ Duration format: `1y 2M 3w 4d 5h 6m 7s` (components are optional).
 ## Clustering
 
 PVACMS runs as a self-organizing cluster.  On startup each node attempts to
-join an existing cluster via the CTRL PV.  If no cluster is found, the node
+join an existing cluster via the CTRL PV, located using standard PVAccess name
+resolution (UDP broadcast, `EPICS_PVA_ADDR_LIST`, or `EPICS_PVA_NAME_SERVERS`).
+No seed lists or manual introductions are needed — all nodes sharing the same
+CA keychain belong to the same cluster.  If no cluster is found, the node
 bootstraps as a sole-node cluster.  Certificate operations performed on any
 node are replicated to all members via the SYNC PV protocol.
+
+Full mesh connectivity is required — every node must be able to reach every
+other node.  Data is not relayed transitively between nodes.
 
 See [CLUSTER.md](CLUSTER.md) for the full clustering design.
 
