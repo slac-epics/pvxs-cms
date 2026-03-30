@@ -52,6 +52,17 @@ void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
             cop->error("Sync PV not yet initialised");
     });
 
+    chan->onRPC([this](std::unique_ptr<server::ExecOp> &&op, Value &&args) {
+        auto operation = args["operation"].as<std::string>();
+        if (operation == "forward") {
+            publisher_.handleForwardRpc(std::move(op), std::move(args));
+        } else if (operation == "cancel-forward") {
+            publisher_.handleCancelForwardRpc(std::move(op), std::move(args));
+        } else {
+            op->error("Unknown operation: " + operation);
+        }
+    });
+
     chan->onSubscribe([this](std::unique_ptr<server::MonitorSetupOp> &&setup) {
         Guard G(lock_);
 
@@ -131,6 +142,7 @@ Value serializeCertsTable(sqlite3 *certs_db,
         members_arr[i]["version_major"] = members[i].version_major;
         members_arr[i]["version_minor"] = members[i].version_minor;
         members_arr[i]["version_patch"] = members[i].version_patch;
+        members_arr[i]["connected"] = members[i].connected;
     }
     val["members"] = members_arr.freeze();
 
@@ -183,7 +195,7 @@ ClusterSyncPublisher::ClusterSyncPublisher(const std::string &node_id,
     , cert_auth_pkey_(cert_auth_pkey)
     , status_update_lock_(status_update_lock)
     , sync_source_(std::make_shared<SyncSource>(sync_pv_name_, *this))
-    , members_({{node_id, sync_pv_name_, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION}})
+    , members_({{node_id, sync_pv_name_, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION, true}})
 {}
 
 void ClusterSyncPublisher::appendToLog(CertUpdate update) {
@@ -270,6 +282,7 @@ void ClusterSyncPublisher::sendToSubscriber(SubscriberState &sub) {
         members_arr[i]["version_major"] = members_[i].version_major;
         members_arr[i]["version_minor"] = members_[i].version_minor;
         members_arr[i]["version_patch"] = members_[i].version_patch;
+        members_arr[i]["connected"] = members_[i].connected;
     }
     val["members"] = members_arr.freeze();
 
@@ -303,7 +316,7 @@ void ClusterSyncPublisher::sendToSubscriber(SubscriberState &sub) {
 }
 
 void ClusterSyncPublisher::publishCertChange(int64_t serial) {
-    if (sync_ingestion_in_progress.load())
+    if (!enabled_ || sync_ingestion_in_progress.load())
         return;
 
     Guard G(status_update_lock_);
@@ -367,7 +380,7 @@ void ClusterSyncPublisher::publishSnapshot(const std::vector<ClusterMember> &mem
 }
 
 void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, const bool members_changed, const bool certs_changed) {
-    if (sync_ingestion_in_progress.load())
+    if (!enabled_ || sync_ingestion_in_progress.load())
         return;
 
     Guard G(status_update_lock_);
@@ -391,6 +404,91 @@ void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, 
 
 std::string ClusterSyncPublisher::getSyncPvName() const {
     return sync_pv_name_;
+}
+
+void ClusterSyncPublisher::handleForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args) {
+    try {
+        const auto creds = op->credentials();
+        if (!creds->isTLS || creds->method != "x509" || creds->issuer_id != issuer_id_) {
+            op->error("Not authenticated as cluster member");
+            return;
+        }
+
+        auto target_node_id = args["node_id"].as<std::string>();
+        if (target_node_id.empty()) {
+            op->error("Missing node_id");
+            return;
+        }
+
+        if (is_peer_connected && !is_peer_connected(target_node_id)) {
+            op->error("Not connected to target node " + target_node_id);
+            return;
+        }
+
+        auto requester = creds->account;
+        log_info_printf(pvacmscluster, "Accepted forwarding request for node %s from %s\n",
+                        target_node_id.c_str(), requester.c_str());
+
+        forwarding_[target_node_id] = requester;
+
+        publishSnapshot();
+
+        auto resp = TypeDef(TypeCode::Struct, {
+            members::String("status"),
+        }).create();
+        resp["status"] = "accepted";
+        op->reply(resp);
+    } catch (const std::exception &e) {
+        op->error(std::string("Forward request failed: ") + e.what());
+    }
+}
+
+void ClusterSyncPublisher::handleCancelForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args) {
+    try {
+        const auto creds = op->credentials();
+        if (!creds->isTLS || creds->method != "x509" || creds->issuer_id != issuer_id_) {
+            op->error("Not authenticated as cluster member");
+            return;
+        }
+
+        auto target_node_id = args["node_id"].as<std::string>();
+        if (target_node_id.empty()) {
+            op->error("Missing node_id");
+            return;
+        }
+
+        auto it = forwarding_.find(target_node_id);
+        if (it != forwarding_.end()) {
+            log_info_printf(pvacmscluster, "Cancelled forwarding for node %s\n",
+                            target_node_id.c_str());
+            forwarding_.erase(it);
+        }
+
+        auto resp = TypeDef(TypeCode::Struct, {
+            members::String("status"),
+        }).create();
+        resp["status"] = "cancelled";
+        op->reply(resp);
+    } catch (const std::exception &e) {
+        op->error(std::string("Cancel-forward request failed: ") + e.what());
+    }
+}
+
+void ClusterSyncPublisher::addForwardingRelationship(const std::string &forwardee_node_id,
+                                                      const std::string &requester_node_id) {
+    forwarding_[forwardee_node_id] = requester_node_id;
+}
+
+void ClusterSyncPublisher::removeForwardingRelationship(const std::string &forwardee_node_id) {
+    forwarding_.erase(forwardee_node_id);
+}
+
+bool ClusterSyncPublisher::isForwarding(const std::string &forwardee_node_id) const {
+    return forwarding_.count(forwardee_node_id) > 0;
+}
+
+std::map<std::string, std::string> ClusterSyncPublisher::getForwardingRelationships() const {
+    return forwarding_;
 }
 
 }  // namespace certs

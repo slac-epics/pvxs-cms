@@ -1,10 +1,10 @@
 # PVACMS — PVAccess Certificate Management Service
 
-PVACMS is a distributed Certificate Authority for EPICS PVAccess.  It handles
-certificate provisioning, online certificate status (OCSP-like over PVA),
-revocation, approval workflows, and renewal.  Every PVACMS instance — even a
-single node — participates in a self-organizing cluster that replicates
-certificate operations across all members.
+PVACMS is a Certificate Authority for EPICS PVAccess.  It handles certificate
+provisioning, online certificate status (OCSP-like over PVA), revocation,
+approval workflows, and renewal.  With `--cluster-mode`, PVACMS forms a
+self-organizing cluster that replicates certificate operations across all
+members.  Without it, PVACMS runs as a standalone node.
 
 ## Building
 
@@ -141,6 +141,7 @@ Duration format: `1y 2M 3w 4d 5h 6m 7s` (components are optional).
 
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
+| `--cluster-mode` | — | off | Enable cluster mode for multi-node replication |
 | `--cluster-pv-prefix` | `EPICS_PVACMS_CLUSTER_PV_PREFIX` | `CERT:CLUSTER` | PV prefix for cluster channels |
 | `--cluster-discovery-timeout` | `EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT` | `10` | Join RPC timeout in seconds |
 
@@ -155,16 +156,21 @@ Duration format: `1y 2M 3w 4d 5h 6m 7s` (components are optional).
 
 ## Clustering
 
-PVACMS runs as a self-organizing cluster.  On startup each node attempts to
-join an existing cluster via the CTRL PV, located using standard PVAccess name
-resolution (UDP broadcast, `EPICS_PVA_ADDR_LIST`, or `EPICS_PVA_NAME_SERVERS`).
-No seed lists or manual introductions are needed — all nodes sharing the same
-CA keychain belong to the same cluster.  If no cluster is found, the node
-bootstraps as a sole-node cluster.  Certificate operations performed on any
-node are replicated to all members via the SYNC PV protocol.
+With `--cluster-mode`, PVACMS forms a self-organizing cluster.  On startup each
+node attempts to join an existing cluster via the CTRL PV, located using
+standard PVAccess name resolution (UDP broadcast, `EPICS_PVA_ADDR_LIST`, or
+`EPICS_PVA_NAME_SERVERS`).  No seed lists or manual introductions are needed —
+all nodes sharing the same CA keychain belong to the same cluster.  If no
+cluster is found, the node bootstraps as a sole-node cluster.  Certificate
+operations performed on any node are replicated to all members via the SYNC PV
+protocol.
 
-Full mesh connectivity is required — every node must be able to reach every
-other node.  Data is not relayed transitively between nodes.
+Full mesh connectivity is preferred but not required.  Partial mesh is
+supported via transitive data forwarding — nodes that cannot directly reach all
+peers use connected intermediaries to relay certificate data through the
+standard SYNC protocol.  Bidirectional connectivity is verified at join time;
+if the responding node cannot reach the joiner, it steps aside so a different
+cluster node can handle the join.
 
 See [CLUSTER.md](CLUSTER.md) for the full clustering design.
 
@@ -181,4 +187,4 @@ default ACF defines three access security groups:
 
 ## Version
 
-Current version: **1.0.0** (`configure/CONFIG_PVACMS_VERSION`).
+Current version: **1.1.0** (`configure/CONFIG_PVACMS_VERSION`).

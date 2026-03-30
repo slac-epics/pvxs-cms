@@ -12,6 +12,7 @@
 
 #include <epicsMutex.h>
 #include <epicsGuard.h>
+#include <epicsThread.h>
 #include <epicsTime.h>
 
 #include <pvxs/log.h>
@@ -27,6 +28,24 @@ namespace pvxs {
 namespace certs {
 
 typedef epicsGuard<epicsMutex> Guard;
+
+struct ConnTimerCtx {
+    ClusterDiscovery *discovery;
+    std::string node_id;
+    std::shared_ptr<ClusterDiscovery::PeerConnectivity> state;
+    uint32_t timeout_secs;
+};
+
+void connTimerEntry(void *arg) {
+    auto ctx = std::unique_ptr<ConnTimerCtx>(static_cast<ConnTimerCtx *>(arg));
+    epicsThreadSleep(static_cast<double>(ctx->timeout_secs));
+    if (!ctx->state->cancelled.load()) {
+        int expected = ClusterDiscovery::CONN_PENDING;
+        if (ctx->state->state.compare_exchange_strong(expected, ClusterDiscovery::CONN_UNREACHABLE)) {
+            ctx->discovery->onConnectivityTimeout(ctx->node_id);
+        }
+    }
+}
 
 /**
  * @brief Constructs a ClusterDiscovery instance and registers the membership-change callback.
@@ -71,17 +90,11 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
     };
 }
 
-/**
- * @brief Merges a peer's certificate snapshot into the local SQLite database.
- * @param certs_db SQLite database handle to update.
- * @param status_update_lock Mutex that must be held during database writes.
- * @param snapshot PVAccess Value containing the array of certificate records to merge.
- */
-std::vector<std::string> applySyncSnapshot(sqlite3 *certs_db,
-                                            epicsMutex &status_update_lock,
-                                            const Value &snapshot) {
+SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
+                                   epicsMutex &status_update_lock,
+                                   const Value &snapshot) {
     Guard G(status_update_lock);
-    std::vector<std::string> revoked_skids;
+    SyncMergeResult result;
 
     const auto certs_arr = snapshot["certs"].as<shared_array<const Value>>();
     for (const auto & row : certs_arr) {
@@ -100,8 +113,11 @@ std::vector<std::string> applySyncSnapshot(sqlite3 *certs_db,
             if (!isValidStatusTransition(local_status, remote_status))
                 continue;
 
+            if (local_status == remote_status)
+                continue;
+
             if (remote_status == REVOKED && local_status != REVOKED) {
-                revoked_skids.push_back(row["skid"].as<std::string>());
+                result.revoked_skids.push_back(row["skid"].as<std::string>());
             }
 
             sqlite3_stmt *upd_stmt;
@@ -127,6 +143,7 @@ std::vector<std::string> applySyncSnapshot(sqlite3 *certs_db,
             sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), serial);
             sqlite3_step(upd_stmt);
             sqlite3_finalize(upd_stmt);
+            result.had_changes = true;
         } else {
             sqlite3_finalize(check_stmt);
             sqlite3_stmt *ins_stmt;
@@ -152,13 +169,14 @@ std::vector<std::string> applySyncSnapshot(sqlite3 *certs_db,
             sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":status_date"), row["status_date"].as<int64_t>());
             sqlite3_step(ins_stmt);
             sqlite3_finalize(ins_stmt);
+            result.had_changes = true;
 
             if (remote_status == REVOKED) {
-                revoked_skids.push_back(row["skid"].as<std::string>());
+                result.revoked_skids.push_back(row["skid"].as<std::string>());
             }
         }
     }
-    return revoked_skids;
+    return result;
 }
 
 /**
@@ -218,9 +236,9 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     peer_last_sequence_[peer_node_id] = sequence;
 
     sync_publisher_.sync_ingestion_in_progress.store(true);
-    std::vector<std::string> revoked_skids;
+    SyncMergeResult merge_result;
     try {
-        revoked_skids = applySyncSnapshot(certs_db_, status_update_lock_, val);
+        merge_result = applySyncSnapshot(certs_db_, status_update_lock_, val);
     } catch (...) {
         sync_publisher_.sync_ingestion_in_progress.store(false);
         throw;
@@ -228,12 +246,19 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     sync_publisher_.sync_ingestion_in_progress.store(false);
 
     auto certs_arr = val["certs"].as<shared_array<const Value>>();
-    log_debug_printf(pvacmscluster, "Ingested sync %s from node %s (seq=%lld, %zu certs)\n",
+    log_debug_printf(pvacmscluster, "Ingested sync %s from node %s (seq=%lld, %zu certs, changes=%d)\n",
                      update_type == SYNC_INCREMENTAL ? "incremental" : "snapshot",
-                     peer_node_id.c_str(), static_cast<long long>(sequence), certs_arr.size());
+                     peer_node_id.c_str(), static_cast<long long>(sequence), certs_arr.size(),
+                     merge_result.had_changes);
+
+    if (merge_result.had_changes && sync_publisher_.isForwarding(peer_node_id)) {
+        log_debug_printf(pvacmscluster, "Forwarding: republishing after merge changes from %s\n",
+                         peer_node_id.c_str());
+        sync_publisher_.publishSnapshot();
+    }
 
     if (on_node_cert_revoked) {
-        for (const auto &skid : revoked_skids) {
+        for (const auto &skid : merge_result.revoked_skids) {
             on_node_cert_revoked(skid);
         }
     }
@@ -241,15 +266,19 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     const auto members_arr = val["members"].as<shared_array<const Value>>();
     std::vector<ClusterMember> remote_members;
     for (const auto & m : members_arr) {
-        remote_members.push_back({
-            m["node_id"].as<std::string>(),
-            m["sync_pv"].as<std::string>(),
-            m["version_major"].as<uint32_t>(),
-            m["version_minor"].as<uint32_t>(),
-            m["version_patch"].as<uint32_t>()
-        });
+        ClusterMember member;
+        member.node_id = m["node_id"].as<std::string>();
+        member.sync_pv = m["sync_pv"].as<std::string>();
+        member.version_major = m["version_major"].as<uint32_t>();
+        member.version_minor = m["version_minor"].as<uint32_t>();
+        member.version_patch = m["version_patch"].as<uint32_t>();
+        auto connected_field = m["connected"];
+        member.connected = connected_field.valid() ? connected_field.as<bool>() : true;
+        remote_members.push_back(std::move(member));
     }
     reconcileMembers(peer_node_id, remote_members);
+    peer_sync_members_[peer_node_id] = remote_members;
+    rescanForwarders();
 
     log_debug_printf(pvacmscluster, "Applied sync snapshot from %s (%zu certs)\n",
                      peer_node_id.c_str(), static_cast<size_t>(val["certs"].as<shared_array<const Value> >().size()));
@@ -263,6 +292,9 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
 void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::string &sync_pv) {
     if (node_id == node_id_) return;
     if (subscriptions_.count(node_id)) return;
+
+    auto conn_state = std::make_shared<PeerConnectivity>();
+    peer_connectivity_[node_id] = conn_state;
 
     auto sub = client_ctx_.monitor(sync_pv)
         .maskConnected(false)
@@ -290,6 +322,17 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
                         log_debug_printf(pvacmscluster, "Cached peer cert identity %s for node %s\n",
                                          peer_cert_id.c_str(), node_id.c_str());
                     }
+
+                    auto it = peer_connectivity_.find(node_id);
+                    if (it != peer_connectivity_.end()) {
+                        int prev = it->second->state.exchange(CONN_CONNECTED);
+                        if (prev == CONN_UNREACHABLE) {
+                            log_info_printf(pvacmscluster, "Peer %s now reachable (was unreachable)\n",
+                                            node_id.c_str());
+                            cancelForwarding(node_id);
+                            publishMemberConnectivity();
+                        }
+                    }
                     // continue loop to drain any data queued after Connected
                 } catch (client::Disconnect &) {
                     peer_cert_ids_.erase(node_id);
@@ -306,6 +349,13 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
     subscriptions_[node_id] = std::move(sub);
     log_debug_printf(pvacmscluster, "Subscribed to sync PV %s (node %s)\n",
                      sync_pv.c_str(), node_id.c_str());
+
+    auto *timer_ctx = new ConnTimerCtx{this, node_id, conn_state, discovery_timeout_secs_};
+    epicsThreadCreate("pvacms-conn",
+        epicsThreadPriorityLow,
+        epicsThreadGetStackSize(epicsThreadStackSmall),
+        connTimerEntry,
+        timer_ctx);
 }
 
 /**
@@ -316,6 +366,20 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
     peer_cert_ids_.erase(peer_node_id);
     peer_last_sequence_.erase(peer_node_id);
     subscriptions_.erase(peer_node_id);
+
+    auto conn_it = peer_connectivity_.find(peer_node_id);
+    if (conn_it != peer_connectivity_.end()) {
+        conn_it->second->cancelled.store(true);
+        peer_connectivity_.erase(conn_it);
+    }
+
+    if (sync_publisher_.isForwarding(peer_node_id)) {
+        log_info_printf(pvacmscluster, "Forwardee %s disconnected, stopping forwarding\n",
+                        peer_node_id.c_str());
+        sync_publisher_.removeForwardingRelationship(peer_node_id);
+        publishMemberConnectivity();
+    }
+
     controller_.removeMember(peer_node_id);
     log_info_printf(pvacmscluster, "Removed disconnected member %s\n", peer_node_id.c_str());
 
@@ -388,6 +452,12 @@ void ClusterDiscovery::doRejoin() {
     peer_last_sequence_.clear();
     subscriptions_.clear();
 
+    for (auto &kv : peer_connectivity_)
+        kv.second->cancelled.store(true);
+    peer_connectivity_.clear();
+    active_forwarding_.clear();
+    peer_sync_members_.clear();
+
     controller_.initAsSoleNode(node_id_, sync_publisher_.getSyncPvName());
     sync_publisher_.publishSnapshot();
 
@@ -411,10 +481,11 @@ void ClusterDiscovery::doRejoin() {
  * @return true if the join handshake succeeded and the cluster was joined; false otherwise.
  */
 ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
+    static constexpr int kMaxBidiRetries = 3;
     auto ctrl_pv_name = pv_prefix_ + ":CTRL:" + issuer_id_ + ":" + node_id_;
     auto sync_pv_name = sync_publisher_.getSyncPvName();
 
-    // Generate cryptographic nonce for replay protection
+    for (int bidi_attempt = 0; bidi_attempt <= kMaxBidiRetries; bidi_attempt++) {
     shared_array<uint8_t> nonce(16);
     if (RAND_bytes(nonce.data(), 16) != 1)
         throw std::runtime_error("Failed to generate nonce");
@@ -477,7 +548,8 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
                 m["sync_pv"].as<std::string>(),
                 m["version_major"].as<uint32_t>(),
                 m["version_minor"].as<uint32_t>(),
-                m["version_patch"].as<uint32_t>()
+                m["version_patch"].as<uint32_t>(),
+                true
             });
         }
 
@@ -494,9 +566,149 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
             log_err_printf(pvacmscluster, "Join rejected: %s\n", msg.c_str());
             return JoinResult::Revoked;
         }
+        if (msg.find("Bidirectional connectivity") != std::string::npos &&
+            bidi_attempt < kMaxBidiRetries) {
+            log_info_printf(pvacmscluster,
+                "Join rejected (bidi check), retry %d/%d for alternate responder...\n",
+                bidi_attempt + 1, kMaxBidiRetries);
+            epicsThreadSleep(1.0);
+            continue;
+        }
         log_warn_printf(pvacmscluster, "Join RPC failed: %s\n", e.what());
         return JoinResult::NotFound;
     }
+    }
+    return JoinResult::NotFound;
+}
+
+void ClusterDiscovery::onConnectivityTimeout(const std::string &node_id) {
+    log_warn_printf(pvacmscluster, "Peer %s unreachable after %u second timeout\n",
+                    node_id.c_str(), discovery_timeout_secs_);
+    publishMemberConnectivity();
+    seekForwarder(node_id);
+}
+
+void ClusterDiscovery::seekForwarder(const std::string &unreachable_node_id) {
+    if (active_forwarding_.count(unreachable_node_id))
+        return;
+
+    for (const auto &peer : peer_sync_members_) {
+        if (peer.first == unreachable_node_id)
+            continue;
+        auto conn_it = peer_connectivity_.find(peer.first);
+        if (conn_it == peer_connectivity_.end() || conn_it->second->state.load() != CONN_CONNECTED)
+            continue;
+
+        for (const auto &m : peer.second) {
+            if (m.node_id == unreachable_node_id && m.connected) {
+                log_info_printf(pvacmscluster,
+                    "Requesting forwarding of %s via intermediary %s\n",
+                    unreachable_node_id.c_str(), peer.first.c_str());
+
+                auto req = TypeDef(TypeCode::Struct, {
+                    members::String("operation"),
+                    members::String("node_id"),
+                }).create();
+                req["operation"] = "forward";
+                req["node_id"] = unreachable_node_id;
+
+                std::string intermediary_sync_pv;
+                for (const auto &pm : peer.second) {
+                    if (pm.node_id == peer.first) {
+                        intermediary_sync_pv = pm.sync_pv;
+                        break;
+                    }
+                }
+                if (intermediary_sync_pv.empty()) {
+                    auto subs_it = subscriptions_.find(peer.first);
+                    if (subs_it == subscriptions_.end())
+                        continue;
+                    auto members = controller_.getMembers();
+                    for (const auto &cm : members) {
+                        if (cm.node_id == peer.first) {
+                            intermediary_sync_pv = cm.sync_pv;
+                            break;
+                        }
+                    }
+                }
+                if (intermediary_sync_pv.empty())
+                    continue;
+
+                try {
+                    client_ctx_.rpc(intermediary_sync_pv, req)
+                        .exec()
+                        ->wait(5.0);
+                    active_forwarding_[unreachable_node_id] = {peer.first, intermediary_sync_pv};
+                    log_info_printf(pvacmscluster,
+                        "Forwarding of %s via %s established\n",
+                        unreachable_node_id.c_str(), peer.first.c_str());
+                    return;
+                } catch (const std::exception &e) {
+                    log_warn_printf(pvacmscluster,
+                        "Forward request to %s for %s failed: %s\n",
+                        peer.first.c_str(), unreachable_node_id.c_str(), e.what());
+                }
+            }
+        }
+    }
+
+    log_warn_printf(pvacmscluster, "No intermediary available for unreachable peer %s\n",
+                    unreachable_node_id.c_str());
+}
+
+void ClusterDiscovery::cancelForwarding(const std::string &node_id) {
+    auto it = active_forwarding_.find(node_id);
+    if (it == active_forwarding_.end())
+        return;
+
+    log_info_printf(pvacmscluster, "Cancelling forwarding of %s via %s (direct connectivity restored)\n",
+                    node_id.c_str(), it->second.intermediary_node_id.c_str());
+
+    auto req = TypeDef(TypeCode::Struct, {
+        members::String("operation"),
+        members::String("node_id"),
+    }).create();
+    req["operation"] = "cancel-forward";
+    req["node_id"] = node_id;
+
+    try {
+        client_ctx_.rpc(it->second.intermediary_sync_pv, req)
+            .exec()
+            ->wait(5.0);
+    } catch (const std::exception &e) {
+        log_warn_printf(pvacmscluster, "Cancel-forward RPC to %s failed: %s\n",
+                        it->second.intermediary_node_id.c_str(), e.what());
+    }
+    active_forwarding_.erase(it);
+}
+
+void ClusterDiscovery::rescanForwarders() {
+    for (auto &conn_kv : peer_connectivity_) {
+        if (conn_kv.second->state.load() != CONN_UNREACHABLE)
+            continue;
+        if (active_forwarding_.count(conn_kv.first))
+            continue;
+        seekForwarder(conn_kv.first);
+    }
+}
+
+bool ClusterDiscovery::isPeerConnected(const std::string &node_id) const {
+    auto it = peer_connectivity_.find(node_id);
+    return it != peer_connectivity_.end() && it->second->state.load() == CONN_CONNECTED;
+}
+
+void ClusterDiscovery::publishMemberConnectivity() {
+    auto members = controller_.getMembers();
+    for (auto &m : members) {
+        if (m.node_id == node_id_) {
+            m.connected = true;
+        } else {
+            auto it = peer_connectivity_.find(m.node_id);
+            m.connected = (it != peer_connectivity_.end() &&
+                           it->second->state.load() == CONN_CONNECTED);
+        }
+    }
+    sync_publisher_.publishSnapshot(members);
 }
 
 }  // namespace certs

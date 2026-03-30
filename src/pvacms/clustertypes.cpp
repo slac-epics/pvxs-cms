@@ -45,6 +45,7 @@ Value makeClusterSyncValue() {
             UInt32("version_major"),
             UInt32("version_minor"),
             UInt32("version_patch"),
+            Bool("connected"),
         }),
         StructA("certs", {
             Int64("serial"),

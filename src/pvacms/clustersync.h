@@ -108,6 +108,7 @@ struct ClusterMember {
     uint32_t version_major;
     uint32_t version_minor;
     uint32_t version_patch;
+    bool connected;  ///< Whether this node has an active subscription to the peer.
 
     /**
      * @brief Compares two ClusterMember instances for equality.
@@ -119,7 +120,8 @@ struct ClusterMember {
         return node_id == o.node_id && sync_pv == o.sync_pv &&
                version_major == o.version_major &&
                version_minor == o.version_minor &&
-               version_patch == o.version_patch;
+               version_patch == o.version_patch &&
+               connected == o.connected;
     }
 
     /**
@@ -265,19 +267,22 @@ public:
      * When true, @ref doPublish will skip publishing to avoid re-entrancy conflicts
      * while processing a snapshot received from a peer node.
      */
+    bool enabled_{false};
+    void setEnabled(bool enabled) { enabled_ = enabled; }
+    bool isEnabled() const { return enabled_; }
+
     std::atomic<bool> sync_ingestion_in_progress{false};
 
-    /**
-     * @brief Appends a certificate change to the update log and dispatches to subscribers.
-     *
-     * Assigns the next monotonic sequence number, bounds the log, marks
-     * fallen-behind subscribers for full resync, and triggers per-subscriber dispatch.
-     *
-     * @param update Certificate change data (sequence field is set internally).
-     */
     void appendToLog(CertUpdate update);
 
     static constexpr size_t kDefaultMaxLogSize = 10000;
+
+    void addForwardingRelationship(const std::string &forwardee_node_id, const std::string &requester_node_id);
+    void removeForwardingRelationship(const std::string &forwardee_node_id);
+    bool isForwarding(const std::string &forwardee_node_id) const;
+    std::map<std::string, std::string> getForwardingRelationships() const;
+
+    std::function<bool(const std::string &node_id)> is_peer_connected;
 
 private:
     std::string node_id_;
@@ -296,6 +301,8 @@ private:
     int64_t next_sequence_{1};
     size_t max_log_size_{kDefaultMaxLogSize};
 
+    std::map<std::string, std::string> forwarding_;
+
     void dispatchToSubscribers();
     void doPublish(const std::vector<ClusterMember> &members,
                    bool members_changed,
@@ -303,6 +310,8 @@ private:
 
     friend struct SyncSource;
     void sendToSubscriber(SubscriberState &sub);
+    void handleForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args);
+    void handleCancelForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args);
 };
 
 /**

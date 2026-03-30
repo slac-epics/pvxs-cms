@@ -338,12 +338,13 @@ split should still be able to obtain a certificate from a reachable node.  The
 deterministic conflict resolution rules (Section 4) ensure that all nodes
 converge to the same state once full mesh connectivity is restored.
 
-**Important**: PVACMS requires full mesh connectivity between all cluster nodes
-for complete data replication.  Each node subscribes directly to all peers —
-data is not relayed transitively.  During a partial network split where some
-nodes can reach each other but not all, each node continues issuing
-certificates independently but cert changes only propagate along connected
-paths.  Convergence is guaranteed once full connectivity is restored.
+**Important**: PVACMS prefers full mesh connectivity but supports partial mesh
+via transitive data forwarding (see Section 7).  Each node subscribes directly
+to all peers.  When a peer is unreachable, a connected intermediary relays that
+peer's data through normal SYNC republish.  During a partial network split,
+each node continues issuing certificates independently and cert data propagates
+along connected paths — including forwarded paths.  Convergence is guaranteed
+once connectivity (direct or forwarded) covers all peers.
 
 This is the same tradeoff made by:
 - **Cassandra** (AP system — availability over consistency)
@@ -426,12 +427,7 @@ Key paths:
 
 ### Industry Patterns
 
-[**CRDTs**](https://hal.inria.fr/inria-00555588/document) (Conflict-free
-Replicated Data Types; Shapiro et al., 2011) provide mathematically guaranteed
-conflict-free merging through commutative, associative, and idempotent
-operations over a join-semilattice.  [Riak](https://docs.riak.com/riak/kv/latest/developing/data-types/index.html)
-implements CRDTs as built-in data types (G-Counters, PN-Counters, OR-Sets,
-LWW-Registers).
+[**CRDTs**](https://hal.inria.fr/inria-00555588/document) (Conflict-free Replicated Data Types; Shapiro et al., 2011) provide mathematically guaranteed conflict-free merging through commutative, associative, and idempotent operations over a join-semilattice.  [Riak](https://docs.riak.com/riak/kv/latest/developing/data-types/index.html) implements CRDTs as built-in data types (G-Counters, PN-Counters, OR-Sets, LWW-Registers).
 
 **Last-Writer-Wins Register (LWW-Register)** resolves conflicts by keeping
 the value with the highest timestamp.  Cassandra uses this as its default
@@ -783,29 +779,31 @@ This is functionally identical to:
 
 ---
 
-## 9. Always-On Clustering (Cluster of One)
+## 9. Opt-in Clustering
 
 ### PVACMS Approach
 
-Clustering is not optional.  A single-node deployment is a cluster of one.  The
-CTRL and SYNC PVs are always present, and the full cluster protocol runs even
-with no peers.  This eliminates conditional code paths ("if clustering enabled").
+Cluster mode is activated with the `--cluster-mode` flag.  Without it, PVACMS
+runs as a standalone node — no SYNC/CTRL PVs are published, no peer discovery
+occurs, and all publish operations are no-ops.  When enabled, a single-node
+deployment is a cluster of one: CTRL and SYNC PVs are present and the full
+cluster protocol runs even with no peers.
 
 ### Industry Precedent
 
-This follows the principle of **uniform architecture** used by several
-production systems:
+Most production distributed systems offer clustering as an opt-in mode:
 
-- **CockroachDB**: a single-node deployment runs the full Raft protocol with a
-  single-node Raft group.  The architecture is identical regardless of scale.
-- **etcd**: a single-node etcd cluster runs Raft with a quorum of one.
-- **Redis Cluster**: can operate in cluster mode with a single master, though
-  this is uncommon in practice.
-- **Consul**: a single-server deployment runs Raft with a quorum of one,
-  using the same protocol as a multi-server cluster.
+- **Redis**: standard mode is standalone; `cluster-enabled yes` activates the
+  Cluster Bus, gossip, and slot management.
+- **CockroachDB**: can run as a single-node without `--join` peers, but
+  multi-node requires explicit join addresses.
+- **Consul**: a single-server deployment runs Raft with a quorum of one, using
+  the same protocol as a multi-server cluster.
 
-The benefit is elimination of the "works in dev but fails in prod" class of
-bugs where clustering code is untested in single-node development environments.
+PVACMS follows the Redis model — clustering is an explicit operational choice
+rather than a default.  This keeps standalone deployments simple while
+preserving the uniform architecture (same code paths) when clustering is
+enabled.
 
 ---
 
@@ -828,6 +826,63 @@ different minor versions coexist.
   backward compatibility requirements.
 - **Redis Cluster**: `configEpoch` serves as an implicit version for cluster
   state.  Higher epoch wins during configuration conflicts.
+
+---
+
+## 11. Transitive Data Forwarding
+
+### PVACMS Approach
+
+When full mesh connectivity is unavailable, PVACMS uses transitive data
+forwarding.  A node that cannot reach a peer asks a connected intermediary to
+relay that peer's data.  The forwarding uses the existing SYNC republish path —
+no separate forwarding protocol, no origin tagging, no dual signatures.
+
+The intermediary merges the unreachable peer's cert data into its own database
+via the existing `applySyncSnapshot`, then calls `publishSnapshot()`.  All
+subscribers to the intermediary's SYNC PV — including the requester — receive
+the data through the normal path.  The idempotent merge on receivers means
+nodes that already have the data simply ignore it.
+
+Feedback prevention is critical: the intermediary only republishes when
+`applySyncSnapshot` produces actual DB changes (new rows or status
+transitions).  If the merge is a no-op (all data already present), no publish
+occurs.  This prevents: A publishes → C merges (change) → C publishes → A
+merges (no change) → stops.
+
+### Design Rationale
+
+**Forwarding via SYNC republish (not a separate path)**: all peers already
+subscribe to each other's SYNC PVs.  The intermediary's SYNC already contains
+all certs in its DB — including those merged from the unreachable peer.  No new
+protocol fields, no new verification logic, no new code path.
+
+**Connectivity status is per-node**: each node's SYNC membership reports its
+own connectivity to each peer.  A peer's `connected: false` does not mean the
+local node can't reach that peer — different nodes have different network
+paths.  Every node attempts direct subscription regardless.
+
+**Bidirectional check at join time with step-aside retry**: PVAccess
+connectivity is not necessarily symmetric.  A node behind a one-way gateway
+could join a cluster that cannot subscribe to its data.  The 5-second test
+subscription catches this at join time.
+
+In a partial-mesh cluster, any node may answer the join RPC — including one
+that cannot reach the joiner.  To handle this, a node that fails the bidi check
+records the joiner's node_id in a TTL cache (60 seconds) and stops claiming
+that joiner's discovery PV in subsequent PVA searches.  The joiner retries (up
+to 3 times, 1-second delay), and on the next search a different cluster node
+responds — one that may have bidirectional connectivity.  This is analogous to
+DNS round-robin with health-check exclusion: unhealthy backends stop answering
+so the client naturally reaches a healthy one.
+
+### Industry Precedent
+
+Cassandra uses coordinator-based routing where any node can serve as
+coordinator for data it doesn't own.  PVACMS forwarding is simpler — it
+leverages the existing full-database publish rather than introducing a routing
+layer.  The approach is closer to BGP route reflection where a designated
+reflector redistributes routes between peers that cannot communicate directly.
 
 ---
 
@@ -855,25 +910,29 @@ different minor versions coexist.
 | Semver protocol version | Versioned wire protocol | Kubernetes API versioning, Cassandra schema versioning |
 | `sync_ingestion_in_progress` flag | Re-entrancy guard / loop prevention | Database trigger suppression, event loop de-duplication |
 | Node cert revocation → disconnect | Cryptographic fencing | ZooKeeper session expiry, Raft term fencing |
+| Transitive data forwarding via intermediary | Route reflection / coordinator routing | BGP route reflectors, Cassandra coordinator |
+| Per-member `connected` field in SYNC | Health-annotated membership | Consul health checks, Kubernetes node conditions |
+| Bidirectional connectivity check at join | Symmetric reachability verification | TCP simultaneous open, BGP session establishment |
+| `--cluster-mode` opt-in | Explicit cluster activation | Redis `cluster-enabled`, CockroachDB `--join` |
 
 ---
 
 ## References
 
 ### Papers
-- Das, A., Gupta, I., & Motivala, A. (2002). *SWIM: Scalable Weakly-consistent
-  Infection-style Process Group Membership Protocol.* IEEE DSN.
-- Ongaro, D. & Ousterhout, J. (2014). *In Search of an Understandable Consensus
-  Algorithm (Extended Version).* Stanford University.
-- Hayashibara, N., Defago, X., Yared, R., & Katayama, T. (2004). *The φ Accrual
-  Failure Detector.* IEEE SRDS.
-- Candea, G. & Fox, A. (2001). *Crash-Only Software.* HotOS IX.
-- Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011). *A
-  comprehensive study of Convergent and Commutative Replicated Data Types.*
+- Das, A., Gupta, I., & Motivala, A. (2002). [*SWIM: Scalable Weakly-consistent
+  Infection-style Process Group Membership Protocol.*](https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf) IEEE DSN.
+- Ongaro, D. & Ousterhout, J. (2014). [*In Search of an Understandable Consensus
+  Algorithm (Extended Version).*](https://raft.github.io/raft.pdf) Stanford University.
+- Hayashibara, N., Defago, X., Yared, R., & Katayama, T. (2004). [*The φ Accrual
+  Failure Detector.*](https://doi.org/10.1109/RELDIS.2004.1353004) IEEE SRDS.
+- Candea, G. & Fox, A. (2003). [*Crash-Only Software.*](https://www.usenix.org/legacy/events/hotos03/tech/full_papers/candea/candea.pdf) HotOS IX.
+- Shapiro, M., Preguiça, N., Baquero, C., & Zawirski, M. (2011). [*A
+  comprehensive study of Convergent and Commutative Replicated Data Types.*](https://hal.inria.fr/inria-00555588/document)
   INRIA Research Report.
-- DeCandia, G. et al. (2007). *Dynamo: Amazon's Highly Available Key-value
-  Store.* ACM SOSP.
-- Brewer, E. (2000). *Towards Robust Distributed Systems.* ACM PODC Keynote
+- DeCandia, G. et al. (2007). [*Dynamo: Amazon's Highly Available Key-value
+  Store.*](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf) ACM SOSP.
+- Brewer, E. (2000). [*Towards Robust Distributed Systems.*](https://people.eecs.berkeley.edu/~brewer/cs262b-2004/PODC-keynote.pdf) ACM PODC Keynote
   (CAP Theorem).
 
 ### System Documentation

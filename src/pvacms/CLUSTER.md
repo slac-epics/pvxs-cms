@@ -2,25 +2,36 @@
 
 ## Overview
 
-PVACMS runs as an always-on, auto-scaling cluster using PVAccess (PVA) as the
-communication protocol.  Clustering is not optional - every PVACMS instance
-participates in a cluster, even if it is the sole node.  All nodes in a cluster
-share the same Certificate Authority (CA) identity (`issuer_id`) and
-independently serve certificate operations (create, revoke, approve, renew).
+PVACMS supports multi-node clustering using PVAccess (PVA) as the
+communication protocol.  Cluster mode is enabled with `--cluster-mode`.  When
+enabled, every PVACMS instance participates in a cluster — even if it is the
+sole node.  Without `--cluster-mode`, the node operates standalone and does not
+publish SYNC/CTRL PVs or attempt peer discovery.  All nodes in a cluster share
+the same Certificate Authority (CA) identity (`issuer_id`) and independently
+serve certificate operations (create, revoke, approve, renew).
 
 ### Network Requirements
 
-PVACMS requires **full mesh connectivity** between all cluster nodes.  Every
-node must be able to reach every other node's SYNC PV.  Each node subscribes
-directly to all peers — data is not relayed through intermediaries.
+PVACMS **prefers full mesh connectivity** between all cluster nodes, but
+supports **partial mesh** via transitive data forwarding.  Each node subscribes
+directly to all peers.  When a subscription does not connect within
+`discovery_timeout` seconds, the peer is marked unreachable and the node
+requests an intermediary to forward that peer's data.
 
-If node B cannot reach node C, B's subscription to C keeps searching
-indefinitely (no crash, no disconnect loop), but B silently misses C's
-certificate changes.  There is no transitive data flow: A receiving B's updates
-does not cause A to republish them on A's own SYNC PV.
+Forwarding uses the existing SYNC republish path — the intermediary merges the
+unreachable peer's data into its own database and republishes via normal
+`publishSnapshot()`.  No special forwarding protocol or origin tagging is
+needed.  The intermediary only republishes when `applySyncSnapshot` produces
+actual database changes, preventing feedback loops between nodes.
 
-This is the same requirement as Redis Cluster (all nodes must reach all other
-nodes on the Cluster Bus) and Cassandra (all nodes must participate in gossip).
+At join time, the CTRL PV handler verifies bidirectional connectivity by
+creating a 5-second test subscription to the joiner's SYNC PV.  If the
+subscription does not connect, the join is rejected and the responding node
+records the joiner in a bidi-failed cache (60-second TTL).  While cached, that
+node will not claim the joiner's discovery PV in subsequent searches, allowing
+a different cluster node to respond instead.  The joiner retries up to 3 times
+with a 1-second delay between attempts.  If no cluster node can establish
+bidirectional connectivity, the joiner remains a sole-node cluster.
 
 The cluster uses two PV channels per cluster:
 
@@ -104,6 +115,9 @@ The join handshake is a single RPC round-trip on the CTRL PV:
      version")
    - Verifies the signature against the CA public key
    - Checks the nonce is present
+   - Verifies bidirectional connectivity (5-second test subscription to the
+     joiner's SYNC PV).  On failure, the joiner's node_id is added to a
+     bidi-failed cache so this node steps aside on subsequent searches.
    - Adds the joiner to the membership list
    - Constructs a `JoinResponse` containing:
       - `version_major`, `version_minor`, `version_patch`, `issuer_id`,
@@ -136,7 +150,7 @@ A sync update contains:
 - `update_type` - `Int32`: `0` = incremental, `1` = full snapshot
 - `members[]` - the node's current view of cluster membership (each member
   carries `node_id`, `sync_pv`, `version_major`, `version_minor`,
-  `version_patch`)
+  `version_patch`, `connected`)
 - `certs[]` - changed certificates (incremental) or the full database (snapshot)
 - `signature` - ECDSA signature over the encoded payload
 
@@ -223,19 +237,49 @@ If a previously-disconnected node comes back:
    the membership list (covers the case where a rejoin arrives before the
    disconnect was processed).
 
+### Forwarding Protocol
+
+When a node marks a peer as unreachable (connectivity timeout), it scans the
+SYNC membership snapshots of its connected peers for one that reports
+`connected: true` for the unreachable node.  If found, it sends a `forward`
+RPC to that intermediary's SYNC PV with the unreachable node's `node_id`.
+
+The intermediary validates the request (TLS x509 cluster CA auth, confirms it
+is connected to the target) and begins two-phase forwarding:
+
+1. **Full sync** — immediate `publishSnapshot()` including all certs in the
+   intermediary's database (which includes data from the unreachable peer).
+2. **Incremental** — on each subsequent SYNC update from the unreachable peer,
+   the intermediary calls `publishSnapshot()` only if `applySyncSnapshot`
+   produced actual DB changes.
+
+When direct connectivity is restored (the subscription fires `Connected`), the
+requester sends a `cancel-forward` RPC to the intermediary and resumes direct
+subscription.
+
+SYNC membership entries include a `connected` boolean field per member.  This
+is per-node state — a peer's `connected: false` reflects **that peer's**
+connectivity, not the local node's.  Nodes always attempt direct subscription
+to all members regardless of peer-reported connectivity.
+
 ## Design Decisions
 
-### Always-on Clustering
+### Opt-in Clustering
 
-Clustering is not opt-in.  A single-node deployment is simply a cluster of one.
-This eliminates conditional code paths and ensures the CTRL/SYNC PVs are always
-available.
+Cluster mode is enabled with `--cluster-mode`.  Without the flag, PVACMS
+operates as a standalone node: the `ClusterSyncPublisher` is created but
+disabled (`enabled_ = false`), no SYNC/CTRL sources are registered with the
+server, and no peer discovery or join is attempted.  All publish operations
+(`publishCertChange`, `publishSnapshot`) return immediately when disabled.
+
+When enabled, a single-node deployment is simply a cluster of one — the full
+cluster protocol runs even with no peers.
 
 ### Protocol Versioning
 
 All cluster messages (CTRL PV, JoinRequest, JoinResponse) carry a semver-style
 version as three `uint32` fields: `version_major`, `version_minor`,
-`version_patch`.  Currently version `1.0.0`.
+`version_patch`.  Currently version `1.1.0`.
 
 **Compatibility rule**: The existing node rejects join requests where
 `version_major` does not equal 1.  Minor and patch versions are informational
@@ -524,6 +568,7 @@ subscribers that fall behind the bounded update log.
 
 | CLI Option                    | Env Var                                  | Default        | Description                                                |
 |-------------------------------|------------------------------------------|----------------|------------------------------------------------------------|
+| `--cluster-mode`              | —                                        | off            | Enable cluster mode for multi-node replication             |
 | `--cluster-pv-prefix`         | `EPICS_PVACMS_CLUSTER_PV_PREFIX`         | `CERT:CLUSTER` | Prefix for cluster PV names                                |
 | `--cluster-discovery-timeout` | `EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT` | `10`           | Seconds to wait for cluster discovery before bootstrapping |
 

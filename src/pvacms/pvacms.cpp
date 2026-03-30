@@ -18,8 +18,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <chrono>
 #include <exception>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <list>
 #include <locale>
@@ -3000,6 +3002,9 @@ int readParameters(int argc,
     app.add_option("--cluster-pv-prefix",
                    config.cluster_pv_prefix,
                    "Prefix for cluster PV names.  Default `CERT:CLUSTER`");
+    app.add_flag("--cluster-mode",
+                config.cluster_mode,
+                "Enable cluster mode for multi-node replication");
     app.add_option("--cluster-discovery-timeout",
                    config.cluster_discovery_timeout_secs,
                    "Seconds to wait for cluster discovery before bootstrapping.  Default 10");
@@ -3090,6 +3095,7 @@ int readParameters(int argc,
             << "        --status-validity-mins               Set Status Validity Time in Minutes\n"
             << "        --cert-pv-prefix <cert_pv_prefix>    Specifies the prefix for all PVs published by this "
                "PVACMS.  Default `CERT`\n"
+            << "        --cluster-mode                        Enable cluster mode for multi-node replication\n"
             << "        --cluster-pv-prefix <prefix>         Prefix for cluster PV names. Default `CERT:CLUSTER`\n"
             << "        --cluster-discovery-timeout <secs>   Seconds to wait for cluster discovery. Default 10\n"
             << "  (-v | --verbose)                           Verbose mode\n"
@@ -3504,8 +3510,11 @@ int main(int argc, char *argv[]) {
         wildcard_source->add(getCertStatusPv(config.getCertPvPrefix(), our_issuer_id), status_pv);
         pva_server.addSource("__wildcard", wildcard_source);
 
-        pva_server.addSource("syncsrc", cluster_sync.getSource());
-        pva_server.addSource("ctrlsrc", cluster_ctrl.getSource());
+        if (config.cluster_mode) {
+            cluster_sync.setEnabled(true);
+            pva_server.addSource("syncsrc", cluster_sync.getSource());
+            pva_server.addSource("ctrlsrc", cluster_ctrl.getSource());
+        }
 
         pva_server.addPV(getCertCreatePv(config.getCertPvPrefix()), create_pv)
             .addPV(getCertCreatePv(config.getCertPvPrefix(), our_issuer_id), create_pv)
@@ -3516,53 +3525,75 @@ int main(int argc, char *argv[]) {
         root_pv.open(root_pv_value);
         issuer_pv.open(issuer_pv_value);
 
-        auto cluster_client_config = pva_server.clientConfig();
-        cluster_client_config.tls_keychain_file = config.tls_keychain_file;
-        cluster_client_config.setKeychainPassword(config.getKeychainPassword());
-        auto cluster_client = cluster_client_config.build();
+        std::string cluster_status;
+        std::unique_ptr<ClusterDiscovery> cluster_discovery;
 
-        ClusterDiscovery cluster_discovery(our_node_id, our_issuer_id,
-                                           config.cluster_pv_prefix,
-                                           config.cluster_discovery_timeout_secs,
-                                           certs_db.get(),
-                                           cert_auth_pkey,
-                                           cert_auth_pub_key,
-                                           status_update_lock,
-                                           cluster_sync,
-                                           cluster_ctrl,
-                                           std::move(cluster_client));
+        if (config.cluster_mode) {
+            auto cluster_client_config = pva_server.clientConfig();
+            cluster_client_config.tls_keychain_file = config.tls_keychain_file;
+            cluster_client_config.setKeychainPassword(config.getKeychainPassword());
+            auto cluster_client = cluster_client_config.build();
 
-        check_cms_node_revocation = [&our_node_id, &cluster_ctrl, &cluster_discovery, &cluster_sync, &pva_server](const std::string &skid) {
-            if (skid.size() < 8)
-                return;
-            auto short_skid = skid.substr(0, 8);
-            if (!cluster_ctrl.isCmsNode(skid))
-                return;
-            if (short_skid == our_node_id) {
-                log_err_printf(pvacms, "Own PVACMS certificate has been revoked (SKID: %s), shutting down\n", skid.c_str());
-                // Allow time for the revocation status to propagate to cluster peers
-                // before shutting down. The sync snapshot was published before this
-                // callback fired, but peers need time to receive it.
-                epicsThreadSleep(1.0);
-                pva_server.interrupt();
-                return;
-            }
-            for (const auto &m : cluster_ctrl.getMembers()) {
-                if (m.node_id == short_skid) {
-                    log_err_printf(pvacms, "PVACMS peer certificate revoked, disconnecting peer %s\n", m.node_id.c_str());
-                    // Publish snapshot so the revoked peer receives its REVOKED
-                    // status and can self-shutdown before we tear down the connection.
-                    cluster_sync.publishSnapshot();
+            cluster_ctrl.verify_bidirectional = [cluster_client](const std::string &sync_pv,
+                                                                  uint32_t timeout_secs) mutable -> bool {
+                auto connected = std::make_shared<std::promise<void>>();
+                auto future = connected->get_future();
+                auto sub = cluster_client.monitor(sync_pv)
+                    .maskConnected(false)
+                    .event([connected](pvxs::client::Subscription &sub) {
+                        try {
+                            while (sub.pop()) {}
+                        } catch (pvxs::client::Connected &) {
+                            try { connected->set_value(); } catch (...) {}
+                        } catch (...) {}
+                    })
+                    .exec();
+                return future.wait_for(std::chrono::seconds(timeout_secs)) == std::future_status::ready;
+            };
+
+            cluster_discovery.reset(new ClusterDiscovery(our_node_id, our_issuer_id,
+                                               config.cluster_pv_prefix,
+                                               config.cluster_discovery_timeout_secs,
+                                               certs_db.get(),
+                                               cert_auth_pkey,
+                                               cert_auth_pub_key,
+                                               status_update_lock,
+                                               cluster_sync,
+                                               cluster_ctrl,
+                                               std::move(cluster_client)));
+
+            cluster_sync.is_peer_connected = [&cluster_discovery](const std::string &node_id) -> bool {
+                return cluster_discovery && cluster_discovery->isPeerConnected(node_id);
+            };
+
+            check_cms_node_revocation = [&our_node_id, &cluster_ctrl, &cluster_discovery, &cluster_sync, &pva_server](const std::string &skid) {
+                if (skid.size() < 8)
+                    return;
+                auto short_skid = skid.substr(0, 8);
+                if (!cluster_ctrl.isCmsNode(skid))
+                    return;
+                if (short_skid == our_node_id) {
+                    log_err_printf(pvacms, "Own PVACMS certificate has been revoked (SKID: %s), shutting down\n", skid.c_str());
                     epicsThreadSleep(1.0);
-                    cluster_discovery.handleDisconnect(m.node_id);
+                    pva_server.interrupt();
                     return;
                 }
-            }
-        };
-        cluster_discovery.on_node_cert_revoked = check_cms_node_revocation;
-        cluster_ctrl.is_node_revoked = [&certs_db](const std::string &node_id) {
-            return isNodeCertRevoked(certs_db, node_id);
-        };
+                for (const auto &m : cluster_ctrl.getMembers()) {
+                    if (m.node_id == short_skid) {
+                        log_err_printf(pvacms, "PVACMS peer certificate revoked, disconnecting peer %s\n", m.node_id.c_str());
+                        cluster_sync.publishSnapshot();
+                        epicsThreadSleep(1.0);
+                        if (cluster_discovery)
+                            cluster_discovery->handleDisconnect(m.node_id);
+                        return;
+                    }
+                }
+            };
+            cluster_discovery->on_node_cert_revoked = check_cms_node_revocation;
+            cluster_ctrl.is_node_revoked = [&certs_db](const std::string &node_id) {
+                return isNodeCertRevoked(certs_db, node_id);
+            };
+        }
 
         if (!is_initialising) {
             auto status_tuple = getCertificateStatus(certs_db, our_serial);
@@ -3573,27 +3604,32 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
-        cluster_sync.publishSnapshot();
+        if (config.cluster_mode) {
+            cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
+            cluster_sync.publishSnapshot();
+        }
         pva_server.start();
 
-        std::string cluster_status;
-        if (is_initialising) {
-            log_info_printf(pvacms, "Fresh CA init - bootstrapping as sole cluster node%s", "\n");
-            cluster_status = "Created new cluster";
-        } else {
-            log_info_printf(pvacms, "Attempting to join existing cluster...%s", "\n");
-            auto join_result = cluster_discovery.joinCluster();
-            if (join_result == ClusterDiscovery::JoinResult::Revoked) {
-                log_err_printf(pvacms, "****EXITING****: This node's PVACMS certificate has been revoked by the cluster\n%s", "");
-                return 1;
-            } else if (join_result == ClusterDiscovery::JoinResult::Joined) {
-                cluster_sync.publishSnapshot();
-                cluster_status = "Joined existing cluster";
+        if (config.cluster_mode) {
+            if (is_initialising) {
+                log_info_printf(pvacms, "Fresh CA init - bootstrapping as sole cluster node%s", "\n");
+                cluster_status = "Created new cluster";
             } else {
-                log_info_printf(pvacms, "No existing cluster found - remaining sole node%s", "\n");
-                cluster_status = "Created new cluster (no existing cluster found)";
+                log_info_printf(pvacms, "Attempting to join existing cluster...%s", "\n");
+                auto join_result = cluster_discovery->joinCluster();
+                if (join_result == ClusterDiscovery::JoinResult::Revoked) {
+                    log_err_printf(pvacms, "****EXITING****: This node's PVACMS certificate has been revoked by the cluster\n%s", "");
+                    return 1;
+                } else if (join_result == ClusterDiscovery::JoinResult::Joined) {
+                    cluster_sync.publishSnapshot();
+                    cluster_status = "Joined existing cluster";
+                } else {
+                    log_info_printf(pvacms, "No existing cluster found - remaining sole node%s", "\n");
+                    cluster_status = "Created new cluster (no existing cluster found)";
+                }
             }
+        } else {
+            cluster_status = "Disabled";
         }
 
         // Log the effective config

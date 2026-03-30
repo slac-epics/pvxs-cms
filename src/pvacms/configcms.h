@@ -291,6 +291,7 @@ class ConfigCms final : public Config {
      * Control PV: <prefix>:CTRL:<issuer_id>
      * Sync PVs:   <prefix>:SYNC:<issuer_id>:<node_id>
      */
+    bool cluster_mode{false};
     std::string cluster_pv_prefix = "CERT:CLUSTER";
 
     /**

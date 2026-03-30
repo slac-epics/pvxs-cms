@@ -8,6 +8,8 @@
 
 #include <algorithm>
 
+#include "certstatus.h"
+
 #include <dbBase.h>
 
 #include <pvxs/log.h>
@@ -21,12 +23,32 @@ DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 namespace pvxs {
 namespace certs {
 
+void BidiFailedCache::record(const std::string &node_id) {
+    Guard G(mutex_);
+    entries_[node_id] = std::chrono::steady_clock::now();
+}
+
+bool BidiFailedCache::contains(const std::string &node_id) const {
+    Guard G(mutex_);
+    auto it = entries_.find(node_id);
+    if (it == entries_.end())
+        return false;
+    auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - it->second).count();
+    if (elapsed > kTtlSecs) {
+        const_cast<BidiFailedCache *>(this)->entries_.erase(it);
+        return false;
+    }
+    return true;
+}
+
 ClusterCtrlSource::ClusterCtrlSource(const std::string &ctrl_pv_base_name,
                                      const std::string &own_node_id,
-                                     server::SharedPV &ctrl_pv)
+                                     server::SharedPV &ctrl_pv,
+                                     std::shared_ptr<BidiFailedCache> bidi_failed)
     : ctrl_pv_base_name_(ctrl_pv_base_name)
     , own_node_id_(own_node_id)
     , ctrl_pv_(ctrl_pv)
+    , bidi_failed_(std::move(bidi_failed))
 {}
 
 void ClusterCtrlSource::onSearch(Search &op) {
@@ -39,9 +61,9 @@ void ClusterCtrlSource::onSearch(Search &op) {
             pv.claim();
         } else if (name.size() >= min_discovery_name_size
                    && name.compare(0u, ctrl_pv_prefix.size(), ctrl_pv_prefix) == 0) {
-            // Claim join discovery PVs only for remote joiners to prevent loopback self-join.
             auto joiner_node_id = name.substr(ctrl_pv_prefix.size());
-            if (joiner_node_id != own_node_id_) {
+            if (joiner_node_id != own_node_id_ &&
+                !(bidi_failed_ && bidi_failed_->contains(joiner_node_id))) {
                 pv.claim();
             }
         }
@@ -83,6 +105,7 @@ ClusterController::ClusterController(const std::string &issuer_id,
     , sync_publisher_(sync_publisher)
     , as_cluster_mem_(as_cluster_mem)
     , ctrl_pv_(server::SharedPV::buildReadonly())
+    , bidi_failed_(std::make_shared<BidiFailedCache>())
 {
     setupRpcHandler();
 }
@@ -143,7 +166,23 @@ void ClusterController::setupRpcHandler() {
                 return;
             }
 
-            addMember({joiner_node_id, joiner_sync_pv, req_major, joiner_minor, joiner_patch});
+            if (verify_bidirectional) {
+                static constexpr uint32_t kBidiCheckTimeout = 5;
+                if (!verify_bidirectional(joiner_sync_pv, kBidiCheckTimeout)) {
+                    log_warn_printf(pvacmscluster,
+                        "Join rejected: cannot subscribe to joiner %s SYNC PV %s within %u seconds\n",
+                        joiner_node_id.c_str(), joiner_sync_pv.c_str(), kBidiCheckTimeout);
+                    if (bidi_failed_)
+                        bidi_failed_->record(joiner_node_id);
+                    op->error("Bidirectional connectivity required — "
+                              "this node cannot subscribe to your SYNC PV");
+                    return;
+                }
+                log_debug_printf(pvacmscluster,
+                    "Bidirectional connectivity verified for joiner %s\n", joiner_node_id.c_str());
+            }
+
+            addMember({joiner_node_id, joiner_sync_pv, req_major, joiner_minor, joiner_patch, true});
 
             auto resp = makeJoinResponseValue();
             resp["version_major"] = static_cast<uint32_t>(PVACMS_MAJOR_VERSION);
@@ -184,7 +223,7 @@ void ClusterController::setupRpcHandler() {
  * @param sync_pv  The name of the sync PV this node publishes for state replication.
  */
 void ClusterController::initAsSoleNode(const std::string &node_id, const std::string &sync_pv) {
-    members_ = {{node_id, sync_pv, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION}};
+    members_ = {{node_id, sync_pv, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION, true}};
     rebuildNodeSkids();
     postCtrlValue();
     log_info_printf(pvacmscluster, "Bootstrapped sole-node cluster %s (node %s)\n",
@@ -301,7 +340,7 @@ std::string ClusterController::getCtrlPvName() const {
 }
 
 std::shared_ptr<server::Source> ClusterController::getSource() {
-    return std::make_shared<ClusterCtrlSource>(ctrl_pv_name_, node_id_, ctrl_pv_);
+    return std::make_shared<ClusterCtrlSource>(ctrl_pv_name_, node_id_, ctrl_pv_, bidi_failed_);
 }
 
 void ClusterController::rebuildNodeSkids() {

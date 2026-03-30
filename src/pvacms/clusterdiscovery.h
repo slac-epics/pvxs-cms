@@ -31,6 +31,13 @@ namespace certs {
 /** @brief Manages discovery of and synchronization with peer PVACMS cluster nodes. */
 class ClusterDiscovery {
 public:
+    enum PeerConnState : int { CONN_PENDING = 0, CONN_CONNECTED = 1, CONN_UNREACHABLE = 2 };
+    struct PeerConnectivity {
+        std::atomic<int> state;
+        std::atomic<bool> cancelled;
+        PeerConnectivity() : state(CONN_PENDING), cancelled(false) {}
+    };
+
     /**
      * @brief Constructs a ClusterDiscovery instance and registers the membership-change callback.
      *
@@ -95,6 +102,8 @@ public:
      */
     void rejoinCluster();
 
+    bool isPeerConnected(const std::string &node_id) const;
+
     /** @brief Callback invoked when a certificate belonging to a PVACMS cluster node is revoked.
      *  Receives the full SKID of the revoked certificate. */
     std::function<void(const std::string& skid)> on_node_cert_revoked;
@@ -119,6 +128,22 @@ private:
     std::set<std::string> acknowledged_by_;
     void doRejoin();
     friend void rejoinThreadEntry(void *arg);
+
+    std::map<std::string, std::shared_ptr<PeerConnectivity>> peer_connectivity_;
+    void onConnectivityTimeout(const std::string &node_id);
+    void publishMemberConnectivity();
+    friend void connTimerEntry(void *arg);
+
+    struct ActiveForwarding {
+        std::string intermediary_node_id;
+        std::string intermediary_sync_pv;
+    };
+    std::map<std::string, ActiveForwarding> active_forwarding_;
+    std::map<std::string, std::vector<ClusterMember>> peer_sync_members_;
+    void seekForwarder(const std::string &unreachable_node_id);
+    void cancelForwarding(const std::string &node_id);
+    void rescanForwarders();
+
     std::atomic<int64_t> global_high_water_mark_{0};
     std::map<std::string, int64_t> peer_last_sequence_;
     static constexpr int64_t kClockSkewTolerance = 5;      ///< Maximum allowed clock skew between nodes, in seconds.
@@ -132,16 +157,14 @@ private:
     void handleSyncUpdate(const std::string &peer_node_id, Value &&val);
 };
 
-/**
- * @brief Merges a peer's certificate snapshot into the local SQLite database.
- * @param certs_db SQLite database handle to update.
- * @param status_update_lock Mutex that must be held during database writes.
- * @param snapshot PVAccess Value containing the array of certificate records to merge.
- * @return Full SKIDs of certificates that transitioned to REVOKED status during this merge.
- */
-std::vector<std::string> applySyncSnapshot(sqlite3 *certs_db,
-                                           epicsMutex &status_update_lock,
-                                           const Value &snapshot);
+struct SyncMergeResult {
+    std::vector<std::string> revoked_skids;
+    bool had_changes{false};
+};
+
+SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
+                                  epicsMutex &status_update_lock,
+                                  const Value &snapshot);
 
 }  // namespace certs
 }  // namespace pvxs

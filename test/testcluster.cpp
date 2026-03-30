@@ -1115,11 +1115,11 @@ void testPeerCertRevocationViaSync() {
     insertCertWithSkid(db.get(), 800, peer_skid, VALID, 1500);
 
     auto snapshot = buildSyncWithCertSkid(800, peer_skid, static_cast<int32_t>(REVOKED), 1600);
-    auto revoked_skids = applySyncSnapshot(db.get(), lock, snapshot);
+    auto merge_result = applySyncSnapshot(db.get(), lock, snapshot);
 
-    testOk(revoked_skids.size() == 1, "One cert transitioned to REVOKED");
-    if (!revoked_skids.empty()) {
-        testOk(revoked_skids[0] == peer_skid, "Revoked SKID matches peer");
+    testOk(merge_result.revoked_skids.size() == 1, "One cert transitioned to REVOKED");
+    if (!merge_result.revoked_skids.empty()) {
+        testOk(merge_result.revoked_skids[0] == peer_skid, "Revoked SKID matches peer");
     } else {
         testFail("Expected revoked SKID but got none");
     }
@@ -1141,15 +1141,15 @@ void testOwnCertRevocationViaSync() {
     insertCertWithSkid(db.get(), 900, own_skid, VALID, 1500);
 
     auto snapshot = buildSyncWithCertSkid(900, own_skid, static_cast<int32_t>(REVOKED), 1600);
-    auto revoked_skids = applySyncSnapshot(db.get(), lock, snapshot);
+    auto merge_result = applySyncSnapshot(db.get(), lock, snapshot);
 
-    testOk(revoked_skids.size() == 1, "One cert transitioned to REVOKED");
+    testOk(merge_result.revoked_skids.size() == 1, "One cert transitioned to REVOKED");
 
     auto short_skid = own_skid.substr(0, 8);
     testOk(short_skid == "11223344", "Short SKID prefix extracted correctly");
 
-    if (!revoked_skids.empty()) {
-        testOk(revoked_skids[0].substr(0, 8) == short_skid, "Revoked SKID prefix matches own node_id");
+    if (!merge_result.revoked_skids.empty()) {
+        testOk(merge_result.revoked_skids[0].substr(0, 8) == short_skid, "Revoked SKID prefix matches own node_id");
     } else {
         testFail("Expected revoked SKID but got none");
     }

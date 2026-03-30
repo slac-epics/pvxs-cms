@@ -7,11 +7,16 @@
 #ifndef PVXS_CLUSTERCTRL_H_
 #define PVXS_CLUSTERCTRL_H_
 
+#include <chrono>
 #include <functional>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
+
+#include <epicsMutex.h>
+#include <epicsGuard.h>
 
 #include <asLib.h>
 
@@ -26,10 +31,22 @@ namespace certs {
 
 class ClusterSyncPublisher;
 
+struct BidiFailedCache {
+    static constexpr double kTtlSecs = 60.0;
+
+    void record(const std::string &node_id);
+    bool contains(const std::string &node_id) const;
+
+private:
+    mutable epicsMutex mutex_;
+    std::map<std::string, std::chrono::steady_clock::time_point> entries_;
+};
+
 struct ClusterCtrlSource : public server::Source {
     ClusterCtrlSource(const std::string &ctrl_pv_base_name,
                       const std::string &own_node_id,
-                      server::SharedPV &ctrl_pv);
+                      server::SharedPV &ctrl_pv,
+                      std::shared_ptr<BidiFailedCache> bidi_failed);
 
     void onSearch(Search &op) override;
     void onCreate(std::unique_ptr<server::ChannelControl> &&op) override;
@@ -38,6 +55,7 @@ struct ClusterCtrlSource : public server::Source {
     std::string ctrl_pv_base_name_;
     std::string own_node_id_;
     server::SharedPV &ctrl_pv_;
+    std::shared_ptr<BidiFailedCache> bidi_failed_;
 };
 
 /**
@@ -137,6 +155,10 @@ public:
      *  Returns true if the node's cert is revoked. */
     std::function<bool(const std::string& node_id)> is_node_revoked;
 
+    /** @brief Optional callback to verify bidirectional connectivity to a joiner's SYNC PV.
+     *  Returns true if a test subscription connects within the given timeout. */
+    std::function<bool(const std::string& sync_pv, uint32_t timeout_secs)> verify_bidirectional;
+
 private:
     std::string issuer_id_;
     std::string node_id_;
@@ -150,6 +172,7 @@ private:
     Value prototype_;  // Type prototype from first open() - post() requires matching type
     std::vector<ClusterMember> members_;
     std::set<std::string> cms_node_skids_;  // node_ids (8-char SKID prefixes) of all cluster members
+    std::shared_ptr<BidiFailedCache> bidi_failed_;
 
     void rebuildNodeSkids();
     void postCtrlValue();
