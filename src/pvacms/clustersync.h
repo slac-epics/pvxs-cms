@@ -283,6 +283,7 @@ public:
     std::map<std::string, std::string> getForwardingRelationships() const;
 
     std::function<bool(const std::string &node_id)> is_peer_connected;
+    bool skip_peer_identity_check = false;
 
 private:
     std::string node_id_;
@@ -312,6 +313,7 @@ private:
     void sendToSubscriber(SubscriberState &sub);
     void handleForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args);
     void handleCancelForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args);
+    void handleResyncRpc(std::unique_ptr<server::ExecOp> &&op);
 };
 
 /**

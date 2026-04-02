@@ -58,6 +58,8 @@ void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
             publisher_.handleForwardRpc(std::move(op), std::move(args));
         } else if (operation == "cancel-forward") {
             publisher_.handleCancelForwardRpc(std::move(op), std::move(args));
+        } else if (operation == "resync") {
+            publisher_.handleResyncRpc(std::move(op));
         } else {
             op->error("Unknown operation: " + operation);
         }
@@ -409,7 +411,8 @@ std::string ClusterSyncPublisher::getSyncPvName() const {
 void ClusterSyncPublisher::handleForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args) {
     try {
         const auto creds = op->credentials();
-        if (!creds->isTLS || creds->method != "x509" || creds->issuer_id != issuer_id_) {
+        bool is_tls_cluster_member = creds->isTLS && creds->method == "x509" && creds->issuer_id == issuer_id_;
+        if (!is_tls_cluster_member && !skip_peer_identity_check) {
             op->error("Not authenticated as cluster member");
             return;
         }
@@ -431,13 +434,13 @@ void ClusterSyncPublisher::handleForwardRpc(std::unique_ptr<server::ExecOp> &&op
 
         forwarding_[target_node_id] = requester;
 
-        publishSnapshot();
-
         auto resp = TypeDef(TypeCode::Struct, {
             members::String("status"),
         }).create();
         resp["status"] = "accepted";
         op->reply(resp);
+
+        publishSnapshot();
     } catch (const std::exception &e) {
         op->error(std::string("Forward request failed: ") + e.what());
     }
@@ -446,7 +449,8 @@ void ClusterSyncPublisher::handleForwardRpc(std::unique_ptr<server::ExecOp> &&op
 void ClusterSyncPublisher::handleCancelForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args) {
     try {
         const auto creds = op->credentials();
-        if (!creds->isTLS || creds->method != "x509" || creds->issuer_id != issuer_id_) {
+        bool is_tls_cluster_member = creds->isTLS && creds->method == "x509" && creds->issuer_id == issuer_id_;
+        if (!is_tls_cluster_member && !skip_peer_identity_check) {
             op->error("Not authenticated as cluster member");
             return;
         }
@@ -485,6 +489,28 @@ void ClusterSyncPublisher::removeForwardingRelationship(const std::string &forwa
 
 bool ClusterSyncPublisher::isForwarding(const std::string &forwardee_node_id) const {
     return forwarding_.count(forwardee_node_id) > 0;
+}
+
+void ClusterSyncPublisher::handleResyncRpc(std::unique_ptr<server::ExecOp> &&op) {
+    try {
+        Guard G(sync_source_->lock_);
+        for (auto &kv : sync_source_->subscribers_) {
+            kv.second.needs_full_snapshot = true;
+            kv.second.pending.clear();
+        }
+        dispatchToSubscribers();
+
+        auto resp = TypeDef(TypeCode::Struct, {
+            members::String("status"),
+        }).create();
+        resp["status"] = "resync dispatched";
+        op->reply(resp);
+
+        log_info_printf(pvacmscluster, "Resync requested — dispatched full snapshot to %zu subscribers\n",
+                        sync_source_->subscribers_.size());
+    } catch (const std::exception &e) {
+        op->error(std::string("Resync failed: ") + e.what());
+    }
 }
 
 std::map<std::string, std::string> ClusterSyncPublisher::getForwardingRelationships() const {

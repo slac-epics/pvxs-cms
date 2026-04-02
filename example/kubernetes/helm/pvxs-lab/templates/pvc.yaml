@@ -94,3 +94,108 @@ spec:
       storage: {{ .Values.idm.persistence.dataSize | default "256Mi" | quote }}
 {{- end }}
 
+---
+{{- if .Values.internet.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-internet-pva
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.internet.persistence.storageClassName }}
+  storageClassName: {{ .Values.internet.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.internet.persistence.size | quote }}
+{{- end }}
+
+---
+{{- if .Values.it.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-it-config
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.it.persistence.storageClassName }}
+  storageClassName: {{ .Values.it.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.it.persistence.size | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-it-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.it.persistence.storageClassName }}
+  storageClassName: {{ .Values.it.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.it.persistence.size | quote }}
+{{- end }}
+
+---
+{{- if .Values.ml.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-ml-config
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.ml.persistence.storageClassName }}
+  storageClassName: {{ .Values.ml.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.ml.persistence.size | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-ml-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.ml.persistence.storageClassName }}
+  storageClassName: {{ .Values.ml.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.ml.persistence.dataSize | default "256Mi" | quote }}
+{{- end }}
+
+---
+{{- if .Values.mlIoc.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-ml-ioc-pva
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.mlIoc.persistence.storageClassName }}
+  storageClassName: {{ .Values.mlIoc.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.mlIoc.persistence.size | quote }}
+{{- end }}
+
+---
+{{- if .Values.mlGateway.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-ml-gateway-pva
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.mlGateway.persistence.storageClassName }}
+  storageClassName: {{ .Values.mlGateway.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.mlGateway.persistence.size | quote }}
+{{- end }}

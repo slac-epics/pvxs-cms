@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+data:
+  pvacms.acf: |-
+    UAG(CMS_ADMIN) {admin}
+    UAG(CMS_CLUSTER) {"PVACMS Service"}
+    UAG(CMS_CLUSTER_TCP) {idm}
+    UAG(CMS_GATEWAY) {"gateway"}
+
+    ASG(DEFAULT) {
+        RULE(0,READ)
+        RULE(1,WRITE) {
+            UAG(CMS_ADMIN)
+        }
+    }
+    ASG(CLUSTER) {
+        RULE(0,READ) { UAG(CMS_CLUSTER) METHOD("x509") PROTOCOL(TLS) }
+        RULE(1,WRITE) { UAG(CMS_CLUSTER) METHOD("x509") PROTOCOL(TLS) }
+        RULE(0,READ) { UAG(CMS_CLUSTER_TCP) PROTOCOL(TCP) }
+        RULE(1,WRITE) { UAG(CMS_CLUSTER_TCP) PROTOCOL(TCP) }
+        RULE(0,READ) { UAG(CMS_GATEWAY) METHOD("x509") PROTOCOL(TLS) }
+        RULE(1,WRITE) { UAG(CMS_GATEWAY) METHOD("x509") PROTOCOL(TLS) }
+        RULE(0,READ) { UAG(CMS_GATEWAY) PROTOCOL(TCP) }
+        RULE(1,WRITE) { UAG(CMS_GATEWAY) PROTOCOL(TCP) }
+    }

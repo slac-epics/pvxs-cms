@@ -57,6 +57,7 @@ public:
                      std::string issuer_id,
                      std::string pv_prefix,
                      uint32_t discovery_timeout_secs,
+                     bool skip_peer_identity_check,
                      sqlite3 *certs_db,
                      const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                      const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
@@ -113,6 +114,7 @@ private:
     std::string issuer_id_;
     std::string pv_prefix_;
     uint32_t discovery_timeout_secs_;
+    bool skip_peer_identity_check_;
     sqlite3 *certs_db_;
     const ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     const ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;

@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pvxs-lab.mlIocService" . }}
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.mlIoc.replicas }}
+  selector:
+    matchLabels:
+      app: ml-ioc
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: ml-ioc
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: ml-ioc
+          image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.mlIoc.name "tag" .Values.images.mlIoc.tag) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - name: pva-tcp
+              containerPort: {{ .Values.ports.pvaTcp }}
+              protocol: TCP
+            - name: pva-udp
+              containerPort: {{ .Values.ports.pvaUdp }}
+              protocol: UDP
+            {{- if .Values.ports.exposePvaTls }}
+            - name: pva-tls
+              containerPort: {{ .Values.ports.pvaTls }}
+              protocol: TCP
+            {{- end }}
+          env:
+            - name: EPICS_PVA_AUTO_ADDR_LIST
+              value: "NO"
+            - name: EPICS_PVA_ADDR_LIST
+              value: '{{ include "pvxs-lab.mlService" . }} {{ include "pvxs-lab.mlIocService" . }}'
+            {{- if .Values.mlIoc.debug.enabled }}
+            - name: PVXS_LOG
+              value: {{ .Values.mlIoc.debug.logLevel | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: pva-config
+              mountPath: /home/mlioc/.config/pva/1.5
+      volumes:
+        - name: pva-config
+          {{- if .Values.mlIoc.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pvxs-lab.fullname" . }}-ml-ioc-pva
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

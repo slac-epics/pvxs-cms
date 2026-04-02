@@ -38,3 +38,18 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "pvxs-lab.tstiocService" -}}
 {{ include "pvxs-lab.fullname" . }}-tstioc
 {{- end -}}
+{{- define "pvxs-lab.internetService" -}}
+{{ include "pvxs-lab.fullname" . }}-internet
+{{- end -}}
+{{- define "pvxs-lab.itService" -}}
+{{ include "pvxs-lab.fullname" . }}-it
+{{- end -}}
+{{- define "pvxs-lab.mlService" -}}
+{{ include "pvxs-lab.fullname" . }}-ml
+{{- end -}}
+{{- define "pvxs-lab.mlIocService" -}}
+{{ include "pvxs-lab.fullname" . }}-ml-ioc
+{{- end -}}
+{{- define "pvxs-lab.mlGatewayService" -}}
+{{ include "pvxs-lab.fullname" . }}-ml-gateway
+{{- end -}}

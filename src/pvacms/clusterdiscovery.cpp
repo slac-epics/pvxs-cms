@@ -66,6 +66,7 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
                                    std::string issuer_id,
                                    std::string pv_prefix,
                                    const uint32_t discovery_timeout_secs,
+                                   bool skip_peer_identity_check,
                                    sqlite3 *certs_db,
                                    const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                    const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
@@ -77,6 +78,7 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
     , issuer_id_(std::move(issuer_id))
     , pv_prefix_(std::move(pv_prefix))
     , discovery_timeout_secs_(discovery_timeout_secs)
+    , skip_peer_identity_check_(skip_peer_identity_check)
     , certs_db_(certs_db)
     , cert_auth_pkey_(cert_auth_pkey)
     , cert_auth_pub_key_(cert_auth_pub_key)
@@ -186,10 +188,15 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
  */
 void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &&val) {
     if (peer_cert_ids_.find(peer_node_id) == peer_cert_ids_.end()) {
-        log_warn_printf(pvacmscluster,
-            "Received snapshot from %s before peer identity was verified, rejecting\n",
+        if (!skip_peer_identity_check_) {
+            log_warn_printf(pvacmscluster,
+                "Received snapshot from %s before peer identity was verified, rejecting\n",
+                peer_node_id.c_str());
+            return;
+        }
+        log_debug_printf(pvacmscluster,
+            "Peer identity check skipped for %s (--cluster-skip-peer-identity-check)\n",
             peer_node_id.c_str());
-        return;
     }
 
     const auto snapshot_node_id = val["node_id"].as<std::string>();
@@ -227,10 +234,22 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     if (update_type == SYNC_INCREMENTAL && peer_seq_it != peer_last_sequence_.end()) {
         if (sequence != peer_seq_it->second + 1) {
             log_warn_printf(pvacmscluster,
-                "Sequence gap from %s: expected %lld, got %lld\n",
+                "Sequence gap from %s: expected %lld, got %lld — requesting resync\n",
                 peer_node_id.c_str(),
                 static_cast<long long>(peer_seq_it->second + 1),
                 static_cast<long long>(sequence));
+
+            auto peer_sync_pv = pv_prefix_ + ":SYNC:" + issuer_id_ + ":" + peer_node_id;
+            try {
+                auto req = TypeDef(TypeCode::Struct, {
+                    members::String("operation"),
+                }).create();
+                req["operation"] = "resync";
+                client_ctx_.rpc(peer_sync_pv, req).exec()->wait(5.0);
+            } catch (const std::exception &e) {
+                log_warn_printf(pvacmscluster, "Resync request to %s failed: %s\n",
+                                peer_node_id.c_str(), e.what());
+            }
         }
     }
     peer_last_sequence_[peer_node_id] = sequence;
@@ -321,6 +340,8 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
                         peer_cert_ids_[node_id] = peer_cert_id;
                         log_debug_printf(pvacmscluster, "Cached peer cert identity %s for node %s\n",
                                          peer_cert_id.c_str(), node_id.c_str());
+                    } else if (skip_peer_identity_check_) {
+                        peer_cert_ids_[node_id] = "tcp:" + node_id;
                     }
 
                     auto it = peer_connectivity_.find(node_id);
@@ -637,7 +658,7 @@ void ClusterDiscovery::seekForwarder(const std::string &unreachable_node_id) {
                 try {
                     client_ctx_.rpc(intermediary_sync_pv, req)
                         .exec()
-                        ->wait(5.0);
+                        ->wait(double(discovery_timeout_secs_));
                     active_forwarding_[unreachable_node_id] = {peer.first, intermediary_sync_pv};
                     log_info_printf(pvacmscluster,
                         "Forwarding of %s via %s established\n",
@@ -674,7 +695,7 @@ void ClusterDiscovery::cancelForwarding(const std::string &node_id) {
     try {
         client_ctx_.rpc(it->second.intermediary_sync_pv, req)
             .exec()
-            ->wait(5.0);
+            ->wait(double(discovery_timeout_secs_));
     } catch (const std::exception &e) {
         log_warn_printf(pvacmscluster, "Cancel-forward RPC to %s failed: %s\n",
                         it->second.intermediary_node_id.c_str(), e.what());

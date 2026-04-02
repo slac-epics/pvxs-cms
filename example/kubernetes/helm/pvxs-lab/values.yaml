@@ -5,11 +5,23 @@ images:
   idm:
     name: "idm"
     tag: "latest"
+  internet:
+    name: "internet"
+    tag: "latest"
+  it:
+    name: "idm"
+    tag: "latest"
   testioc:
     name: "testioc"
     tag: "latest"
   tstioc:
     name: "tstioc"
+    tag: "latest"
+  ml:
+    name: "ml"
+    tag: "latest"
+  mlIoc:
+    name: "ml-ioc"
     tag: "latest"
   gateway:
     name: "gateway"
@@ -41,6 +53,112 @@ idm:
     dataSize: 256Mi
     storageClassName: ""
 
+internet:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 64Mi
+    storageClassName: ""
+
+it:
+  replicas: 1
+  debug:
+    enabled: false
+    logLevel: "pvxs.*=INFO"
+  persistence:
+    enabled: true
+    size: 64Mi
+    storageClassName: ""
+
+ml:
+  replicas: 1
+  debug:
+    enabled: false
+    logLevel: "pvxs.*=INFO"
+  persistence:
+    enabled: true
+    size: 64Mi
+    dataSize: 256Mi
+    storageClassName: ""
+
+mlIoc:
+  replicas: 1
+  debug:
+    enabled: false
+    logLevel: "pvxs.*=INFO"
+  persistence:
+    enabled: true
+    size: 64Mi
+    storageClassName: ""
+
+mlGateway:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 64Mi
+    storageClassName: ""
+
+  config: |
+    {
+      "version": 2,
+      "readOnly": false,
+      "clients": [
+        {
+          "name": "ml-local",
+          "autoaddrlist": false,
+          "addrlist": "{{ include "pvxs-lab.mlService" . }} {{ include "pvxs-lab.mlIocService" . }}",
+          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12"
+        },
+        {
+          "name": "to-lab",
+          "autoaddrlist": false,
+          "addrlist": "",
+          "EPICS_PVA_NAME_SERVERS": "{{ include "pvxs-lab.gatewayService" . }}-xgw:5175",
+          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12"
+        }
+      ],
+      "servers": [
+        {
+          "name": "main",
+          "clients": ["ml-local", "to-lab"],
+          "acf_client": "ml-local",
+          "statusprefix": "GW:STS:",
+          "autoaddrlist": false,
+          "addrlist": "{{ include "pvxs-lab.mlGatewayService" . }} {{ include "pvxs-lab.mlService" . }}",
+          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12",
+          "serverport": "5075",
+          "EPICS_PVAS_TLS_PORT": "5076",
+          "bcastport": "5076",
+          "access": "gateway.acf",
+          "pvlist": "gateway.pvlist"
+        },
+        {
+          "name": "for-lab-gw",
+          "clients": ["ml-local"],
+          "statusprefix": "GW:STS:",
+          "autoaddrlist": false,
+          "addrlist": "{{ include "pvxs-lab.mlGatewayService" . }}-xgw",
+          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12",
+          "serverport": "5175",
+          "EPICS_PVAS_TLS_PORT": "5176",
+          "bcastport": "5176",
+          "access": "gateway.acf",
+          "pvlist": "gateway.pvlist"
+        },
+        {
+          "name": "downstream_status",
+          "clients": [],
+          "interface": ["127.0.0.1"],
+          "statusprefix": "GW:STS:"
+        }
+      ]
+    }
+
+  pvlist: |
+    ml:.* ALLOW
+    CERT:CLUSTER(?::.*)? ALLOW CERT_CREATE
+
+
 testioc:
   replicas: 1
   debug:
@@ -67,15 +185,7 @@ gateway:
   # externalInterface: 123.45.6.7   # egress if defined
   separate_server_keychain: false
 
-  expose:
-    mode: NodePort      # ClusterIP | NodePort
-    tcpPort: 31075      # pvagw serverport inside the pod
-    tlsPort: 31076      # pvagw tls serverport inside the pod
-    udpPort: 31076      # pvagw bcastport inside the pod
-    nodePortTcp: 31075  # must equal tcpPort for sanity
-    nodePortTls: 31076  # must equal tlsPort for sanity
-    nodePortUdp: 31076  # must equal udpPort
-    enableUdp: false    # recommend false if you will use TCP search only
+  expose: {}
 
   config: |
     {
@@ -83,27 +193,44 @@ gateway:
       "readOnly": false,
       "clients": [
         {
-          "name": "upstream",
+          "name": "local",
           "autoaddrlist": false,
           "addrlist": "{{ include "pvxs-lab.pvacmsService" . }} {{ include "pvxs-lab.testiocService" . }} {{ include "pvxs-lab.tstiocService" . }}",
+          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12"
+        },
+        {
+          "name": "to-ml",
+          "autoaddrlist": false,
+          "addrlist": "",
+          "EPICS_PVA_NAME_SERVERS": "{{ include "pvxs-lab.mlGatewayService" . }}-xgw:5175",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12"
         }
       ],
       "servers": [
         {
-          "name": "downstream",
-          "clients": ["upstream"],
+          "name": "main",
+          "clients": ["local", "to-ml"],
+          "acf_client": "local",
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
           "addrlist": "{{ include "pvxs-lab.gatewayService" . }} {{ include "pvxs-lab.pvacmsService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway{{ if .Values.gateway.separate_server_keychain }}{{ "S" }}{{ end }}.p12",
-          {{- if eq .Values.gateway.expose.mode "NodePort" }}
-          "serverport": "{{ toJson .Values.gateway.expose.tcpPort }}",
-          "EPICS_PVAS_TLS_PORT": "{{ toJson .Values.gateway.expose.tlsPort }}",
-            {{- if .Values.gateway.expose.enableUdp }}
-          "bcastport": "{{ .Values.gateway.expose.udpPort }}",
-            {{- end }}
-          {{- end }}
+          "serverport": "5075",
+          "EPICS_PVAS_TLS_PORT": "5076",
+          "bcastport": "5076",
+          "access": "gateway.acf",
+          "pvlist": "gateway.pvlist"
+        },
+        {
+          "name": "for-ml-gw",
+          "clients": ["local"],
+          "statusprefix": "GW:STS:",
+          "autoaddrlist": false,
+          "addrlist": "{{ include "pvxs-lab.gatewayService" . }}-xgw {{ include "pvxs-lab.pvacmsService" . }}",
+          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway{{ if .Values.gateway.separate_server_keychain }}{{ "S" }}{{ end }}.p12",
+          "serverport": "5175",
+          "EPICS_PVAS_TLS_PORT": "5176",
+          "bcastport": "5176",
           "access": "gateway.acf",
           "pvlist": "gateway.pvlist"
         },
@@ -115,6 +242,14 @@ gateway:
         }
       ]
     }
+
+  pvlist: |
+    test:.* ALLOW
+    tst:.* ALLOW
+    test:spec ALLOW SPECIAL
+    CERT:CREATE(?::.*)? ALLOW CERT_CREATE
+    CERT:STATUS(?::.*)? ALLOW CERT_STATUS
+    CERT:CLUSTER(?::.*)? ALLOW CERT_CREATE
 
   debug:
     enabled: false
@@ -146,5 +281,4 @@ ports:
   pvaTls: 5076
   exposePvaTls: true
 
-networkPolicy:
-  enabled: false
+

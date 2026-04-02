@@ -96,7 +96,8 @@ ClusterController::ClusterController(const std::string &issuer_id,
                                      const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                      const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                                      ClusterSyncPublisher &sync_publisher,
-                                     ASMEMBERPVT as_cluster_mem)
+                                     ASMEMBERPVT as_cluster_mem,
+                                     uint32_t bidi_timeout_secs)
     : issuer_id_(issuer_id)
     , node_id_(node_id)
     , ctrl_pv_name_(pv_prefix + ":CTRL:" + issuer_id)
@@ -104,6 +105,7 @@ ClusterController::ClusterController(const std::string &issuer_id,
     , cert_auth_pub_key_(cert_auth_pub_key)
     , sync_publisher_(sync_publisher)
     , as_cluster_mem_(as_cluster_mem)
+    , bidi_timeout_secs_(bidi_timeout_secs)
     , ctrl_pv_(server::SharedPV::buildReadonly())
     , bidi_failed_(std::make_shared<BidiFailedCache>())
 {
@@ -167,11 +169,10 @@ void ClusterController::setupRpcHandler() {
             }
 
             if (verify_bidirectional) {
-                static constexpr uint32_t kBidiCheckTimeout = 5;
-                if (!verify_bidirectional(joiner_sync_pv, kBidiCheckTimeout)) {
+                if (!verify_bidirectional(joiner_sync_pv, bidi_timeout_secs_)) {
                     log_warn_printf(pvacmscluster,
                         "Join rejected: cannot subscribe to joiner %s SYNC PV %s within %u seconds\n",
-                        joiner_node_id.c_str(), joiner_sync_pv.c_str(), kBidiCheckTimeout);
+                        joiner_node_id.c_str(), joiner_sync_pv.c_str(), bidi_timeout_secs_);
                     if (bidi_failed_)
                         bidi_failed_->record(joiner_node_id);
                     op->error("Bidirectional connectivity required — "

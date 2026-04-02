@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-ca-keygen
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app: ca-keygen
+        release: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ include "pvxs-lab.fullname" . }}-ca-keygen
+      restartPolicy: OnFailure
+      initContainers:
+        - name: gen-certs
+          image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.idm.name "tag" .Values.images.idm.tag) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              mkdir -p /certs
+              /opt/epics/pvxs-cms/test/O.$(/opt/epics/epics-base/startup/EpicsHostArch)/gen_test_certs -O /certs
+              ls -la /certs/cert_auth.p12
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+      containers:
+        - name: create-secret
+          image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              kubectl create secret generic {{ include "pvxs-lab.fullname" . }}-ca-keychain \
+                --from-file=cert_auth.p12=/certs/cert_auth.p12 \
+                --dry-run=client -o yaml | kubectl apply -f -
+              echo "Secret {{ include "pvxs-lab.fullname" . }}-ca-keychain created/updated"
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: certs
+          emptyDir: {}

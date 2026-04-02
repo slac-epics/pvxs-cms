@@ -19,6 +19,9 @@ on:
           - k8s_testioc
           - k8s_tstioc
           - k8s_gateway
+          - k8s_internet
+          - k8s_ml
+          - k8s_ml_ioc
   push:
     branches:
       - 'tls'
@@ -38,6 +41,9 @@ jobs:
       k8s_testioc_changed: ${{ steps.filter.outputs.k8s_testioc }}
       k8s_tstioc_changed: ${{ steps.filter.outputs.k8s_tstioc }}
       k8s_gateway_changed: ${{ steps.filter.outputs.k8s_gateway }}
+      k8s_internet_changed: ${{ steps.filter.outputs.k8s_internet }}
+      k8s_ml_changed: ${{ steps.filter.outputs.k8s_ml }}
+      k8s_ml_ioc_changed: ${{ steps.filter.outputs.k8s_ml_ioc }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,6 +74,12 @@ jobs:
               - 'example/kubernetes/docker/tstioc/**'
             k8s_gateway:
               - 'example/kubernetes/docker/gateway/**'
+            k8s_internet:
+              - 'example/kubernetes/docker/internet/**'
+            k8s_ml:
+              - 'example/kubernetes/docker/ml/**'
+            k8s_ml_ioc:
+              - 'example/kubernetes/docker/ml-ioc/**'
 
   build-pvxs-cms:
     needs: [check_docker_changes]
@@ -437,6 +449,131 @@ jobs:
             BASE_IMAGE=lab_base
             BASE_IMAGE_TAG=latest
           tags: ghcr.io/slac-epics/tstioc:latest
+
+  build-k8s-internet:
+    needs: [check_docker_changes, build-k8s-lab-base]
+    if: |
+      always() &&
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.build_target == 'k8s_internet') ||
+      (github.event_name == 'push' &&
+       needs.check_docker_changes.outputs.k8s_internet_changed == 'true' &&
+       needs.check_docker_changes.outputs.non_docker_changed == 'false') ||
+      needs.build-k8s-lab-base.result == 'success'
+    runs-on: ubuntu-22.04
+    outputs:
+      status: ${{ job.status }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: tls
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push k8s internet
+        uses: docker/build-push-action@v5
+        with:
+          context: example/kubernetes/docker/internet/.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          no-cache: true
+          build-args: |
+            DOCKER_REGISTRY=ghcr.io
+            DOCKER_USERNAME=slac-epics
+            BASE_IMAGE=lab_base
+            BASE_IMAGE_TAG=latest
+          tags: ghcr.io/slac-epics/internet:latest
+
+  build-k8s-ml:
+    needs: [check_docker_changes, build-k8s-idm]
+    if: |
+      always() &&
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.build_target == 'k8s_ml') ||
+      (github.event_name == 'push' &&
+       needs.check_docker_changes.outputs.k8s_ml_changed == 'true' &&
+       needs.check_docker_changes.outputs.non_docker_changed == 'false') ||
+      needs.build-k8s-idm.result == 'success'
+    runs-on: ubuntu-22.04
+    outputs:
+      status: ${{ job.status }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: tls
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push k8s ml
+        uses: docker/build-push-action@v5
+        with:
+          context: example/kubernetes/docker/ml/.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          no-cache: true
+          build-args: |
+            DOCKER_REGISTRY=ghcr.io
+            DOCKER_USERNAME=slac-epics
+            BASE_IMAGE_TAG=latest
+          tags: ghcr.io/slac-epics/ml:latest
+
+  build-k8s-ml-ioc:
+    needs: [check_docker_changes, build-k8s-lab-base]
+    if: |
+      always() &&
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.build_target == 'k8s_ml_ioc') ||
+      (github.event_name == 'push' &&
+       needs.check_docker_changes.outputs.k8s_ml_ioc_changed == 'true' &&
+       needs.check_docker_changes.outputs.non_docker_changed == 'false') ||
+      needs.build-k8s-lab-base.result == 'success'
+    runs-on: ubuntu-22.04
+    outputs:
+      status: ${{ job.status }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: tls
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push k8s ml-ioc
+        uses: docker/build-push-action@v5
+        with:
+          context: example/kubernetes/docker/ml-ioc/.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          no-cache: true
+          build-args: |
+            DOCKER_REGISTRY=ghcr.io
+            DOCKER_USERNAME=slac-epics
+            BASE_IMAGE=lab_base
+            BASE_IMAGE_TAG=latest
+          tags: ghcr.io/slac-epics/ml-ioc:latest
 
   build-k8s-gateway:
     needs: [check_docker_changes, build-k8s-lab-base]

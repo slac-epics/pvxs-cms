@@ -3008,6 +3008,12 @@ int readParameters(int argc,
     app.add_option("--cluster-discovery-timeout",
                    config.cluster_discovery_timeout_secs,
                    "Seconds to wait for cluster discovery before bootstrapping.  Default 10");
+    app.add_option("--cluster-bidi-timeout",
+                   config.cluster_bidi_timeout_secs,
+                   "Seconds to wait for bidirectional connectivity check during join.  Default 5");
+    app.add_flag("--cluster-skip-peer-identity-check",
+                 config.cluster_skip_peer_identity_check,
+                 "Skip TLS peer identity verification for cluster sync (for gateway-mediated topologies)");
     // Add any parameters for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry())
         authn_entry.second->addOptions(app, authn_config_map);
@@ -3098,6 +3104,8 @@ int readParameters(int argc,
             << "        --cluster-mode                        Enable cluster mode for multi-node replication\n"
             << "        --cluster-pv-prefix <prefix>         Prefix for cluster PV names. Default `CERT:CLUSTER`\n"
             << "        --cluster-discovery-timeout <secs>   Seconds to wait for cluster discovery. Default 10\n"
+            << "        --cluster-bidi-timeout <secs>        Seconds to wait for bidirectional connectivity check during join. Default 5\n"
+            << "        --cluster-skip-peer-identity-check   Skip TLS peer identity verification for cluster sync\n"
             << "  (-v | --verbose)                           Verbose mode\n"
             << std::endl
             << "admin options:\n"
@@ -3302,6 +3310,7 @@ int main(int argc, char *argv[]) {
                                            certs_db.get(),
                                            cert_auth_pkey,
                                            status_update_lock);
+        cluster_sync.skip_peer_identity_check = config.cluster_skip_peer_identity_check;
 
         ClusterController cluster_ctrl(our_issuer_id,
                                          our_node_id,
@@ -3309,7 +3318,8 @@ int main(int argc, char *argv[]) {
                                          cert_auth_pkey,
                                          cert_auth_pub_key,
                                          cluster_sync,
-                                         as_cluster_member.mem);
+                                         as_cluster_member.mem,
+                                         config.cluster_bidi_timeout_secs);
 
         // Create the PVs
         SharedPV create_pv(SharedPV::buildReadonly());
@@ -3532,6 +3542,12 @@ int main(int argc, char *argv[]) {
             auto cluster_client_config = pva_server.clientConfig();
             cluster_client_config.tls_keychain_file = config.tls_keychain_file;
             cluster_client_config.setKeychainPassword(config.getKeychainPassword());
+            if (auto *ns = getenv("EPICS_PVACMS_CLUSTER_NAME_SERVERS")) {
+                std::istringstream iss(ns);
+                std::string entry;
+                while (iss >> entry)
+                    cluster_client_config.nameServers.push_back(entry);
+            }
             auto cluster_client = cluster_client_config.build();
 
             cluster_ctrl.verify_bidirectional = [cluster_client](const std::string &sync_pv,
@@ -3552,9 +3568,10 @@ int main(int argc, char *argv[]) {
             };
 
             cluster_discovery.reset(new ClusterDiscovery(our_node_id, our_issuer_id,
-                                               config.cluster_pv_prefix,
-                                               config.cluster_discovery_timeout_secs,
-                                               certs_db.get(),
+                                                config.cluster_pv_prefix,
+                                                config.cluster_discovery_timeout_secs,
+                                                config.cluster_skip_peer_identity_check,
+                                                certs_db.get(),
                                                cert_auth_pkey,
                                                cert_auth_pub_key,
                                                status_update_lock,

@@ -303,6 +303,10 @@ class ConfigCms final : public Config {
      */
     uint32_t cluster_discovery_timeout_secs = 10;
 
+    uint32_t cluster_bidi_timeout_secs = 5;
+
+    bool cluster_skip_peer_identity_check = false;
+
     void applyCmsEnv(const std::map<std::string, std::string>& defs);
     static ConfigCms mockCms(int family=AF_INET);
     static ConfigCms forCms();

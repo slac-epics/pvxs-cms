@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pvxs-lab.mlGatewayService" . }}-conf
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+data:
+  gateway.conf: |-
+  {{ tpl .Values.mlGateway.config . | nindent 4 }}
+  gateway.pvlist: |
+  {{ .Values.mlGateway.pvlist | nindent 4 }}

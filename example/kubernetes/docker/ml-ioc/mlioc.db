@@ -1,0 +1,16 @@
+record(ai, "ml:aiExample")
+{
+    field(DESC, "ML IOC analog input")
+    field(VAL, 1.23)
+    field(PREC, "2")
+}
+
+record(stringin, "ml:stringExample")
+{
+    field(VAL, "hello-ml")
+}
+
+record(longin, "ml:longExample")
+{
+    field(VAL, "42")
+}

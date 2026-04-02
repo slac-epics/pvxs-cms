@@ -260,6 +260,14 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         }
     }
 
+    if (pickone({"EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT"})) {
+        try {
+            cluster_bidi_timeout_secs = static_cast<uint32_t>(parseTo<uint64_t>(pickone.val));
+        } catch (std::exception &e) {
+            log_err_printf(cert_cfg, "%s invalid timeout: %s\n", pickone.name.c_str(), e.what());
+        }
+    }
+
 }
 
 /**
@@ -311,6 +319,7 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     defs["EPICS_PVACMS_CERTS_REQUIRE_SUBSCRIPTION"] = (cert_status_subscription == DEFAULT) ? "DEFAULT" : (cert_status_subscription == YES) ? "YES" : "NO";
     defs["EPICS_PVACMS_CLUSTER_PV_PREFIX"] = cluster_pv_prefix;
     defs["EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT"] = std::to_string(cluster_discovery_timeout_secs);
+    defs["EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT"] = std::to_string(cluster_bidi_timeout_secs);
 
     // Add any defs for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry()) authn_entry.second->updateDefs(defs);

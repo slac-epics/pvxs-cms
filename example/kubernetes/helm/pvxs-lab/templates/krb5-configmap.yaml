@@ -18,9 +18,9 @@ data:
 
     [realms]
     EPICS.ORG = {
-        kdc = {{ .Values.idm.service.name }}:{{ .Values.idm.service.udpPort }}
-        admin_server = {{ .Values.idm.service.name }}:{{ .Values.idm.service.tcpPort }}
-        kpasswd_server = {{ .Values.idm.service.name }}:{{ .Values.idm.service.pwdPort }}
+        kdc = {{ include "pvxs-lab.fullname" . }}-krb:{{ .Values.idm.service.udpPort }}
+        admin_server = {{ include "pvxs-lab.fullname" . }}-krb:{{ .Values.idm.service.tcpPort }}
+        kpasswd_server = {{ include "pvxs-lab.fullname" . }}-krb:{{ .Values.idm.service.pwdPort }}
         default_domain = epics.org
     }
 

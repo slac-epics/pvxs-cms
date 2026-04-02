@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pvxs-lab.internetService" . }}
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: internet
+    release: {{ .Release.Name }}
+  ports:
+    - name: shell
+      port: 22
+      targetPort: 22
+      protocol: TCP

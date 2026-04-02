@@ -58,7 +58,9 @@ RUN kdb5_util create -s -P secret \
  && kadmin.local -q 'addprinc -pw secret -allow_svr tstioc' \
  && kadmin.local -q 'addprinc -pw secret remote' \
  && kadmin.local -q 'addprinc -pw secret operator' \
- && kadmin.local -q 'addprinc -pw secret guest'
+ && kadmin.local -q 'addprinc -pw secret guest' \
+ && kadmin.local -q 'addprinc -pw secret mloperator@EPICS.ORG' \
+ && kadmin.local -q 'addprinc -pw secret mlsystem@EPICS.ORG'
 
 # Create service keytabs
 RUN kadmin.local -q 'ktadd -k /home/idm/.config/krb5/pvacms.keytab pvacms/cluster@EPICS.ORG' \

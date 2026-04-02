@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-it
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.it.replicas }}
+  selector:
+    matchLabels:
+      app: it
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: it
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: it
+          image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.it.name "tag" .Values.images.it.tag) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -euo pipefail
+              ARCH=$(/opt/epics/epics-base/startup/EpicsHostArch)
+              export HOME=/home/idm
+              exec su -m idm -s /bin/bash -c "exec /opt/epics/pvxs-cms/bin/${ARCH}/pvacms \
+                --cluster-mode \
+                --cluster-discovery-timeout 30 \
+                --cluster-bidi-timeout 30 \
+                --cert-auth-keychain /etc/pvacms/cert_auth.p12 \
+                --acf /etc/pvacms/pvacms.acf \
+                -v"
+          ports:
+            - name: pva-tcp
+              containerPort: {{ .Values.ports.pvaTcp }}
+              protocol: TCP
+            - name: pva-udp
+              containerPort: {{ .Values.ports.pvaUdp }}
+              protocol: UDP
+            {{- if .Values.ports.exposePvaTls }}
+            - name: pva-tls
+              containerPort: {{ .Values.ports.pvaTls }}
+              protocol: TCP
+            {{- end }}
+          volumeMounts:
+            - name: pva-config
+              mountPath: /home/idm/.config/pva/1.5
+            - name: pva-data
+              mountPath: /home/idm/.local/share/pva/1.5
+            - name: ca-keychain
+              mountPath: /etc/pvacms/cert_auth.p12
+              subPath: cert_auth.p12
+              readOnly: true
+            - name: pvacms-acf
+              mountPath: /etc/pvacms/pvacms.acf
+              subPath: pvacms.acf
+              readOnly: true
+            - name: krb5-conf
+              mountPath: /etc/krb5.conf
+              subPath: krb5.conf
+              readOnly: true
+          env:
+            - name: KRB5_CONFIG
+              value: /etc/krb5.conf
+            - name: KRB5_KTNAME
+              value: /home/idm/.config/krb5/pvacms.keytab
+            - name: KADMIN_ADMIN_SERVER
+              value: '{{ include "pvxs-lab.fullname" . }}-krb:{{ .Values.idm.service.tcpPort }}'
+            - name: EPICS_AUTH_KRB_REALM
+              value: "EPICS.ORG"
+            - name: EPICS_AUTH_KRB_VALIDATOR_SERVICE
+              value: "pvacms"
+            - name: EPICS_PVA_AUTO_ADDR_LIST
+              value: "NO"
+            - name: EPICS_PVA_ADDR_LIST
+              value: '{{ include "pvxs-lab.pvacmsService" . }}'
+            - name: EPICS_PVA_TLS_KEYCHAIN
+              value: /home/idm/.config/pva/1.5/pvacms.p12
+            - name: EPICS_PVAS_AUTO_BEACON_ADDR_LIST
+              value: "NO"
+            - name: EPICS_PVAS_BEACON_ADDR_LIST
+              value: '{{ include "pvxs-lab.pvacmsService" . }}:5076'
+            {{- if .Values.it.debug.enabled }}
+            - name: PVXS_LOG
+              value: {{ .Values.it.debug.logLevel | quote }}
+            {{- end }}
+      volumes:
+        - name: pva-config
+          {{- if .Values.it.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pvxs-lab.fullname" . }}-it-config
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: pva-data
+          {{- if .Values.it.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pvxs-lab.fullname" . }}-it-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: ca-keychain
+          secret:
+            secretName: {{ include "pvxs-lab.fullname" . }}-ca-keychain
+        - name: pvacms-acf
+          configMap:
+            name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf
+        - name: krb5-conf
+          configMap:
+            name: {{ include "pvxs-lab.fullname" . }}-krb5

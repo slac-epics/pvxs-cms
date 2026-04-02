@@ -83,7 +83,8 @@ public:
                       const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                       const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                       ClusterSyncPublisher &sync_publisher,
-                      ASMEMBERPVT as_cluster_mem);
+                      ASMEMBERPVT as_cluster_mem,
+                      uint32_t bidi_timeout_secs = 5);
 
     /**
      * @brief Initialises the cluster with this node as the sole member and opens the CTRL PV.
@@ -167,6 +168,7 @@ private:
     const ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
     ClusterSyncPublisher &sync_publisher_;
     ASMEMBERPVT as_cluster_mem_;
+    uint32_t bidi_timeout_secs_;
     server::SharedPV ctrl_pv_;
     bool opened_{false};
     Value prototype_;  // Type prototype from first open() - post() requires matching type

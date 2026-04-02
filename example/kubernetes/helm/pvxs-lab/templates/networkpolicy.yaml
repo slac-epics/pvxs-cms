@@ -1,5 +1,3 @@
-{{- if .Values.networkPolicy.enabled }}
-
 # 1) PVACMS ingress: allow from any pod in this Helm release
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -44,8 +42,7 @@ spec:
               release: {{ .Release.Name }}
 
 ---
-# 3) Gateway ingress: deny all in-cluster pod traffic to gateway
-#    (hostNetwork traffic from outside the cluster is not governed by NetworkPolicy)
+# 3) Gateway ingress: allow from internet, ml-gateway, and all lab-internal pods
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -56,10 +53,268 @@ spec:
       app: gateway
       release: {{ .Release.Name }}
   policyTypes: ["Ingress"]
-  ingress: []
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: internet
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml-gateway
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: idm
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: it
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: lab
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml
+              release: {{ .Release.Name }}
 
 ---
-# 4) Lab egress: allow ONLY to idm/testioc/tstioc + DNS
+# 4) Internet egress: allow ONLY to gateway/idm(kerberos) + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-internet-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: internet
+      release: {{ .Release.Name }}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: gateway
+              release: {{ .Release.Name }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: idm
+              release: {{ .Release.Name }}
+      ports:
+        - protocol: UDP
+          port: 88
+        - protocol: TCP
+          port: 749
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# 5) IT ingress: allow ONLY from idm/lab/gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-it-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: it
+      release: {{ .Release.Name }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: idm
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: lab
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: gateway
+              release: {{ .Release.Name }}
+
+---
+# 6) ML egress: allow ONLY to ml-gateway/ml-ioc/idm(kerberos) + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-ml-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: ml
+      release: {{ .Release.Name }}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ml-gateway
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml-ioc
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: gateway
+              release: {{ .Release.Name }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: idm
+              release: {{ .Release.Name }}
+      ports:
+        - protocol: UDP
+          port: 88
+        - protocol: TCP
+          port: 749
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# 7) ML ingress: allow ONLY from ml-gateway and ml-ioc
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-ml-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: ml
+      release: {{ .Release.Name }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ml-gateway
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml-ioc
+              release: {{ .Release.Name }}
+
+---
+# 8) ML IOC ingress: allow ONLY from ml and ml-gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-ml-ioc-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: ml-ioc
+      release: {{ .Release.Name }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ml
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml-gateway
+              release: {{ .Release.Name }}
+
+---
+# 9) ML gateway egress: allow ONLY to ml/ml-ioc/gateway + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-ml-gateway-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: ml-gateway
+      release: {{ .Release.Name }}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ml
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml-ioc
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: gateway
+              release: {{ .Release.Name }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# 10) ML gateway ingress: allow ONLY from ml and gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-ml-gateway-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: ml-gateway
+      release: {{ .Release.Name }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ml
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: gateway
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: idm
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: lab
+              release: {{ .Release.Name }}
+
+---
+# 11) Lab egress: allow ONLY to idm/it/testioc/tstioc + DNS
 #    This blocks lab -> gateway (by Service name, Pod IP, or hostNetwork IP).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -72,11 +327,15 @@ spec:
       release: {{ .Release.Name }}
   policyTypes: ["Egress"]
   egress:
-    # Allow to the three internal services
+    # Allow to the four internal services
     - to:
         - podSelector:
             matchLabels:
               app: idm
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: it
               release: {{ .Release.Name }}
         - podSelector:
             matchLabels:
@@ -98,4 +357,4 @@ spec:
         - protocol: TCP
           port: 53
 
-{{- end }}
+

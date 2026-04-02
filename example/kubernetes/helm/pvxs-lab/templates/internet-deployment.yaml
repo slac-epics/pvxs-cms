@@ -1,29 +1,36 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "pvxs-lab.fullname" . }}-lab
+  name: {{ include "pvxs-lab.internetService" . }}
   labels:
     {{- include "pvxs-lab.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.lab.replicas }}
+  replicas: {{ .Values.internet.replicas }}
   selector:
     matchLabels:
-      app: lab
+      app: internet
       release: {{ .Release.Name }}
   template:
     metadata:
       labels:
-        app: lab
+        app: internet
         release: {{ .Release.Name }}
     spec:
       containers:
-        - name: lab
-          image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.lab.name "tag" .Values.images.lab.tag) | quote }}
+        - name: internet
+          image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.internet.name "tag" .Values.images.internet.tag) | quote }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          {{- if .Values.lab.keepalive.enabled }}
-          command: {{ toJson .Values.lab.keepalive.command }}
-          args: {{ toJson .Values.lab.keepalive.args }}
-          {{- end }}
+          command: ["/bin/bash", "-lc"]
+          args: ["sleep infinity"]
+          env:
+            - name: EPICS_AUTH_KRB_REALM
+              value: "EPICS.ORG"
+            - name: KRB5_CONFIG
+              value: /etc/krb5.conf
+            - name: KRB5_KDC_PROFILE
+              value: /etc/krb5kdc/kdc.conf
+            - name: KADMIN_ADMIN_SERVER
+              value: '{{ include "pvxs-lab.fullname" . }}-idm:{{ .Values.idm.service.tcpPort }}'
           volumeMounts:
             - name: pva-config
               mountPath: /home/guest/.config/pva/1.5
@@ -35,14 +42,11 @@ spec:
               mountPath: /etc/krb5.conf
               subPath: krb5.conf
               readOnly: true
-          env:
-            - name: EPICS_AUTH_KRB_REALM
-              value: "EPICS.ORG"
       volumes:
         - name: pva-config
-          {{- if .Values.lab.persistence.enabled }}
+          {{- if .Values.internet.persistence.enabled }}
           persistentVolumeClaim:
-            claimName: {{ include "pvxs-lab.fullname" . }}-lab-pva
+            claimName: {{ include "pvxs-lab.fullname" . }}-internet-pva
           {{- else }}
           emptyDir: {}
           {{- end }}

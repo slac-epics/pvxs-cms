@@ -20,6 +20,13 @@ spec:
         - name: idm
           image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.idm.name "tag" .Values.images.idm.tag) | quote }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -euo pipefail
+              ARCH=$(/opt/epics/epics-base/startup/EpicsHostArch)
+              sed -i "s|pvacms -v|pvacms --cluster-mode --cluster-discovery-timeout 30 --cluster-bidi-timeout 30 --cluster-skip-peer-identity-check --cert-auth-keychain /etc/pvacms/cert_auth.p12 --acf /etc/pvacms/pvacms.acf -v|" /etc/supervisor/conf.d/pvacms.conf
+              exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
           ports:
             - name: pva-tcp
               containerPort: {{ .Values.ports.pvaTcp }}
@@ -46,6 +53,14 @@ spec:
               mountPath: /home/idm/.config/pva/1.5
             - name: pva-data
               mountPath: /home/idm/.local/share/pva/1.5
+            - name: ca-keychain
+              mountPath: /etc/pvacms/cert_auth.p12
+              subPath: cert_auth.p12
+              readOnly: true
+            - name: pvacms-acf
+              mountPath: /etc/pvacms/pvacms.acf
+              subPath: pvacms.acf
+              readOnly: true
           env:
             - name: KRB5_CONFIG
               value: /etc/krb5.conf
@@ -57,6 +72,16 @@ spec:
               value: "EPICS.ORG"
             - name: EPICS_AUTH_KRB_VALIDATOR_SERVICE
               value: "pvacms"
+            - name: EPICS_PVA_AUTO_ADDR_LIST
+              value: "NO"
+            - name: EPICS_PVA_ADDR_LIST
+              value: '{{ include "pvxs-lab.itService" . }} {{ include "pvxs-lab.testiocService" . }} {{ include "pvxs-lab.tstiocService" . }}'
+            - name: EPICS_PVACMS_CLUSTER_NAME_SERVERS
+              value: '{{ include "pvxs-lab.mlGatewayService" . }}:5075'
+            - name: EPICS_PVA_TLS_KEYCHAIN
+              value: /home/idm/.config/pva/1.5/pvacms.p12
+            - name: PVACMS_EXTRA_ARGS
+              value: "--cluster-mode --cluster-discovery-timeout 30 --cert-auth-keychain /etc/pvacms/cert_auth.p12 --acf /etc/pvacms/pvacms.acf"
             - name: PVXS_LOG
               value: {{ .Values.idm.debug.logLevel | quote }}
             - name: KADMIN_ADMIN_SERVER
@@ -70,34 +95,34 @@ spec:
             capabilities:
               add:
                 - NET_BIND_SERVICE
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - /bin/bash
-                  - -lc
-                  - |
-                    set -euo pipefail
-                    
-                    src=/home/idm/.config/pva/1.5/admin.p12
-                    dst=/home/admin/.config/pva/1.5/client.p12
-                    
-                    mkdir -p "$(dirname "$dst")"
-                    chown -R admin:admin /home/admin/.config/pva || true
-                    
-                    # Wait for pvacms to generate admin.p12
-                    for i in {1..60}; do
-                      if [ -s "$src" ]; then
-                        cp -f "$src" "$dst"
-                        chown admin:admin "$dst" || true
-                        chmod 0600 "$dst" || true
-                        exit 0
-                      fi
-                      sleep 0.5
-                    done
-                    
-                    echo "admin.p12 not found after timeout" >&2
-                    exit 1
+        - name: admin-cert-copy
+          image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.idm.name "tag" .Values.images.idm.tag) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              src=/home/idm/.config/pva/1.5/admin.p12
+              dst=/home/admin/.config/pva/1.5/client.p12
+              mkdir -p "$(dirname "$dst")"
+              chown -R admin:admin /home/admin/.config/pva 2>/dev/null || true
+              for i in $(seq 1 120); do
+                if [ -s "$src" ]; then
+                  cp -f "$src" "$dst"
+                  chown admin:admin "$dst" 2>/dev/null || true
+                  chmod 0600 "$dst" 2>/dev/null || true
+                  echo "admin.p12 copied successfully"
+                  sleep infinity
+                fi
+                sleep 1
+              done
+              echo "admin.p12 not found after timeout" >&2
+              sleep infinity
+          volumeMounts:
+            - name: pva-config
+              mountPath: /home/idm/.config/pva/1.5
+            - name: pva-data
+              mountPath: /home/admin/.config/pva/1.5
+              subPath: admin
       volumes:
         - name: pva-config
           {{- if .Values.idm.persistence.enabled }}
@@ -113,3 +138,9 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        - name: ca-keychain
+          secret:
+            secretName: {{ include "pvxs-lab.fullname" . }}-ca-keychain
+        - name: pvacms-acf
+          configMap:
+            name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf
