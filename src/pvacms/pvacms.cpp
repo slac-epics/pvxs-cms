@@ -1507,6 +1507,117 @@ uint64_t getParameters(const std::list<std::string> &parameters) {
  * @param cert_auth_root_cert reference to the returned root of the certificate authority chain
  * @param is_initialising true if we are in the initializing state when called
  */
+bool runSelfTests(const sql_ptr &certs_db,
+                  const ossl_ptr<X509> &cert_auth_cert,
+                  const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
+                  const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
+    bool all_ok = true;
+
+    {
+        auto now = time(nullptr);
+        if (X509_cmp_time(X509_get0_notAfter(cert_auth_cert.get()), &now) <= 0) {
+            log_err_printf(pvacms, "Self-test FAILED: CA certificate has expired%s\n", "");
+            all_ok = false;
+        }
+        if (X509_cmp_time(X509_get0_notBefore(cert_auth_cert.get()), &now) > 0) {
+            log_err_printf(pvacms, "Self-test FAILED: CA certificate is not yet valid%s\n", "");
+            all_ok = false;
+        }
+
+        const int chain_len = cert_auth_chain ? sk_X509_num(cert_auth_chain.get()) : 0;
+        for (int i = 0; i < chain_len; ++i) {
+            X509 *chain_cert = sk_X509_value(cert_auth_chain.get(), i);
+            if (X509_cmp_time(X509_get0_notAfter(chain_cert), &now) <= 0) {
+                char name_buf[256] = {0};
+                X509_NAME_oneline(X509_get_subject_name(chain_cert), name_buf, sizeof(name_buf));
+                log_err_printf(pvacms, "Self-test FAILED: chain certificate expired: %s\n", name_buf);
+                all_ok = false;
+            }
+        }
+
+        if (chain_len > 0) {
+            ossl_ptr<X509_STORE> store(X509_STORE_new());
+            for (int i = 0; i < chain_len; ++i) {
+                X509_STORE_add_cert(store.get(), sk_X509_value(cert_auth_chain.get(), i));
+            }
+            ossl_ptr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
+            X509_STORE_CTX_init(ctx.get(), store.get(), cert_auth_cert.get(), cert_auth_chain.get());
+            if (X509_verify_cert(ctx.get()) != 1) {
+                log_err_printf(pvacms, "Self-test FAILED: CA chain verification error: %s\n",
+                               X509_verify_cert_error_string(X509_STORE_CTX_get_error(ctx.get())));
+                all_ok = false;
+            }
+        }
+
+        if (all_ok) {
+            log_info_printf(pvacms, "Self-test PASSED: CA certificate chain valid (chain depth %d)%s\n",
+                            chain_len, "");
+        }
+    }
+
+    {
+        if (X509_check_private_key(cert_auth_cert.get(), cert_auth_pkey.get()) != 1) {
+            log_err_printf(pvacms, "Self-test FAILED: CA private key does not match CA certificate%s\n", "");
+            all_ok = false;
+        } else {
+            log_info_printf(pvacms, "Self-test PASSED: CA private key matches certificate%s\n", "");
+        }
+    }
+
+    {
+        sqlite3_stmt *ver_stmt = nullptr;
+        if (sqlite3_prepare_v2(certs_db.get(), SQL_GET_SCHEMA_VERSION, -1, &ver_stmt, nullptr) != SQLITE_OK) {
+            log_err_printf(pvacms, "Self-test FAILED: cannot query schema version: %s\n",
+                           sqlite3_errmsg(certs_db.get()));
+            all_ok = false;
+        } else if (sqlite3_step(ver_stmt) == SQLITE_ROW) {
+            const int db_version = sqlite3_column_int(ver_stmt, 0);
+            sqlite3_finalize(ver_stmt);
+            if (db_version != PVACMS_SCHEMA_VERSION) {
+                log_err_printf(pvacms, "Self-test FAILED: schema version %d does not match expected %d\n",
+                               db_version, PVACMS_SCHEMA_VERSION);
+                all_ok = false;
+            } else {
+                log_info_printf(pvacms, "Self-test PASSED: schema version %d%s\n", db_version, "");
+            }
+        } else {
+            sqlite3_finalize(ver_stmt);
+            log_err_printf(pvacms, "Self-test FAILED: no schema version found in database%s\n", "");
+            all_ok = false;
+        }
+    }
+
+    {
+        const unsigned char test_data[] = "pvacms-self-test";
+        ossl_ptr<EVP_MD_CTX> sign_ctx(EVP_MD_CTX_new());
+        bool sign_ok = false;
+
+        if (EVP_DigestSignInit(sign_ctx.get(), nullptr, EVP_sha256(), nullptr, cert_auth_pkey.get()) == 1) {
+            size_t sig_len = 0;
+            if (EVP_DigestSign(sign_ctx.get(), nullptr, &sig_len, test_data, sizeof(test_data)) == 1) {
+                std::vector<unsigned char> sig(sig_len);
+                if (EVP_DigestSign(sign_ctx.get(), sig.data(), &sig_len, test_data, sizeof(test_data)) == 1) {
+                    ossl_ptr<EVP_MD_CTX> verify_ctx(EVP_MD_CTX_new());
+                    ossl_ptr<EVP_PKEY> pub_key(X509_get_pubkey(cert_auth_cert.get()));
+                    if (EVP_DigestVerifyInit(verify_ctx.get(), nullptr, EVP_sha256(), nullptr, pub_key.get()) == 1 &&
+                        EVP_DigestVerify(verify_ctx.get(), sig.data(), sig_len, test_data, sizeof(test_data)) == 1) {
+                        sign_ok = true;
+                    }
+                }
+            }
+        }
+
+        if (sign_ok) {
+            log_info_printf(pvacms, "Self-test PASSED: OpenSSL sign/verify operational%s\n", "");
+        } else {
+            log_err_printf(pvacms, "Self-test FAILED: OpenSSL test sign/verify failed%s\n", "");
+            all_ok = false;
+        }
+    }
+
+    return all_ok;
+}
+
 void getOrCreateCertAuthCertificate(const ConfigCms &config,
                                     sql_ptr &certs_db,
                                     ossl_ptr<X509> &cert_auth_cert,
@@ -3598,6 +3709,11 @@ int main(int argc, char *argv[]) {
                 op->error(pvxs::SB() << "Invalid certificate state requested: " << state);
             }
         });
+
+        if (!runSelfTests(certs_db, cert_auth_cert, cert_auth_pkey, cert_auth_chain)) {
+            log_err_printf(pvacms, "****EXITING****: Startup self-tests failed%s\n", "");
+            return 1;
+        }
 
         StatusMonitor status_monitor_params(config,
                                              certs_db,
