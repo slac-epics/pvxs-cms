@@ -28,6 +28,7 @@
 #include <future>
 #include <iostream>
 #include <list>
+#include <limits>
 #include <locale>
 #include <memory>
 #include <mutex>
@@ -288,6 +289,55 @@ std::string extractSubjectPart(const std::string &subject, const std::string &ke
     return subject.substr(start, end - start);
 };
 
+static bool isValidScheduleTime(const std::string &t) {
+    if (t.size() != 5 || t[2] != ':')
+        return false;
+    if (!std::isdigit(static_cast<unsigned char>(t[0])) ||
+        !std::isdigit(static_cast<unsigned char>(t[1])) ||
+        !std::isdigit(static_cast<unsigned char>(t[3])) ||
+        !std::isdigit(static_cast<unsigned char>(t[4])))
+        return false;
+    const int h = std::stoi(t.substr(0, 2));
+    const int m = std::stoi(t.substr(3, 2));
+    return h >= 0 && h <= 23 && m >= 0 && m <= 59;
+}
+
+static std::vector<ScheduleWindow> loadScheduleWindows(sqlite3 *db, uint64_t serial) {
+    std::vector<ScheduleWindow> windows;
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(db, SQL_SELECT_SCHEDULES_BY_SERIAL, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":serial"), static_cast<sqlite3_int64>(serial));
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            ScheduleWindow sw;
+            auto col = [&](int c) -> std::string {
+                auto t = sqlite3_column_text(stmt, c);
+                return t ? reinterpret_cast<const char *>(t) : "";
+            };
+            sw.day_of_week = col(0);
+            sw.start_time = col(1);
+            sw.end_time = col(2);
+            windows.push_back(std::move(sw));
+        }
+    }
+    if (stmt)
+        sqlite3_finalize(stmt);
+    return windows;
+}
+
+static void assignSchedule(Value &value, const std::vector<ScheduleWindow> &schedule_windows) {
+    if (schedule_windows.empty())
+        return;
+
+    shared_array<Value> sched_arr(schedule_windows.size());
+    for (size_t i = 0; i < schedule_windows.size(); i++) {
+        sched_arr[i] = value["schedule"].allocMember();
+        sched_arr[i]["day_of_week"] = schedule_windows[i].day_of_week;
+        sched_arr[i]["start_time"] = schedule_windows[i].start_time;
+        sched_arr[i]["end_time"] = schedule_windows[i].end_time;
+    }
+    value["schedule"] = sched_arr.freeze();
+}
+
 /**
  * @brief  The prototype of the returned data from a create certificate operation
  * @return  the prototype to use for create certificate operations
@@ -312,6 +362,11 @@ Value getCreatePrototype() {
                     Member(TypeCode::UInt64, "renew_by"),
                     Member(TypeCode::UInt64, "expiration"),
                     Member(TypeCode::String, "cert"),
+                    StructA("schedule", {
+                        String("day_of_week"),
+                        String("start_time"),
+                        String("end_time"),
+                    }),
         }).create();
     shared_array<const std::string> choices(CERT_STATES);
     value["value.choices"] = choices.freeze();
@@ -501,6 +556,23 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
                     sqlite3_finalize(mig_stmt);
                     log_info_printf(pvacms, "Applied migration to schema version 2 (audit table)%s\n", "");
                 }
+                if (db_version < 3) {
+                    if (sqlite3_exec(certs_db.get(), SQL_CREATE_CERT_SCHEDULES_TABLE, nullptr, nullptr, nullptr) != SQLITE_OK) {
+                        throw std::runtime_error(SB() << "Failed to create cert_schedules table: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_stmt *mig_stmt = nullptr;
+                    if (sqlite3_prepare_v2(certs_db.get(), SQL_INSERT_SCHEMA_VERSION, -1, &mig_stmt, nullptr) != SQLITE_OK) {
+                        throw std::runtime_error(SB() << "Failed to prepare migration version insert: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_bind_int(mig_stmt, 1, 3);
+                    sqlite3_bind_int64(mig_stmt, 2, static_cast<sqlite3_int64>(time(nullptr)));
+                    if (sqlite3_step(mig_stmt) != SQLITE_DONE) {
+                        sqlite3_finalize(mig_stmt);
+                        throw std::runtime_error(SB() << "Failed to record migration to v3: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_finalize(mig_stmt);
+                    log_info_printf(pvacms, "Applied migration to schema version 3 (cert_schedules table)%s\n", "");
+                }
             } else if (db_version > PVACMS_SCHEMA_VERSION) {
                 log_warn_printf(pvacms, "Database schema version %d is newer than current code version %d — possible downgrade\n",
                                 db_version, PVACMS_SCHEMA_VERSION);
@@ -526,6 +598,10 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
 
     if (sqlite3_exec(certs_db.get(), SQL_CREATE_AUDIT_TABLE, nullptr, nullptr, nullptr) != SQLITE_OK) {
         throw std::runtime_error(SB() << "Failed to create audit table: " << sqlite3_errmsg(certs_db.get()));
+    }
+
+    if (sqlite3_exec(certs_db.get(), SQL_CREATE_CERT_SCHEDULES_TABLE, nullptr, nullptr, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(SB() << "Failed to create cert_schedules table: " << sqlite3_errmsg(certs_db.get()));
     }
 }
 
@@ -1290,7 +1366,23 @@ int64_t onCreateCertificate(ConfigCms &config,
     try {
         time_t expiration, renew_by;
         auto no_status = ccr["no_status"].as<bool>();
-;
+        std::vector<ScheduleWindow> schedule_windows;
+        auto schedule_arr = ccr["schedule"];
+        if (schedule_arr) {
+            auto sched = schedule_arr.as<shared_array<const Value>>();
+            for (const auto &win : sched) {
+                ScheduleWindow sw;
+                sw.day_of_week = win["day_of_week"].as<std::string>();
+                sw.start_time = win["start_time"].as<std::string>();
+                sw.end_time = win["end_time"].as<std::string>();
+                if (sw.day_of_week != "*" &&
+                    (sw.day_of_week.size() != 1 || sw.day_of_week[0] < '0' || sw.day_of_week[0] > '6'))
+                    throw std::runtime_error("Invalid day_of_week in schedule: must be 0-6 or *");
+                if (!isValidScheduleTime(sw.start_time) || !isValidScheduleTime(sw.end_time))
+                    throw std::runtime_error("Invalid time format in schedule: must be HH:MM");
+                schedule_windows.push_back(std::move(sw));
+            }
+        }
         switch (config.cert_status_subscription) {
             case YES:
                 if (no_status)
@@ -1302,6 +1394,9 @@ int64_t onCreateCertificate(ConfigCms &config,
                 break;
             case DEFAULT:
                 ;
+        }
+        if (no_status && !schedule_windows.empty()) {
+            throw std::runtime_error("Scheduled certificates require status monitoring (no_status must be false)");
         }
         expiration = renew_by = getStructureValue<time_t>(ccr, "not_after");
         certstatus_t state = UNKNOWN;
@@ -1418,7 +1513,7 @@ int64_t onCreateCertificate(ConfigCms &config,
                 const auto new_status = static_cast<certstatus_t>(cert_status.status.i);
 
                 updateCertificateRenewalStatus(certs_db, original_certificate.serial, new_status, new_renewal_date);
-                postCertificateStatus(shared_status_pv, pv_name, original_certificate.serial, cert_status);
+                postCertificateStatus(shared_status_pv, pv_name, original_certificate.serial, cert_status, &certs_db);
                 log_info_printf(pvacmsmonitor, "%s ==> %s\n", getCertId(issuer_id, original_certificate.serial).c_str(), cert_status.status.s.c_str());
             } else { // VALID, PENDING_APPROVAL, PENDING
                 // Update the renew_by date if it's less than the new one but don't change status and post an update to listeners
@@ -1426,7 +1521,7 @@ int64_t onCreateCertificate(ConfigCms &config,
                     const auto cert_status = cert_status_factory.createPVACertificateStatus(original_certificate.serial, original_certificate.status, status_date, {}, new_renewal_date, 0);
 
                     updateCertificateRenewalStatus(certs_db, original_certificate.serial, original_certificate.status, new_renewal_date);
-                    postCertificateStatus(shared_status_pv, pv_name, original_certificate.serial, cert_status);
+                    postCertificateStatus(shared_status_pv, pv_name, original_certificate.serial, cert_status, &certs_db);
                     log_info_printf(pvacmsmonitor, "%s <=> %s\n", getCertId(issuer_id, original_certificate.serial).c_str(), CERT_STATE(original_certificate.status));
                 }
             }
@@ -1438,6 +1533,23 @@ int64_t onCreateCertificate(ConfigCms &config,
         } else {
             // Otherwise just create a certificate as normal
             pem_string = createCertificatePemString(certs_db, certificate_factory);
+        }
+        sqlite3_stmt *delete_sched_stmt = nullptr;
+        if (sqlite3_prepare_v2(certs_db.get(), SQL_DELETE_SCHEDULES_BY_SERIAL, -1, &delete_sched_stmt, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int64(delete_sched_stmt, sqlite3_bind_parameter_index(delete_sched_stmt, ":serial"), serial);
+            sqlite3_step(delete_sched_stmt);
+            sqlite3_finalize(delete_sched_stmt);
+        }
+        for (const auto &sw : schedule_windows) {
+            sqlite3_stmt *sched_stmt = nullptr;
+            if (sqlite3_prepare_v2(certs_db.get(), SQL_INSERT_SCHEDULE, -1, &sched_stmt, nullptr) == SQLITE_OK) {
+                sqlite3_bind_int64(sched_stmt, sqlite3_bind_parameter_index(sched_stmt, ":serial"), serial);
+                sqlite3_bind_text(sched_stmt, sqlite3_bind_parameter_index(sched_stmt, ":day_of_week"), sw.day_of_week.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(sched_stmt, sqlite3_bind_parameter_index(sched_stmt, ":start_time"), sw.start_time.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(sched_stmt, sqlite3_bind_parameter_index(sched_stmt, ":end_time"), sw.end_time.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_step(sched_stmt);
+                sqlite3_finalize(sched_stmt);
+            }
         }
         auto cert_id = getCertId(issuer_id, serial);
         auto status_pv = getCertStatusURI(config.getCertPvPrefix(), issuer_id, serial);
@@ -1455,6 +1567,7 @@ int64_t onCreateCertificate(ConfigCms &config,
         reply["expiration"] = expiration;
         if (has_renew_by) reply["renew_by"] = renew_by - POSIX_TIME_AT_EPICS_EPOCH;
         if (!pem_string.empty()) reply["cert"] = pem_string;
+        assignSchedule(reply, schedule_windows);
         // Log the certificate info
         const auto org_val = ccr["organization"];
         const auto org_unit_val = ccr["organizational_unit"];
@@ -1491,6 +1604,41 @@ int64_t onCreateCertificate(ConfigCms &config,
         op->error(SB() << "Failed to create certificate for " << cert_name << ": " << e.what());
         return 0;
     }
+}
+
+/**
+ * @brief Evaluate whether the given UTC time falls within any of the schedule windows.
+ * @param now_utc Current UTC time
+ * @param windows Vector of schedule windows to evaluate
+ * @return true if now_utc is within at least one window
+ */
+static bool isWithinSchedule(time_t now_utc, const std::vector<ScheduleWindow> &windows) {
+    if (windows.empty()) return true;
+
+    struct tm tm_buf;
+    gmtime_r(&now_utc, &tm_buf);
+    int current_day = tm_buf.tm_wday;
+    int current_mins = tm_buf.tm_hour * 60 + tm_buf.tm_min;
+
+    for (const auto &w : windows) {
+        if (w.day_of_week != "*") {
+            int day = w.day_of_week[0] - '0';
+            if (day != current_day) continue;
+        }
+        int start_h = std::stoi(w.start_time.substr(0, 2));
+        int start_m = std::stoi(w.start_time.substr(3, 2));
+        int end_h = std::stoi(w.end_time.substr(0, 2));
+        int end_m = std::stoi(w.end_time.substr(3, 2));
+        int start_mins = start_h * 60 + start_m;
+        int end_mins = end_h * 60 + end_m;
+
+        if (end_mins > start_mins) {
+            if (current_mins >= start_mins && current_mins < end_mins) return true;
+        } else {
+            if (current_mins >= start_mins || current_mins < end_mins) return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -1554,7 +1702,7 @@ void onGetStatus(const ConfigCms &config,
 
         const auto now = std::time(nullptr);
         const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, status, now, status_date);
-        postCertificateStatus(status_pv, pv_name, serial, cert_status);
+        postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
     } catch (std::exception &e) {
         log_err_printf(pvacms, "PVACMS: %s\n", e.what());
         postCertificateStatus(status_pv, pv_name, serial);
@@ -1604,7 +1752,7 @@ void onRevoke(const ConfigCms &config,
         const auto revocation_date = std::time(nullptr);
         const auto ocsp_status =
             cert_status_creator.createPVACertificateStatus(serial, REVOKED, revocation_date, revocation_date);
-        postCertificateStatus(status_pv, pv_name, serial, ocsp_status);
+        postCertificateStatus(status_pv, pv_name, serial, ocsp_status, &certs_db);
         log_info_printf(pvacms, "%s ==> REVOKED\n", getCertId(our_issuer_id, serial).c_str());
         op->reply();
     } catch (std::exception &e) {
@@ -1657,7 +1805,7 @@ void onApprove(const ConfigCms &config,
                           serial, SB() << "new_state=" << CERT_STATE(new_state));
 
         const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, new_state, status_date);
-        postCertificateStatus(status_pv, pv_name, serial, cert_status);
+        postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
         switch (new_state) {
             case VALID:
             case EXPIRED:
@@ -1718,7 +1866,7 @@ void onDeny(const ConfigCms &config,
         const auto revocation_date = std::time(nullptr);
         const auto cert_status =
             cert_status_creator.createPVACertificateStatus(serial, REVOKED, revocation_date, revocation_date);
-        postCertificateStatus(status_pv, pv_name, serial, cert_status);
+        postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
         log_info_printf(pvacms, "%s ==> REVOKED (Approval Request Denied)\n", getCertId(our_issuer_id, serial).c_str());
         op->reply();
     } catch (std::exception &e) {
@@ -2770,7 +2918,8 @@ void setValue(Value &target, const std::string &field, const T &new_value) {
 Value postCertificateStatus(server::WildcardPV &status_pv,
                             const std::string &pv_name,
                             const uint64_t serial,
-                            const PVACertificateStatus &cert_status) {
+                            const PVACertificateStatus &cert_status,
+                            const sql_ptr *certs_db) {
     Guard G(status_pv_lock);
     Value status_value;
     const auto was_open = status_pv.isOpen(pv_name);
@@ -2792,7 +2941,8 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
     setValue<uint32_t>(status_value, "ocsp_status.value.index", cert_status.ocsp_status.i);
     // Get ocsp info if specified
     if (cert_status.ocsp_bytes.empty()) {
-        setValue<std::string>(status_value, "ocsp_state", SB() << "**UNCERTIFIED**: " << cert_status.ocsp_status.s);
+        const std::string uncertified_state = SB() << "**UNCERTIFIED**: " << cert_status.ocsp_status.s;
+        setValue<std::string>(status_value, "ocsp_state", uncertified_state);
     } else {
         setValue<std::string>(status_value, "ocsp_state", cert_status.ocsp_status.s);
         setValue<std::string>(status_value, "ocsp_status_date", cert_status.status_date.s);
@@ -2800,6 +2950,10 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
         setValue<std::string>(status_value, "ocsp_revocation_date", cert_status.revocation_date.s);
         auto ocsp_bytes = shared_array<const uint8_t>(cert_status.ocsp_bytes.begin(), cert_status.ocsp_bytes.end());
         status_value["ocsp_response"] = ocsp_bytes.freeze();
+    }
+
+    if (certs_db) {
+        assignSchedule(status_value, loadScheduleWindows(certs_db->get(), serial));
     }
 
     log_debug_printf(pvacms, "Posting Certificate Status: %s = %s\n", pv_name.c_str(), cert_status.status.s.c_str());
@@ -2847,7 +3001,7 @@ bool postUpdateToNextCertBecomingValid(const CertStatusFactory &cert_status_crea
                 updateCertificateStatus(status_monitor_params.certs_db_, serial, VALID, 1, {PENDING});
                 const auto status_date = std::time(nullptr);
                 const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, VALID, status_date);
-                postCertificateStatus(status_monitor_params.status_pv_, pv_name, serial, cert_status);
+                postCertificateStatus(status_monitor_params.status_pv_, pv_name, serial, cert_status, &status_monitor_params.certs_db_);
                 log_info_printf(pvacmsmonitor,
                                 "%s ==> VALID\n",
                                 getCertId(status_monitor_params.issuer_id_, serial).c_str());
@@ -2909,7 +3063,7 @@ bool postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_factory,
                 updateCertificateStatus(certs_db, serial, EXPIRED, -1, {VALID, PENDING_APPROVAL, PENDING_RENEWAL, PENDING});
                 const auto status_date = std::time(nullptr);
                 const auto cert_status = cert_status_factory.createPVACertificateStatus(serial, EXPIRED, status_date);
-                postCertificateStatus(status_pv, pv_name, serial, cert_status);
+                postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
                 log_info_printf(pvacmsmonitor, "%s ==> EXPIRED\n", getCertId(issuer_id, serial).c_str());
             } catch (const std::runtime_error &e) {
                 log_err_printf(pvacmsmonitor, "PVACMS Certificate Monitor Error: %s\n", e.what());
@@ -3010,7 +3164,7 @@ bool postUpdateToNextCertNearingRenewal(const CertStatusFactory &cert_status_cre
                     CertDate(std::time(nullptr)), renew_by, true);
 
                 // Post the status
-                postCertificateStatus(status_pv, pv_name, serial, cert_status);
+                postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
                 log_info_printf(pvacmsmonitor, "%s ==> RENEWAL DUE\n", getCertId(issuer_id, serial).c_str());
             } catch (const std::runtime_error &e) {
                 log_err_printf(pvacmsmonitor, "PVACMS Certificate Monitor Error: %s\n", e.what());
@@ -3063,7 +3217,7 @@ bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
                 updateCertificateStatus(certs_db, serial, PENDING_RENEWAL, -1, {VALID, PENDING_APPROVAL, PENDING});
                 const auto status_date = std::time(nullptr);
                 const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, PENDING_RENEWAL, status_date);
-                postCertificateStatus(status_pv, pv_name, serial, cert_status);
+                postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
                 log_info_printf(pvacmsmonitor, "%s ==> PENDING_RENEWAL\n", getCertId(issuer_id, serial).c_str());
             } catch (const std::runtime_error &e) {
                 log_err_printf(pvacmsmonitor, "PVACMS Certificate Monitor Error: %s\n", e.what());
@@ -3112,7 +3266,7 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
                 touchCertificateStatus(certs_db, serial);
                 const auto status_date = std::time(nullptr);
                 const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, status, status_date);
-                postCertificateStatus(status_pv, pv_name, serial, cert_status);
+                postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
                 log_info_printf(pvacmsmonitor, "%s Certificate Status Keep Alive\n", getCertId(issuer_id, serial).c_str());
             } catch (const std::runtime_error &e) {
                 log_err_printf(pvacmsmonitor, "PVACMS Certificate Monitor Error: %s\n", e.what());
@@ -3246,7 +3400,7 @@ bool postUpdatesToExpiredStatuses(const CertStatusFactory &cert_status_creator,
                 auto cert_status = cert_status_creator.createPVACertificateStatus(serial,
                                                                                   static_cast<certstatus_t>(status),
                                                                                   status_date);
-                postCertificateStatus(status_monitor_params.status_pv_, pv_name, serial, cert_status);
+                postCertificateStatus(status_monitor_params.status_pv_, pv_name, serial, cert_status, &status_monitor_params.certs_db_);
                 status_monitor_params.setValidity(serial, cert_status.status_valid_until_date.t);
                 log_debug_printf(pvacmsmonitor,
                                  "%s ==> \u21BA \n",
@@ -3291,6 +3445,43 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
     }
 
     postUpdatesToNextCertStatusToBecomeInvalid(cert_status_creator, status_monitor_params);
+
+    {
+        sqlite3_stmt *sched_certs_stmt = nullptr;
+        if (sqlite3_prepare_v2(status_monitor_params.certs_db_.get(),
+                               SQL_SELECT_CERTS_WITH_SCHEDULES, -1, &sched_certs_stmt, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int(sched_certs_stmt,
+                             sqlite3_bind_parameter_index(sched_certs_stmt, ":valid_status"), VALID);
+            sqlite3_bind_int(sched_certs_stmt,
+                             sqlite3_bind_parameter_index(sched_certs_stmt, ":scheduled_offline_status"), SCHEDULED_OFFLINE);
+
+            const auto now_utc = time(nullptr);
+            while (sqlite3_step(sched_certs_stmt) == SQLITE_ROW) {
+                const auto serial = static_cast<uint64_t>(sqlite3_column_int64(sched_certs_stmt, 0));
+                const auto current_status = static_cast<certstatus_t>(sqlite3_column_int(sched_certs_stmt, 1));
+                const auto windows = loadScheduleWindows(status_monitor_params.certs_db_.get(), serial);
+                const bool in_window = isWithinSchedule(now_utc, windows);
+                certstatus_t new_status = current_status;
+
+                if (current_status == VALID && !in_window) {
+                    new_status = SCHEDULED_OFFLINE;
+                } else if (current_status == SCHEDULED_OFFLINE && in_window) {
+                    new_status = VALID;
+                }
+
+                if (new_status != current_status) {
+                    Guard G(status_update_lock);
+                    updateCertificateStatus(status_monitor_params.certs_db_, serial, new_status, 0);
+                    const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, new_status, now_utc, {});
+                    auto cert_id = getCertId(status_monitor_params.issuer_id_, serial);
+                    auto status_pv_name = getCertStatusURI(status_monitor_params.config_.getCertPvPrefix(), cert_id);
+                    postCertificateStatus(status_monitor_params.status_pv_, status_pv_name, serial, cert_status, &status_monitor_params.certs_db_);
+                    log_info_printf(pvacmsmonitor, "%s ==> %s (schedule)\n", cert_id.c_str(), CERT_STATE(new_status));
+                }
+            }
+            sqlite3_finalize(sched_certs_stmt);
+        }
+    }
 
     // No cluster sync here: time-based transitions are computed independently by every node.
     // Only CCR/admin actions (create, revoke, approve, renew) publish sync snapshots.
@@ -3515,6 +3706,60 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
 
     if (computed_secs < clamped_interval_min) computed_secs = clamped_interval_min;
     if (computed_secs > clamped_interval_max) computed_secs = clamped_interval_max;
+
+    {
+        struct tm now_tm;
+        gmtime_r(&now, &now_tm);
+        int now_mins = now_tm.tm_hour * 60 + now_tm.tm_min;
+        int now_day = now_tm.tm_wday;
+        uint32_t min_sched_secs = computed_secs;
+
+        sqlite3_stmt *sched_stmt = nullptr;
+        if (sqlite3_prepare_v2(status_monitor_params.certs_db_.get(),
+                               "SELECT DISTINCT cs.start_time, cs.end_time, cs.day_of_week "
+                               "FROM cert_schedules cs "
+                               "INNER JOIN certs c ON c.serial = cs.serial "
+                               "WHERE c.status IN (?, ?)",
+                               -1,
+                               &sched_stmt,
+                               nullptr) == SQLITE_OK) {
+            sqlite3_bind_int(sched_stmt, 1, VALID);
+            sqlite3_bind_int(sched_stmt, 2, SCHEDULED_OFFLINE);
+            while (sqlite3_step(sched_stmt) == SQLITE_ROW) {
+                auto col = [&](int c) -> std::string {
+                    auto t = sqlite3_column_text(sched_stmt, c);
+                    return t ? reinterpret_cast<const char*>(t) : "";
+                };
+                auto start_str = col(0);
+                auto end_str = col(1);
+                auto day_str = col(2);
+
+                if (day_str != "*") {
+                    int day = day_str[0] - '0';
+                    if (day != now_day) continue;
+                }
+
+                int start_mins = std::stoi(start_str.substr(0, 2)) * 60 + std::stoi(start_str.substr(3, 2));
+                int end_mins = std::stoi(end_str.substr(0, 2)) * 60 + std::stoi(end_str.substr(3, 2));
+
+                auto secsUntil = [&](int boundary_mins) -> uint32_t {
+                    int diff = boundary_mins - now_mins;
+                    if (diff <= 0) return std::numeric_limits<uint32_t>::max();
+                    return static_cast<uint32_t>(diff * 60);
+                };
+
+                uint32_t to_start = secsUntil(start_mins);
+                uint32_t to_end = secsUntil(end_mins);
+                min_sched_secs = std::min(min_sched_secs, std::min(to_start, to_end));
+            }
+            sqlite3_finalize(sched_stmt);
+        }
+        if (min_sched_secs < computed_secs) {
+            computed_secs = std::max(min_sched_secs, clamped_interval_min);
+            log_debug_printf(pvacmsmonitor, "Adaptive monitor: schedule boundary in %us, using interval=%us\n",
+                             min_sched_secs, computed_secs);
+        }
+    }
 
     log_debug_printf(pvacmsmonitor, "Adaptive monitor: %u certs near transition, interval=%us\n",
                      near_transition_count, computed_secs);
@@ -4044,6 +4289,7 @@ int main(int argc, char *argv[]) {
 
         // Create the PVs
         SharedPV create_pv(SharedPV::buildReadonly());
+        SharedPV schedule_pv(SharedPV::buildReadonly());
         SharedPV health_pv(SharedPV::buildReadonly());
         SharedPV metrics_pv(SharedPV::buildReadonly());
         SharedPV root_pv(SharedPV::buildReadonly());
@@ -4076,6 +4322,97 @@ int main(int argc, char *argv[]) {
                 cluster_sync.publishCertChange(created_serial);
             else
                 cluster_sync.publishSnapshot();
+        });
+
+        schedule_pv.onRPC([&config, &certs_db, &our_issuer_id, &status_pv,
+                           &cert_auth_pkey, &cert_auth_cert, cert_auth_chain,
+                           &cluster_sync](const SharedPV &, std::unique_ptr<ExecOp> &&op, pvxs::Value &&args) {
+            try {
+                const auto creds = op->credentials();
+                pvxs::ioc::Credentials credentials(*creds);
+                pvxs::ioc::SecurityClient securityClient;
+                static ASMember as_member;
+                securityClient.update(as_member.mem, ASL1, credentials);
+                if (!securityClient.canWrite()) {
+                    op->error("CERT:SCHEDULE operation not authorized");
+                    return;
+                }
+                const std::string operator_str = pvxs::SB() << *creds;
+
+                auto query = args["query"];
+                auto serial = query["serial"].as<uint64_t>();
+                if (serial == 0) {
+                    op->error("serial is required");
+                    return;
+                }
+
+                std::vector<ScheduleWindow> new_windows;
+                auto sched_arr = query["schedule"];
+                if (sched_arr) {
+                    auto sched = sched_arr.as<pvxs::shared_array<const pvxs::Value>>();
+                    for (const auto &win : sched) {
+                        ScheduleWindow sw;
+                        sw.day_of_week = win["day_of_week"].as<std::string>();
+                        sw.start_time = win["start_time"].as<std::string>();
+                        sw.end_time = win["end_time"].as<std::string>();
+                        if (sw.day_of_week != "*" &&
+                            (sw.day_of_week.size() != 1 || sw.day_of_week[0] < '0' || sw.day_of_week[0] > '6'))
+                            throw std::runtime_error("Invalid day_of_week: must be 0-6 or *");
+                        if (!isValidScheduleTime(sw.start_time) || !isValidScheduleTime(sw.end_time))
+                            throw std::runtime_error("Invalid time format: must be HH:MM");
+                        new_windows.push_back(std::move(sw));
+                    }
+                }
+
+                {
+                    Guard G(status_update_lock);
+                    sqlite3_stmt *del_stmt = nullptr;
+                    if (sqlite3_prepare_v2(certs_db.get(), SQL_DELETE_SCHEDULES_BY_SERIAL, -1, &del_stmt, nullptr) == SQLITE_OK) {
+                        sqlite3_bind_int64(del_stmt, sqlite3_bind_parameter_index(del_stmt, ":serial"), static_cast<sqlite3_int64>(serial));
+                        sqlite3_step(del_stmt);
+                        sqlite3_finalize(del_stmt);
+                    }
+                    for (const auto &sw : new_windows) {
+                        sqlite3_stmt *ins_stmt = nullptr;
+                        if (sqlite3_prepare_v2(certs_db.get(), SQL_INSERT_SCHEDULE, -1, &ins_stmt, nullptr) == SQLITE_OK) {
+                            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), static_cast<sqlite3_int64>(serial));
+                            sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":day_of_week"), sw.day_of_week.c_str(), -1, SQLITE_TRANSIENT);
+                            sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":start_time"), sw.start_time.c_str(), -1, SQLITE_TRANSIENT);
+                            sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":end_time"), sw.end_time.c_str(), -1, SQLITE_TRANSIENT);
+                            sqlite3_step(ins_stmt);
+                            sqlite3_finalize(ins_stmt);
+                        }
+                    }
+
+                    certstatus_t current_status;
+                    time_t status_date;
+                    std::tie(current_status, status_date) = getCertificateStatus(certs_db, serial);
+                    if (current_status == VALID || current_status == SCHEDULED_OFFLINE) {
+                        const bool in_window = isWithinSchedule(time(nullptr), new_windows);
+                        certstatus_t target = in_window ? VALID : (new_windows.empty() ? VALID : SCHEDULED_OFFLINE);
+                        if (target != current_status) {
+                            updateCertificateStatus(certs_db, serial, target, 0);
+                            const auto cert_status_creator(CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
+                            const auto now = std::time(nullptr);
+                            const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, target, now, {});
+                            auto cert_id = getCertId(our_issuer_id, serial);
+                            auto status_pv_name = getCertStatusURI(config.getCertPvPrefix(), cert_id);
+                            postCertificateStatus(status_pv, status_pv_name, serial, cert_status, &certs_db);
+                            log_info_printf(pvacms, "%s ==> %s (schedule RPC)\n", cert_id.c_str(), CERT_STATE(target));
+                        }
+                    }
+
+                    std::string detail = new_windows.empty() ? "removed" : std::to_string(new_windows.size()) + " windows";
+                    insertAuditRecord(certs_db.get(), AUDIT_ACTION_SCHEDULE, operator_str, serial, detail);
+                }
+
+                cluster_sync.publishCertChange(static_cast<int64_t>(serial));
+                auto reply = pvxs::TypeDef(pvxs::TypeCode::Struct, {pvxs::members::String("result")}).create();
+                reply["result"] = "ok";
+                op->reply(reply);
+            } catch (const std::exception &e) {
+                op->error(pvxs::SB() << "CERT:SCHEDULE error: " << e.what());
+            }
         });
 
         // Client Connect handlers GET/MONITOR
@@ -4268,6 +4605,8 @@ int main(int argc, char *argv[]) {
 
         pva_server.addPV(getCertCreatePv(config.getCertPvPrefix()), create_pv)
             .addPV(getCertCreatePv(config.getCertPvPrefix(), our_issuer_id), create_pv)
+            .addPV(config.getCertPvPrefix() + ":SCHEDULE", schedule_pv)
+            .addPV(config.getCertPvPrefix() + ":SCHEDULE:" + our_issuer_id, schedule_pv)
             .addPV(getCertAuthRootPv(config.getCertPvPrefix()), root_pv)
             .addPV(getCertAuthRootPv(config.getCertPvPrefix(), our_issuer_id), root_pv)
             .addPV(getCertIssuerPv(config.getCertPvPrefix()), issuer_pv)
@@ -4294,6 +4633,18 @@ int main(int argc, char *argv[]) {
         metrics_value["db_size_bytes"] = static_cast<uint64_t>(0u);
         metrics_value["uptime_secs"] = static_cast<uint64_t>(0u);
 
+        auto schedule_rpc_proto = pvxs::TypeDef(pvxs::TypeCode::Struct, {
+            pvxs::members::Struct("query", {
+                pvxs::members::UInt64("serial"),
+                pvxs::members::StructA("schedule", {
+                    pvxs::members::String("day_of_week"),
+                    pvxs::members::String("start_time"),
+                    pvxs::members::String("end_time"),
+                }),
+            }),
+        }).create();
+
+        schedule_pv.open(schedule_rpc_proto);
         health_pv.open(health_value);
         metrics_pv.open(metrics_value);
         root_pv.open(root_pv_value);

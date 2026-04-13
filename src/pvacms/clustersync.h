@@ -30,6 +30,9 @@
     "status, status_date "                 \
     "FROM certs"
 
+#define SQL_SYNC_SELECT_ALL_SCHEDULES \
+    "SELECT serial, day_of_week, start_time, end_time FROM cert_schedules"
+
 #define SQL_SYNC_SELECT_CERT_BY_SERIAL     \
     "SELECT serial, skid, CN, O, OU, C, "  \
     "approved, not_before, not_after, "    \

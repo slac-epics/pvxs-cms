@@ -62,6 +62,12 @@ Value makeClusterSyncValue() {
             Int32("status"),
             Int64("status_date"),
         }),
+        StructA("cert_schedules", {
+            Int64("serial"),
+            String("day_of_week"),
+            String("start_time"),
+            String("end_time"),
+        }),
         UInt8A("signature"),
     }).create();
 }
@@ -138,7 +144,11 @@ bool isValidStatusTransition(certstatus_t local_status, certstatus_t remote_stat
                remote_status == PENDING ||
                remote_status == REVOKED;
     case VALID:
-        return remote_status == REVOKED;
+        return remote_status == REVOKED ||
+               remote_status == SCHEDULED_OFFLINE;
+    case SCHEDULED_OFFLINE:
+        return remote_status == VALID ||
+               remote_status == REVOKED;
     case PENDING_RENEWAL:
         return remote_status == VALID ||
                remote_status == REVOKED;

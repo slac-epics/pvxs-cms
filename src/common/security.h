@@ -15,6 +15,17 @@ namespace pvxs {
 namespace certs {
 
 /**
+ * @brief Represents a single recurring time window in a validity schedule.
+ *
+ * @since UNRELEASED
+ */
+struct ScheduleWindow {
+    std::string day_of_week;  ///< "0"-"6" (Sun-Sat) or "*" for every day
+    std::string start_time;   ///< "HH:MM" in UTC
+    std::string end_time;     ///< "HH:MM" in UTC
+};
+
+/**
  * @class AuthnCredentials
  * @brief Represents the credentials for an abstract Authenticator.
  *
@@ -97,6 +108,11 @@ struct AuthnCredentials {
         members::String("config_uri_base"),    \
         members::Bool("no_status"),            \
         members::Struct("verifier", VERIFIER), \
+        members::StructA("schedule", {         \
+            members::String("day_of_week"),    \
+            members::String("start_time"),     \
+            members::String("end_time"),       \
+        }),                                     \
     }
 
 struct CertCreationRequest final {

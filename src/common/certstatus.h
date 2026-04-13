@@ -292,14 +292,15 @@ class CertStatusSubscriptionException final : public CertStatusException {
 };
 
 // All certificate statuses
-#define CERT_STATUS_LIST   \
-    X_IT(UNKNOWN)          \
-    X_IT(VALID)            \
-    X_IT(PENDING)          \
-    X_IT(PENDING_APPROVAL) \
-    X_IT(PENDING_RENEWAL)  \
-    X_IT(EXPIRED)          \
-    X_IT(REVOKED)
+#define CERT_STATUS_LIST    \
+    X_IT(UNKNOWN)           \
+    X_IT(VALID)             \
+    X_IT(PENDING)           \
+    X_IT(PENDING_APPROVAL)  \
+    X_IT(PENDING_RENEWAL)   \
+    X_IT(EXPIRED)           \
+    X_IT(REVOKED)           \
+    X_IT(SCHEDULED_OFFLINE)
 
 // All OCSP certificate statuses
 #define OCSP_CERT_STATUS_LIST     \
@@ -428,6 +429,11 @@ struct CertStatus {
                         Member(TypeCode::String, "ocsp_certified_until"),
                         Member(TypeCode::String, "ocsp_revocation_date"),
                         Member(TypeCode::UInt8A, "ocsp_response"),
+                        StructA("schedule", {
+                            String("day_of_week"),
+                            String("start_time"),
+                            String("end_time"),
+                        }),
         }).create();
 
         shared_array<const std::string> choices(CERT_STATES);
