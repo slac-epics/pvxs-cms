@@ -3204,8 +3204,63 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
         }
     }
 
+    const uint32_t interval_min = status_monitor_params.config_.monitor_interval_min_secs;
+    const uint32_t interval_max = status_monitor_params.config_.monitor_interval_max_secs;
+    const uint32_t clamped_interval_min = std::min(interval_min, interval_max);
+    const uint32_t clamped_interval_max = std::max(interval_min, interval_max);
+    const int pending_status = PENDING;
+    const int valid_status = VALID;
+
+    const time_t now = time(nullptr);
+    const time_t lookahead = now + static_cast<time_t>(clamped_interval_max) * 2;
+
+    const std::string count_sql =
+        "SELECT COUNT(*) FROM certs WHERE "
+        "(status = " + std::to_string(pending_status) + " AND not_before <= ?) OR "
+        "(status = " + std::to_string(valid_status) + " AND not_after <= ?) OR "
+        "(status = " + std::to_string(valid_status) + " AND renew_by > 0 AND renew_by <= ?)";
+
+    sqlite3_stmt *count_stmt = nullptr;
+    uint32_t near_transition_count = 0;
+
+    if (sqlite3_prepare_v2(status_monitor_params.certs_db_.get(),
+                           count_sql.c_str(), -1, &count_stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(count_stmt, 1, static_cast<sqlite3_int64>(lookahead));
+        sqlite3_bind_int64(count_stmt, 2, static_cast<sqlite3_int64>(lookahead));
+        sqlite3_bind_int64(count_stmt, 3, static_cast<sqlite3_int64>(lookahead));
+        if (sqlite3_step(count_stmt) == SQLITE_ROW) {
+            near_transition_count = static_cast<uint32_t>(sqlite3_column_int(count_stmt, 0));
+        } else {
+            sqlite3_finalize(count_stmt);
+            log_warn_printf(pvacms, "Adaptive monitor: transition query failed: %s\n",
+                            sqlite3_errmsg(status_monitor_params.certs_db_.get()));
+            return {};
+        }
+        sqlite3_finalize(count_stmt);
+    } else {
+        log_warn_printf(pvacms, "Adaptive monitor: transition query failed: %s\n",
+                        sqlite3_errmsg(status_monitor_params.certs_db_.get()));
+        return {};
+    }
+
+    uint32_t computed_secs;
+    if (near_transition_count == 0) {
+        computed_secs = clamped_interval_max;
+    } else if (near_transition_count >= 100) {
+        computed_secs = clamped_interval_min;
+    } else {
+        computed_secs = clamped_interval_max
+            - (clamped_interval_max - clamped_interval_min) * near_transition_count / 100;
+    }
+
+    if (computed_secs < clamped_interval_min) computed_secs = clamped_interval_min;
+    if (computed_secs > clamped_interval_max) computed_secs = clamped_interval_max;
+
+    log_debug_printf(pvacmsmonitor, "Adaptive monitor: %u certs near transition, interval=%us\n",
+                     near_transition_count, computed_secs);
+
     log_debug_printf(pvacmsmonitor, "Certificate Monitor Thread Sleep%s", "\n");
-    return {};
+    return {static_cast<long>(computed_secs), 0};
 }
 
 std::map<const std::string, std::unique_ptr<client::Config>> getAuthNConfigMap() {
@@ -3368,6 +3423,12 @@ int readParameters(int argc,
     app.add_option("--max-concurrent-ccr",
                    config.max_concurrent_ccr,
                    "Maximum number of in-flight certificate creation requests.  Default 100");
+    app.add_option("--monitor-interval-min",
+                   config.monitor_interval_min_secs,
+                   "Minimum status monitor interval in seconds.  Default 5");
+    app.add_option("--monitor-interval-max",
+                   config.monitor_interval_max_secs,
+                   "Maximum status monitor interval in seconds.  Default 60");
     // Add any parameters for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry())
         authn_entry.second->addOptions(app, authn_config_map);
@@ -3465,6 +3526,8 @@ int readParameters(int argc,
             << "        --rate-limit <reqs/sec>              Sustained certificate creation rate limit. 0=disabled. Default 10\n"
             << "        --rate-limit-burst <count>           Certificate creation burst capacity. Default 50\n"
             << "        --max-concurrent-ccr <count>         Maximum in-flight certificate creation requests. Default 100\n"
+            << "        --monitor-interval-min <secs>        Minimum status monitor interval. Default 5\n"
+            << "        --monitor-interval-max <secs>        Maximum status monitor interval. Default 60\n"
             << "  (-v | --verbose)                           Verbose mode\n"
             << std::endl
             << "admin options:\n"

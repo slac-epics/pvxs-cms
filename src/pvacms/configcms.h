@@ -326,6 +326,8 @@ class ConfigCms final : public Config {
     uint32_t rate_limit = 10;
     uint32_t rate_limit_burst = 50;
     uint32_t max_concurrent_ccr = 100;
+    uint32_t monitor_interval_min_secs = 5;
+    uint32_t monitor_interval_max_secs = 60;
 
     void applyCmsEnv(const std::map<std::string, std::string>& defs);
     static ConfigCms mockCms(int family=AF_INET);
