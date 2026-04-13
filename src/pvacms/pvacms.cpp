@@ -13,6 +13,7 @@
 #include "pvacms.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <condition_variable>
 #include <cstdlib>
@@ -70,6 +71,7 @@
 #include "ownedptr.h"
 #include "serverev.h"
 #include "sqlite3.h"
+#include "tokenbucket.h"
 #include "utilpvt.h"
 
 #include <CLI/CLI.hpp>
@@ -111,6 +113,31 @@ bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
 
 epicsMutex status_pv_lock;
 epicsMutex status_update_lock;
+
+TokenBucket &getCreateCertificateRateLimiter()
+{
+    static TokenBucket limiter;
+    return limiter;
+}
+
+std::atomic<uint32_t> &getCreateCertificateInflightCount()
+{
+    static std::atomic<uint32_t> inflight{0u};
+    return inflight;
+}
+
+struct InflightCcrGuard {
+    explicit InflightCcrGuard(std::atomic<uint32_t> &counter)
+        : counter_(counter)
+    {}
+
+    ~InflightCcrGuard()
+    {
+        counter_.fetch_sub(1u);
+    }
+
+    std::atomic<uint32_t> &counter_;
+};
 
 struct ASMember {
     std::string name{};
@@ -1060,6 +1087,40 @@ int64_t onCreateCertificate(ConfigCms &config,
         setValue<uint64_t>(reply, "expiration", 0);
         setValue<std::string>(reply, "cert", pem_string);
         op->reply(reply);
+        return 0;
+    }
+
+    auto &inflight_ccr = getCreateCertificateInflightCount();
+    const auto max_concurrent_ccr = config.max_concurrent_ccr;
+    uint32_t current_inflight = inflight_ccr.load();
+    while (true) {
+        if (current_inflight >= max_concurrent_ccr) {
+            log_warn_printf(pvacms,
+                            "Overload: rejected CCR, %u/%u in-flight, rate=%u/s burst=%u\n",
+                            current_inflight,
+                            max_concurrent_ccr,
+                            config.rate_limit,
+                            config.rate_limit_burst);
+            op->error("Too many concurrent requests. retry_after_secs: 1");
+            return 0;
+        }
+        if (inflight_ccr.compare_exchange_weak(current_inflight, current_inflight + 1u)) {
+            break;
+        }
+    }
+    InflightCcrGuard inflight_guard(inflight_ccr);
+
+    auto &rate_limiter = getCreateCertificateRateLimiter();
+    if (!rate_limiter.tryConsume()) {
+        const double retry_after_secs = rate_limiter.secsUntilReady();
+        log_warn_printf(pvacms,
+                        "Rate limit: rejected CCR, in-flight=%u/%u, rate=%u/s burst=%u, retry_after=%.1f\n",
+                        inflight_ccr.load(),
+                        max_concurrent_ccr,
+                        config.rate_limit,
+                        config.rate_limit_burst,
+                        retry_after_secs);
+        op->error(SB() << "Rate limit exceeded. retry_after_secs: " << retry_after_secs);
         return 0;
     }
 
@@ -3298,6 +3359,15 @@ int readParameters(int argc,
     app.add_option("--audit-retention-days",
                    config.audit_retention_days,
                    "Days to retain audit log records.  0 to disable pruning.  Default 365");
+    app.add_option("--rate-limit",
+                   config.rate_limit,
+                   "Sustained certificate creation rate limit in requests per second.  0 to disable.  Default 10");
+    app.add_option("--rate-limit-burst",
+                   config.rate_limit_burst,
+                   "Certificate creation burst capacity.  Default 50");
+    app.add_option("--max-concurrent-ccr",
+                   config.max_concurrent_ccr,
+                   "Maximum number of in-flight certificate creation requests.  Default 100");
     // Add any parameters for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry())
         authn_entry.second->addOptions(app, authn_config_map);
@@ -3391,6 +3461,10 @@ int readParameters(int argc,
             << "        --cluster-bidi-timeout <secs>        Seconds to wait for bidirectional connectivity check during join. Default 5\n"
             << "        --cluster-skip-peer-identity-check   Skip TLS peer identity verification for cluster sync\n"
             << "        --integrity-check-interval <secs>    Seconds between SQLite integrity checks. 0=disabled. Default 86400\n"
+            << "        --audit-retention-days <days>        Days to retain audit log records. 0=disabled. Default 365\n"
+            << "        --rate-limit <reqs/sec>              Sustained certificate creation rate limit. 0=disabled. Default 10\n"
+            << "        --rate-limit-burst <count>           Certificate creation burst capacity. Default 50\n"
+            << "        --max-concurrent-ccr <count>         Maximum in-flight certificate creation requests. Default 100\n"
             << "  (-v | --verbose)                           Verbose mode\n"
             << std::endl
             << "admin options:\n"
@@ -3587,6 +3661,9 @@ int main(int argc, char *argv[]) {
         }
 
         pvxs::ossl_ptr<EVP_PKEY> cert_auth_pub_key(X509_get_pubkey(cert_auth_cert.get()));
+
+        getCreateCertificateRateLimiter().configure(config.rate_limit, config.rate_limit_burst);
+        getCreateCertificateInflightCount().store(0u);
 
         ASMember as_cluster_member("CLUSTER");
 

@@ -20,6 +20,7 @@ ifeq ($(PVXS_ENABLE_PVACMS),YES)
 USR_CPPFLAGS += -I$(COMMON_DIR)
 USR_CPPFLAGS += -I$(AUTHN_DIR)
 USR_CPPFLAGS += -I$(AUTHN_STD_DIR)
+USR_CPPFLAGS += -I$(PVACMS_DIR)
 USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
 
 USR_CPPFLAGS += -I$(TOP)/certs -I$(TOP)/bundle/CLI11/include
@@ -93,6 +94,10 @@ TESTS += testauditlogging
 TESTPROD_HOST += testauditlogging
 testauditlogging_SRCS += testauditlogging.cpp
 testauditlogging_SYS_LIBS += sqlite3
+
+TESTS += testratelimiting
+TESTPROD_HOST += testratelimiting
+testratelimiting_SRCS += testratelimiting.cpp
 
 endif # PVXS_ENABLE_PVACMS
 endif # BASE_3_15
