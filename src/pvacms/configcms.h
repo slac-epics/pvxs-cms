@@ -323,6 +323,10 @@ class ConfigCms final : public Config {
      */
     uint32_t audit_retention_days = 365;
 
+    uint32_t rate_limit = 10;
+    uint32_t rate_limit_burst = 50;
+    uint32_t max_concurrent_ccr = 100;
+
     void applyCmsEnv(const std::map<std::string, std::string>& defs);
     static ConfigCms mockCms(int family=AF_INET);
     static ConfigCms forCms();

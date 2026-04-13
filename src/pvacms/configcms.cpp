@@ -284,6 +284,30 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         }
     }
 
+    if (pickone({"EPICS_PVACMS_RATE_LIMIT"})) {
+        try {
+            rate_limit = static_cast<uint32_t>(parseTo<uint64_t>(pickone.val));
+        } catch (std::exception &e) {
+            log_err_printf(cert_cfg, "%s invalid rate limit: %s\n", pickone.name.c_str(), e.what());
+        }
+    }
+
+    if (pickone({"EPICS_PVACMS_RATE_LIMIT_BURST"})) {
+        try {
+            rate_limit_burst = static_cast<uint32_t>(parseTo<uint64_t>(pickone.val));
+        } catch (std::exception &e) {
+            log_err_printf(cert_cfg, "%s invalid rate limit burst: %s\n", pickone.name.c_str(), e.what());
+        }
+    }
+
+    if (pickone({"EPICS_PVACMS_MAX_CONCURRENT_CCR"})) {
+        try {
+            max_concurrent_ccr = static_cast<uint32_t>(parseTo<uint64_t>(pickone.val));
+        } catch (std::exception &e) {
+            log_err_printf(cert_cfg, "%s invalid concurrent CCR limit: %s\n", pickone.name.c_str(), e.what());
+        }
+    }
+
 }
 
 /**
@@ -338,6 +362,9 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     defs["EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT"] = std::to_string(cluster_bidi_timeout_secs);
     defs["EPICS_PVACMS_INTEGRITY_CHECK_INTERVAL"] = std::to_string(integrity_check_interval_secs);
     defs["EPICS_PVACMS_AUDIT_RETENTION_DAYS"] = std::to_string(audit_retention_days);
+    defs["EPICS_PVACMS_RATE_LIMIT"] = std::to_string(rate_limit);
+    defs["EPICS_PVACMS_RATE_LIMIT_BURST"] = std::to_string(rate_limit_burst);
+    defs["EPICS_PVACMS_MAX_CONCURRENT_CCR"] = std::to_string(max_concurrent_ccr);
 
     // Add any defs for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry()) authn_entry.second->updateDefs(defs);
