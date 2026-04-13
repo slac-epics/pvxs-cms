@@ -244,6 +244,21 @@ int main(int argc, char *argv[]) {
                           << "Status        : " << result["state"].as<std::string>() << std::endl
                           << "Status Issued : " << result["ocsp_status_date"].as<std::string>() << std::endl
                           << "Status Expires: " << result["ocsp_certified_until"].as<std::string>() << std::endl;
+                auto schedule = result["schedule"];
+                if (schedule) {
+                    auto sched_arr = schedule.as<shared_array<const Value>>();
+                    if (sched_arr.size() > 0) {
+                        std::cout << "Schedule      :" << std::endl;
+                        static const char *day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+                        for (const auto &win : sched_arr) {
+                            auto dow = win["day_of_week"].as<std::string>();
+                            auto start = win["start_time"].as<std::string>();
+                            auto end = win["end_time"].as<std::string>();
+                            std::string day_str = (dow == "*") ? "Every day" : day_names[dow[0] - '0'];
+                            std::cout << "  " << day_str << " " << start << "-" << end << " UTC" << std::endl;
+                        }
+                    }
+                }
                 if (result["value.index"].as<uint32_t>() == certs::REVOKED) {
                     std::cout << "Revocation Date: " << result["ocsp_revocation_date"].as<std::string>() << std::endl;
                 }

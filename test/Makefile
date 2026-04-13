@@ -119,6 +119,11 @@ testdatabasebackup_SRCS += testdatabasebackup.cpp
 testdatabasebackup_SYS_LIBS += sqlite3
 TESTS += testdatabasebackup
 
+TESTS += testvalidityschedules
+TESTPROD_HOST += testvalidityschedules
+testvalidityschedules_SRCS += testvalidityschedules.cpp
+testvalidityschedules_SYS_LIBS += sqlite3
+
 endif # PVXS_ENABLE_PVACMS
 endif # BASE_3_15
 

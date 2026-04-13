@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <set>
 #include <utility>
 
 #include <epicsMutex.h>
@@ -214,6 +215,49 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             }
         }
     }
+
+    auto sched_field = snapshot["cert_schedules"];
+    if (sched_field) {
+        auto sched_arr = sched_field.as<shared_array<const Value>>();
+        std::set<int64_t> synced_serials;
+        for (const auto &row : sched_arr) {
+            synced_serials.insert(row["serial"].as<int64_t>());
+        }
+        for (auto serial : synced_serials) {
+            sqlite3_stmt *del_stmt = nullptr;
+            if (sqlite3_prepare_v2(certs_db, "DELETE FROM cert_schedules WHERE serial = ?", -1, &del_stmt, nullptr) == SQLITE_OK) {
+                sqlite3_bind_int64(del_stmt, 1, serial);
+                sqlite3_step(del_stmt);
+                sqlite3_finalize(del_stmt);
+            }
+        }
+        for (const auto &row : sched_arr) {
+            const auto serial = row["serial"].as<int64_t>();
+            sqlite3_stmt *ins_stmt = nullptr;
+            if (sqlite3_prepare_v2(certs_db,
+                                   "INSERT INTO cert_schedules(serial, day_of_week, start_time, end_time) VALUES(?, ?, ?, ?)",
+                                   -1,
+                                   &ins_stmt,
+                                   nullptr) == SQLITE_OK) {
+                sqlite3_bind_int64(ins_stmt, 1, serial);
+                auto txt = [&](const char *field) { return row[field].as<std::string>(); };
+                const auto day_of_week = txt("day_of_week");
+                const auto start_time = txt("start_time");
+                const auto end_time = txt("end_time");
+                sqlite3_bind_text(ins_stmt, 2, day_of_week.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(ins_stmt, 3, start_time.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(ins_stmt, 4, end_time.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_step(ins_stmt);
+                sqlite3_finalize(ins_stmt);
+                insertSyncAuditRecord(certs_db, "SCHEDULE", peer_node_id,
+                                      static_cast<uint64_t>(serial), "synced schedule");
+            }
+        }
+        if (!sched_arr.empty()) {
+            result.had_changes = true;
+        }
+    }
+
     return result;
 }
 

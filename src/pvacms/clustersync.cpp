@@ -181,6 +181,27 @@ Value serializeCertsTable(sqlite3 *certs_db,
     for (size_t i = 0; i < cert_rows.size(); i++) certs_arr[i] = std::move(cert_rows[i]);
     val["certs"] = certs_arr.freeze();
 
+    sqlite3_stmt *sched_stmt;
+    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_SCHEDULES, -1, &sched_stmt, nullptr) == SQLITE_OK) {
+        std::vector<Value> sched_rows;
+        while (sqlite3_step(sched_stmt) == SQLITE_ROW) {
+            auto row = val["cert_schedules"].allocMember();
+            row["serial"] = sqlite3_column_int64(sched_stmt, 0);
+            auto txt = [&](int c) -> std::string {
+                auto t = sqlite3_column_text(sched_stmt, c);
+                return t ? reinterpret_cast<const char*>(t) : "";
+            };
+            row["day_of_week"] = txt(1);
+            row["start_time"] = txt(2);
+            row["end_time"] = txt(3);
+            sched_rows.push_back(std::move(row));
+        }
+        sqlite3_finalize(sched_stmt);
+        shared_array<Value> sched_arr(sched_rows.size());
+        for (size_t i = 0; i < sched_rows.size(); i++) sched_arr[i] = std::move(sched_rows[i]);
+        val["cert_schedules"] = sched_arr.freeze();
+    }
+
     return val;
 }
 

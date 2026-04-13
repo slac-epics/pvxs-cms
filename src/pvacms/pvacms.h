@@ -79,7 +79,7 @@
     "WHERE type='table' "                                               \
     "  AND name='schema_version';"
 
-#define PVACMS_SCHEMA_VERSION 2
+#define PVACMS_SCHEMA_VERSION 3
 
 #define SQL_CREATE_AUDIT_TABLE                                              \
     "CREATE TABLE IF NOT EXISTS audit("                                     \
@@ -91,6 +91,34 @@
     "     detail TEXT"                                                      \
     ");"                                                                    \
     "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit(timestamp);"
+
+#define SQL_CREATE_CERT_SCHEDULES_TABLE                                     \
+    "CREATE TABLE IF NOT EXISTS cert_schedules("                            \
+    "     id INTEGER PRIMARY KEY AUTOINCREMENT,"                            \
+    "     serial INTEGER NOT NULL REFERENCES certs(serial),"                \
+    "     day_of_week TEXT NOT NULL,"                                       \
+    "     start_time TEXT NOT NULL,"                                        \
+    "     end_time TEXT NOT NULL"                                           \
+    ");"                                                                    \
+    "CREATE INDEX IF NOT EXISTS idx_cert_schedules_serial "                 \
+    "     ON cert_schedules(serial);"
+
+#define SQL_INSERT_SCHEDULE                                                 \
+    "INSERT INTO cert_schedules(serial, day_of_week, start_time, end_time) "\
+    "VALUES(:serial, :day_of_week, :start_time, :end_time)"
+
+#define SQL_DELETE_SCHEDULES_BY_SERIAL                                      \
+    "DELETE FROM cert_schedules WHERE serial = :serial"
+
+#define SQL_SELECT_SCHEDULES_BY_SERIAL                                      \
+    "SELECT day_of_week, start_time, end_time "                             \
+    "FROM cert_schedules WHERE serial = :serial"
+
+#define SQL_SELECT_CERTS_WITH_SCHEDULES                                     \
+    "SELECT DISTINCT c.serial, c.status "                                   \
+    "FROM certs c "                                                         \
+    "INNER JOIN cert_schedules cs ON c.serial = cs.serial "                 \
+    "WHERE c.status IN (:valid_status, :scheduled_offline_status)"
 
 #define SQL_INSERT_AUDIT                                                    \
     "INSERT INTO audit(timestamp, action, operator, serial, detail) "       \
@@ -505,7 +533,11 @@ certstatus_t storeCertificate(const sql_ptr &certs_db, CertFactory &cert_factory
 
 timeval statusMonitor(const StatusMonitor &status_monitor_params);
 
-Value postCertificateStatus(server::WildcardPV &status_pv, const std::string &pv_name, uint64_t serial, const PVACertificateStatus &cert_status = {});
+Value postCertificateStatus(server::WildcardPV &status_pv,
+                            const std::string &pv_name,
+                            uint64_t serial,
+                            const PVACertificateStatus &cert_status = {},
+                            const sql_ptr *certs_db = nullptr);
 
 std::string getValidStatusesClause(const std::vector<certstatus_t> &valid_status);
 void bindValidStatusClauses(sqlite3_stmt *sql_statement, const std::vector<certstatus_t> &valid_status = {});
