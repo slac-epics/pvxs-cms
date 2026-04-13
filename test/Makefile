@@ -99,6 +99,11 @@ TESTS += testratelimiting
 TESTPROD_HOST += testratelimiting
 testratelimiting_SRCS += testratelimiting.cpp
 
+TESTS += testadaptivemonitor
+TESTPROD_HOST += testadaptivemonitor
+testadaptivemonitor_SRCS += testadaptivemonitor.cpp
+testadaptivemonitor_SYS_LIBS += sqlite3
+
 endif # PVXS_ENABLE_PVACMS
 endif # BASE_3_15
 
