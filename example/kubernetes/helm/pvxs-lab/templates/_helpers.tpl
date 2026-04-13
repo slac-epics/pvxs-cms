@@ -53,3 +53,12 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "pvxs-lab.mlGatewayService" -}}
 {{ include "pvxs-lab.fullname" . }}-ml-gateway
 {{- end -}}
+{{- define "pvxs-lab.csStudioLabService" -}}
+{{ include "pvxs-lab.fullname" . }}-cs-studio-lab
+{{- end -}}
+{{- define "pvxs-lab.csStudioMlService" -}}
+{{ include "pvxs-lab.fullname" . }}-cs-studio-ml
+{{- end -}}
+{{- define "pvxs-lab.csStudioInternetService" -}}
+{{ include "pvxs-lab.fullname" . }}-cs-studio-internet
+{{- end -}}

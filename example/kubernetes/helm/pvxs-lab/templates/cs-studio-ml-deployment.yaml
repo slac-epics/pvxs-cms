@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pvxs-lab.csStudioMlService" . }}
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.csStudioMl.replicas }}
+  selector:
+    matchLabels:
+      app: cs-studio-ml
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: cs-studio-ml
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: cs-studio-ml
+          image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.csStudio.name "tag" .Values.images.csStudio.tag) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+          volumeMounts:
+            - name: pva-config
+              mountPath: /home/mloperator/.config/pva/1.5
+              subPath: mloperator
+            - name: pva-config
+              mountPath: /home/mlsystem/.config/pva/1.5
+              subPath: mlsystem
+            - name: krb5-conf
+              mountPath: /etc/krb5.conf
+              subPath: krb5.conf
+              readOnly: true
+          env:
+            - name: EPICS_AUTH_KRB_REALM
+              value: "EPICS.ORG"
+          ports:
+            - name: novnc
+              containerPort: 8080
+      volumes:
+        - name: pva-config
+          {{- if .Values.csStudioMl.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pvxs-lab.fullname" . }}-cs-studio-ml-pva
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: krb5-conf
+          configMap:
+            name: {{ include "pvxs-lab.fullname" . }}-krb5

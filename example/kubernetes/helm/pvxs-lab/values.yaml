@@ -29,6 +29,9 @@ images:
   lab:
     name: "lab"
     tag: "latest"
+  csStudio:
+    name: "cs-studio"
+    tag: "latest"
 
 imagePullPolicy: IfNotPresent
 
@@ -108,19 +111,12 @@ mlGateway:
           "autoaddrlist": false,
           "addrlist": "{{ include "pvxs-lab.mlService" . }} {{ include "pvxs-lab.mlIocService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12"
-        },
-        {
-          "name": "to-lab",
-          "autoaddrlist": false,
-          "addrlist": "",
-          "EPICS_PVA_NAME_SERVERS": "{{ include "pvxs-lab.gatewayService" . }}-xgw:5175",
-          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12"
         }
       ],
       "servers": [
         {
-          "name": "main",
-          "clients": ["ml-local", "to-lab"],
+          "name": "internet",
+          "clients": ["ml-local"],
           "acf_client": "ml-local",
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
@@ -130,10 +126,10 @@ mlGateway:
           "EPICS_PVAS_TLS_PORT": "5076",
           "bcastport": "5076",
           "access": "gateway.acf",
-          "pvlist": "gateway.pvlist"
+          "pvlist": "internet.pvlist"
         },
         {
-          "name": "for-lab-gw",
+          "name": "cross-zone",
           "clients": ["ml-local"],
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
@@ -143,7 +139,7 @@ mlGateway:
           "EPICS_PVAS_TLS_PORT": "5176",
           "bcastport": "5176",
           "access": "gateway.acf",
-          "pvlist": "gateway.pvlist"
+          "pvlist": "cross-zone.pvlist"
         },
         {
           "name": "downstream_status",
@@ -154,7 +150,10 @@ mlGateway:
       ]
     }
 
-  pvlist: |
+  internetPvlist: |
+    ml:.* ALLOW
+
+  crossZonePvlist: |
     ml:.* ALLOW
     CERT:CLUSTER(?::.*)? ALLOW CERT_CREATE
 
@@ -197,19 +196,12 @@ gateway:
           "autoaddrlist": false,
           "addrlist": "{{ include "pvxs-lab.pvacmsService" . }} {{ include "pvxs-lab.testiocService" . }} {{ include "pvxs-lab.tstiocService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12"
-        },
-        {
-          "name": "to-ml",
-          "autoaddrlist": false,
-          "addrlist": "",
-          "EPICS_PVA_NAME_SERVERS": "{{ include "pvxs-lab.mlGatewayService" . }}-xgw:5175",
-          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12"
         }
       ],
       "servers": [
         {
-          "name": "main",
-          "clients": ["local", "to-ml"],
+          "name": "internet",
+          "clients": ["local"],
           "acf_client": "local",
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
@@ -219,10 +211,10 @@ gateway:
           "EPICS_PVAS_TLS_PORT": "5076",
           "bcastport": "5076",
           "access": "gateway.acf",
-          "pvlist": "gateway.pvlist"
+          "pvlist": "internet.pvlist"
         },
         {
-          "name": "for-ml-gw",
+          "name": "cross-zone",
           "clients": ["local"],
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
@@ -232,7 +224,7 @@ gateway:
           "EPICS_PVAS_TLS_PORT": "5176",
           "bcastport": "5176",
           "access": "gateway.acf",
-          "pvlist": "gateway.pvlist"
+          "pvlist": "cross-zone.pvlist"
         },
         {
           "name": "downstream_status",
@@ -243,18 +235,44 @@ gateway:
       ]
     }
 
-  pvlist: |
+  internetPvlist: |
     test:.* ALLOW
     tst:.* ALLOW
     test:spec ALLOW SPECIAL
     CERT:CREATE(?::.*)? ALLOW CERT_CREATE
     CERT:STATUS(?::.*)? ALLOW CERT_STATUS
+
+  crossZonePvlist: |
+    test:.* ALLOW
+    tst:.* ALLOW
+    test:spec ALLOW SPECIAL
     CERT:CLUSTER(?::.*)? ALLOW CERT_CREATE
 
   debug:
     enabled: false
     logLevel: "p4p.gw=DEBUG,pvxs.*=DEBUG"
 
+  persistence:
+    enabled: true
+    size: 64Mi
+    storageClassName: ""
+
+csStudioLab:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 64Mi
+    storageClassName: ""
+
+csStudioMl:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 64Mi
+    storageClassName: ""
+
+csStudioInternet:
+  replicas: 1
   persistence:
     enabled: true
     size: 64Mi

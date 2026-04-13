@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pvxs-lab.csStudioInternetService" . }}
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.csStudioInternet.replicas }}
+  selector:
+    matchLabels:
+      app: cs-studio-internet
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: cs-studio-internet
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: cs-studio-internet
+          image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.csStudio.name "tag" .Values.images.csStudio.tag) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+          env:
+            - name: EPICS_AUTH_KRB_REALM
+              value: "EPICS.ORG"
+            - name: KRB5_CONFIG
+              value: /etc/krb5.conf
+            - name: KRB5_KDC_PROFILE
+              value: /etc/krb5kdc/kdc.conf
+            - name: KADMIN_ADMIN_SERVER
+              value: '{{ include "pvxs-lab.fullname" . }}-idm:{{ .Values.idm.service.tcpPort }}'
+          volumeMounts:
+            - name: pva-config
+              mountPath: /home/operator/.config/pva/1.5
+              subPath: operator
+            - name: pva-config
+              mountPath: /home/guest/.config/pva/1.5
+              subPath: guest
+            - name: krb5-conf
+              mountPath: /etc/krb5.conf
+              subPath: krb5.conf
+              readOnly: true
+          ports:
+            - name: novnc
+              containerPort: 8080
+      volumes:
+        - name: pva-config
+          {{- if .Values.csStudioInternet.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pvxs-lab.fullname" . }}-cs-studio-internet-pva
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: krb5-conf
+          configMap:
+            name: {{ include "pvxs-lab.fullname" . }}-krb5

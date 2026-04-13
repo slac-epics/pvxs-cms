@@ -7,5 +7,7 @@ metadata:
 data:
   gateway.conf: |-
   {{ tpl .Values.gateway.config . | nindent 4 }}
-  gateway.pvlist: |
-  {{ .Values.gateway.pvlist | nindent 4 }}
+  internet.pvlist: |
+  {{ .Values.gateway.internetPvlist | nindent 4 }}
+  cross-zone.pvlist: |
+  {{ .Values.gateway.crossZonePvlist | nindent 4 }}

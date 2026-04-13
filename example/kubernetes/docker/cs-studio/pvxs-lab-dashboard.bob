@@ -1,0 +1,933 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>PVXS Lab Dashboard</name>
+  <width>900</width>
+  <height>780</height>
+  <widget type="label" version="2.0.0">
+    <name>Title</name>
+    <text>PVXS Lab — PV Dashboard</text>
+    <width>900</width>
+    <height>36</height>
+    <font>
+      <font name="Header 1" family="Liberation Sans" style="BOLD" size="22.0">
+      </font>
+    </font>
+    <foreground_color>
+      <color name="Text" red="0" green="0" blue="0">
+      </color>
+    </foreground_color>
+    <background_color>
+      <color red="220" green="230" blue="245">
+      </color>
+    </background_color>
+    <transparent>false</transparent>
+    <horizontal_alignment>1</horizontal_alignment>
+    <vertical_alignment>1</vertical_alignment>
+  </widget>
+  <widget type="tabs" version="2.0.0">
+    <name>ZoneTabs</name>
+    <y>40</y>
+    <width>900</width>
+    <height>740</height>
+    <tabs>
+      <!-- ============================================================ -->
+      <!-- Tab 1: Lab — testioc (test:*) -->
+      <!-- ============================================================ -->
+      <tab>
+        <name>Lab — testioc</name>
+        <children>
+          <widget type="label" version="2.0.0">
+            <name>testioc_header</name>
+            <text>testioc Process Variables (test:*)</text>
+            <x>10</x>
+            <y>5</y>
+            <width>400</width>
+            <height>25</height>
+            <font>
+              <font name="Header 3" family="Liberation Sans" style="BOLD" size="16.0">
+              </font>
+            </font>
+          </widget>
+
+          <!-- Connection Security (representative PV: test:aiExample) -->
+          <widget type="pva_security" version="2.0.0">
+            <name>testioc_tls</name>
+            <pv_name>pva://test:aiExample</pv_name>
+            <display_mode>0</display_mode>
+            <x>410</x>
+            <y>5</y>
+            <width>120</width>
+            <height>25</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>testioc_auth</name>
+            <pv_name>pva://test:aiExample</pv_name>
+            <display_mode>3</display_mode>
+            <x>530</x>
+            <y>5</y>
+            <width>100</width>
+            <height>25</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>testioc_client</name>
+            <pv_name>pva://test:aiExample</pv_name>
+            <display_mode>2</display_mode>
+            <x>635</x>
+            <y>5</y>
+            <width>130</width>
+            <height>25</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>testioc_server</name>
+            <pv_name>pva://test:aiExample</pv_name>
+            <display_mode>1</display_mode>
+            <x>770</x>
+            <y>5</y>
+            <width>120</width>
+            <height>25</height>
+          </widget>
+
+          <!-- test:aiExample — analog input (double) -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_aiExample</name>
+            <text>test:aiExample</text>
+            <x>10</x>
+            <y>40</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_aiExample</name>
+            <pv_name>pva://test:aiExample</pv_name>
+            <x>180</x>
+            <y>40</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_aiExample</name>
+            <pv_name>pva://test:aiExample</pv_name>
+            <x>200</x>
+            <y>40</y>
+            <width>200</width>
+          </widget>
+
+          <!-- test:calcExample — calc result (double) -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_calcExample</name>
+            <text>test:calcExample</text>
+            <x>10</x>
+            <y>70</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_calcExample</name>
+            <pv_name>pva://test:calcExample</pv_name>
+            <x>180</x>
+            <y>70</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_calcExample</name>
+            <pv_name>pva://test:calcExample</pv_name>
+            <x>200</x>
+            <y>70</y>
+            <width>200</width>
+          </widget>
+
+          <!-- test:longExample — integer -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_longExample</name>
+            <text>test:longExample</text>
+            <x>10</x>
+            <y>100</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_longExample</name>
+            <pv_name>pva://test:longExample</pv_name>
+            <x>180</x>
+            <y>100</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_longExample</name>
+            <pv_name>pva://test:longExample</pv_name>
+            <x>200</x>
+            <y>100</y>
+            <width>200</width>
+          </widget>
+
+          <!-- test:stringExample — string -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_stringExample</name>
+            <text>test:stringExample</text>
+            <x>10</x>
+            <y>130</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_stringExample</name>
+            <pv_name>pva://test:stringExample</pv_name>
+            <x>180</x>
+            <y>130</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_stringExample</name>
+            <pv_name>pva://test:stringExample</pv_name>
+            <x>200</x>
+            <y>130</y>
+            <width>300</width>
+          </widget>
+
+          <!-- test:enumExample — enum -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_enumExample</name>
+            <text>test:enumExample</text>
+            <x>10</x>
+            <y>160</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_enumExample</name>
+            <pv_name>pva://test:enumExample</pv_name>
+            <x>180</x>
+            <y>160</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="combo" version="2.0.0">
+            <name>val_enumExample</name>
+            <pv_name>pva://test:enumExample</pv_name>
+            <x>200</x>
+            <y>160</y>
+            <width>200</width>
+          </widget>
+
+          <!-- test:compressExample — compressed data -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_compressExample</name>
+            <text>test:compressExample</text>
+            <x>10</x>
+            <y>190</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_compressExample</name>
+            <pv_name>pva://test:compressExample</pv_name>
+            <x>180</x>
+            <y>190</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_compressExample</name>
+            <pv_name>pva://test:compressExample</pv_name>
+            <x>200</x>
+            <y>190</y>
+            <width>300</width>
+          </widget>
+
+          <!-- test:spec — EDITABLE (only by operator/gateway) -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_spec</name>
+            <text>test:spec</text>
+            <x>10</x>
+            <y>230</y>
+            <width>180</width>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
+            <foreground_color>
+              <color red="0" green="80" blue="160">
+              </color>
+            </foreground_color>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_spec</name>
+            <pv_name>pva://test:spec</pv_name>
+            <x>180</x>
+            <y>226</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textentry" version="3.0.0">
+            <name>val_spec</name>
+            <pv_name>pva://test:spec</pv_name>
+            <x>200</x>
+            <y>226</y>
+            <width>200</width>
+            <height>28</height>
+          </widget>
+          <widget type="label" version="2.0.0">
+            <name>lbl_spec_note</name>
+            <text>(writable by operator &amp; gateway)</text>
+            <x>410</x>
+            <y>230</y>
+            <width>250</width>
+            <font>
+              <font family="Liberation Sans" style="ITALIC" size="12.0">
+              </font>
+            </font>
+            <foreground_color>
+              <color red="128" green="128" blue="128">
+              </color>
+            </foreground_color>
+          </widget>
+
+          <!-- test:arrayExample — array -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_arrayExample</name>
+            <text>test:arrayExample</text>
+            <x>10</x>
+            <y>270</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_arrayExample</name>
+            <pv_name>pva://test:arrayExample</pv_name>
+            <x>180</x>
+            <y>270</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_arrayExample</name>
+            <pv_name>pva://test:arrayExample</pv_name>
+            <x>200</x>
+            <y>270</y>
+            <width>400</width>
+          </widget>
+
+          <!-- test:vectorExampleD1 — vector -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_vectorD1</name>
+            <text>test:vectorExampleD1</text>
+            <x>10</x>
+            <y>300</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_vectorD1</name>
+            <pv_name>pva://test:vectorExampleD1</pv_name>
+            <x>180</x>
+            <y>300</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_vectorD1</name>
+            <pv_name>pva://test:vectorExampleD1</pv_name>
+            <x>200</x>
+            <y>300</y>
+            <width>400</width>
+          </widget>
+
+          <!-- test:vectorExampleD2 — vector -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_vectorD2</name>
+            <text>test:vectorExampleD2</text>
+            <x>10</x>
+            <y>330</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_vectorD2</name>
+            <pv_name>pva://test:vectorExampleD2</pv_name>
+            <x>180</x>
+            <y>330</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_vectorD2</name>
+            <pv_name>pva://test:vectorExampleD2</pv_name>
+            <x>200</x>
+            <y>330</y>
+            <width>400</width>
+          </widget>
+
+          <!-- test:structExample — struct -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_structExample</name>
+            <text>test:structExample</text>
+            <x>10</x>
+            <y>370</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_structExample</name>
+            <pv_name>pva://test:structExample</pv_name>
+            <x>180</x>
+            <y>370</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="table" version="2.0.0">
+            <name>val_structExample</name>
+            <pv_name>pva://test:structExample</pv_name>
+            <x>200</x>
+            <y>370</y>
+            <width>500</width>
+            <height>80</height>
+            <editable>false</editable>
+          </widget>
+
+          <!-- test:tableExample — NTTable -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_tableExample</name>
+            <text>test:tableExample</text>
+            <x>10</x>
+            <y>460</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_tableExample</name>
+            <pv_name>pva://test:tableExample</pv_name>
+            <x>180</x>
+            <y>460</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="table" version="2.0.0">
+            <name>val_tableExample</name>
+            <pv_name>pva://test:tableExample</pv_name>
+            <x>200</x>
+            <y>460</y>
+            <width>500</width>
+            <height>100</height>
+            <editable>false</editable>
+          </widget>
+
+          <!-- test:groupExampleAS — group/struct -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_groupAS</name>
+            <text>test:groupExampleAS</text>
+            <x>10</x>
+            <y>570</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_groupAS</name>
+            <pv_name>pva://test:groupExampleAS</pv_name>
+            <x>180</x>
+            <y>570</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_groupAS</name>
+            <pv_name>pva://test:groupExampleAS</pv_name>
+            <x>200</x>
+            <y>570</y>
+            <width>400</width>
+          </widget>
+
+          <!-- test:groupExampleSave — group/struct -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_groupSave</name>
+            <text>test:groupExampleSave</text>
+            <x>10</x>
+            <y>600</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_groupSave</name>
+            <pv_name>pva://test:groupExampleSave</pv_name>
+            <x>180</x>
+            <y>600</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_groupSave</name>
+            <pv_name>pva://test:groupExampleSave</pv_name>
+            <x>200</x>
+            <y>600</y>
+            <width>400</width>
+          </widget>
+
+          <!-- test:structExampleSave — struct -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_structSave</name>
+            <text>test:structExampleSave</text>
+            <x>10</x>
+            <y>630</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_structSave</name>
+            <pv_name>pva://test:structExampleSave</pv_name>
+            <x>180</x>
+            <y>630</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_structSave</name>
+            <pv_name>pva://test:structExampleSave</pv_name>
+            <x>200</x>
+            <y>630</y>
+            <width>400</width>
+          </widget>
+        </children>
+      </tab>
+
+      <!-- ============================================================ -->
+      <!-- Tab 2: Lab — tstioc (tst:*) -->
+      <!-- ============================================================ -->
+      <tab>
+        <name>Lab — tstioc</name>
+        <children>
+          <widget type="label" version="2.0.0">
+            <name>tstioc_header</name>
+            <text>tstioc Process Variables (tst:*)</text>
+            <x>10</x>
+            <y>5</y>
+            <width>400</width>
+            <height>25</height>
+            <font>
+              <font name="Header 3" family="Liberation Sans" style="BOLD" size="16.0">
+              </font>
+            </font>
+          </widget>
+
+          <!-- Connection Security (representative PV: tst:ArrayData) -->
+          <widget type="pva_security" version="2.0.0">
+            <name>tstioc_tls</name>
+            <pv_name>pva://tst:ArrayData</pv_name>
+            <display_mode>0</display_mode>
+            <x>410</x>
+            <y>5</y>
+            <width>120</width>
+            <height>25</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>tstioc_auth</name>
+            <pv_name>pva://tst:ArrayData</pv_name>
+            <display_mode>3</display_mode>
+            <x>530</x>
+            <y>5</y>
+            <width>100</width>
+            <height>25</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>tstioc_client</name>
+            <pv_name>pva://tst:ArrayData</pv_name>
+            <display_mode>2</display_mode>
+            <x>635</x>
+            <y>5</y>
+            <width>130</width>
+            <height>25</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>tstioc_server</name>
+            <pv_name>pva://tst:ArrayData</pv_name>
+            <display_mode>1</display_mode>
+            <x>770</x>
+            <y>5</y>
+            <width>120</width>
+            <height>25</height>
+          </widget>
+
+          <!-- tst:ArrayData — image data (AreaDetector pattern) -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_image</name>
+            <text>tst:ArrayData (Image)</text>
+            <x>10</x>
+            <y>35</y>
+            <width>200</width>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_image</name>
+            <pv_name>pva://tst:ArrayData</pv_name>
+            <x>10</x>
+            <y>60</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="image" version="2.0.0">
+            <name>val_image</name>
+            <pv_name>pva://tst:ArrayData</pv_name>
+            <x>30</x>
+            <y>60</y>
+            <width>380</width>
+            <height>300</height>
+          </widget>
+
+          <!-- Scalars on the right side -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_dims</name>
+            <text>Image Dimensions</text>
+            <x>430</x>
+            <y>35</y>
+            <width>200</width>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
+          </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_size0</name>
+            <text>ArraySize0_RBV:</text>
+            <x>430</x>
+            <y>65</y>
+            <width>150</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_size0</name>
+            <pv_name>pva://tst:ArraySize0_RBV</pv_name>
+            <x>570</x>
+            <y>65</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_size0</name>
+            <pv_name>pva://tst:ArraySize0_RBV</pv_name>
+            <x>590</x>
+            <y>65</y>
+            <width>120</width>
+          </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_size1</name>
+            <text>ArraySize1_RBV:</text>
+            <x>430</x>
+            <y>95</y>
+            <width>150</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_size1</name>
+            <pv_name>pva://tst:ArraySize1_RBV</pv_name>
+            <x>570</x>
+            <y>95</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_size1</name>
+            <pv_name>pva://tst:ArraySize1_RBV</pv_name>
+            <x>590</x>
+            <y>95</y>
+            <width>120</width>
+          </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_colormode</name>
+            <text>ColorMode:</text>
+            <x>430</x>
+            <y>125</y>
+            <width>150</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_colormode</name>
+            <pv_name>pva://tst:ColorMode</pv_name>
+            <x>570</x>
+            <y>125</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_colormode</name>
+            <pv_name>pva://tst:ColorMode</pv_name>
+            <x>590</x>
+            <y>125</y>
+            <width>120</width>
+          </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_colormode_</name>
+            <text>ColorMode_:</text>
+            <x>430</x>
+            <y>155</y>
+            <width>150</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_colormode_</name>
+            <pv_name>pva://tst:ColorMode_</pv_name>
+            <x>570</x>
+            <y>155</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_colormode_</name>
+            <pv_name>pva://tst:ColorMode_</pv_name>
+            <x>590</x>
+            <y>155</y>
+            <width>120</width>
+          </widget>
+
+          <!-- Other arrays/scalars -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_arrays</name>
+            <text>Array PVs</text>
+            <x>10</x>
+            <y>375</y>
+            <width>200</width>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
+          </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_array</name>
+            <text>tst:Array</text>
+            <x>10</x>
+            <y>405</y>
+            <width>150</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_array</name>
+            <pv_name>pva://tst:Array</pv_name>
+            <x>150</x>
+            <y>405</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_array</name>
+            <pv_name>pva://tst:Array</pv_name>
+            <x>170</x>
+            <y>405</y>
+            <width>500</width>
+          </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_array2</name>
+            <text>tst:Array2</text>
+            <x>10</x>
+            <y>435</y>
+            <width>150</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_array2</name>
+            <pv_name>pva://tst:Array2</pv_name>
+            <x>150</x>
+            <y>435</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_array2</name>
+            <pv_name>pva://tst:Array2</pv_name>
+            <x>170</x>
+            <y>435</y>
+            <width>500</width>
+          </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_arraydata_</name>
+            <text>tst:ArrayData_</text>
+            <x>10</x>
+            <y>465</y>
+            <width>150</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_arraydata_</name>
+            <pv_name>pva://tst:ArrayData_</pv_name>
+            <x>150</x>
+            <y>465</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_arraydata_</name>
+            <pv_name>pva://tst:ArrayData_</pv_name>
+            <x>170</x>
+            <y>465</y>
+            <width>500</width>
+          </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_extra</name>
+            <text>tst:extra</text>
+            <x>10</x>
+            <y>505</y>
+            <width>150</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_extra</name>
+            <pv_name>pva://tst:extra</pv_name>
+            <x>150</x>
+            <y>505</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_extra</name>
+            <pv_name>pva://tst:extra</pv_name>
+            <x>170</x>
+            <y>505</y>
+            <width>300</width>
+          </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_extra_alias</name>
+            <text>tst:extra:alias</text>
+            <x>10</x>
+            <y>535</y>
+            <width>150</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_extra_alias</name>
+            <pv_name>pva://tst:extra:alias</pv_name>
+            <x>150</x>
+            <y>535</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_extra_alias</name>
+            <pv_name>pva://tst:extra:alias</pv_name>
+            <x>170</x>
+            <y>535</y>
+            <width>300</width>
+          </widget>
+        </children>
+      </tab>
+
+      <!-- ============================================================ -->
+      <!-- Tab 3: ML Centre (ml:*) -->
+      <!-- ============================================================ -->
+      <tab>
+        <name>ML Centre</name>
+        <children>
+          <widget type="label" version="2.0.0">
+            <name>ml_header</name>
+            <text>ML Centre Process Variables (ml:*)</text>
+            <x>10</x>
+            <y>5</y>
+            <width>400</width>
+            <height>25</height>
+            <font>
+              <font name="Header 3" family="Liberation Sans" style="BOLD" size="16.0">
+              </font>
+            </font>
+          </widget>
+
+          <!-- Connection Security (representative PV: ml:aiExample) -->
+          <widget type="pva_security" version="2.0.0">
+            <name>ml_tls</name>
+            <pv_name>pva://ml:aiExample</pv_name>
+            <display_mode>0</display_mode>
+            <x>410</x>
+            <y>5</y>
+            <width>120</width>
+            <height>25</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>ml_auth</name>
+            <pv_name>pva://ml:aiExample</pv_name>
+            <display_mode>3</display_mode>
+            <x>530</x>
+            <y>5</y>
+            <width>100</width>
+            <height>25</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>ml_client</name>
+            <pv_name>pva://ml:aiExample</pv_name>
+            <display_mode>2</display_mode>
+            <x>635</x>
+            <y>5</y>
+            <width>130</width>
+            <height>25</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>ml_server</name>
+            <pv_name>pva://ml:aiExample</pv_name>
+            <display_mode>1</display_mode>
+            <x>770</x>
+            <y>5</y>
+            <width>120</width>
+            <height>25</height>
+          </widget>
+
+          <!-- ml:aiExample — analog input (double) -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_ml_ai</name>
+            <text>ml:aiExample</text>
+            <x>10</x>
+            <y>40</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_ml_ai</name>
+            <pv_name>pva://ml:aiExample</pv_name>
+            <x>180</x>
+            <y>40</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_ml_ai</name>
+            <pv_name>pva://ml:aiExample</pv_name>
+            <x>200</x>
+            <y>40</y>
+            <width>200</width>
+          </widget>
+
+          <!-- ml:stringExample — string -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_ml_string</name>
+            <text>ml:stringExample</text>
+            <x>10</x>
+            <y>70</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_ml_string</name>
+            <pv_name>pva://ml:stringExample</pv_name>
+            <x>180</x>
+            <y>70</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_ml_string</name>
+            <pv_name>pva://ml:stringExample</pv_name>
+            <x>200</x>
+            <y>70</y>
+            <width>300</width>
+          </widget>
+
+          <!-- ml:longExample — long integer -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_ml_long</name>
+            <text>ml:longExample</text>
+            <x>10</x>
+            <y>100</y>
+            <width>180</width>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_ml_long</name>
+            <pv_name>pva://ml:longExample</pv_name>
+            <x>180</x>
+            <y>100</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_ml_long</name>
+            <pv_name>pva://ml:longExample</pv_name>
+            <x>200</x>
+            <y>100</y>
+            <width>200</width>
+          </widget>
+        </children>
+      </tab>
+    </tabs>
+  </widget>
+</display>

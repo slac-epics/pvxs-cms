@@ -9,7 +9,7 @@ FROM ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${BASE_IMAGE}:${BASE_IMAGE_TAG}
 ENV PROJECT_HOME=/opt/epics
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies
+# Install dependencies, display stack, and diagnostic tools
 RUN apt-get update && \
     apt-get install -y \
             adduser \
@@ -18,7 +18,28 @@ RUN apt-get update && \
             libkrb5-dev \
             krb5-user \
             libgssapi-krb5-2 \
-            vim nano
+            vim nano \
+            # Display stack (Xvfb + VNC + noVNC)
+            xvfb \
+            x11vnc \
+            fluxbox \
+            novnc \
+            python3-websockify \
+            # Network diagnostic tools
+            dnsutils \
+            netcat-openbsd \
+            telnet \
+            curl \
+            tcpdump \
+            iproute2 \
+            traceroute \
+            iputils-ping \
+            net-tools \
+            less \
+            jq \
+            file \
+            strace \
+            procps
 
 RUN echo "PVXS = \$(TOP)/../pvxs" >> ${PROJECT_HOME}/RELEASE.local
 RUN echo "PVXS_ENABLE_KRB_AUTH = YES" >> ${PROJECT_HOME}/CONFIG_SITE.local
@@ -29,5 +50,8 @@ COPY krb5.conf /etc/krb5.conf
 
 # Copy the top-level Supervisor config
 COPY supervisord.conf /etc/supervisor/supervisord.conf
+COPY display-supervisor.conf /etc/supervisor/conf.d/display.conf
+
+EXPOSE 8080 5900
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

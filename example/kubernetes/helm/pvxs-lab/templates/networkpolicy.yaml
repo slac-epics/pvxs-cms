@@ -38,6 +38,10 @@ spec:
               release: {{ .Release.Name }}
         - podSelector:
             matchLabels:
+              app: cs-studio-lab
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
               app: gateway
               release: {{ .Release.Name }}
 
@@ -77,11 +81,23 @@ spec:
               release: {{ .Release.Name }}
         - podSelector:
             matchLabels:
+              app: cs-studio-lab
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: cs-studio-ml
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: cs-studio-internet
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
               app: ml
               release: {{ .Release.Name }}
 
 ---
-# 4) Internet egress: allow ONLY to gateway/idm(kerberos) + DNS
+# 4) Internet egress: allow ONLY to gateway/ml-gateway/idm(kerberos) + DNS
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -97,6 +113,10 @@ spec:
         - podSelector:
             matchLabels:
               app: gateway
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml-gateway
               release: {{ .Release.Name }}
     - to:
         - podSelector:
@@ -217,6 +237,10 @@ spec:
               release: {{ .Release.Name }}
         - podSelector:
             matchLabels:
+              app: cs-studio-ml
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
               app: ml-ioc
               release: {{ .Release.Name }}
 
@@ -237,6 +261,10 @@ spec:
         - podSelector:
             matchLabels:
               app: ml
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: cs-studio-ml
               release: {{ .Release.Name }}
         - podSelector:
             matchLabels:
@@ -283,7 +311,7 @@ spec:
           port: 53
 
 ---
-# 10) ML gateway ingress: allow ONLY from ml and gateway
+# 10) ML gateway ingress: allow from ml, cs-studio-ml, gateway, idm, lab, internet, cs-studio-internet
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -302,6 +330,10 @@ spec:
               release: {{ .Release.Name }}
         - podSelector:
             matchLabels:
+              app: cs-studio-ml
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
               app: gateway
               release: {{ .Release.Name }}
         - podSelector:
@@ -312,9 +344,21 @@ spec:
             matchLabels:
               app: lab
               release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: cs-studio-lab
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: internet
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: cs-studio-internet
+              release: {{ .Release.Name }}
 
 ---
-# 11) Lab egress: allow ONLY to idm/it/testioc/tstioc + DNS
+# 11) Lab egress: allow ONLY to idm/it/testioc/tstioc/ml-gateway + DNS
 #    This blocks lab -> gateway (by Service name, Pod IP, or hostNetwork IP).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -327,7 +371,7 @@ spec:
       release: {{ .Release.Name }}
   policyTypes: ["Egress"]
   egress:
-    # Allow to the four internal services
+    # Allow to the four internal services + ml-gateway for cross-zone PVs
     - to:
         - podSelector:
             matchLabels:
@@ -345,6 +389,10 @@ spec:
             matchLabels:
               app: tstioc
               release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml-gateway
+              release: {{ .Release.Name }}
     # Allow DNS
     - to:
         - namespaceSelector: {}
@@ -357,4 +405,142 @@ spec:
         - protocol: TCP
           port: 53
 
+---
+# 12) CS-Studio lab egress: allow ONLY to idm/it/testioc/tstioc/ml-gateway + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-cs-studio-lab-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: cs-studio-lab
+      release: {{ .Release.Name }}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: idm
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: it
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: testioc
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: tstioc
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml-gateway
+              release: {{ .Release.Name }}
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# 13) CS-Studio ML egress: allow ONLY to ml-gateway/ml-ioc/gateway/idm(kerberos) + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-cs-studio-ml-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: cs-studio-ml
+      release: {{ .Release.Name }}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ml-gateway
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml-ioc
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: gateway
+              release: {{ .Release.Name }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: idm
+              release: {{ .Release.Name }}
+      ports:
+        - protocol: UDP
+          port: 88
+        - protocol: TCP
+          port: 749
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# 14) CS-Studio internet egress: allow ONLY to gateway/ml-gateway/idm(kerberos) + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-cs-studio-internet-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: cs-studio-internet
+      release: {{ .Release.Name }}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: gateway
+              release: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              app: ml-gateway
+              release: {{ .Release.Name }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: idm
+              release: {{ .Release.Name }}
+      ports:
+        - protocol: UDP
+          port: 88
+        - protocol: TCP
+          port: 749
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
 

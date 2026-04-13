@@ -3,7 +3,7 @@
 function gw_build_images {
  pushd $PVXS_CMS/example/kubernetes/docker
  builder="./build.sh"
- if [[ "$1" == "gateway" || "$1" == "lab" || "$1" == "lab_base" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" ]]
+  if [[ "$1" == "gateway" || "$1" == "lab" || "$1" == "lab_base" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "cs-studio" ]]
  then
  	cd $1
  	builder="./build_docker.sh"
@@ -39,12 +39,12 @@ function gw_undeploy {
 
 
 function go_in_to {
- if [[ "$1" == "lab" ||  "$1" == "idm" ||  "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "it" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" ]] ; then
-  kubectl -n pvxs-lab exec -it deploy/pvxs-lab-$1 -- /bin/bash
- else
-  echo "No such lab system: $1"
-  false
- fi
+  if [[ "$1" == "lab" ||  "$1" == "idm" ||  "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "it" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" || "$1" == "cs-studio-lab" || "$1" == "cs-studio-ml" || "$1" == "cs-studio-internet" ]] ; then
+   kubectl -n pvxs-lab exec -it deploy/pvxs-lab-$1 -- /bin/bash
+  else
+   echo "No such lab system: $1"
+   false
+  fi
 }
 
 function login_to_lab {
@@ -164,10 +164,34 @@ function gw_cp_in {
 }
 
 function gw_log {
- if [[ "$1" == "lab" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "it" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" ]] ; then
-  kubectl logs -n pvxs-lab deployment/pvxs-lab-$1  -f
- else
-  echo "No such lab system: $1"
-  false
- fi
+  if [[ "$1" == "lab" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "it" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" || "$1" == "cs-studio-lab" || "$1" == "cs-studio-ml" || "$1" == "cs-studio-internet" ]] ; then
+   kubectl logs -n pvxs-lab deployment/pvxs-lab-$1  -f
+  else
+   echo "No such lab system: $1"
+   false
+  fi
+}
+
+function cs_studio_lab() {
+    kubectl port-forward deploy/pvxs-lab-cs-studio-lab 8080:8080 -n pvxs-lab
+}
+
+function cs_studio_ml() {
+    kubectl port-forward deploy/pvxs-lab-cs-studio-ml 8081:8080 -n pvxs-lab
+}
+
+function cs_studio_internet() {
+    kubectl port-forward deploy/pvxs-lab-cs-studio-internet 8082:8080 -n pvxs-lab
+}
+
+function login_to_cs_studio_in_lab() {
+    kubectl exec -it deploy/pvxs-lab-cs-studio-lab -n pvxs-lab -- su - ${1:?Usage: login_to_cs_studio_lab <user>}
+}
+
+function login_to_cs_studio_in_ml() {
+    kubectl exec -it deploy/pvxs-lab-cs-studio-ml -n pvxs-lab -- su - ${1:?Usage: login_to_cs_studio_ml <user>}
+}
+
+function login_to_cs_studio_from_internet() {
+    kubectl exec -it deploy/pvxs-lab-cs-studio-internet -n pvxs-lab -- su - ${1:?Usage: login_to_cs_studio_internet <user>}
 }

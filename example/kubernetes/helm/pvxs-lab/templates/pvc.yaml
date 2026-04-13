@@ -199,3 +199,51 @@ spec:
     requests:
       storage: {{ .Values.mlGateway.persistence.size | quote }}
 {{- end }}
+
+---
+{{- if .Values.csStudioLab.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-cs-studio-lab-pva
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.csStudioLab.persistence.storageClassName }}
+  storageClassName: {{ .Values.csStudioLab.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.csStudioLab.persistence.size | quote }}
+{{- end }}
+
+---
+{{- if .Values.csStudioMl.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-cs-studio-ml-pva
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.csStudioMl.persistence.storageClassName }}
+  storageClassName: {{ .Values.csStudioMl.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.csStudioMl.persistence.size | quote }}
+{{- end }}
+
+---
+{{- if .Values.csStudioInternet.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-cs-studio-internet-pva
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.csStudioInternet.persistence.storageClassName }}
+  storageClassName: {{ .Values.csStudioInternet.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.csStudioInternet.persistence.size | quote }}
+{{- end }}

@@ -4,7 +4,7 @@ export XDG_CONFIG_HOME=${XDG_CONFIG_HOME-~/.config}
 export PROJECT_HOME=/opt/epics
 
 export EPICS_PVA_AUTH_ORGANIZATION=epics.org
-export EPICS_PVA_NAME_SERVERS="pvxs-lab-gateway:5075"
+export EPICS_PVA_NAME_SERVERS="pvxs-lab-gateway:5075 pvxs-lab-ml-gateway:5075"
 export EPICS_PVA_AUTO_ADDR_LIST="NO"
 unset EPICS_PVA_ADDR_LIST
 

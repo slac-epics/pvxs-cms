@@ -14,6 +14,10 @@ spec:
       protocol: TCP
       port: {{ .Values.ports.pvaTcp }}
       targetPort: pva-tcp
+    - name: pva-tls
+      protocol: TCP
+      port: {{ .Values.ports.pvaTls }}
+      targetPort: pva-tls
     - name: pva-udp
       protocol: UDP
       port: {{ .Values.ports.pvaUdp }}

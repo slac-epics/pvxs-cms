@@ -44,6 +44,10 @@ spec:
           volumeMounts:
             - name: pva-config
               mountPath: /home/tstioc/.config/pva/1.5
+            - name: krb5-conf
+              mountPath: /etc/krb5.conf
+              subPath: krb5.conf
+              readOnly: true
       volumes:
         - name: pva-config
           {{- if .Values.tstioc.persistence.enabled }}
@@ -52,3 +56,6 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        - name: krb5-conf
+          configMap:
+            name: {{ include "pvxs-lab.fullname" . }}-krb5

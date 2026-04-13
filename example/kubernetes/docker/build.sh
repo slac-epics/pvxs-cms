@@ -7,6 +7,7 @@ ${DOCKER_ROOT_DIR}/internet/build_docker.sh ${*}
 ${DOCKER_ROOT_DIR}/ml-ioc/build_docker.sh ${*}
 
 ${DOCKER_ROOT_DIR}/lab/build_docker.sh ${*}
+${DOCKER_ROOT_DIR}/cs-studio/build_docker.sh ${*}
 
 ${DOCKER_ROOT_DIR}/testioc/build_docker.sh ${*}
 ${DOCKER_ROOT_DIR}/tstioc/build_docker.sh ${*}

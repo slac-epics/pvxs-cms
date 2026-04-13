@@ -26,7 +26,8 @@ spec:
               set -e
               install -d -m 0755 -o gateway -g gateway /work
               install -m 0644 -o gateway -g gateway /conf-src/gateway.conf /work/gateway.conf
-              install -m 0644 -o gateway -g gateway /conf-src/gateway.pvlist /work/gateway.pvlist
+              install -m 0644 -o gateway -g gateway /conf-src/internet.pvlist /work/internet.pvlist
+              install -m 0644 -o gateway -g gateway /conf-src/cross-zone.pvlist /work/cross-zone.pvlist
           volumeMounts:
             - name: gw-conf-src
               mountPath: /conf-src
@@ -63,8 +64,11 @@ spec:
               mountPath: /home/gateway/gateway.conf
               subPath: gateway.conf
             - name: gw-conf
-              mountPath: /home/gateway/gateway.pvlist
-              subPath: gateway.pvlist
+              mountPath: /home/gateway/internet.pvlist
+              subPath: internet.pvlist
+            - name: gw-conf
+              mountPath: /home/gateway/cross-zone.pvlist
+              subPath: cross-zone.pvlist
             - name: pva-config
               mountPath: /home/gateway/.config/pva/1.5
       volumes:
