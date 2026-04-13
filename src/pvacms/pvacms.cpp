@@ -315,8 +315,23 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
             if (db_version < PVACMS_SCHEMA_VERSION) {
                 log_warn_printf(pvacms, "Database schema version %d is older than current version %d — applying migrations\n",
                                 db_version, PVACMS_SCHEMA_VERSION);
-                // Future migrations go here, applied in order from db_version+1 to PVACMS_SCHEMA_VERSION.
-                // After applying each migration, insert a new schema_version row.
+                if (db_version < 2) {
+                    if (sqlite3_exec(certs_db.get(), SQL_CREATE_AUDIT_TABLE, nullptr, nullptr, nullptr) != SQLITE_OK) {
+                        throw std::runtime_error(SB() << "Failed to create audit table: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_stmt *mig_stmt = nullptr;
+                    if (sqlite3_prepare_v2(certs_db.get(), SQL_INSERT_SCHEMA_VERSION, -1, &mig_stmt, nullptr) != SQLITE_OK) {
+                        throw std::runtime_error(SB() << "Failed to prepare migration version insert: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_bind_int(mig_stmt, 1, 2);
+                    sqlite3_bind_int64(mig_stmt, 2, static_cast<sqlite3_int64>(time(nullptr)));
+                    if (sqlite3_step(mig_stmt) != SQLITE_DONE) {
+                        sqlite3_finalize(mig_stmt);
+                        throw std::runtime_error(SB() << "Failed to record migration to v2: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_finalize(mig_stmt);
+                    log_info_printf(pvacms, "Applied migration to schema version 2 (audit table)%s\n", "");
+                }
             } else if (db_version > PVACMS_SCHEMA_VERSION) {
                 log_warn_printf(pvacms, "Database schema version %d is newer than current code version %d — possible downgrade\n",
                                 db_version, PVACMS_SCHEMA_VERSION);
@@ -338,6 +353,10 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
             sqlite3_finalize(ins_stmt);
             log_debug_printf(pvacms, "Recorded initial schema version %d\n", PVACMS_SCHEMA_VERSION);
         }
+    }
+
+    if (sqlite3_exec(certs_db.get(), SQL_CREATE_AUDIT_TABLE, nullptr, nullptr, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(SB() << "Failed to create audit table: " << sqlite3_errmsg(certs_db.get()));
     }
 }
 
@@ -584,6 +603,30 @@ void updateCertificateStatus(const sql_ptr &certs_db,
     } else {
         throw std::runtime_error(SB() << "Failed to set cert status: " << sqlite3_errmsg(certs_db.get()));
     }
+}
+
+void insertAuditRecord(sqlite3 *db, const std::string &action,
+                       const std::string &operator_id, uint64_t serial,
+                       const std::string &detail) {
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(db, SQL_INSERT_AUDIT, -1, &stmt, nullptr) != SQLITE_OK) {
+        log_err_printf(pvacms, "Failed to prepare audit insert: %s\n", sqlite3_errmsg(db));
+        return;
+    }
+    sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":timestamp"),
+                       static_cast<sqlite3_int64>(time(nullptr)));
+    sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":action"),
+                      action.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":operator"),
+                      operator_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":serial"),
+                       static_cast<sqlite3_int64>(serial));
+    sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":detail"),
+                      detail.c_str(), -1, SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        log_err_printf(pvacms, "Failed to insert audit record: %s\n", sqlite3_errmsg(db));
+    }
+    sqlite3_finalize(stmt);
 }
 
 void updateCertificateRenewalStatus(const sql_ptr &certs_db, serial_number_t serial, const certstatus_t cert_status, const time_t renew_by) {
@@ -1229,6 +1272,9 @@ int64_t onCreateCertificate(ConfigCms &config,
         }
         log_info_printf(pvacms, "EXPIRES ON: %s\n", expiration_s.substr(0, expiration_s.size()-1).c_str());
         op->reply(reply);
+        insertAuditRecord(certs_db.get(), AUDIT_ACTION_CREATE,
+                          SB() << type << ":" << name,
+                          serial, SB() << "state=" << CERT_STATE(state));
         return static_cast<int64_t>(serial);
     } catch (std::exception &e) {
         // For any type of error return an error to the caller
@@ -1332,7 +1378,8 @@ void onRevoke(const ConfigCms &config,
               const std::list<std::string> &parameters,
               const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
               const ossl_ptr<X509> &cert_auth_cert,
-              const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
+              const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+              const std::string &operator_id) {
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
@@ -1342,6 +1389,8 @@ void onRevoke(const ConfigCms &config,
 
         // set status value
         updateCertificateStatus(certs_db, serial, REVOKED, 0);
+        insertAuditRecord(certs_db.get(), AUDIT_ACTION_REVOKE, operator_id,
+                          serial, "");
 
         const auto revocation_date = std::time(nullptr);
         const auto ocsp_status =
@@ -1380,7 +1429,8 @@ void onApprove(const ConfigCms &config,
                const std::list<std::string> &parameters,
                const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                const ossl_ptr<X509> &cert_auth_cert,
-               const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
+               const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+               const std::string &operator_id) {
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
@@ -1394,6 +1444,8 @@ void onApprove(const ConfigCms &config,
         const DbCert db_cert(getCertificateValidity(certs_db, serial));
         const certstatus_t new_state = status_date < db_cert.not_before ? PENDING : status_date >= db_cert.not_after ? EXPIRED : status_date >= db_cert.renew_by ? PENDING_RENEWAL : VALID;
         updateCertificateStatus(certs_db, serial, new_state, 1, {PENDING_APPROVAL});
+        insertAuditRecord(certs_db.get(), AUDIT_ACTION_APPROVE, operator_id,
+                          serial, SB() << "new_state=" << CERT_STATE(new_state));
 
         const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, new_state, status_date);
         postCertificateStatus(status_pv, pv_name, serial, cert_status);
@@ -1439,7 +1491,8 @@ void onDeny(const ConfigCms &config,
             const std::list<std::string> &parameters,
             const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
             const ossl_ptr<X509> &cert_auth_cert,
-            const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
+            const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+            const std::string &operator_id) {
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
@@ -1450,6 +1503,8 @@ void onDeny(const ConfigCms &config,
 
         // set status value
         updateCertificateStatus(certs_db, serial, REVOKED, 0, {PENDING_APPROVAL});
+        insertAuditRecord(certs_db.get(), AUDIT_ACTION_DENY, operator_id,
+                          serial, "");
 
         const auto revocation_date = std::time(nullptr);
         const auto cert_status =
@@ -3068,6 +3123,24 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
                                 sqlite3_errmsg(status_monitor_params.certs_db_.get()));
             }
         }
+
+        // Audit log pruning
+        if (status_monitor_params.config_.audit_retention_days > 0) {
+            const auto cutoff = static_cast<sqlite3_int64>(
+                time(nullptr) - static_cast<time_t>(status_monitor_params.config_.audit_retention_days) * 86400);
+            sqlite3_stmt *prune_stmt = nullptr;
+            if (sqlite3_prepare_v2(status_monitor_params.certs_db_.get(),
+                                   SQL_PRUNE_AUDIT, -1, &prune_stmt, nullptr) == SQLITE_OK) {
+                sqlite3_bind_int64(prune_stmt,
+                                   sqlite3_bind_parameter_index(prune_stmt, ":cutoff"), cutoff);
+                sqlite3_step(prune_stmt);
+                sqlite3_finalize(prune_stmt);
+                log_debug_printf(pvacms, "Audit log pruning completed%s\n", "");
+            } else {
+                log_warn_printf(pvacms, "Failed to prepare audit prune: %s\n",
+                                sqlite3_errmsg(status_monitor_params.certs_db_.get()));
+            }
+        }
     }
 
     log_debug_printf(pvacmsmonitor, "Certificate Monitor Thread Sleep%s", "\n");
@@ -3222,6 +3295,9 @@ int readParameters(int argc,
     app.add_option("--integrity-check-interval",
                    config.integrity_check_interval_secs,
                    "Seconds between SQLite integrity checks and WAL checkpoints.  0 to disable.  Default 86400");
+    app.add_option("--audit-retention-days",
+                   config.audit_retention_days,
+                   "Days to retain audit log records.  0 to disable pruning.  Default 365");
     // Add any parameters for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry())
         authn_entry.second->addOptions(app, authn_config_map);
@@ -3626,6 +3702,7 @@ int main(int argc, char *argv[]) {
 
             // Get credentials for this operation
             const auto creds = op->credentials();
+            const std::string operator_str = pvxs::SB() << *creds;
 
             pvxs::ioc::Credentials credentials(*creds);
 
@@ -3669,7 +3746,8 @@ int main(int argc, char *argv[]) {
                          parameters,
                          cert_auth_pkey,
                          cert_auth_cert,
-                         cert_auth_chain);
+                         cert_auth_chain,
+                         operator_str);
                 cluster_sync.publishCertChange(serial);
                 if (check_cms_node_revocation) {
                     auto skid = getCertificateSkid(certs_db, serial);
@@ -3686,7 +3764,8 @@ int main(int argc, char *argv[]) {
                           parameters,
                           cert_auth_pkey,
                           cert_auth_cert,
-                          cert_auth_chain);
+                          cert_auth_chain,
+                          operator_str);
                 cluster_sync.publishCertChange(serial);
             } else if (state == "DENIED") {
                 onDeny(config,
@@ -3698,7 +3777,8 @@ int main(int argc, char *argv[]) {
                        parameters,
                        cert_auth_pkey,
                        cert_auth_cert,
-                       cert_auth_chain);
+                       cert_auth_chain,
+                       operator_str);
                 cluster_sync.publishCertChange(serial);
                 if (check_cms_node_revocation) {
                     auto skid = getCertificateSkid(certs_db, serial);
@@ -3733,6 +3813,7 @@ int main(int argc, char *argv[]) {
         auto wildcard_source = WildcardSource::build();
         wildcard_source->add(getCertStatusPv(config.getCertPvPrefix(), our_issuer_id), status_pv);
         pva_server.addSource("__wildcard", wildcard_source);
+        // TODO(§3.10): Register CERT:AUDIT[:<issuer_id>] subscribable SharedPV for audit log
 
         if (config.cluster_mode) {
             cluster_sync.setEnabled(true);

@@ -89,6 +89,11 @@ TESTPROD_HOST += testsqlitehardening
 testsqlitehardening_SRCS += testsqlitehardening.cpp
 testsqlitehardening_SYS_LIBS += sqlite3
 
+TESTS += testauditlogging
+TESTPROD_HOST += testauditlogging
+testauditlogging_SRCS += testauditlogging.cpp
+testauditlogging_SYS_LIBS += sqlite3
+
 endif # PVXS_ENABLE_PVACMS
 endif # BASE_3_15
 

@@ -276,6 +276,14 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         }
     }
 
+    if (pickone({"EPICS_PVACMS_AUDIT_RETENTION_DAYS"})) {
+        try {
+            audit_retention_days = static_cast<uint32_t>(parseTo<uint64_t>(pickone.val));
+        } catch (std::exception &e) {
+            log_err_printf(cert_cfg, "%s invalid retention days: %s\n", pickone.name.c_str(), e.what());
+        }
+    }
+
 }
 
 /**
@@ -329,6 +337,7 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     defs["EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT"] = std::to_string(cluster_discovery_timeout_secs);
     defs["EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT"] = std::to_string(cluster_bidi_timeout_secs);
     defs["EPICS_PVACMS_INTEGRITY_CHECK_INTERVAL"] = std::to_string(integrity_check_interval_secs);
+    defs["EPICS_PVACMS_AUDIT_RETENTION_DAYS"] = std::to_string(audit_retention_days);
 
     // Add any defs for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry()) authn_entry.second->updateDefs(defs);

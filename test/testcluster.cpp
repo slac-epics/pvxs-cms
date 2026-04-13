@@ -416,7 +416,7 @@ void testApplySyncBackwardDropped() {
     // Sync snapshot tries to set VALID - backward from EXPIRED
     const auto val = buildSyncWithCert(42, static_cast<int32_t>(VALID), 1600, "CN1_updated");
 
-    applySyncSnapshot(tdb.get(), lock, val);
+    applySyncSnapshot(tdb.get(), lock, val, "peer-a");
 
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(tdb.get(), "SELECT status FROM certs WHERE serial=42", -1, &stmt, nullptr);
@@ -453,7 +453,7 @@ void testApplySyncForwardAccepted() {
 
     const auto val = buildSyncWithCert(42, static_cast<int32_t>(VALID), 2000);
 
-    applySyncSnapshot(tdb.get(), lock, val);
+    applySyncSnapshot(tdb.get(), lock, val, "peer-a");
 
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(tdb.get(), "SELECT status FROM certs WHERE serial=42", -1, &stmt, nullptr);
@@ -484,7 +484,7 @@ void testApplySyncNewCert() {
 
     const auto val = buildSyncWithCert(99, static_cast<int32_t>(VALID), 600, "NewCert");
 
-    applySyncSnapshot(tdb.get(), lock, val);
+    applySyncSnapshot(tdb.get(), lock, val, "peer-a");
 
     // Verify cert was inserted
     sqlite3_stmt *stmt;
@@ -745,7 +745,7 @@ void testCrossNodeSyncIngestion() {
     // Node B ingests the snapshot into its own (empty) DB
     TestDb db_b;
     epicsMutex lock_b;
-    applySyncSnapshot(db_b.get(), lock_b, snapshot);
+    applySyncSnapshot(db_b.get(), lock_b, snapshot, "node_a");
 
     // Verify both certs appeared in Node B's DB
     testOk(queryCertInt64(db_b.get(), 100, "status") == VALID, "CertA ingested as VALID");
@@ -764,7 +764,7 @@ void testCrossNodeSyncIngestion() {
     TestDb db_a_stale;
     insertCert(db_a_stale.get(), 100, "CertA_stale", PENDING, 1000, 5000, 4000, 1200);
     const auto stale_snapshot = buildSignedSync(db_a_stale.get(), "node_a", members, pkey);
-    applySyncSnapshot(db_b2.get(), lock_b2, stale_snapshot);
+    applySyncSnapshot(db_b2.get(), lock_b2, stale_snapshot, "node_a");
 
     testOk(queryCertInt64(db_b2.get(), 100, "status") == VALID,
            "Backward VALID->PENDING rejected - status unchanged");
@@ -912,7 +912,7 @@ void testRenewalPropagation() {
     auto snapshot = buildSignedSync(db_a.get(), "node_a", members, pkey);
 
     // Node B ingests the snapshot
-    applySyncSnapshot(db_b.get(), lock_b, snapshot);
+    applySyncSnapshot(db_b.get(), lock_b, snapshot, "node_a");
 
     // renew_by should be overwritten to 8000 (VALID->VALID allowed by same-status rule)
     testOk(queryCertInt64(db_b.get(), 300, "renew_by") == 8000,
@@ -1115,7 +1115,7 @@ void testPeerCertRevocationViaSync() {
     insertCertWithSkid(db.get(), 800, peer_skid, VALID, 1500);
 
     auto snapshot = buildSyncWithCertSkid(800, peer_skid, static_cast<int32_t>(REVOKED), 1600);
-    auto merge_result = applySyncSnapshot(db.get(), lock, snapshot);
+    auto merge_result = applySyncSnapshot(db.get(), lock, snapshot, "peer-a");
 
     testOk(merge_result.revoked_skids.size() == 1, "One cert transitioned to REVOKED");
     if (!merge_result.revoked_skids.empty()) {
@@ -1141,7 +1141,7 @@ void testOwnCertRevocationViaSync() {
     insertCertWithSkid(db.get(), 900, own_skid, VALID, 1500);
 
     auto snapshot = buildSyncWithCertSkid(900, own_skid, static_cast<int32_t>(REVOKED), 1600);
-    auto merge_result = applySyncSnapshot(db.get(), lock, snapshot);
+    auto merge_result = applySyncSnapshot(db.get(), lock, snapshot, "peer-a");
 
     testOk(merge_result.revoked_skids.size() == 1, "One cert transitioned to REVOKED");
 
@@ -1307,7 +1307,7 @@ void testIncrementalIngestion() {
     val["update_type"] = static_cast<int32_t>(SYNC_INCREMENTAL);
     val["sequence"] = static_cast<int64_t>(1);
 
-    applySyncSnapshot(tdb.get(), lock, val);
+    applySyncSnapshot(tdb.get(), lock, val, "peer-a");
 
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(tdb.get(), "SELECT COUNT(*) FROM certs", -1, &stmt, nullptr);
