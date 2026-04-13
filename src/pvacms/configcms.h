@@ -315,6 +315,14 @@ class ConfigCms final : public Config {
      */
     uint32_t integrity_check_interval_secs = 86400;
 
+    /**
+     * @brief Number of days to retain audit log records before pruning.
+     *
+     * Set to 0 to disable audit pruning.
+     * Default: 365 (one year).
+     */
+    uint32_t audit_retention_days = 365;
+
     void applyCmsEnv(const std::map<std::string, std::string>& defs);
     static ConfigCms mockCms(int family=AF_INET);
     static ConfigCms forCms();

@@ -166,7 +166,8 @@ struct SyncMergeResult {
 
 SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                                   epicsMutex &status_update_lock,
-                                  const Value &snapshot);
+                                  const Value &snapshot,
+                                  const std::string &peer_node_id);
 
 }  // namespace certs
 }  // namespace pvxs

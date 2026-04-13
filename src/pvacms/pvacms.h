@@ -77,7 +77,36 @@
     "WHERE type='table' "                                               \
     "  AND name='schema_version';"
 
-#define PVACMS_SCHEMA_VERSION 1
+#define PVACMS_SCHEMA_VERSION 2
+
+#define SQL_CREATE_AUDIT_TABLE                                              \
+    "CREATE TABLE IF NOT EXISTS audit("                                     \
+    "     id INTEGER PRIMARY KEY AUTOINCREMENT,"                            \
+    "     timestamp INTEGER NOT NULL,"                                      \
+    "     action TEXT NOT NULL,"                                            \
+    "     operator TEXT NOT NULL,"                                          \
+    "     serial INTEGER,"                                                  \
+    "     detail TEXT"                                                      \
+    ");"                                                                    \
+    "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit(timestamp);"
+
+#define SQL_INSERT_AUDIT                                                    \
+    "INSERT INTO audit(timestamp, action, operator, serial, detail) "       \
+    "VALUES(:timestamp, :action, :operator, :serial, :detail)"
+
+#define SQL_PRUNE_AUDIT                                                     \
+    "DELETE FROM audit WHERE timestamp < :cutoff"
+
+#define SQL_GET_RECENT_AUDIT                                                \
+    "SELECT id, timestamp, action, operator, serial, detail "               \
+    "FROM audit ORDER BY id DESC LIMIT :limit"
+
+#define AUDIT_ACTION_CREATE   "CREATE"
+#define AUDIT_ACTION_APPROVE  "APPROVE"
+#define AUDIT_ACTION_REVOKE   "REVOKE"
+#define AUDIT_ACTION_DENY     "DENY"
+#define AUDIT_ACTION_SCHEDULE "SCHEDULE"
+#define AUDIT_ACTION_SYNC     "SYNC"
 
 #define SQL_CHECK_EXISTS_DB_FILE       \
     "SELECT name "                     \
@@ -402,6 +431,10 @@ void createAdminClientCert(const ConfigCms &config, sql_ptr &certs_db, const oss
 
 void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file);
 
+void insertAuditRecord(sqlite3 *db, const std::string &action,
+                       const std::string &operator_id, uint64_t serial,
+                       const std::string &detail);
+
 bool runSelfTests(const sql_ptr &certs_db, const ossl_ptr<X509> &cert_auth_cert,
                   const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                   const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain);
@@ -419,15 +452,18 @@ void onGetStatus(const ConfigCms &config, const sql_ptr &certs_db, const std::st
 
 void onRevoke(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
               std::unique_ptr<server::ExecOp> &&op, const std::string &pv_name, const std::list<std::string> &parameters,
-              const ossl_ptr<EVP_PKEY> &cert_auth_pkey, const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain);
+              const ossl_ptr<EVP_PKEY> &cert_auth_pkey, const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+              const std::string &operator_id);
 
 void onApprove(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
                std::unique_ptr<server::ExecOp> &&op, const std::string &pv_name, const std::list<std::string> &parameters,
-               const ossl_ptr<EVP_PKEY> &cert_auth_pkey, const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain);
+               const ossl_ptr<EVP_PKEY> &cert_auth_pkey, const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+               const std::string &operator_id);
 
 void onDeny(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
             std::unique_ptr<server::ExecOp> &&op, const std::string &pv_name, const std::list<std::string> &parameters,
-            const ossl_ptr<EVP_PKEY> &cert_auth_pkey, const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain);
+            const ossl_ptr<EVP_PKEY> &cert_auth_pkey, const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+            const std::string &operator_id);
 
 int readOptions(ConfigCms &config, int argc, char *argv[], bool &verbose);
 

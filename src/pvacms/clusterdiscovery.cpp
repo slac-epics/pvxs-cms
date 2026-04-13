@@ -27,6 +27,37 @@ DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 namespace pvxs {
 namespace certs {
 
+namespace {
+
+static const char AUDIT_ACTION_SYNC[] = "SYNC";
+
+void insertSyncAuditRecord(sqlite3 *db, const std::string &action,
+                           const std::string &operator_id, uint64_t serial,
+                           const std::string &detail) {
+    static const char SQL_INSERT_AUDIT[] =
+        "INSERT INTO audit(timestamp, action, operator, serial, detail) "
+        "VALUES(:timestamp, :action, :operator, :serial, :detail)";
+
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(db, SQL_INSERT_AUDIT, -1, &stmt, nullptr) != SQLITE_OK) {
+        return;
+    }
+    sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":timestamp"),
+                       static_cast<sqlite3_int64>(time(nullptr)));
+    sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":action"),
+                      action.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":operator"),
+                      operator_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":serial"),
+                       static_cast<sqlite3_int64>(serial));
+    sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":detail"),
+                      detail.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
+}  // namespace
+
 typedef epicsGuard<epicsMutex> Guard;
 
 struct ConnTimerCtx {
@@ -93,8 +124,9 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
 }
 
 SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
-                                   epicsMutex &status_update_lock,
-                                   const Value &snapshot) {
+                                  epicsMutex &status_update_lock,
+                                  const Value &snapshot,
+                                  const std::string &peer_node_id) {
     Guard G(status_update_lock);
     SyncMergeResult result;
 
@@ -144,6 +176,8 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":status_date"), row["status_date"].as<int64_t>());
             sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), serial);
             sqlite3_step(upd_stmt);
+            insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
+                                  static_cast<uint64_t>(serial), SB() << "status=" << remote_status);
             sqlite3_finalize(upd_stmt);
             result.had_changes = true;
         } else {
@@ -170,6 +204,8 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             sqlite3_bind_int(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":status"), row["status"].as<int32_t>());
             sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":status_date"), row["status_date"].as<int64_t>());
             sqlite3_step(ins_stmt);
+            insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
+                                  static_cast<uint64_t>(serial), SB() << "status=" << remote_status);
             sqlite3_finalize(ins_stmt);
             result.had_changes = true;
 
@@ -257,7 +293,7 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     sync_publisher_.sync_ingestion_in_progress.store(true);
     SyncMergeResult merge_result;
     try {
-        merge_result = applySyncSnapshot(certs_db_, status_update_lock_, val);
+        merge_result = applySyncSnapshot(certs_db_, status_update_lock_, val, peer_node_id);
     } catch (...) {
         sync_publisher_.sync_ingestion_in_progress.store(false);
         throw;
