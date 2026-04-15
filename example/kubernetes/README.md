@@ -6,9 +6,9 @@ A single-node Kubernetes cluster simulating three isolated network zones on one 
 - **Zone 1: Lab Network**
 	- **idm**: Identity Management
 		- ***kdc***: Kerberos Service (user: *idm*)
-		- ***pvacms***: PVACMS Service with external access (user: *pvacms*)
+		- ***pvacms***: PVACMS Service with external access (user: *idm*)
 	- **it**: IT
-		- ***pvacms***: PVACMS HA and failover Service for lab only (user: *pvacms*)
+		- ***pvacms***: PVACMS HA and failover Service for lab only (user: *idm*)
 	- **testioc**: IOC — ***softIocPVX*** (user: *testioc*)
 	- **tstioc**: IOC — ***softIocPVX*** (user: *tstioc*)
 	- **lab**: General Lab Personnel — Control Room (*operator*), Office (*guest*)
@@ -16,7 +16,7 @@ A single-node Kubernetes cluster simulating three isolated network zones on one 
 	- **gateway**: PVAccess Gateway — two servers: internet (:5075) + cross-zone (:5175) (user: *gateway*)
 
 - **Zone 2: ML Centre Network**
-	- **ml**: General ML Personnel and IT Systems — Office (*mloperator*), ML Systems (*mlsystem*), ***pvacms*** (user: *pvacms*)
+	- **ml**: General ML Personnel and IT Systems — Office (*mloperator*), ML Systems (*mlsystem*), ***pvacms*** (user: *idm*)
 	- **ml-ioc**: IOC — ***softIocPVX*** (user: *mlioc*)
 	- **cs-studio-ml**: CS-Studio (Phoebus) via noVNC — same users as ml (*mloperator*, *mlsystem*)
 	- **ml-gateway**: PVAccess Gateway — two servers: internet (:5075) + cross-zone (:5175) (user: *gateway*)
@@ -26,6 +26,39 @@ A single-node Kubernetes cluster simulating three isolated network zones on one 
 	- **cs-studio-internet**: CS-Studio (Phoebus) via noVNC — same users as internet (*operator*, *guest*)
 
 Network policies enforce zone isolation. Gateways are the only path between zones.
+
+## Network Policies
+
+NetworkPolicy enforcement requires a CNI that supports it (Calico, Cilium, Antrea). The cluster
+uses Calico. Policies are defined in `templates/networkpolicy.yaml`.
+
+### Ingress policies
+
+| Policy | Target pod(s) | Allowed sources |
+|--------|---------------|-----------------|
+| idm-ingress | idm | Any pod in this Helm release |
+| ioc-ingress | testioc, tstioc | lab, cs-studio-lab, gateway |
+| gateway-ingress | gateway | internet, ml-gateway, idm, it, lab, cs-studio-lab, cs-studio-ml, cs-studio-internet, ml |
+| it-ingress | it | idm, lab, gateway |
+| ml-ingress | ml | ml-gateway, cs-studio-ml, ml-ioc |
+| ml-ioc-ingress | ml-ioc | ml, cs-studio-ml, ml-gateway |
+| ml-gateway-ingress | ml-gateway | ml, cs-studio-ml, gateway, idm, lab, cs-studio-lab, internet, cs-studio-internet |
+
+Pods without an ingress policy (accept all ingress): lab, internet, cs-studio-lab, cs-studio-ml, cs-studio-internet.
+
+### Egress policies
+
+| Policy | Source pod | Allowed destinations | Notes |
+|--------|-----------|---------------------|-------|
+| internet-egress | internet | gateway, ml-gateway, idm (UDP 88 / TCP 749), DNS | Kerberos only to idm |
+| ml-egress | ml | ml-gateway, ml-ioc, gateway, idm (UDP 88 / TCP 749), DNS | Cross-zone via gateway; Kerberos to idm |
+| ml-gateway-egress | ml-gateway | ml, ml-ioc, gateway, DNS | |
+| lab-egress | lab | idm, it, testioc, tstioc, ml-gateway, DNS | No direct gateway access |
+| cs-studio-lab-egress | cs-studio-lab | idm, it, testioc, tstioc, ml-gateway, DNS | Same as lab |
+| cs-studio-ml-egress | cs-studio-ml | ml-gateway, ml-ioc, gateway, idm (UDP 88 / TCP 749), DNS | Cross-zone via gateway; Kerberos to idm |
+| cs-studio-internet-egress | cs-studio-internet | gateway, ml-gateway, idm (UDP 88 / TCP 749), DNS | Kerberos only to idm |
+
+Pods without an egress policy (unrestricted egress): idm, it, gateway, testioc, tstioc, ml-ioc.
 
 ## Topology
 
@@ -47,29 +80,31 @@ Internet pods (internet, cs-studio-internet)
 
 ### Gateway detail
 
-| Gateway | Server | Port | Pvlist | Consumers |
-|---------|--------|------|--------|-----------|
-| Lab | internet | :5075 | `test:.*`, `tst:.*`, `CERT:CREATE`, `CERT:STATUS` | Internet pods |
-| Lab | cross-zone | :5175 | `test:.*`, `tst:.*`, `CERT:CLUSTER` | ML pods |
-| ML | internet | :5075 | `ml:.*` | Internet pods |
-| ML | cross-zone | :5175 | `ml:.*`, `CERT:CLUSTER` | Lab pods |
+| Gateway | Server | Search Port | TLS Port | Pvlist | Consumers |
+|---------|--------|-------------|----------|--------|-----------|
+| Lab | internet | :5075 | :5076 | `test:.*`, `tst:.*`, `CERT:CREATE`, `CERT:STATUS` | Internet pods |
+| Lab | cross-zone | :5175 | :5176 | `test:.*`, `tst:.*`, `CERT:CLUSTER` | ML pods |
+| ML | internet | :5075 | :5076 | `ml:.*` | Internet pods |
+| ML | cross-zone | :5175 | :5176 | `ml:.*`, `CERT:CLUSTER` | Lab pods |
 
 Both gateways fetch **only** from their own zone's IOCs (no cross-connect clients).
 
 ### PVACMS cluster mode
 The CMS runs in three-node cluster mode (`--cluster-mode`) on `idm`, `it`, and `ml`:
-- `idm` <-> `it` communicate directly on the lab network.
-- `ml` reaches lab PVACMS via the lab gateway's cross-zone server (`gateway:5175`).
-- `it` and `ml` do not connect directly; `idm` relays cluster updates transitively.
+- `idm` ↔ `it` communicate directly on the lab network (`EPICS_PVA_ADDR_LIST`).
+- `idm` reaches `ml` via the ML gateway's cross-zone server (`ml-gateway-xgw:5175` via `EPICS_PVACMS_CLUSTER_NAME_SERVERS`).
+- `ml` reaches lab PVACMS via the lab gateway's cross-zone server (`gateway-xgw:5175` via `EPICS_PVACMS_CLUSTER_NAME_SERVERS`).
+- `it` has no cross-zone path; `idm` relays cluster updates transitively between `it` and `ml`.
 - `CERT:CLUSTER` PVs are allowed through both gateways' cross-zone servers for cluster discovery.
-- `--cluster-discovery-timeout 30` and `--cluster-bidi-timeout 30` are set on all nodes.
+- `--cluster-discovery-timeout 30` and `--cluster-bidi-timeout 30` are set on `idm` and `it`.
+- `--cluster-discovery-timeout 90` and `--cluster-bidi-timeout 30` are set on `ml` (longer timeout for cross-zone discovery).
 
 ## Users
 
 ### Lab (Zone 1)
 | Pod | Users |
 |-----|-------|
-| idm | admin, pvacms |
+| idm | idm, admin |
 | lab | guest, operator |
 | cs-studio-lab | guest, operator |
 | it | idm, admin |
@@ -236,6 +271,10 @@ gw_deploy -r
 gw_deploy --set gateway.debug.enabled=true --dry-run
 ```
 
+Notes:
+- Changes under `example/kubernetes/helm/pvxs-lab/` only need `gw_deploy`.
+- Changes under `example/kubernetes/docker/gateway/` require rebuilding the `gateway` image first, then `gw_deploy`.
+
 - **gw_undeploy** — Tear down the cluster
 ```sh
 gw_undeploy
@@ -246,7 +285,7 @@ gw_undeploy
 - **login_to_lab** — Login as a lab user (selects the correct pod automatically)
 ```sh
 login_to_lab <user>
-# user: admin | guest | operator | pvacms | gateway | testioc | tstioc | it
+# user: admin | guest | operator | gateway | testioc | tstioc | idm | it
 login_to_lab operator
 ```
 
@@ -400,6 +439,39 @@ exit
 Restart the gateway to pick up the cert:
 ```sh
 go_in_to gateway
+supervisorctl restart gateway
+exit
+```
+
+## Create a certificate for the ML gateway
+
+The `gateway` user shell inside `ml-gateway` is configured to talk directly to the ML-side PVACMS using the local upstream addrlist from `gateway.conf` (`pvxs-lab-ml pvxs-lab-ml-ioc`). It does not use the gateway's public PV list for `CERT:*` access.
+
+```sh
+login_to_ml ml-gateway
+```
+```console
+gateway@pvxs-lab-ml-gateway-...:~$
+```
+```sh
+authnstd -u ioc -n ml-gateway
+# Output: Keychain file created, Certificate identifier: <issuer_id>:<cert_id>
+exit
+```
+
+Approve the certificate as admin:
+```sh
+login_to_lab admin
+```
+```sh
+pvxcert --approve <issuer_id>:<cert_id>
+# Output: Approve ==> CERT:STATUS:<id> ==> Completed Successfully
+exit
+```
+
+Restart the ML gateway to pick up the cert:
+```sh
+go_in_to ml-gateway
 supervisorctl restart gateway
 exit
 ```
@@ -572,7 +644,7 @@ exit
 
 ## Certificate management PVs
 
-`CERT:CREATE` and `CERT:STATUS` are only accessible through the lab gateway's internet server (:5075). `CERT:CLUSTER` PVs are only accessible through the cross-zone servers (:5175) on both gateways.
+`CERT:CREATE` and `CERT:STATUS` are only accessible through the lab gateway's internet server (:5075/:5076) for internet clients. `CERT:CLUSTER` PVs are only accessible through the cross-zone servers (:5175/:5176) on both gateways. Inside the lab and ML zones, PVACMS `CERT:*` PVs are accessed directly from the local PVACMS via `EPICS_PVA_ADDR_LIST`.
 
 From the internet:
 ```sh
@@ -592,5 +664,13 @@ Inside the lab, PVACMS PVs are accessed directly (not through the gateway):
 login_to_lab operator
 pvxget CERT:CREATE
 # Expected: direct from pvacms via ADDR_LIST
+exit
+```
+
+Inside the ML zone, PVACMS PVs are also accessed directly (not through ml-gateway):
+```sh
+login_to_ml mloperator
+pvxget CERT:CREATE
+# Expected: direct from ml pvacms via ADDR_LIST
 exit
 ```

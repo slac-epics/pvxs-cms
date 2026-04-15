@@ -1,5 +1,198 @@
 #!/usr/bin/env zsh
 
+# ---------------------------------------------------------------------------
+# Kind cluster management (macOS / Docker Desktop only)
+# ---------------------------------------------------------------------------
+# Docker Desktop's built-in Kubernetes does NOT enforce NetworkPolicy.
+# These helpers create a Kind cluster with Calico CNI so that the network
+# policies in the Helm chart are actually enforced.
+#
+# Usage:
+#   source helpers.sh
+#   gw_kind_create          # create Kind cluster + install Calico
+#   gw_kind_load_images     # push local Docker images into the cluster
+#   gw_deploy               # deploy Helm chart (works on both Kind and DD)
+#   gw_kind_delete           # tear down the Kind cluster
+# ---------------------------------------------------------------------------
+
+GW_KIND_CLUSTER_NAME="pvxs-lab"
+GW_KIND_CONTEXT="kind-${GW_KIND_CLUSTER_NAME}"
+GW_CALICO_VERSION="v3.29.3"
+
+function _gw_is_docker_desktop_mac {
+    # Guard: only run on macOS with Docker Desktop
+    [[ "$(uname -s)" == "Darwin" ]] || return 1
+    docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi 'docker desktop' || return 1
+    command -v kind &>/dev/null || { echo "kind not found. Install with: brew install kind" ; return 1 }
+    return 0
+}
+
+function _gw_kind_config {
+    # Generate Kind cluster config with Calico-compatible networking and
+    # NodePort mappings that match the Helm chart (Kerberos KDC).
+    cat <<'KINDEOF'
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Kerberos KDC — matches idm NodePort values
+      - containerPort: 30088
+        hostPort: 30088
+        protocol: UDP
+      - containerPort: 30049
+        hostPort: 30049
+        protocol: TCP
+networking:
+  disableDefaultCNI: true
+  podSubnet: 192.168.0.0/16
+KINDEOF
+}
+
+function gw_kind_create {
+    _gw_is_docker_desktop_mac || return 1
+
+    if kind get clusters 2>/dev/null | grep -qx "${GW_KIND_CLUSTER_NAME}"; then
+        echo "Kind cluster '${GW_KIND_CLUSTER_NAME}' already exists."
+        echo "Use gw_kind_delete first, or gw_kind_load_images + gw_deploy."
+        return 0
+    fi
+
+    echo "==> Creating Kind cluster '${GW_KIND_CLUSTER_NAME}' (CNI disabled) ..."
+    _gw_kind_config | kind create cluster \
+        --name "${GW_KIND_CLUSTER_NAME}" \
+        --config /dev/stdin || return 1
+
+    echo "==> Switching kubectl context to ${GW_KIND_CONTEXT} ..."
+    kubectl config use-context "${GW_KIND_CONTEXT}"
+
+    echo "==> Installing Calico ${GW_CALICO_VERSION} ..."
+    kubectl create -f "https://raw.githubusercontent.com/projectcalico/calico/${GW_CALICO_VERSION}/manifests/calico.yaml" || return 1
+
+    echo "==> Waiting for Calico pods to be ready ..."
+    kubectl rollout status daemonset/calico-node -n kube-system --timeout=120s
+    kubectl rollout status deployment/calico-kube-controllers -n kube-system --timeout=120s
+
+    echo "==> Calico installed. NetworkPolicies will be enforced."
+    echo "    Next: gw_kind_load_images && gw_deploy"
+}
+
+function gw_kind_load_images {
+    _gw_is_docker_desktop_mac || return 1
+
+    local force=0
+    if [[ "$1" == "--force" || "$1" == "-f" ]]; then
+        force=1
+        shift
+    fi
+
+    if ! kind get clusters 2>/dev/null | grep -qx "${GW_KIND_CLUSTER_NAME}"; then
+        echo "Kind cluster '${GW_KIND_CLUSTER_NAME}' not found. Run gw_kind_create first."
+        return 1
+    fi
+
+    local registry="${DOCKER_REGISTRY:-docker.io}"
+    local username="${DOCKER_USERNAME:-georgeleveln}"
+
+    # Unique image names used by the Helm chart
+    local -a image_names=(
+        idm gateway testioc tstioc lab internet ml ml-ioc cs-studio
+    )
+
+    # Also need bitnami/kubectl for the ca-keygen job
+    local -a extra_images=(
+        "docker.io/bitnami/kubectl:latest"
+    )
+
+    echo "==> Loading ${#image_names[@]} app images + ${#extra_images[@]} utility images into Kind ..."
+
+    local -a full_refs=()
+    for name in "${image_names[@]}"; do
+        full_refs+=("${registry}/${username}/${name}:latest")
+    done
+    for img in "${extra_images[@]}"; do
+        full_refs+=("${img}")
+    done
+
+    local node="${GW_KIND_CLUSTER_NAME}-control-plane"
+    local -A node_digests
+    local _tag _digest
+    while read -r _tag _digest; do
+        [[ -n "${_tag}" ]] && node_digests[${_tag}]=${_digest}
+    done < <(docker exec "${node}" ctr --namespace=k8s.io images ls 2>/dev/null \
+        | awk 'NR>1 {print $1, $3}')
+
+    # Load images one at a time — batch loading triggers containerd digest errors
+    local failed=0 skipped=0 local_id
+    for ref in "${full_refs[@]}"; do
+        if ! docker image inspect "${ref}" &>/dev/null; then
+            echo "    Pulling ${ref} ..."
+            docker pull "${ref}" || { echo "    WARNING: could not pull ${ref}"; continue; }
+        fi
+
+        local_id=$(docker image inspect "${ref}" --format '{{.Id}}' 2>/dev/null)
+        if (( ! force )) && [[ "${node_digests[${ref}]}" == "${local_id}" ]]; then
+            echo "    Skipping ${ref} (unchanged)"
+            (( skipped++ ))
+            continue
+        fi
+
+        echo "    Loading ${ref} ..."
+        if ! kind load docker-image --name "${GW_KIND_CLUSTER_NAME}" "${ref}" 2>/dev/null; then
+            echo "    Retrying via docker save (multi-platform image workaround) ..."
+            if ! docker save "${ref}" | docker exec --privileged -i "${node}" \
+                    ctr --namespace=k8s.io images import --snapshotter=overlayfs -; then
+                echo "    WARNING: failed to load ${ref}"
+                (( failed++ ))
+            fi
+        fi
+    done
+
+    (( skipped > 0 )) && echo "==> Skipped ${skipped} already-loaded image(s)."
+
+    if (( failed > 0 )); then
+        echo "==> ${failed} image(s) failed to load."
+        return 1
+    fi
+    echo "==> All images loaded."
+}
+
+function gw_kind_delete {
+    _gw_is_docker_desktop_mac || return 1
+
+    if ! kind get clusters 2>/dev/null | grep -qx "${GW_KIND_CLUSTER_NAME}"; then
+        echo "Kind cluster '${GW_KIND_CLUSTER_NAME}' not found."
+        return 0
+    fi
+
+    echo "==> Deleting Kind cluster '${GW_KIND_CLUSTER_NAME}' ..."
+    kind delete cluster --name "${GW_KIND_CLUSTER_NAME}"
+    echo "    Done. Docker Desktop's built-in Kubernetes (if enabled) is unaffected."
+}
+
+function gw_kind_status {
+    _gw_is_docker_desktop_mac || return 1
+
+    if ! kind get clusters 2>/dev/null | grep -qx "${GW_KIND_CLUSTER_NAME}"; then
+        echo "Kind cluster '${GW_KIND_CLUSTER_NAME}' not found."
+        return 1
+    fi
+
+    echo "==> Cluster: ${GW_KIND_CLUSTER_NAME}"
+    echo "    Context: ${GW_KIND_CONTEXT}"
+    echo ""
+    echo "==> Calico status:"
+    kubectl get pods -n kube-system -l k8s-app=calico-node -o wide 2>/dev/null
+    kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers -o wide 2>/dev/null
+    echo ""
+    echo "==> NetworkPolicies in pvxs-lab:"
+    kubectl get networkpolicies -n pvxs-lab 2>/dev/null || echo "    (namespace not yet created)"
+}
+
+# ---------------------------------------------------------------------------
+# Existing helpers — work on both Docker Desktop K8s and Kind
+# ---------------------------------------------------------------------------
+
 function gw_build_images {
  pushd $PVXS_CMS/example/kubernetes/docker
  builder="./build.sh"
@@ -26,6 +219,9 @@ function gw_deploy {
     done
     shift
   fi
+ if [[ "$(kubectl config current-context 2>/dev/null)" == "${GW_KIND_CONTEXT}" ]]; then
+    gw_kind_load_images || { popd; return 1; }
+ fi
  helm upgrade --install pvxs-lab pvxs-lab -n pvxs-lab --create-namespace \
   --set dockerRegistry=${DOCKER_REGISTRY} \
   --set dockerUsername=${DOCKER_USERNAME} ${*}
