@@ -8,6 +8,7 @@
 #  include <openssl/applink.c>
 #endif
 
+#include <cstdint>
 #include <iostream>
 
 #include <epicsUnitTest.h>

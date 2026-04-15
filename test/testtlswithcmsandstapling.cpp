@@ -9,6 +9,7 @@
 #endif
 
 #include <atomic>
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <string>

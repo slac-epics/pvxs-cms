@@ -18,6 +18,7 @@
 #  include <openssl/applink.c>
 #endif
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <sstream>

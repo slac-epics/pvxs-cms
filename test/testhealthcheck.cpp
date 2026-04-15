@@ -4,6 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 
