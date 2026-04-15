@@ -75,9 +75,11 @@ spec:
             - name: EPICS_PVA_AUTO_ADDR_LIST
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST
-              value: '{{ include "pvxs-lab.itService" . }} {{ include "pvxs-lab.testiocService" . }} {{ include "pvxs-lab.tstiocService" . }}'
+              value: ""
+            - name: EPICS_PVA_NAME_SERVERS
+              value: '{{ include "pvxs-lab.itService" . }}:5075 {{ include "pvxs-lab.testiocService" . }}:5075 {{ include "pvxs-lab.tstiocService" . }}:5075'
             - name: EPICS_PVACMS_CLUSTER_NAME_SERVERS
-              value: '{{ include "pvxs-lab.mlGatewayService" . }}:5075'
+              value: '{{ include "pvxs-lab.mlGatewayService" . }}-xgw:5175'
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: /home/idm/.config/pva/1.5/pvacms.p12
             - name: PVACMS_EXTRA_ARGS

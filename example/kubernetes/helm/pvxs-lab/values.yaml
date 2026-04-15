@@ -133,7 +133,7 @@ mlGateway:
           "clients": ["ml-local"],
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.mlGatewayService" . }}-xgw",
+          "addrlist": "{{ include "pvxs-lab.mlGatewayService" . }}-xgw {{ include "pvxs-lab.mlService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12",
           "serverport": "5175",
           "EPICS_PVAS_TLS_PORT": "5176",
@@ -145,6 +145,7 @@ mlGateway:
           "name": "downstream_status",
           "clients": [],
           "interface": ["127.0.0.1"],
+          "serverport": "0",
           "statusprefix": "GW:STS:"
         }
       ]
@@ -230,6 +231,7 @@ gateway:
           "name": "downstream_status",
           "clients": [],
           "interface": ["127.0.0.1"],
+          "serverport": "0",
           "statusprefix": "GW:STS:"
         }
       ]
@@ -298,5 +300,4 @@ ports:
   pvaUdp: 5076
   pvaTls: 5076
   exposePvaTls: true
-
 

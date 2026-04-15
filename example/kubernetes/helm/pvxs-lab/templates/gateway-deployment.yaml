@@ -58,6 +58,9 @@ spec:
             - name: xgw-udp
               containerPort: 5176
               protocol: UDP
+            - name: xgw-tls
+              containerPort: 5176
+              protocol: TCP
           env:
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: "/home/gateway/.config/pva/1.5/gateway.p12"
