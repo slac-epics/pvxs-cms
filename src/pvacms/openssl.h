@@ -77,6 +77,23 @@ struct ShowX509 {
 
 std::ostream& operator<<(std::ostream& strm, const ShowX509& cert);
 
+/// Exhaustive single-certificate dump — every extractable X.509 field,
+/// all extensions decoded, all SANs with type labels.
+struct ShowX509Verbose {
+    const X509* cert;
+};
+
+std::ostream& operator<<(std::ostream& strm, const ShowX509Verbose& cert);
+
+/// Full chain dump — end-entity via ShowX509Verbose, then each CA cert in
+/// cert_auth_chain (index 0 = nearest issuer, last = root) also via ShowX509Verbose.
+struct ShowX509Chain {
+    const X509*          cert;
+    const STACK_OF(X509)* chain;
+};
+
+std::ostream& operator<<(std::ostream& strm, const ShowX509Chain& chain);
+
 
 }  // namespace ossl
 }  // namespace pvxs
