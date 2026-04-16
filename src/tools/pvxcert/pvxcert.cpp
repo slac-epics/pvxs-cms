@@ -4,7 +4,9 @@
  * in file LICENSE that is included with this distribution.
  */
 
+#include <chrono>
 #include <cstdlib>
+#include <ctime>
 #include <iomanip>
 #include <iostream>
 #include <list>
@@ -12,23 +14,30 @@
 
 #include <epicsGetopt.h>
 #include <epicsThread.h>
+#include <epicsTime.h>
 #if !defined(_WIN32) && !defined(_MSC_VER)
 #include <termios.h>
 #endif
+#include <openssl/bio.h>
+#include <openssl/ocsp.h>
 #include <openssl/x509v3.h>
 
 #include <pvxs/client.h>
 #include <pvxs/log.h>
+#include <pvxs/netcommon.h>
 #include <pvxs/nt.h>
 
 #include <CLI/CLI.hpp>
 
 #include "security.h"
 
+#include "certdate.h"
 #include "certfactory.h"
 #include "certfilefactory.h"
+#include "certstatus.h"
 #include "certstatusmanager.h"
 #include "openssl.h"
+#include "ownedptr.h"
 
 using namespace pvxs;
 
@@ -48,6 +57,288 @@ void setEcho(const bool enable) {
     tcsetattr(STDIN_FILENO, TCSANOW, &tty);
 }
 #endif
+constexpr int kColonCol = 32;
+
+static void writeLabel(std::ostream& strm, const char* label, int indent = 2) {
+    std::string s(indent, ' ');
+    s += label;
+    if (static_cast<int>(s.size()) < kColonCol) s.append(kColonCol - s.size(), ' ');
+    strm << s << " : ";
+}
+
+static void writeSubHeader(std::ostream& strm, const char* header) {
+    strm << "  " << header << "\n";
+}
+
+static std::string epochToUtc(const uint64_t epics_secs) {
+    if (epics_secs == 0) return "(none)";
+    const time_t posix = static_cast<time_t>(epics_secs) + POSIX_TIME_AT_EPICS_EPOCH;
+    char buf[64];
+    if (std::strftime(buf, sizeof(buf), CERT_TIME_FORMAT, std::gmtime(&posix))) return buf;
+    return "(date error)";
+}
+
+static std::string timePointToUtc(const std::chrono::system_clock::time_point& tp) {
+    const time_t t = std::chrono::system_clock::to_time_t(tp);
+    char buf[64];
+    if (std::strftime(buf, sizeof(buf), CERT_TIME_FORMAT, std::gmtime(&t))) return buf;
+    return "(date error)";
+}
+
+static void dumpStatusSection(const Value& result, const std::string& cert_id) {
+    using namespace pvxs::certs;
+    static const char* const kDayNames[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+
+    std::cout << "\nCertificate Status\n"
+              << "============================================\n";
+
+    const auto cert_idx = result["value.index"].as<uint32_t>();
+    const auto ocsp_idx = result["ocsp_status.value.index"].as<uint32_t>();
+
+    {
+        std::string short_id = cert_id;
+        const auto pos = short_id.find("STATUS:");
+        if (pos != std::string::npos) short_id = short_id.substr(pos + 7);
+        writeLabel(std::cout, "Certificate ID");
+        std::cout << short_id << "\n";
+    }
+    writeLabel(std::cout, "Serial");
+    std::cout << result["serial"].as<uint64_t>() << "\n";
+    writeLabel(std::cout, "Status");
+    std::cout << CERT_STATE(static_cast<int>(cert_idx)) << "\n";
+    writeLabel(std::cout, "OCSP Status");
+    std::cout << OCSP_CERT_STATE(static_cast<int>(ocsp_idx)) << "\n";
+    writeLabel(std::cout, "Renewal Due");
+    std::cout << (result["renewal_due"].as<bool>() ? "Yes" : "No") << "\n";
+    writeLabel(std::cout, "Renew By");
+    std::cout << epochToUtc(result["renew_by"].as<uint64_t>()) << "\n";
+    {
+        const auto revdate = result["ocsp_revocation_date"].as<std::string>();
+        writeLabel(std::cout, "Revocation Date");
+        std::cout << (revdate.empty() ? "(not revoked)" : revdate) << "\n";
+    }
+
+    {
+        const auto san_arr = result["san"].as<shared_array<const Value>>();
+        if (san_arr.empty()) {
+            writeLabel(std::cout, "SANs");
+            std::cout << "(none)\n";
+        } else {
+            writeSubHeader(std::cout, "SANs");
+            for (const auto& e : san_arr) {
+                writeLabel(std::cout, e["type"].as<std::string>().c_str(), 4);
+                std::cout << e["value"].as<std::string>() << "\n";
+            }
+        }
+    }
+
+    {
+        const auto sched = result["schedule"].as<shared_array<const Value>>();
+        if (!sched.empty()) {
+            writeSubHeader(std::cout, "Schedule");
+            for (const auto& win : sched) {
+                const auto dow   = win["day_of_week"].as<std::string>();
+                const auto start = win["start_time"].as<std::string>();
+                const auto end   = win["end_time"].as<std::string>();
+                const std::string day_str = (dow == "*") ? "Every day" : kDayNames[dow[0] - '0'];
+                writeLabel(std::cout, day_str.c_str(), 4);
+                std::cout << start << " - " << end << " UTC\n";
+            }
+        }
+    }
+}
+
+static void dumpMetadataSection(const std::chrono::system_clock::time_point& req_t,
+                                const std::chrono::system_clock::time_point& resp_t,
+                                const std::string& peer_addr,
+                                const std::string& iface,
+                                const Value& result) {
+    static const char* const kEpicsSeverity[] = {"NO_ALARM", "MINOR", "MAJOR", "INVALID"};
+    static const char* const kEpicsStatus[]   = {
+        "NO_STATUS", "READ", "WRITE", "HIHI", "HIGH", "LOLO", "LOW", "STATE",
+        "COS", "COMM", "TIMEOUT", "HWLIMIT", "CALC", "SCAN", "LINK", "SOFT",
+        "BAD_SUB", "UDF", "DISABLE", "SIMM", "READ_ACCESS", "WRITE_ACCESS"
+    };
+
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(resp_t - req_t).count();
+    const auto ocsp_bytes = result["ocsp_response"].as<shared_array<const uint8_t>>();
+    const auto ts_secs = result["timeStamp.secondsPastEpoch"].as<uint64_t>();
+    const auto ts_ns   = result["timeStamp.nanoseconds"].as<uint32_t>();
+
+    std::ostringstream ts_str;
+    ts_str << epochToUtc(ts_secs) << "." << std::setfill('0') << std::setw(9) << ts_ns;
+
+    std::cout << "\nStatus Request\n"
+              << "============================================\n";
+    writeLabel(std::cout, "Date Requested");     std::cout << timePointToUtc(req_t) << "\n";
+    writeLabel(std::cout, "Date Received");      std::cout << timePointToUtc(resp_t) << "\n";
+    writeLabel(std::cout, "Response Time");      std::cout << ms << " ms\n";
+    writeLabel(std::cout, "Server Address");     std::cout << peer_addr << "\n";
+    writeLabel(std::cout, "Local Interface");    std::cout << iface << "\n";
+    writeLabel(std::cout, "Response Size");      std::cout << ocsp_bytes.size() << " bytes\n";
+    writeLabel(std::cout, "PV Timestamp");       std::cout << ts_str.str() << "\n";
+
+    {
+        const auto sev_idx = result["alarm.severity"].as<int>();
+        const auto sta_idx = result["alarm.status"].as<int>();
+        const auto msg     = result["alarm.message"].as<std::string>();
+        writeLabel(std::cout, "Alarm Severity");
+        std::cout << (sev_idx >= 0 && sev_idx < 4 ? kEpicsSeverity[sev_idx] : "unknown") << "\n";
+        writeLabel(std::cout, "Alarm Status");
+        std::cout << (sta_idx >= 0 && sta_idx < 22 ? kEpicsStatus[sta_idx] : "unknown") << "\n";
+        writeLabel(std::cout, "Alarm Message");
+        std::cout << (msg.empty() ? "(none)" : msg) << "\n";
+    }
+}
+
+static void dumpOcspSection(const Value& result) {
+    const auto ocsp_bytes = result["ocsp_response"].as<shared_array<const uint8_t>>();
+
+    std::cout << "\nOCSP Response\n"
+              << "============================================\n";
+
+    writeLabel(std::cout, "Status Date");
+    std::cout << result["ocsp_status_date"].as<std::string>() << "\n";
+    {
+        const auto until = result["ocsp_certified_until"].as<std::string>();
+        writeLabel(std::cout, "Certified Until");
+        std::cout << (until.empty() ? "(permanent)" : until) << "\n";
+    }
+
+    if (ocsp_bytes.empty()) {
+        writeLabel(std::cout, "Payload");
+        std::cout << "(not available — empty)\n";
+        return;
+    }
+
+    try {
+        const uint8_t* raw = ocsp_bytes.data();
+        const long raw_len = static_cast<long>(ocsp_bytes.size());
+        ossl_ptr<OCSP_RESPONSE> ocsp_resp(d2i_OCSP_RESPONSE(nullptr, &raw, raw_len), false);
+        if (!ocsp_resp) {
+            writeLabel(std::cout, "Payload");
+            std::cout << "(not available — parse failed)\n";
+            return;
+        }
+
+        static const char* const kRespStatus[] = {
+            "successful", "malformedRequest", "internalError",
+            "tryLater", "(reserved)", "sigRequired", "unauthorized"
+        };
+        const int resp_status = OCSP_response_status(ocsp_resp.get());
+        const char* resp_label = (resp_status >= 0 && resp_status <= 6) ? kRespStatus[resp_status] : "unknown";
+        writeLabel(std::cout, "Response Status");
+        std::cout << resp_label << "\n";
+
+        if (resp_status != OCSP_RESPONSE_STATUS_SUCCESSFUL) return;
+
+        ossl_ptr<OCSP_BASICRESP> basic(OCSP_response_get1_basic(ocsp_resp.get()), false);
+        if (!basic) {
+            writeLabel(std::cout, "Payload");
+            std::cout << "(basic response unavailable)\n";
+            return;
+        }
+
+        {
+            const ASN1_OCTET_STRING* by_key = nullptr;
+            const X509_NAME* by_name = nullptr;
+            OCSP_resp_get0_id(basic.get(), &by_key, &by_name);
+            if (by_name) {
+                ossl_ptr<BIO> bio(BIO_new(BIO_s_mem()));
+                X509_NAME_print_ex(bio.get(), by_name, 0, XN_FLAG_RFC2253);
+                char* s = nullptr;
+                const long len = BIO_get_mem_data(bio.get(), &s);
+                writeLabel(std::cout, "Responder ID (DN)");
+                std::cout << std::string(s, static_cast<size_t>(len)) << "\n";
+            } else if (by_key) {
+                writeLabel(std::cout, "Responder ID (Key)");
+                for (int i = 0; i < by_key->length; ++i) {
+                    if (i) std::cout << ':';
+                    char buf[3]; snprintf(buf, sizeof(buf), "%02X", static_cast<unsigned>(by_key->data[i]));
+                    std::cout << buf;
+                }
+                std::cout << "\n";
+            }
+        }
+
+        {
+            const ASN1_GENERALIZEDTIME* produced = OCSP_resp_get0_produced_at(basic.get());
+            if (produced) {
+                writeLabel(std::cout, "Produced At");
+                std::cout << certs::CertDate(produced).s << "\n";
+            }
+        }
+
+        {
+            const X509_ALGOR* sig_alg = OCSP_resp_get0_tbs_sigalg(basic.get());
+            if (sig_alg) {
+                const int nid = OBJ_obj2nid(sig_alg->algorithm);
+                const char* ln = OBJ_nid2ln(nid);
+                writeLabel(std::cout, "Signature Algorithm");
+                std::cout << (ln ? ln : "unknown") << "\n";
+            }
+        }
+
+        const int n_resp = OCSP_resp_count(basic.get());
+        writeLabel(std::cout, "Single Responses");
+        std::cout << n_resp << "\n";
+
+        static const char* const kCrlReasons[] = {
+            "unspecified", "keyCompromise", "cACompromise", "affiliationChanged",
+            "superseded", "cessationOfOperation", "certificateHold", "removeFromCRL",
+            "privilegeWithdrawn", "aACompromise"
+        };
+
+        for (int i = 0; i < n_resp; ++i) {
+            const OCSP_SINGLERESP* sr = OCSP_resp_get0(basic.get(), i);
+            if (!sr) continue;
+
+            ASN1_GENERALIZEDTIME *this_upd = nullptr, *next_upd = nullptr, *rev_time = nullptr;
+            int reason = 0;
+            const int cert_status = OCSP_single_get0_status(const_cast<OCSP_SINGLERESP*>(sr),
+                                                             &reason, &rev_time, &this_upd, &next_upd);
+
+            const OCSP_CERTID* cid = OCSP_SINGLERESP_get0_id(sr);
+            ASN1_INTEGER* serial_asn1 = nullptr;
+            OCSP_id_get0_info(nullptr, nullptr, nullptr, &serial_asn1, const_cast<OCSP_CERTID*>(cid));
+
+            std::string header = "Response [" + std::to_string(i+1) + "]";
+            writeSubHeader(std::cout, header.c_str());
+
+            if (serial_asn1) {
+                const ossl_ptr<BIGNUM> bn(ASN1_INTEGER_to_BN(serial_asn1, nullptr), false);
+                if (bn) {
+                    char* dec = BN_bn2dec(bn.get());
+                    if (dec) {
+                        writeLabel(std::cout, "Serial", 4);
+                        std::cout << dec << "\n";
+                        OPENSSL_free(dec);
+                    }
+                }
+            }
+            const char* status_label = (cert_status == V_OCSP_CERTSTATUS_GOOD)    ? "Good"
+                                     : (cert_status == V_OCSP_CERTSTATUS_REVOKED) ? "Revoked"
+                                                                                   : "Unknown";
+            writeLabel(std::cout, "Certificate Status", 4);
+            std::cout << status_label << "\n";
+            writeLabel(std::cout, "This Update", 4);
+            std::cout << (this_upd ? certs::CertDate(this_upd).s : "(none)") << "\n";
+            writeLabel(std::cout, "Next Update", 4);
+            std::cout << (next_upd ? certs::CertDate(next_upd).s : "(none)") << "\n";
+            if (cert_status == V_OCSP_CERTSTATUS_REVOKED) {
+                writeLabel(std::cout, "Revocation Time", 4);
+                std::cout << (rev_time ? certs::CertDate(rev_time).s : "(none)") << "\n";
+                const char* reason_label = (reason >= 0 && reason <= 9) ? kCrlReasons[reason] : "unknown";
+                writeLabel(std::cout, "Revocation Reason", 4);
+                std::cout << reason_label << "\n";
+            }
+        }
+    } catch (const std::exception& e) {
+        writeLabel(std::cout, "Payload");
+        std::cout << "(not available — " << e.what() << ")\n";
+    }
+}
+
 }  // namespace
 
 enum CertAction { STATUS, APPROVE, DENY, REVOKE, SCHEDULE };
@@ -60,7 +351,7 @@ std::string actionToString(const CertAction &action, const std::vector<std::stri
     return action == STATUS ? "Get Status" : action == APPROVE ? "Approve" : action == REVOKE ? "Revoke" : "Deny";
 }
 int readParameters(const int argc, char *argv[], const char *program_name, client::Config &conf, bool &approve, bool &revoke, bool &deny, bool &debug,
-                   bool &password_flag, bool &verbose, std::string &cert_file, std::string &issuer_serial_string,
+                   bool &password_flag, bool &verbose, bool &dump, std::string &cert_file, std::string &issuer_serial_string,
                    std::vector<std::string> &schedule_values) {
     bool show_version{false}, help{false};
 
@@ -82,6 +373,7 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     app.add_option("-f,--file", cert_file, "The keychain file to read if no Certificate ID specified");
 
     // Action flags in a mutually exclusive group
+    app.add_flag("-X,--dump", dump, "Dump all available certificate and status details");
     app.add_flag("-A,--approve", approve);
     app.add_flag("-R,--revoke", revoke);
     app.add_flag("-D,--deny", deny);
@@ -140,6 +432,7 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "  (-w | --timeout) <timout_secs>             Operation timeout in seconds.  Default 5.0s\n"
                   << "  (-d | --debug)                             Debug mode: Shorthand for $PVXS_LOG=\"pvxs.*=DEBUG\"\n"
                   << "  (-v | --verbose)                           Verbose mode\n"
+                  << "  (-X | --dump)                              Dump all available certificate and status details\n"
                   << std::endl;
         exit(0);
     }
@@ -164,13 +457,19 @@ int main(int argc, char *argv[]) {
 
         // Variables to store options
         CertAction action{STATUS};
-        bool approve{false}, revoke{false}, deny{false}, debug{false}, password_flag{false}, verbose{false};
+        bool approve{false}, revoke{false}, deny{false}, debug{false}, password_flag{false}, verbose{false}, dump{false};
         std::string cert_file, password, issuer_serial_string;
         std::vector<std::string> schedule_values;
 
         auto parse_result =
-            readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, cert_file, issuer_serial_string, schedule_values);
+            readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, dump, cert_file, issuer_serial_string, schedule_values);
         if (parse_result) exit(parse_result);
+
+        if (cert_file.empty() && issuer_serial_string.empty() && !approve && !revoke && !deny && schedule_values.empty()) {
+            if (!conf.tls_keychain_file.empty()) {
+                cert_file = conf.tls_keychain_file;
+            }
+        }
 
         if (password_flag && cert_file.empty()) {
             log_err_printf(certslog, "Error: -p must only be used with -f.%s", "\n");
@@ -268,12 +567,19 @@ int main(int argc, char *argv[]) {
                         }
                     }
                 }
-                std::cout << "Certificate Details: " << std::endl
-                          << "============================================" << std::endl
-                          << ossl::ShowX509{cert_data.cert.get()} << std::endl
-                          << (san_display.empty() ? "" : "SAN            : " + san_display + "\n")
-                          << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
-                          << std::endl;
+                if (dump) {
+                    std::cout << "Certificate Details: " << std::endl
+                              << "============================================" << std::endl
+                              << ossl::ShowX509Chain{cert_data.cert.get(), cert_data.cert_auth_chain.get()}
+                              << "\n--------------------------------------------\n" << std::endl;
+                } else {
+                    std::cout << "Certificate Details: " << std::endl
+                              << "============================================" << std::endl
+                              << ossl::ShowX509{cert_data.cert.get()} << std::endl
+                              << (san_display.empty() ? "" : "SAN            : " + san_display + "\n")
+                              << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
+                              << std::endl;
+                }
                 cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
             } catch (std::exception &e) {
                 std::cout << "Online Certificate Status: " << std::endl
@@ -299,9 +605,34 @@ int main(int argc, char *argv[]) {
                 std::cout << actionToString(action, schedule_values) << " ==> " << display_id << std::endl;
             }
             Value result;
+            std::string dump_peer{"(unknown)"};
+            std::string dump_iface{"(unknown)"};
+            std::chrono::system_clock::time_point dump_req_t, dump_resp_t;
+
             switch (action) {
                 case STATUS:
-                    result = client.get(cert_id).exec()->wait(conf.getRequestTimeout());
+                    if (dump) {
+                        epicsEvent dump_done;
+                        std::shared_ptr<client::Connect> watcher = client.connect(cert_id)
+                            .onConnect([&dump_iface](const client::Connected& c) {
+                                if (c.cred && !c.cred->iface.empty()) dump_iface = c.cred->iface;
+                            })
+                            .exec();
+                        dump_req_t = std::chrono::system_clock::now();
+                        auto op = client.get(cert_id)
+                            .result([&](client::Result&& r) {
+                                const std::string peer = r.peerName();
+                                if (!peer.empty()) dump_peer = peer;
+                                try { result = r(); } catch (...) {}
+                                dump_resp_t = std::chrono::system_clock::now();
+                                dump_done.signal();
+                            })
+                            .exec();
+                        if (!dump_done.wait(conf.getRequestTimeout())) throw client::Timeout();
+                        watcher.reset();
+                    } else {
+                        result = client.get(cert_id).exec()->wait(conf.getRequestTimeout());
+                    }
                     break;
                 case APPROVE:
                     result = client.put(cert_id).set("state", "APPROVED").exec()->wait(conf.getRequestTimeout());
@@ -396,33 +727,40 @@ int main(int argc, char *argv[]) {
             }
             Indented I(std::cout);
             if (result) {
-                std::cout << "Certificate Status: " << std::endl
-                          << "============================================" << std::endl
-                          << "Certificate ID: " << cert_id.substr(cert_id.rfind(':') - 8) << std::endl
-                          << "Status        : " << result["state"].as<std::string>() << std::endl
-                          << "Status Issued : " << result["ocsp_status_date"].as<std::string>() << std::endl
-                          << "Status Expires: " << result["ocsp_certified_until"].as<std::string>() << std::endl;
-                auto schedule = result["schedule"];
-                if (schedule) {
-                    auto sched_arr = schedule.as<shared_array<const Value>>();
-                    if (sched_arr.size() > 0) {
-                        std::cout << "Schedule:" << std::endl;
-                        static const char *day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-                        for (const auto &win : sched_arr) {
-                            auto dow   = win["day_of_week"].as<std::string>();
-                            auto start = win["start_time"].as<std::string>();
-                            auto end   = win["end_time"].as<std::string>();
-                            std::string day_str = (dow == "*") ? "Every day" : day_names[dow[0] - '0'];
-                            std::cout << "  " << std::left << std::setw(10) << day_str
-                                      << start << " - " << end << " UTC" << std::endl;
+                if (dump && action == STATUS) {
+                    dumpStatusSection(result, cert_id);
+                    dumpMetadataSection(dump_req_t, dump_resp_t, dump_peer, dump_iface, result);
+                    dumpOcspSection(result);
+                    std::cout << "--------------------------------------------\n" << std::endl;
+                } else {
+                    std::cout << "Certificate Status: " << std::endl
+                              << "============================================" << std::endl
+                              << "Certificate ID: " << cert_id.substr(cert_id.rfind(':') - 8) << std::endl
+                              << "Status        : " << result["state"].as<std::string>() << std::endl
+                              << "Status Issued : " << result["ocsp_status_date"].as<std::string>() << std::endl
+                              << "Status Expires: " << result["ocsp_certified_until"].as<std::string>() << std::endl;
+                    auto schedule = result["schedule"];
+                    if (schedule) {
+                        auto sched_arr = schedule.as<shared_array<const Value>>();
+                        if (sched_arr.size() > 0) {
+                            std::cout << "Schedule:" << std::endl;
+                            static const char *day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+                            for (const auto &win : sched_arr) {
+                                auto dow   = win["day_of_week"].as<std::string>();
+                                auto start = win["start_time"].as<std::string>();
+                                auto end   = win["end_time"].as<std::string>();
+                                std::string day_str = (dow == "*") ? "Every day" : day_names[dow[0] - '0'];
+                                std::cout << "  " << std::left << std::setw(10) << day_str
+                                          << start << " - " << end << " UTC" << std::endl;
+                            }
                         }
                     }
-                }
 
-                if (result["value.index"].as<uint32_t>() == certs::REVOKED) {
-                    std::cout << "Revocation Date: " << result["ocsp_revocation_date"].as<std::string>() << std::endl;
+                    if (result["value.index"].as<uint32_t>() == certs::REVOKED) {
+                        std::cout << "Revocation Date: " << result["ocsp_revocation_date"].as<std::string>() << std::endl;
+                    }
+                    std::cout << "--------------------------------------------\n" << std::endl;
                 }
-                std::cout << "--------------------------------------------\n" << std::endl;
             } else if (action != STATUS)
                 std::cout << " ==> Completed Successfully\n";
         } catch (std::exception &e) {

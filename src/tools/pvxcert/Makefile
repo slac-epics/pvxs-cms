@@ -21,6 +21,7 @@ pvxcert_SRCS += certfilefactory.cpp
 pvxcert_SRCS += certfactory.cpp
 pvxcert_SRCS += certstatus.cpp
 pvxcert_SRCS += certstatusmanager.cpp
+pvxcert_SRCS += openssl.cpp
 
 # Link dependencies
 pvxcert_LIBS += pvxs Com
