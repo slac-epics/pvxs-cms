@@ -24,10 +24,9 @@ spec:
           args:
             - |
               set -euo pipefail
-              # Fix: UDP PVA search to ClusterIP services doesn't work in k8s.
-              # Move PVACMS service from ADDR_LIST (UDP) to NAME_SERVERS (TCP).
-              sed -i 's|EPICS_PVA_ADDR_LIST="pvxs-lab-pvacms |EPICS_PVA_ADDR_LIST="|' /home/operator/.operator_bashrc
-              sed -i 's|EPICS_PVA_NAME_SERVERS="|EPICS_PVA_NAME_SERVERS="{{ include "pvxs-lab.pvacmsService" . }}:5075 |' /home/operator/.operator_bashrc
+              # Internet zone: use internet-specific bashrc that routes through the gateway
+              cp /home/operator/.internet_operator_bashrc /home/operator/.operator_bashrc
+              cp /home/guest/.internet_guest_bashrc /home/guest/.guest_bashrc
               exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
           env:
             - name: EPICS_AUTH_KRB_REALM
