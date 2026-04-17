@@ -241,8 +241,11 @@ gateway:
     test:.* ALLOW
     tst:.* ALLOW
     test:spec ALLOW SPECIAL
+    CERT:CLUSTER(?::.*)? DENY
     CERT:CREATE(?::.*)? ALLOW CERT_CREATE
     CERT:STATUS(?::.*)? ALLOW CERT_STATUS
+    CERT:HEALTH(?::.*)? ALLOW
+    CERT:METRICS(?::.*)? ALLOW
 
   crossZonePvlist: |
     test:.* ALLOW
