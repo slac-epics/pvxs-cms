@@ -1,3 +1,7 @@
 export KRB5_KTNAME=/home/idm/.config/krb5/idm.keytab
 export KRB5_CLIENT_KTNAME=/home/idm/.config/krb5/idm.keytab
 export EPICS_AUTH_KRB_REALM=EPICS.ORG
+
+export EPICS_PVA_ADDR_LIST="127.0.0.1 pvxs-lab-pvacms pvxs-lab-it pvxs-lab-testioc pvxs-lab-tstioc"
+export EPICS_PVA_AUTO_ADDR_LIST="NO"
+export EPICS_PVA_NAME_SERVERS="pvxs-lab-ml-gateway:5075"

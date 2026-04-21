@@ -66,7 +66,7 @@ spec:
             - name: EPICS_PVA_AUTO_ADDR_LIST
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST
-              value: ""
+              value: "127.0.0.1"
             - name: EPICS_PVACMS_CLUSTER_NAME_SERVERS
               value: '{{ include "pvxs-lab.gatewayService" . }}-xgw:5175'
             - name: EPICS_PVAS_AUTO_BEACON_ADDR_LIST

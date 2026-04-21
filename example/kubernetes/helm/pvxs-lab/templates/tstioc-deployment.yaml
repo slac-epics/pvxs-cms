@@ -36,7 +36,7 @@ spec:
             - name: EPICS_PVA_AUTO_ADDR_LIST
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST
-              value: "{{ include "pvxs-lab.testiocService" . }}"
+              value: "127.0.0.1 {{ include "pvxs-lab.testiocService" . }}"
             {{- if .Values.tstioc.debug.enabled }}
             - name: PVXS_LOG
               value: {{ .Values.tstioc.debug.logLevel | quote }}
