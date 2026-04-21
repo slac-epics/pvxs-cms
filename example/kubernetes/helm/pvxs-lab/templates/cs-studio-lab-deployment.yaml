@@ -22,13 +22,7 @@ spec:
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           command: ["/bin/bash", "-lc"]
           args:
-            - |
-              set -euo pipefail
-              # Fix: UDP PVA search to ClusterIP services doesn't work in k8s.
-              # Move PVACMS service from ADDR_LIST (UDP) to NAME_SERVERS (TCP).
-              sed -i 's|EPICS_PVA_ADDR_LIST="pvxs-lab-pvacms |EPICS_PVA_ADDR_LIST="|' /home/operator/.operator_bashrc
-              sed -i 's|EPICS_PVA_NAME_SERVERS="|EPICS_PVA_NAME_SERVERS="{{ include "pvxs-lab.pvacmsService" . }}:5075 |' /home/operator/.operator_bashrc
-              exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+            - exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
           volumeMounts:
             - name: pva-config
               mountPath: /home/operator/.config/pva/1.5

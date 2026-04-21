@@ -80,17 +80,13 @@ spec:
             - name: EPICS_PVA_AUTO_ADDR_LIST
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST
-              value: ""
-            - name: EPICS_PVA_NAME_SERVERS
-              value: '{{ include "pvxs-lab.pvacmsService" . }}:5075'
+              value: "{{ include "pvxs-lab.pvacmsService" . }}"
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: /home/idm/.config/pva/1.5/pvacms.p12
             - name: EPICS_PVAS_AUTO_BEACON_ADDR_LIST
               value: "NO"
             - name: EPICS_PVAS_BEACON_ADDR_LIST
               value: '{{ include "pvxs-lab.pvacmsService" . }}:5076'
-            - name: EPICS_PVACMS_CLUSTER_NAME_SERVERS
-              value: '{{ include "pvxs-lab.mlGatewayService" . }}-xgw:5175'
             {{- if .Values.it.debug.enabled }}
             - name: PVXS_LOG
               value: {{ .Values.it.debug.logLevel | quote }}

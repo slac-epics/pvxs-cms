@@ -120,7 +120,7 @@ mlGateway:
           "acf_client": "ml-local",
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.mlGatewayService" . }} {{ include "pvxs-lab.mlService" . }}",
+          "addrlist": "{{ include "pvxs-lab.mlService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12",
           "serverport": "5075",
           "EPICS_PVAS_TLS_PORT": "5076",
@@ -133,7 +133,7 @@ mlGateway:
           "clients": ["ml-local"],
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.mlGatewayService" . }}-xgw {{ include "pvxs-lab.mlService" . }}",
+          "addrlist": "{{ include "pvxs-lab.mlService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12",
           "serverport": "5175",
           "EPICS_PVAS_TLS_PORT": "5176",
@@ -155,9 +155,7 @@ mlGateway:
     ml:.* ALLOW
 
   crossZonePvlist: |
-    ml:.* ALLOW
-    CERT:CLUSTER(?::.*)? ALLOW CERT_CREATE
-
+    CERT:CLUSTER(?::.*)? ALLOW CERT_CLUSTER
 
 testioc:
   replicas: 1
@@ -201,16 +199,30 @@ gateway:
       ],
       "servers": [
         {
+          "name": "ml",
+          "clients": ["local"],
+          "acf_client": "local",
+          "statusprefix": "GW:STS:",
+          "autoaddrlist": false,
+          "addrlist": "{{ include "pvxs-lab.pvacmsService" . }}",
+          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway{{ if .Values.gateway.separate_server_keychain }}{{ "S" }}{{ end }}.p12",
+          "serverport": "5075",
+          "EPICS_PVAS_TLS_PORT": "5076",
+          "bcastport": "5076",
+          "access": "gateway.acf",
+          "pvlist": "ml.pvlist"
+        },
+        {
           "name": "internet",
           "clients": ["local"],
           "acf_client": "local",
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.gatewayService" . }} {{ include "pvxs-lab.pvacmsService" . }}",
+          "addrlist": "{{ include "pvxs-lab.pvacmsService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway{{ if .Values.gateway.separate_server_keychain }}{{ "S" }}{{ end }}.p12",
-          "serverport": "5075",
-          "EPICS_PVAS_TLS_PORT": "5076",
-          "bcastport": "5076",
+          "serverport": "5275",
+          "EPICS_PVAS_TLS_PORT": "5276",
+          "bcastport": "5276",
           "access": "gateway.acf",
           "pvlist": "internet.pvlist"
         },
@@ -219,7 +231,7 @@ gateway:
           "clients": ["local"],
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.gatewayService" . }}-xgw {{ include "pvxs-lab.pvacmsService" . }}",
+          "addrlist": "{{ include "pvxs-lab.pvacmsService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway{{ if .Values.gateway.separate_server_keychain }}{{ "S" }}{{ end }}.p12",
           "serverport": "5175",
           "EPICS_PVAS_TLS_PORT": "5176",
@@ -247,11 +259,13 @@ gateway:
     CERT:HEALTH(?::.*)? ALLOW
     CERT:METRICS(?::.*)? ALLOW
 
-  crossZonePvlist: |
+  mlPvlist: |
     test:.* ALLOW
     tst:.* ALLOW
     test:spec ALLOW SPECIAL
-    CERT:CLUSTER(?::.*)? ALLOW CERT_CREATE
+
+  crossZonePvlist: |
+    CERT:CLUSTER(?::.*)? ALLOW CERT_CLUSTER
 
   debug:
     enabled: false

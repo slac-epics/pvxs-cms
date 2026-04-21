@@ -521,28 +521,28 @@ function go_tls() {
     }
 
     # -----------------------------------------------------------------------
-    echo "=== Step 1: Kerberos client certs (lab zone) ==="
+    echo "\n=== Step 1: Kerberos client certs (lab zone) ==="
     # -----------------------------------------------------------------------
     _tls_ensure_krb_cert cs-studio-lab operator "operator@EPICS.ORG"
     _tls_ensure_krb_cert cs-studio-lab guest    "guest@EPICS.ORG"
     _tls_approve_all
 
     # -----------------------------------------------------------------------
-    echo "=== Step 2: Kerberos client certs (ML zone) ==="
+    echo "\n=== Step 2: Kerberos client certs (ML zone) ==="
     # -----------------------------------------------------------------------
     _tls_ensure_krb_cert cs-studio-ml mloperator "mloperator@EPICS.ORG"
     _tls_ensure_krb_cert cs-studio-ml mlsystem  "mlsystem@EPICS.ORG"
     _tls_approve_all
 
     # -----------------------------------------------------------------------
-    echo "=== Step 3: Standard client certs (internet zone) ==="
+    echo "\n=== Step 3: Standard client certs (internet zone) ==="
     # -----------------------------------------------------------------------
     _tls_ensure_std_cert cs-studio-internet operator "-u client"
     _tls_ensure_std_cert cs-studio-internet guest    "-u client"
     _tls_approve_all
 
     # -----------------------------------------------------------------------
-    echo "=== Step 4: IOC server certs ==="
+    echo "\n=== Step 4: IOC server certs ==="
     # -----------------------------------------------------------------------
     local pre_ioc=$CHANGES
     _tls_ensure_std_cert testioc testioc "-u server"
@@ -560,7 +560,7 @@ function go_tls() {
     fi
 
     # -----------------------------------------------------------------------
-    echo "=== Step 5: Gateway certs (create ALL, approve ALL via lab admin, wait for sync, restart ALL) ==="
+    echo "\n=== Step 5: Gateway certs (create ALL, approve ALL via lab admin, wait for sync, restart ALL) ==="
     # -----------------------------------------------------------------------
     local pre_gw=$CHANGES
     _tls_ensure_std_cert gateway    gateway "-u ioc"
@@ -600,8 +600,7 @@ function go_tls() {
     fi
 
     # -----------------------------------------------------------------------
-    echo ""
-    echo "=== TLS setup complete ($CHANGES changes) ==="
+    echo "\n\n=== TLS setup complete ($CHANGES changes) ==="
     if (( CHANGES == 0 )); then
         echo "All certs already valid. No changes made."
     else

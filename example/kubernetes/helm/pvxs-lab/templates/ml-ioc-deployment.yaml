@@ -36,9 +36,7 @@ spec:
             - name: EPICS_PVA_AUTO_ADDR_LIST
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST
-              value: '{{ include "pvxs-lab.mlIocService" . }}'
-            - name: EPICS_PVA_NAME_SERVERS
-              value: '{{ include "pvxs-lab.mlService" . }}:5075'
+              value: '{{ include "pvxs-lab.mlIocService" . }} {{ include "pvxs-lab.mlService" . }}'
             {{- if .Values.mlIoc.debug.enabled }}
             - name: PVXS_LOG
               value: {{ .Values.mlIoc.debug.logLevel | quote }}

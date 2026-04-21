@@ -24,13 +24,13 @@ pvacms
 On first run PVACMS automatically creates all required artifacts using
 default paths:
 
-| Artifact | Default Path |
-|----------|-------------|
-| CA keychain | `${XDG_CONFIG_HOME}/pva/1.5/cert_auth.p12` |
-| Service keychain | `${XDG_CONFIG_HOME}/pva/1.5/pvacms.p12` |
-| Admin keychain | `${XDG_CONFIG_HOME}/pva/1.5/admin.p12` |
-| Certificate database | `${XDG_DATA_HOME}/pva/1.5/certs.db` |
-| Access control file | `${XDG_CONFIG_HOME}/pva/1.5/pvacms.acf` |
+| Artifact             | Default Path                               |
+|----------------------|--------------------------------------------|
+| CA keychain          | `${XDG_CONFIG_HOME}/pva/1.5/cert_auth.p12` |
+| Service keychain     | `${XDG_CONFIG_HOME}/pva/1.5/pvacms.p12`    |
+| Admin keychain       | `${XDG_CONFIG_HOME}/pva/1.5/admin.p12`     |
+| Certificate database | `${XDG_DATA_HOME}/pva/1.5/certs.db`        |
+| Access control file  | `${XDG_CONFIG_HOME}/pva/1.5/pvacms.acf`    |
 
 `XDG_CONFIG_HOME` defaults to `~/.config` and `XDG_DATA_HOME` defaults to
 `~/.local/share` when not set.
@@ -65,11 +65,11 @@ non-zero code.
 
 ### Authentication Methods
 
-| Method | Auto-Approved | Configuration |
-|--------|--------------|---------------|
-| Standard | No | Default; identity is hostname + username |
-| Kerberos | Yes | `EPICS_AUTH_KRB_REALM`, `EPICS_AUTH_KRB_VALIDATOR_SERVICE` |
-| LDAP | Yes | `EPICS_AUTH_LDAP_HOST`, `EPICS_AUTH_LDAP_PORT` |
+| Method   | Auto-Approved | Configuration                                              |
+|----------|---------------|------------------------------------------------------------|
+| Standard | No            | Default; identity is hostname + username                   |
+| Kerberos | Yes           | `EPICS_AUTH_KRB_REALM`, `EPICS_AUTH_KRB_VALIDATOR_SERVICE` |
+| LDAP     | Yes           | `EPICS_AUTH_LDAP_HOST`, `EPICS_AUTH_LDAP_PORT`             |
 
 Standard-auth certificates require explicit admin approval via the status PV.
 Kerberos and LDAP certificates are auto-approved because identity is validated
@@ -121,14 +121,14 @@ export EPICS_PVACMS_CLUSTER_NAME_SERVERS="gateway1:5075,gateway2:5075"
 
 ### Cluster Configuration
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `--cluster-mode` | — | off | Enable cluster mode |
-| `--cluster-pv-prefix` | `EPICS_PVACMS_CLUSTER_PV_PREFIX` | `CERT:CLUSTER` | PV prefix for cluster channels |
-| `--cluster-discovery-timeout` | `EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT` | `10` | Seconds to wait for cluster discovery |
-| `--cluster-bidi-timeout` | `EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT` | `5` | Bidirectional connectivity check timeout |
-| `--cluster-skip-peer-identity-check` | — | off | Skip TLS peer identity verification |
-| — | `EPICS_PVACMS_CLUSTER_NAME_SERVERS` | — | TCP name servers for gateway topologies |
+| Flag                                 | Env Var                                  | Default        | Description                              |
+|--------------------------------------|------------------------------------------|----------------|------------------------------------------|
+| `--cluster-mode`                     | —                                        | off            | Enable cluster mode                      |
+| `--cluster-pv-prefix`                | `EPICS_PVACMS_CLUSTER_PV_PREFIX`         | `CERT:CLUSTER` | PV prefix for cluster channels           |
+| `--cluster-discovery-timeout`        | `EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT` | `10`           | Seconds to wait for cluster discovery    |
+| `--cluster-bidi-timeout`             | `EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT`      | `5`            | Bidirectional connectivity check timeout |
+| `--cluster-skip-peer-identity-check` | —                                        | off            | Skip TLS peer identity verification      |
+| —                                    | `EPICS_PVACMS_CLUSTER_NAME_SERVERS`      | —              | TCP name servers for gateway topologies  |
 
 ## Configuration Reference
 
@@ -137,109 +137,110 @@ take precedence over environment variables.
 
 ### Core
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `-h, --help` | — | — | Show help |
-| `-v, --verbose` | — | off | Increase log verbosity |
-| `-V, --version` | — | — | Print version and exit |
+| Flag            | Env Var | Default | Description            |
+|-----------------|---------|---------|------------------------|
+| `-h, --help`    | —       | —       | Show help              |
+| `-v, --verbose` | —       | off     | Increase log verbosity |
+| `-V, --version` | —       | —       | Print version and exit |
 
 ### File Paths
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `-c, --cert-auth-keychain` | `EPICS_CERT_AUTH_TLS_KEYCHAIN` | `${XDG_CONFIG_HOME}/pva/1.5/cert_auth.p12` | CA keychain file |
-| `--cert-auth-keychain-pwd` | `EPICS_CERT_AUTH_TLS_KEYCHAIN_PWD_FILE` | — | CA keychain password file |
-| `-d, --cert-db` | `EPICS_PVACMS_DB` | `${XDG_DATA_HOME}/pva/1.5/certs.db` | Certificate database file |
-| `-p, --pvacms-keychain` | `EPICS_PVACMS_TLS_KEYCHAIN` | `${XDG_CONFIG_HOME}/pva/1.5/pvacms.p12` | PVACMS service keychain |
-| `--pvacms-keychain-pwd` | `EPICS_PVACMS_TLS_KEYCHAIN_PWD_FILE` | — | PVACMS keychain password file |
-| `-a, --admin-keychain` | `EPICS_ADMIN_TLS_KEYCHAIN` | `${XDG_CONFIG_HOME}/pva/1.5/admin.p12` | Admin keychain file |
-| `--admin-keychain-pwd` | `EPICS_ADMIN_TLS_KEYCHAIN_PWD_FILE` | — | Admin keychain password file |
-| `--admin-keychain-new` | — | — | Generate new admin keychain and exit |
-| `--acf` | `EPICS_PVACMS_ACF` | `${XDG_CONFIG_HOME}/pva/1.5/pvacms.acf` | Access control file |
-| `--preload-cert` | — | — | Keychain file(s) to preload into the DB |
+| Flag                       | Env Var                                 | Default                                    | Description                                                                                                                                                      |
+|----------------------------|-----------------------------------------|--------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `-c, --cert-auth-keychain` | `EPICS_CERT_AUTH_TLS_KEYCHAIN`          | `${XDG_CONFIG_HOME}/pva/1.5/cert_auth.p12` | CA keychain file                                                                                                                                                 |
+| `--cert-auth-keychain-pwd` | `EPICS_CERT_AUTH_TLS_KEYCHAIN_PWD_FILE` | —                                          | CA keychain password file                                                                                                                                        |
+| `-d, --cert-db`            | `EPICS_PVACMS_DB`                       | `${XDG_DATA_HOME}/pva/1.5/certs.db`        | Certificate database file                                                                                                                                        |
+| `-p, --pvacms-keychain`    | `EPICS_PVACMS_TLS_KEYCHAIN`             | `${XDG_CONFIG_HOME}/pva/1.5/pvacms.p12`    | PVACMS service keychain                                                                                                                                          |
+| `--pvacms-keychain-pwd`    | `EPICS_PVACMS_TLS_KEYCHAIN_PWD_FILE`    | —                                          | PVACMS keychain password file                                                                                                                                    |
+| `-a, --admin-keychain`     | `EPICS_ADMIN_TLS_KEYCHAIN`              | `${XDG_CONFIG_HOME}/pva/1.5/admin.p12`     | Admin keychain file                                                                                                                                              |
+| `--admin-keychain-pwd`     | `EPICS_ADMIN_TLS_KEYCHAIN_PWD_FILE`     | —                                          | Admin keychain password file                                                                                                                                     |
+| `--admin-keychain-new`     | —                                       | —                                          | Generate new admin keychain and exit                                                                                                                             |
+| `--admin-keychain-ensure`  | —                                       | —                                          | Ensure admin keychain exists at startup (create if missing; skip with a warning if a cert with that subject is already registered), then continue running PVACMS |
+| `--acf`                    | `EPICS_PVACMS_ACF`                      | `${XDG_CONFIG_HOME}/pva/1.5/pvacms.acf`    | Access control file                                                                                                                                              |
+| `--preload-cert`           | —                                       | —                                          | Keychain file(s) to preload into the DB                                                                                                                          |
 
 ### CA Identity
 
 Used when creating a root certificate on first run.
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `--cert-auth-name` | `EPICS_CERT_AUTH_NAME` | `EPICS Root Certificate Authority` | CA certificate CN |
-| `--cert-auth-org` | `EPICS_CERT_AUTH_ORGANIZATION` | `certs.epics.org` | CA certificate O |
-| `--cert-auth-org-unit` | `EPICS_CERT_AUTH_ORGANIZATIONAL_UNIT` | `EPICS Certificate Authority` | CA certificate OU |
-| `--cert-auth-country` | `EPICS_CERT_AUTH_COUNTRY` | `US` | CA certificate C |
+| Flag                   | Env Var                               | Default                            | Description       |
+|------------------------|---------------------------------------|------------------------------------|-------------------|
+| `--cert-auth-name`     | `EPICS_CERT_AUTH_NAME`                | `EPICS Root Certificate Authority` | CA certificate CN |
+| `--cert-auth-org`      | `EPICS_CERT_AUTH_ORGANIZATION`        | `certs.epics.org`                  | CA certificate O  |
+| `--cert-auth-org-unit` | `EPICS_CERT_AUTH_ORGANIZATIONAL_UNIT` | `EPICS Certificate Authority`      | CA certificate OU |
+| `--cert-auth-country`  | `EPICS_CERT_AUTH_COUNTRY`             | `US`                               | CA certificate C  |
 
 ### PVACMS Service Identity
 
 Used when creating the PVACMS service certificate on first run.
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `--pvacms-name` | — | `PVACMS Service` | PVACMS certificate CN |
-| `--pvacms-org` | — | `certs.epics.org` | PVACMS certificate O |
-| `--pvacms-org-unit` | — | `EPICS PVA Certificate Management Service` | PVACMS certificate OU |
-| `--pvacms-country` | — | `US` | PVACMS certificate C |
+| Flag                | Env Var | Default                                    | Description           |
+|---------------------|---------|--------------------------------------------|-----------------------|
+| `--pvacms-name`     | —       | `PVACMS Service`                           | PVACMS certificate CN |
+| `--pvacms-org`      | —       | `certs.epics.org`                          | PVACMS certificate O  |
+| `--pvacms-org-unit` | —       | `EPICS PVA Certificate Management Service` | PVACMS certificate OU |
+| `--pvacms-country`  | —       | `US`                                       | PVACMS certificate C  |
 
 ### Certificate Validity
 
 Duration format: `1y 2M 3w 4d 5h 6m 7s` (components are optional).
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `--cert_validity` | `EPICS_PVACMS_CERT_VALIDITY` | — | Default duration for all cert types |
-| `--cert_validity-client` | `EPICS_PVACMS_CERT_VALIDITY_CLIENT` | `6M` | Client certificate duration |
-| `--cert_validity-server` | `EPICS_PVACMS_CERT_VALIDITY_SERVER` | `6M` | Server certificate duration |
-| `--cert_validity-ioc` | `EPICS_PVACMS_CERT_VALIDITY_IOC` | `6M` | IOC certificate duration |
-| `--disallow-custom-durations` | `EPICS_PVACMS_DISALLOW_CUSTOM_DURATION` | off | Reject client-requested durations |
-| `--disallow-custom-durations-client` | `EPICS_PVACMS_DISALLOW_CLIENT_CUSTOM_DURATION` | off | Reject custom client durations |
-| `--disallow-custom-durations-server` | `EPICS_PVACMS_DISALLOW_SERVER_CUSTOM_DURATION` | off | Reject custom server durations |
-| `--disallow-custom-durations-ioc` | `EPICS_PVACMS_DISALLOW_IOC_CUSTOM_DURATION` | off | Reject custom IOC durations |
+| Flag                                 | Env Var                                        | Default | Description                         |
+|--------------------------------------|------------------------------------------------|---------|-------------------------------------|
+| `--cert_validity`                    | `EPICS_PVACMS_CERT_VALIDITY`                   | —       | Default duration for all cert types |
+| `--cert_validity-client`             | `EPICS_PVACMS_CERT_VALIDITY_CLIENT`            | `6M`    | Client certificate duration         |
+| `--cert_validity-server`             | `EPICS_PVACMS_CERT_VALIDITY_SERVER`            | `6M`    | Server certificate duration         |
+| `--cert_validity-ioc`                | `EPICS_PVACMS_CERT_VALIDITY_IOC`               | `6M`    | IOC certificate duration            |
+| `--disallow-custom-durations`        | `EPICS_PVACMS_DISALLOW_CUSTOM_DURATION`        | off     | Reject client-requested durations   |
+| `--disallow-custom-durations-client` | `EPICS_PVACMS_DISALLOW_CLIENT_CUSTOM_DURATION` | off     | Reject custom client durations      |
+| `--disallow-custom-durations-server` | `EPICS_PVACMS_DISALLOW_SERVER_CUSTOM_DURATION` | off     | Reject custom server durations      |
+| `--disallow-custom-durations-ioc`    | `EPICS_PVACMS_DISALLOW_IOC_CUSTOM_DURATION`    | off     | Reject custom IOC durations         |
 
 ### Approval
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `--certs-dont-require-approval` | `EPICS_PVACMS_REQUIRE_APPROVAL` | off (approval required) | Generate all certs in VALID state |
-| `--client-dont-require-approval` | `EPICS_PVACMS_REQUIRE_CLIENT_APPROVAL` | off | Generate client certs in VALID state |
-| `--server-dont-require-approval` | `EPICS_PVACMS_REQUIRE_SERVER_APPROVAL` | off | Generate server certs in VALID state |
-| `--ioc-dont-require-approval` | `EPICS_PVACMS_REQUIRE_IOC_APPROVAL` | off | Generate IOC certs in VALID state |
+| Flag                             | Env Var                                | Default                 | Description                          |
+|----------------------------------|----------------------------------------|-------------------------|--------------------------------------|
+| `--certs-dont-require-approval`  | `EPICS_PVACMS_REQUIRE_APPROVAL`        | off (approval required) | Generate all certs in VALID state    |
+| `--client-dont-require-approval` | `EPICS_PVACMS_REQUIRE_CLIENT_APPROVAL` | off                     | Generate client certs in VALID state |
+| `--server-dont-require-approval` | `EPICS_PVACMS_REQUIRE_SERVER_APPROVAL` | off                     | Generate server certs in VALID state |
+| `--ioc-dont-require-approval`    | `EPICS_PVACMS_REQUIRE_IOC_APPROVAL`    | off                     | Generate IOC certs in VALID state    |
 
 ### Status Monitoring
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `--status-validity-mins` | `EPICS_PVACMS_CERT_STATUS_VALIDITY_MINS` | `30` | Status response validity (minutes) |
+| Flag                          | Env Var                                   | Default   | Description                                        |
+|-------------------------------|-------------------------------------------|-----------|----------------------------------------------------|
+| `--status-validity-mins`      | `EPICS_PVACMS_CERT_STATUS_VALIDITY_MINS`  | `30`      | Status response validity (minutes)                 |
 | `--status-monitoring-enabled` | `EPICS_PVACMS_CERTS_REQUIRE_SUBSCRIPTION` | `DEFAULT` | Require status subscription (`YES`/`NO`/`DEFAULT`) |
 
 ### PV Prefixes
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `--cert-pv-prefix` | — | `CERT` | Prefix for all PVs published by PVACMS |
-| `--health-pv-prefix` | `EPICS_PVACMS_HEALTH_PV_PREFIX` | `CERT:HEALTH` | Health check PV prefix |
-| `--metrics-pv-prefix` | `EPICS_PVACMS_METRICS_PV_PREFIX` | `CERT:METRICS` | Operational metrics PV prefix |
-| `--cluster-pv-prefix` | `EPICS_PVACMS_CLUSTER_PV_PREFIX` | `CERT:CLUSTER` | Cluster PV prefix |
+| Flag                  | Env Var                          | Default        | Description                            |
+|-----------------------|----------------------------------|----------------|----------------------------------------|
+| `--cert-pv-prefix`    | —                                | `CERT`         | Prefix for all PVs published by PVACMS |
+| `--health-pv-prefix`  | `EPICS_PVACMS_HEALTH_PV_PREFIX`  | `CERT:HEALTH`  | Health check PV prefix                 |
+| `--metrics-pv-prefix` | `EPICS_PVACMS_METRICS_PV_PREFIX` | `CERT:METRICS` | Operational metrics PV prefix          |
+| `--cluster-pv-prefix` | `EPICS_PVACMS_CLUSTER_PV_PREFIX` | `CERT:CLUSTER` | Cluster PV prefix                      |
 
 ### Database and Reliability
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
+| Flag                         | Env Var                                 | Default | Description                                                               |
+|------------------------------|-----------------------------------------|---------|---------------------------------------------------------------------------|
 | `--integrity-check-interval` | `EPICS_PVACMS_INTEGRITY_CHECK_INTERVAL` | `86400` | Seconds between SQLite integrity checks and WAL checkpoints. 0 to disable |
-| `--audit-retention-days` | `EPICS_PVACMS_AUDIT_RETENTION_DAYS` | `365` | Days to retain audit log records. 0 to disable pruning |
-| `--rate-limit` | `EPICS_PVACMS_RATE_LIMIT` | `10` | CCR rate limit in requests/second. 0 to disable |
-| `--rate-limit-burst` | `EPICS_PVACMS_RATE_LIMIT_BURST` | `50` | CCR burst capacity |
-| `--max-concurrent-ccr` | `EPICS_PVACMS_MAX_CONCURRENT_CCR` | `100` | Maximum in-flight certificate creation requests |
-| `--monitor-interval-min` | `EPICS_PVACMS_MONITOR_INTERVAL_MIN` | `5` | Minimum status monitor interval (seconds) |
-| `--monitor-interval-max` | `EPICS_PVACMS_MONITOR_INTERVAL_MAX` | `60` | Maximum status monitor interval (seconds) |
+| `--audit-retention-days`     | `EPICS_PVACMS_AUDIT_RETENTION_DAYS`     | `365`   | Days to retain audit log records. 0 to disable pruning                    |
+| `--rate-limit`               | `EPICS_PVACMS_RATE_LIMIT`               | `10`    | CCR rate limit in requests/second. 0 to disable                           |
+| `--rate-limit-burst`         | `EPICS_PVACMS_RATE_LIMIT_BURST`         | `50`    | CCR burst capacity                                                        |
+| `--max-concurrent-ccr`       | `EPICS_PVACMS_MAX_CONCURRENT_CCR`       | `100`   | Maximum in-flight certificate creation requests                           |
+| `--monitor-interval-min`     | `EPICS_PVACMS_MONITOR_INTERVAL_MIN`     | `5`     | Minimum status monitor interval (seconds)                                 |
+| `--monitor-interval-max`     | `EPICS_PVACMS_MONITOR_INTERVAL_MAX`     | `60`    | Maximum status monitor interval (seconds)                                 |
 
 ### Backup
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `--backup` | — | — | One-shot backup to specified path, then exit |
-| `--backup-interval` | `EPICS_PVACMS_BACKUP_INTERVAL` | `0` | Seconds between periodic backups. 0 to disable |
-| `--backup-dir` | `EPICS_PVACMS_BACKUP_DIR` | same directory as DB | Directory for periodic backup files |
-| `--backup-retention` | `EPICS_PVACMS_BACKUP_RETENTION` | `7` | Maximum number of backup files to keep |
+| Flag                 | Env Var                         | Default              | Description                                    |
+|----------------------|---------------------------------|----------------------|------------------------------------------------|
+| `--backup`           | —                               | —                    | One-shot backup to specified path, then exit   |
+| `--backup-interval`  | `EPICS_PVACMS_BACKUP_INTERVAL`  | `0`                  | Seconds between periodic backups. 0 to disable |
+| `--backup-dir`       | `EPICS_PVACMS_BACKUP_DIR`       | same directory as DB | Directory for periodic backup files            |
+| `--backup-retention` | `EPICS_PVACMS_BACKUP_RETENTION` | `7`                  | Maximum number of backup files to keep         |
 
 ## Monitoring
 
@@ -250,15 +251,15 @@ operational metrics PV. Both are updated on every status monitor cycle.
 
 Default name: `CERT:HEALTH` (configurable via `--health-pv-prefix`).
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `ok` | bool | Overall health. `false` if any subsystem is failing |
-| `db_ok` | bool | Database passed most recent integrity check |
-| `ca_valid` | bool | CA certificate chain is valid and not expired |
-| `uptime_secs` | uint64 | Seconds since PVACMS started |
-| `cert_count` | uint32 | Total certificates in the database |
-| `cluster_members` | uint32 | Number of cluster members (1 in standalone mode) |
-| `last_check` | string | Timestamp of most recent health evaluation |
+| Field             | Type   | Description                                         |
+|-------------------|--------|-----------------------------------------------------|
+| `ok`              | bool   | Overall health. `false` if any subsystem is failing |
+| `db_ok`           | bool   | Database passed most recent integrity check         |
+| `ca_valid`        | bool   | CA certificate chain is valid and not expired       |
+| `uptime_secs`     | uint64 | Seconds since PVACMS started                        |
+| `cert_count`      | uint32 | Total certificates in the database                  |
+| `cluster_members` | uint32 | Number of cluster members (1 in standalone mode)    |
+| `last_check`      | string | Timestamp of most recent health evaluation          |
 
 Read the health PV:
 
@@ -272,14 +273,14 @@ Alert on `ok=false` to detect subsystem failures.
 
 Default name: `CERT:METRICS` (configurable via `--metrics-pv-prefix`).
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `certs_created` | uint64 | Total certificates created (monotonic counter) |
-| `certs_revoked` | uint64 | Total certificates revoked (monotonic counter) |
-| `certs_active` | uint32 | Currently active (VALID) certificates |
+| Field             | Type   | Description                                               |
+|-------------------|--------|-----------------------------------------------------------|
+| `certs_created`   | uint64 | Total certificates created (monotonic counter)            |
+| `certs_revoked`   | uint64 | Total certificates revoked (monotonic counter)            |
+| `certs_active`    | uint32 | Currently active (VALID) certificates                     |
 | `avg_ccr_time_ms` | double | Average certificate creation request time in milliseconds |
-| `db_size_bytes` | uint64 | Database file size including WAL |
-| `uptime_secs` | uint64 | Seconds since PVACMS started |
+| `db_size_bytes`   | uint64 | Database file size including WAL                          |
+| `uptime_secs`     | uint64 | Seconds since PVACMS started                              |
 
 Read the metrics PV:
 
@@ -396,12 +397,12 @@ replicate the restored data to other members.
 PVACMS runs four self-tests at startup. If any test fails, the process logs
 the specific error and exits.
 
-| Test | Symptom | Resolution |
-|------|---------|------------|
-| CA chain validation | `CA certificate chain validation failed` | Verify the CA keychain file is not corrupted. Ensure all intermediate certificates are present. Check certificate expiration dates. |
-| Key match | `CA private key does not match certificate` | The keychain file contains a mismatched key/certificate pair. Replace with a correct keychain. |
-| Schema version | `Database schema version mismatch` | The database was created by a different PVACMS version. Allow automatic migration or restore from a compatible backup. |
-| Sign/verify | `OpenSSL sign/verify self-test failed` | OpenSSL initialization problem. Verify OpenSSL installation and library paths. |
+| Test                | Symptom                                     | Resolution                                                                                                                          |
+|---------------------|---------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| CA chain validation | `CA certificate chain validation failed`    | Verify the CA keychain file is not corrupted. Ensure all intermediate certificates are present. Check certificate expiration dates. |
+| Key match           | `CA private key does not match certificate` | The keychain file contains a mismatched key/certificate pair. Replace with a correct keychain.                                      |
+| Schema version      | `Database schema version mismatch`          | The database was created by a different PVACMS version. Allow automatic migration or restore from a compatible backup.              |
+| Sign/verify         | `OpenSSL sign/verify self-test failed`      | OpenSSL initialization problem. Verify OpenSSL installation and library paths.                                                      |
 
 ### Database Corruption
 
@@ -474,11 +475,11 @@ pvacms
 
 Common log prefixes:
 
-| Prefix | Area |
-|--------|------|
-| `pvxs.certs.cfg` | Configuration loading |
-| `pvxs.certs.cms` | Core PVACMS operations |
-| `pvxs.certs.cluster` | Cluster operations |
+| Prefix               | Area                   |
+|----------------------|------------------------|
+| `pvxs.certs.cfg`     | Configuration loading  |
+| `pvxs.certs.cms`     | Core PVACMS operations |
+| `pvxs.certs.cluster` | Cluster operations     |
 
 ## Validity Schedules
 
@@ -533,11 +534,11 @@ hostnames.
 
 ### Supported SAN Types
 
-| Type | Format | Example |
-|------|--------|---------|
-| `ip` | IPv4 or IPv6 address | `10.0.0.1`, `2001:db8::1` |
-| `dns` | Fully qualified domain name | `host.example.com` |
-| `hostname` | Short hostname (no dots required) | `myioc` |
+| Type       | Format                            | Example                   |
+|------------|-----------------------------------|---------------------------|
+| `ip`       | IPv4 or IPv6 address              | `10.0.0.1`, `2001:db8::1` |
+| `dns`      | Fully qualified domain name       | `host.example.com`        |
+| `hostname` | Short hostname (no dots required) | `myioc`                   |
 
 ### Requesting a Certificate with SANs
 
