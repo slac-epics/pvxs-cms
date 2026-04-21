@@ -22,13 +22,7 @@ spec:
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           command: ["/bin/bash", "-lc"]
           args:
-            - |
-              set -euo pipefail
-              sed -i 's/--cluster-discovery-timeout 30/--cluster-discovery-timeout 90/' /etc/supervisor/conf.d/pvacms.conf
-              # Fix: UDP PVA search to ClusterIP services doesn't work in k8s.
-              # Replace service name with localhost for same-pod PVACMS access.
-              sed -i 's|EPICS_PVA_ADDR_LIST="pvxs-lab-ml |EPICS_PVA_ADDR_LIST="localhost |' /home/mloperator/.mloperator_bashrc
-              exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+            - exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
           ports:
             - name: pva-tcp
               containerPort: {{ .Values.ports.pvaTcp }}

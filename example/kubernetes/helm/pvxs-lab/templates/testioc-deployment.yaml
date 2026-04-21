@@ -37,8 +37,6 @@ spec:
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST
               value: "{{ include "pvxs-lab.tstiocService" . }}"
-            - name: EPICS_PVA_NAME_SERVERS
-              value: "{{ include "pvxs-lab.pvacmsService" . }}:5075"
             {{- if .Values.testioc.debug.enabled }}
             - name: PVXS_LOG
               value: {{ .Values.testioc.debug.logLevel | quote }}

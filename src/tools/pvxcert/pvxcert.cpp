@@ -373,19 +373,116 @@ static void dumpOcspSection(const Value& result) {
     }
 }
 
+ std::string formatBytes(uint64_t bytes) {
+    std::ostringstream os;
+    if (bytes < 1024ull) {
+        os << bytes << " B";
+    } else if (bytes < 1024ull * 1024ull) {
+        os << std::fixed << std::setprecision(1) << (static_cast<double>(bytes) / 1024.0) << " KiB";
+    } else if (bytes < 1024ull * 1024ull * 1024ull) {
+        os << std::fixed << std::setprecision(1) << (static_cast<double>(bytes) / (1024.0 * 1024.0)) << " MiB";
+    } else {
+        os << std::fixed << std::setprecision(2) << (static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0)) << " GiB";
+    }
+    os << " (" << bytes << ")";
+    return os.str();
+}
+
+ std::string iso8601ToCertUtc(const std::string& iso) {
+    if (iso.empty()) return "(never)";
+    struct tm tm_buf{};
+    if (!strptime(iso.c_str(), "%Y-%m-%dT%H:%M:%SZ", &tm_buf)) return iso;
+    char buf[64];
+    if (std::strftime(buf, sizeof(buf), CERT_TIME_FORMAT, &tm_buf)) return buf;
+    return iso;
+}
+
+ std::string formatUptime(uint64_t secs) {
+    const uint64_t d = secs / 86400;
+    const uint64_t h = (secs % 86400) / 3600;
+    const uint64_t m = (secs % 3600) / 60;
+    const uint64_t s = secs % 60;
+    std::ostringstream os;
+    if (d) os << d << "d ";
+    os << std::setfill('0') << std::setw(2) << h << ":"
+       << std::setfill('0') << std::setw(2) << m << ":"
+       << std::setfill('0') << std::setw(2) << s
+       << " (" << secs << "s)";
+    return os.str();
+}
+
+void dumpHealthSection(const Value& result) {
+    std::cout << "\nPVACMS Health\n"
+              << "============================================\n";
+
+    const bool ok = result["ok"].as<bool>();
+    const bool db_ok = result["db_ok"].as<bool>();
+    const bool ca_valid = result["ca_valid"].as<bool>();
+
+    writeLabel(std::cout, "Status");
+    std::cout << (ok ? "OK" : "DEGRADED") << "\n";
+    writeLabel(std::cout, "Database Integrity");
+    std::cout << (db_ok ? "OK" : "FAIL") << "\n";
+    writeLabel(std::cout, "CA Certificate");
+    std::cout << (ca_valid ? "Valid" : "Expired / Missing") << "\n";
+    writeLabel(std::cout, "Uptime");
+    std::cout << formatUptime(result["uptime_secs"].as<uint64_t>()) << "\n";
+    writeLabel(std::cout, "Certificate Count");
+    std::cout << result["cert_count"].as<uint64_t>() << "\n";
+    writeLabel(std::cout, "Cluster Members");
+    std::cout << result["cluster_members"].as<uint32_t>() << "\n";
+    writeLabel(std::cout, "Last Check");
+    std::cout << iso8601ToCertUtc(result["last_check"].as<std::string>()) << "\n";
+    std::cout << "--------------------------------------------\n" << std::endl;
+}
+
+void dumpMetricsSection(const Value& result) {
+    std::cout << "\nPVACMS Metrics\n"
+              << "============================================\n";
+
+    writeSubHeader(std::cout, "Counters (since startup)");
+    writeLabel(std::cout, "Certificates Created", 4);
+    std::cout << result["certs_created"].as<uint64_t>() << "\n";
+    writeLabel(std::cout, "Certificates Revoked", 4);
+    std::cout << result["certs_revoked"].as<uint64_t>() << "\n";
+    writeLabel(std::cout, "Uptime", 4);
+    std::cout << formatUptime(result["uptime_secs"].as<uint64_t>()) << "\n";
+
+    writeSubHeader(std::cout, "Gauges (current state)");
+    writeLabel(std::cout, "Certificates Active", 4);
+    std::cout << result["certs_active"].as<uint64_t>() << "\n";
+    {
+        std::ostringstream os;
+        os << std::fixed << std::setprecision(3) << result["avg_ccr_time_ms"].as<double>() << " ms";
+        writeLabel(std::cout, "Avg CCR Time", 4);
+        std::cout << os.str() << "\n";
+    }
+    writeLabel(std::cout, "Database Size", 4);
+    std::cout << formatBytes(result["db_size_bytes"].as<uint64_t>()) << "\n";
+    std::cout << "--------------------------------------------\n" << std::endl;
+}
+
 }  // namespace
 
-enum CertAction { STATUS, APPROVE, DENY, REVOKE, SCHEDULE };
+enum CertAction { STATUS, APPROVE, DENY, REVOKE, SCHEDULE, HEALTH, METRICS };
 std::string actionToString(const CertAction &action, const std::vector<std::string> &schedule_values = {}) {
     if (action == SCHEDULE) {
         if (schedule_values.size() == 1 && schedule_values[0] == "show") return "Show Schedule";
         if (schedule_values.size() == 1 && schedule_values[0] == "none") return "Clear Schedule";
         return "Set Schedule";
     }
-    return action == STATUS ? "Get Status" : action == APPROVE ? "Approve" : action == REVOKE ? "Revoke" : "Deny";
+    switch (action) {
+        case STATUS:  return "Get Status";
+        case APPROVE: return "Approve";
+        case REVOKE:  return "Revoke";
+        case DENY:    return "Deny";
+        case HEALTH:  return "Get Health";
+        case METRICS: return "Get Metrics";
+        default:      return "Unknown";
+    }
 }
 int readParameters(const int argc, char *argv[], const char *program_name, client::Config &conf, bool &approve, bool &revoke, bool &deny, bool &debug,
-                   bool &password_flag, bool &verbose, bool &dump, std::string &cert_file, std::string &issuer_serial_string,
+                   bool &password_flag, bool &verbose, bool &dump, bool &health, bool &metrics, std::string &cert_file, std::string &issuer_serial_string,
                    std::vector<std::string> &schedule_values) {
     bool show_version{false}, help{false};
 
@@ -411,6 +508,8 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     app.add_flag("-A,--approve", approve);
     app.add_flag("-R,--revoke", revoke);
     app.add_flag("-D,--deny", deny);
+    app.add_flag("-H,--health", health, "Show formatted PVACMS CERT:HEALTH output");
+    app.add_flag("-M,--metrics", metrics, "Show formatted PVACMS CERT:METRICS output");
     app.add_option("-S,--schedule", schedule_values,
                    "Manage validity schedule windows (Admin only): show | none | day,HH:MM,HH:MM (repeatable).")
         ->expected(1, 1)
@@ -458,6 +557,8 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "                                             SET validity schedule windows, replacing any existing (ADMIN ONLY)\n"
                   << "                                             day: 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat or * for every day\n"
                   << "                                             times are UTC, e.g. -S '1,08:00,17:00' for Mon 08:00-17:00\n"
+                  << "  " << program_name << " [options] (-H | --health)          Show formatted PVACMS CERT:HEALTH output\n"
+                  << "  " << program_name << " [options] (-M | --metrics)         Show formatted PVACMS CERT:METRICS output\n"
                   << "  " << program_name << " (-h | --help)                      Show this help message and exit\n"
                   << "  " << program_name << " (-V | --version)                   Print version and exit\n"
                   << std::endl
@@ -494,12 +595,29 @@ int main(int argc, char *argv[]) {
         // Variables to store options
         CertAction action{STATUS};
         bool approve{false}, revoke{false}, deny{false}, debug{false}, password_flag{false}, verbose{false}, dump{false};
+        bool health{false}, metrics{false};
         std::string cert_file, password, issuer_serial_string;
         std::vector<std::string> schedule_values;
 
         auto parse_result =
-            readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, dump, cert_file, issuer_serial_string, schedule_values);
+            readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, dump, health, metrics, cert_file, issuer_serial_string, schedule_values);
         if (parse_result) exit(parse_result);
+
+        // --health and --metrics are standalone actions: no cert_id, no other action flags,
+        // no file input, no password prompt, no --dump. Reject any combination.
+        if (health || metrics) {
+            if (health && metrics) {
+                log_err_printf(certslog, "Error: --health and --metrics are mutually exclusive.%s", "\n");
+                return 1;
+            }
+            if (!issuer_serial_string.empty() || !cert_file.empty() || approve || revoke || deny ||
+                !schedule_values.empty() || dump || password_flag) {
+                log_err_printf(certslog,
+                               "Error: %s must be used alone (no cert_id, -f, -A, -R, -D, -S, -X, or -p).%s",
+                               health ? "--health" : "--metrics", "\n");
+                return 1;
+            }
+        }
 
         if (revoke && issuer_serial_string.empty()) {
             if (cert_file.empty() && !conf.tls_keychain_file.empty()) {
@@ -545,6 +663,12 @@ int main(int argc, char *argv[]) {
             action = DENY;
         } else if (!schedule_values.empty()) {
             action = SCHEDULE;
+        } else if (health) {
+            action = HEALTH;
+            conf.tls_disabled = true;
+        } else if (metrics) {
+            action = METRICS;
+            conf.tls_disabled = true;
         } else {
             conf.tls_disabled = true;
         }
@@ -563,7 +687,11 @@ int main(int argc, char *argv[]) {
 
         std::string cert_id;
 
-        if (!cert_file.empty()) {
+        if (action == HEALTH) {
+            cert_id = "CERT:HEALTH";
+        } else if (action == METRICS) {
+            cert_id = "CERT:METRICS";
+        } else if (!cert_file.empty()) {
             try {
                 auto cert_data = certs::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
                 if (cert_data.cert == nullptr) {
@@ -672,7 +800,7 @@ int main(int argc, char *argv[]) {
         }
 
         try {
-            if (action != STATUS) {
+            if (action != STATUS && action != HEALTH && action != METRICS) {
                 const auto display_id = issuer_serial_string.empty()
                     ? cert_id.substr(cert_id.find("STATUS:") + 7)
                     : issuer_serial_string;
@@ -798,10 +926,18 @@ int main(int argc, char *argv[]) {
                     result = Value{};
                     break;
                 }
+                case HEALTH:
+                case METRICS:
+                    result = client.get(cert_id).exec()->wait(conf.getRequestTimeout());
+                    break;
             }
             Indented I(std::cout);
             if (result) {
-                if (dump && action == STATUS) {
+                if (action == HEALTH) {
+                    dumpHealthSection(result);
+                } else if (action == METRICS) {
+                    dumpMetricsSection(result);
+                } else if (dump && action == STATUS) {
                     dumpStatusSection(result, cert_id);
                     dumpMetadataSection(dump_req_t, dump_resp_t, dump_peer, dump_iface, result);
                     dumpOcspSection(result);
@@ -835,7 +971,7 @@ int main(int argc, char *argv[]) {
                     }
                     std::cout << "--------------------------------------------\n" << std::endl;
                 }
-            } else if (action != STATUS)
+            } else if (action != STATUS && action != HEALTH && action != METRICS)
                 std::cout << " ==> Completed Successfully" << std::endl;
         } catch (std::exception &e) {
             std::cout << std::endl;

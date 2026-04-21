@@ -4084,7 +4084,8 @@ int readParameters(int argc,
                    ConfigCms &config,
                    std::map<const std::string, std::unique_ptr<client::Config>> &authn_config_map,
                    bool &verbose,
-                   std::string &admin_name) {
+                   std::string &admin_name,
+                   std::string &admin_name_ensure) {
     std::string cert_auth_password_file, pvacms_password_file, admin_password_file;
     bool show_version{false}, help{false};
     bool create_client_cert_in_valid_state{false}, create_server_cert_in_valid_state{false},
@@ -4142,6 +4143,10 @@ int readParameters(int argc,
                    config.admin_keychain_file,
                    "Specify PVACMS admin user's keychain file location");
     app.add_option("--admin-keychain-new", admin_name, "Generate a new admin keychain and exit.");
+    app.add_option("--admin-keychain-ensure",
+                   admin_name_ensure,
+                   "Ensure the admin keychain exists at startup: create one if missing, skip with a warning if a cert "
+                   "with the same subject is already registered, then continue running PVACMS.");
     app.add_option("--admin-keychain-pwd",
                    admin_password_file,
                    "Specify PVACMS admin user's keychain password file location");
@@ -4359,6 +4364,11 @@ int readParameters(int argc,
                "${XDG_CONFIG_HOME}/pva/1.5/admin.p12\n"
             << "        --admin-keychain-pwd <file>          Specify location of file containing Admin User's keychain "
                "file password\n"
+            << "        --admin-keychain-ensure <new_name>   Ensure the Admin User's keychain exists at startup:\n"
+            << "                                             create one if missing; skip with a warning if a certificate\n"
+            << "                                             with that subject is already registered; update the ACF file;\n"
+            << "                                             then continue running PVACMS.\n"
+            << "                                             Mutually exclusive with --admin-keychain-new.\n"
             << authn_help << std::endl;
         exit(0);
     }
@@ -4370,6 +4380,12 @@ int readParameters(int argc,
         }
         std::cout << version_information;
         exit(0);
+    }
+
+    // --admin-keychain-new and --admin-keychain-ensure are mutually exclusive
+    if (!admin_name.empty() && !admin_name_ensure.empty()) {
+        std::cerr << "Error: --admin-keychain-new and --admin-keychain-ensure cannot be used together.\n";
+        exit(12);
     }
 
     // New admin can only be specified with --acf and/or --admin-keychain-pwd, and/or --admin-keychain-pwd
@@ -4474,9 +4490,9 @@ int main(int argc, char *argv[]) {
         pvxs::sql_ptr certs_db;
         auto program_name = argv[0];
         bool verbose = false;
-        std::string cert_auth_password_file, pvacms_password_file, admin_password_file, admin_name;
+        std::string cert_auth_password_file, pvacms_password_file, admin_password_file, admin_name, admin_name_ensure;
 
-        auto parse_result = readParameters(argc, argv, program_name, config, authn_config_map, verbose, admin_name);
+        auto parse_result = readParameters(argc, argv, program_name, config, authn_config_map, verbose, admin_name, admin_name_ensure);
         if (parse_result)
             exit(parse_result);
 
@@ -4529,6 +4545,23 @@ int main(int argc, char *argv[]) {
                     throw std::runtime_error(std::string("Error creating admin user certificate: ") + e.what());
             }
             exit(0);
+        }
+
+        if (!admin_name_ensure.empty()) {
+            try {
+                createAdminClientCert(config, certs_db, cert_auth_pkey, cert_auth_cert, cert_auth_chain, admin_name_ensure);
+                log_warn_printf(pvacms, "Make sure user \"%s\" appears in %s to ensure it is in the list of administrators of this PVACMS\n", admin_name_ensure.c_str(), config.pvacms_acf_filename.c_str());
+            } catch (const std::runtime_error &e) {
+                const std::string msg = e.what();
+                if (msg.find("Duplicate Certificate Subject") != std::string::npos) {
+                    log_warn_printf(pvacms,
+                                    "Admin user \"%s\" certificate not created: a certificate with this subject is already registered. Continuing startup.\n",
+                                    admin_name_ensure.c_str());
+                    addUserToAdminACF(config, admin_name_ensure);
+                } else {
+                    throw std::runtime_error(std::string("Error ensuring admin user certificate: ") + e.what());
+                }
+            }
         }
 
         // Create this PVACMS server's certificate if it does not already exist
