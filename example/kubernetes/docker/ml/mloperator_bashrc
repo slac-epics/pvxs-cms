@@ -3,7 +3,7 @@ export XDG_DATA_HOME=${XDG_DATA_HOME-~/.local/share}
 export XDG_CONFIG_HOME=${XDG_CONFIG_HOME-~/.config}
 export PROJECT_HOME=/opt/epics
 
-export EPICS_PVA_ADDR_LIST="pvxs-lab-ml pvxs-lab-ml-ioc"
+export EPICS_PVA_ADDR_LIST="127.0.0.1 pvxs-lab-ml pvxs-lab-ml-ioc"
 export EPICS_PVA_NAME_SERVERS="pvxs-lab-gateway:5075"
 export EPICS_PVA_AUTO_ADDR_LIST="NO"
 

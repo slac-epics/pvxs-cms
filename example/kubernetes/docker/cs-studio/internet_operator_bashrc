@@ -4,9 +4,9 @@ export XDG_CONFIG_HOME=${XDG_CONFIG_HOME-~/.config}
 export PROJECT_HOME=/opt/epics
 
 export EPICS_PVA_AUTH_ORGANIZATION=epics.org
+unset EPICS_PVA_ADDR_LIST
 export EPICS_PVA_NAME_SERVERS="pvxs-lab-gateway:5275 pvxs-lab-ml-gateway:5075"
 export EPICS_PVA_AUTO_ADDR_LIST="NO"
-unset EPICS_PVA_ADDR_LIST
 
 export EPICS_HOST_ARCH=$(${PROJECT_HOME}/epics-base/startup/EpicsHostArch)
 export PATH="${PROJECT_HOME}/pvxs-cms/bin/${EPICS_HOST_ARCH}:$PATH"

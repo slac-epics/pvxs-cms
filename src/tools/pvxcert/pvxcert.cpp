@@ -464,7 +464,7 @@ void dumpMetricsSection(const Value& result) {
 
 }  // namespace
 
-enum CertAction { STATUS, APPROVE, DENY, REVOKE, SCHEDULE, HEALTH, METRICS };
+enum CertAction { NONE, STATUS, APPROVE, DENY, REVOKE, SCHEDULE, HEALTH, METRICS };
 std::string actionToString(const CertAction &action, const std::vector<std::string> &schedule_values = {}) {
     if (action == SCHEDULE) {
         if (schedule_values.size() == 1 && schedule_values[0] == "show") return "Show Schedule";
