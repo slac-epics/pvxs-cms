@@ -92,8 +92,8 @@
 
 #include <CLI/CLI.hpp>
 
-DEFINE_LOGGER(pvacms, "pvxs.certs.cms");
-DEFINE_LOGGER(pvacmsmonitor, "pvxs.certs");
+DEFINE_LOGGER(pvacms, "cms.certs.cms");
+DEFINE_LOGGER(pvacmsmonitor, "cms");
 
 namespace cms {
 using pvxs::Value;
@@ -4586,7 +4586,7 @@ using cms::cluster::TokenBucket;
 
         // Logger config from environment (so environment overrides verbose setting)
         if (verbose)
-            logger_level_set("pvxs.certs.*", pvxs::Level::Info);
+            logger_level_set("cms.*", pvxs::Level::Info);
         pvxs::logger_config_env();
 
         if (!config.backup_path.empty()) {

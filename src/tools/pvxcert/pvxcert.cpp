@@ -45,7 +45,7 @@ using namespace pvxs;
 
 namespace {
 
-DEFINE_LOGGER(certslog, "pvxs.certs.tool");
+DEFINE_LOGGER(certslog, "cms.certs.tool");
 
 // Strict uint64 parse: rejects empty/sign/whitespace/trailing-junk that std::stoull would silently accept,
 // and rewrites std::stoull's opaque "stoull" / "out_of_range" into a message naming the bad input.

@@ -421,7 +421,7 @@ CertData getCertificate(bool &retrieved_credentials,
                         const std::string &tls_keychain_file,
                         const std::string &tls_keychain_pwd,
                         bool daemon_mode) {
-    DEFINE_LOGGER(auth_logger, std::string("pvxs.auth." + authenticator.type_).c_str());
+    DEFINE_LOGGER(auth_logger, std::string("cms.auth." + authenticator.type_).c_str());
     CertData cert_data;
 
     if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, ::cms::ssl::kForClient))) {
@@ -535,7 +535,7 @@ CertData getCertificate(bool &retrieved_credentials,
 template <typename ConfigT, typename AuthT>
 int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT &)> pre_configure_hook) {
     AuthT authenticator{};
-    DEFINE_LOGGER(auth_logger, std::string("pvxs.auth." + authenticator.type_).c_str());
+    DEFINE_LOGGER(auth_logger, std::string("cms.auth." + authenticator.type_).c_str());
     ;
     logger_config_env();
     bool retrieved_credentials{false};
@@ -551,11 +551,11 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
             return parse_result == -1 ? 0 : parse_result;
 
         if (verbose) {
-            logger_level_set(std::string("pvxs.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Info);
-            logger_level_set(std::string("pvxs.auth.ccr").c_str(), pvxs::Level::Info);
+            logger_level_set(std::string("cms.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Info);
+            logger_level_set(std::string("cms.auth.ccr").c_str(), pvxs::Level::Info);
         }
         if (debug)
-            logger_level_set(std::string("pvxs.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Debug);
+            logger_level_set(std::string("cms.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Debug);
 
         // Execute a special case hook if provided
         if (pre_configure_hook) pre_configure_hook(config, authenticator);

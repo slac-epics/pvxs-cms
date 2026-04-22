@@ -15,7 +15,7 @@
 #include "configcerts.h"
 #include "utilpvt.h"
 
-DEFINE_LOGGER(cert_cfg, "pvxs.certs.cfg");
+DEFINE_LOGGER(cert_cfg, "cms.certs.cfg");
 
 namespace cms {
     using pvxs::Value;

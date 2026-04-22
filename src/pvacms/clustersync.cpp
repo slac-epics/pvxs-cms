@@ -19,7 +19,7 @@
 
 #include "pvacmsVersion.h"
 
-DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
+DEFINE_LOGGER(pvacmscluster, "cms.certs.cluster");
 
 namespace cms {
 namespace cluster {

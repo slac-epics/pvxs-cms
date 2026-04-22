@@ -43,7 +43,7 @@
 namespace cms {
 namespace cert {
 
-DEFINE_LOGGER(certs, "pvxs.certs.cms");
+DEFINE_LOGGER(certs, "cms.certs.cms");
 
 /**
  * Creates a new X.509 certificate from scratch.  It uses the provided public

@@ -16,7 +16,7 @@
 
 #define CERT_TIME_FORMAT "%a %b %d %H:%M:%S %Y UTC"
 
-DEFINE_LOGGER(certs_time, "pvxs.certs.date");
+DEFINE_LOGGER(certs_time, "cms.certs.date");
 namespace cms {
 namespace cert {
 
