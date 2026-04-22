@@ -266,6 +266,18 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
     }
     log_debug_printf(pvacms, "Opened certificate database file: %s\n", db_file.c_str());
 
+    // SQLite hardening PRAGMAs — applied immediately after open
+    if (sqlite3_exec(certs_db.get(), "PRAGMA journal_mode=WAL", nullptr, nullptr, nullptr) != SQLITE_OK) {
+        log_err_printf(pvacms, "Failed to set WAL journal mode: %s\n", sqlite3_errmsg(certs_db.get()));
+    }
+    if (sqlite3_exec(certs_db.get(), "PRAGMA busy_timeout=5000", nullptr, nullptr, nullptr) != SQLITE_OK) {
+        log_err_printf(pvacms, "Failed to set busy timeout: %s\n", sqlite3_errmsg(certs_db.get()));
+    }
+    if (sqlite3_exec(certs_db.get(), "PRAGMA foreign_keys=ON", nullptr, nullptr, nullptr) != SQLITE_OK) {
+        log_err_printf(pvacms, "Failed to enable foreign keys: %s\n", sqlite3_errmsg(certs_db.get()));
+    }
+    log_debug_printf(pvacms, "Applied SQLite hardening PRAGMAs (WAL, busy_timeout, foreign_keys)%s\n", "");
+
     log_debug_printf(pvacms, "Checking for existence of certs database:\n%s\n", SQL_CHECK_EXISTS_DB_FILE);
     sqlite3_stmt *statement;
     if (sqlite3_prepare_v2(certs_db.get(), SQL_CHECK_EXISTS_DB_FILE, -1, &statement, nullptr) != SQLITE_OK) {
@@ -284,6 +296,49 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
         std::cout << "Certificate DB created  : " << db_file << std::endl;
     }
     log_debug_printf(pvacms, "Certs database exists: %s\n", "certs");
+
+    // Schema version tracking — create table if missing, check/apply migrations
+    if (sqlite3_exec(certs_db.get(), SQL_CREATE_SCHEMA_VERSION, nullptr, nullptr, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(SB() << "Failed to create schema_version table: " << sqlite3_errmsg(certs_db.get()));
+    }
+
+    {
+        sqlite3_stmt *ver_stmt = nullptr;
+        if (sqlite3_prepare_v2(certs_db.get(), SQL_GET_SCHEMA_VERSION, -1, &ver_stmt, nullptr) != SQLITE_OK) {
+            throw std::runtime_error(SB() << "Failed to query schema version: " << sqlite3_errmsg(certs_db.get()));
+        }
+
+        if (sqlite3_step(ver_stmt) == SQLITE_ROW) {
+            const int db_version = sqlite3_column_int(ver_stmt, 0);
+            sqlite3_finalize(ver_stmt);
+
+            if (db_version < PVACMS_SCHEMA_VERSION) {
+                log_warn_printf(pvacms, "Database schema version %d is older than current version %d — applying migrations\n",
+                                db_version, PVACMS_SCHEMA_VERSION);
+                // Future migrations go here, applied in order from db_version+1 to PVACMS_SCHEMA_VERSION.
+                // After applying each migration, insert a new schema_version row.
+            } else if (db_version > PVACMS_SCHEMA_VERSION) {
+                log_warn_printf(pvacms, "Database schema version %d is newer than current code version %d — possible downgrade\n",
+                                db_version, PVACMS_SCHEMA_VERSION);
+            }
+        } else {
+            sqlite3_finalize(ver_stmt);
+
+            // No version row — first creation or pre-versioned database; record initial version
+            sqlite3_stmt *ins_stmt = nullptr;
+            if (sqlite3_prepare_v2(certs_db.get(), SQL_INSERT_SCHEMA_VERSION, -1, &ins_stmt, nullptr) != SQLITE_OK) {
+                throw std::runtime_error(SB() << "Failed to prepare schema version insert: " << sqlite3_errmsg(certs_db.get()));
+            }
+            sqlite3_bind_int(ins_stmt, 1, PVACMS_SCHEMA_VERSION);
+            sqlite3_bind_int64(ins_stmt, 2, static_cast<sqlite3_int64>(time(nullptr)));
+            if (sqlite3_step(ins_stmt) != SQLITE_DONE) {
+                sqlite3_finalize(ins_stmt);
+                throw std::runtime_error(SB() << "Failed to insert initial schema version: " << sqlite3_errmsg(certs_db.get()));
+            }
+            sqlite3_finalize(ins_stmt);
+            log_debug_printf(pvacms, "Recorded initial schema version %d\n", PVACMS_SCHEMA_VERSION);
+        }
+    }
 }
 
 /**
@@ -2865,6 +2920,45 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
     // No cluster sync here: time-based transitions are computed independently by every node.
     // Only CCR/admin actions (create, revoke, approve, renew) publish sync snapshots.
 
+    // Periodic SQLite maintenance: integrity check + WAL checkpoint
+    if (status_monitor_params.shouldRunMaintenance()) {
+        status_monitor_params.recordMaintenanceRun();
+
+        sqlite3_stmt *ic_stmt = nullptr;
+        if (sqlite3_prepare_v2(status_monitor_params.certs_db_.get(),
+                               "PRAGMA integrity_check", -1, &ic_stmt, nullptr) == SQLITE_OK) {
+            if (sqlite3_step(ic_stmt) == SQLITE_ROW) {
+                const auto *result = reinterpret_cast<const char *>(sqlite3_column_text(ic_stmt, 0));
+                if (result && std::string(result) == "ok") {
+                    log_info_printf(pvacms, "SQLite integrity check passed%s\n", "");
+                    status_monitor_params.setDbIntegrityOk(true);
+                } else {
+                    log_err_printf(pvacms, "SQLite integrity check FAILED: %s\n",
+                                   result ? result : "(null)");
+                    status_monitor_params.setDbIntegrityOk(false);
+                }
+            }
+            sqlite3_finalize(ic_stmt);
+        } else {
+            log_err_printf(pvacms, "Failed to prepare integrity check: %s\n",
+                           sqlite3_errmsg(status_monitor_params.certs_db_.get()));
+        }
+
+        if (status_monitor_params.shouldRunCheckpoint()) {
+            status_monitor_params.recordCheckpointRun();
+            int wal_log = 0, wal_ckpt = 0;
+            const int wal_rc = sqlite3_wal_checkpoint_v2(
+                status_monitor_params.certs_db_.get(), nullptr,
+                SQLITE_CHECKPOINT_PASSIVE, &wal_log, &wal_ckpt);
+            if (wal_rc == SQLITE_OK) {
+                log_debug_printf(pvacms, "WAL checkpoint: %d/%d frames flushed%s\n", wal_ckpt, wal_log, "");
+            } else if (wal_rc != SQLITE_BUSY) {
+                log_warn_printf(pvacms, "WAL checkpoint failed: %s\n",
+                                sqlite3_errmsg(status_monitor_params.certs_db_.get()));
+            }
+        }
+    }
+
     log_debug_printf(pvacmsmonitor, "Certificate Monitor Thread Sleep%s", "\n");
     return {};
 }
@@ -3014,6 +3108,9 @@ int readParameters(int argc,
     app.add_flag("--cluster-skip-peer-identity-check",
                  config.cluster_skip_peer_identity_check,
                  "Skip TLS peer identity verification for cluster sync (for gateway-mediated topologies)");
+    app.add_option("--integrity-check-interval",
+                   config.integrity_check_interval_secs,
+                   "Seconds between SQLite integrity checks and WAL checkpoints.  0 to disable.  Default 86400");
     // Add any parameters for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry())
         authn_entry.second->addOptions(app, authn_config_map);
@@ -3106,6 +3203,7 @@ int readParameters(int argc,
             << "        --cluster-discovery-timeout <secs>   Seconds to wait for cluster discovery. Default 10\n"
             << "        --cluster-bidi-timeout <secs>        Seconds to wait for bidirectional connectivity check during join. Default 5\n"
             << "        --cluster-skip-peer-identity-check   Skip TLS peer identity verification for cluster sync\n"
+            << "        --integrity-check-interval <secs>    Seconds between SQLite integrity checks. 0=disabled. Default 86400\n"
             << "  (-v | --verbose)                           Verbose mode\n"
             << std::endl
             << "admin options:\n"

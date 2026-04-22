@@ -59,6 +59,26 @@
     "     ON certs(not_before, not_after) ; " \
     "COMMIT;"
 
+#define SQL_CREATE_SCHEMA_VERSION                                       \
+    "CREATE TABLE IF NOT EXISTS schema_version("                        \
+    "     version INTEGER NOT NULL,"                                    \
+    "     applied_at INTEGER NOT NULL"                                  \
+    ");"
+
+#define SQL_INSERT_SCHEMA_VERSION                                       \
+    "INSERT INTO schema_version (version, applied_at) VALUES (?, ?);"
+
+#define SQL_GET_SCHEMA_VERSION                                          \
+    "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1;"
+
+#define SQL_CHECK_SCHEMA_VERSION_EXISTS                                 \
+    "SELECT name "                                                      \
+    "FROM sqlite_master "                                               \
+    "WHERE type='table' "                                               \
+    "  AND name='schema_version';"
+
+#define PVACMS_SCHEMA_VERSION 1
+
 #define SQL_CHECK_EXISTS_DB_FILE       \
     "SELECT name "                     \
     "FROM sqlite_master "              \
@@ -271,6 +291,10 @@ class StatusMonitor {
     std::map<serial_number_t, time_t> &active_status_validity_;
   private:
     mutable epicsMutex lock_;
+    mutable time_t last_maintenance_time_{0};
+    mutable time_t last_checkpoint_time_{time(nullptr)};
+    mutable time_t last_backup_time_{0};
+    mutable bool db_integrity_ok_{true};
   public:
     StatusMonitor(ConfigCms &config, sql_ptr &certs_db, std::string &issuer_id, server::WildcardPV &status_pv, ossl_ptr<X509> &cert_auth_cert,
                   ossl_ptr<EVP_PKEY> &cert_auth_pkey, ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
@@ -309,6 +333,25 @@ class StatusMonitor {
             it->second = validity_date;
         }
     }
+
+    bool isDbIntegrityOk() const { return db_integrity_ok_; }
+
+    bool shouldRunMaintenance() const {
+        const auto interval = config_.integrity_check_interval_secs;
+        if (interval == 0) return false;
+        return (time(nullptr) - last_maintenance_time_) >= static_cast<time_t>(interval);
+    }
+
+    void recordMaintenanceRun() const { last_maintenance_time_ = time(nullptr); }
+    void recordCheckpointRun() const { last_checkpoint_time_ = time(nullptr); }
+    void recordBackupRun() const { last_backup_time_ = time(nullptr); }
+
+    bool shouldRunCheckpoint() const {
+        const auto interval = config_.integrity_check_interval_secs;
+        if (interval == 0) return false;
+        return (time(nullptr) - last_checkpoint_time_) >= static_cast<time_t>(interval);
+    }
+    void setDbIntegrityOk(bool ok) const { db_integrity_ok_ = ok; }
 };
 
 void checkForDuplicates(const sql_ptr &certs_db, const CertFactory &cert_factory);
