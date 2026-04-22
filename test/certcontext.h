@@ -259,7 +259,7 @@ void setValue(Value &target, const std::string &field, const Type &new_value) {
  */
 template <typename Tag>
 TestCert getTestCert() {
-    ossl::osslInit();
+        cms::ssl::osslInit();
     using traits = CertTraits<Tag>;
 
     char buffer[PATH_MAX];

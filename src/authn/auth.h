@@ -405,7 +405,7 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
                         bool daemon_mode) {
     CertData cert_data;
 
-    if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))) {
+    if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, cms::ssl::kForClient))) {
         // If daemon mode, then add base uri to credentials
         if (daemon_mode) credentials->config_uri_base = config.getCertPvPrefix();
 
@@ -504,7 +504,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
         auto config = ConfigT::fromEnv();
 
         bool verbose{false}, debug{false}, daemon_mode{false}, force{false};
-        uint16_t cert_usage{pvxs::ssl::kForClient};
+        uint16_t cert_usage{cms::ssl::kForClient};
 
         const auto parse_result = readParameters(argc, argv, config, verbose, debug, cert_usage, daemon_mode, force);
         if (parse_result)
@@ -555,7 +555,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
 
         if (cert_data.cert && daemon_mode) {
             authenticator.runAuthNDaemon(config,
-                                         IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient),
+                                         IS_USED_FOR_(cert_usage, cms::ssl::kForClient),
                                          std::move(cert_data),
                                          [&retrieved_credentials,
                                           config,
