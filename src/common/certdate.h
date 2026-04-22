@@ -17,8 +17,11 @@
 #define CERT_TIME_FORMAT "%a %b %d %H:%M:%S %Y UTC"
 
 DEFINE_LOGGER(certs_time, "pvxs.certs.date");
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+using pvxs::ossl_ptr;
+using pvxs::SB;
 
 ///////////// OCSP RESPONSE ERRORS
 class CertTimeParseException final : public std::runtime_error {
@@ -492,7 +495,7 @@ struct CertDate {
 
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif //CERTDATE_H

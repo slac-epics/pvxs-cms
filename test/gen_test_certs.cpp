@@ -476,7 +476,7 @@ struct CertCreator {
             add_extension(cert.get(), NID_ext_key_usage, extended_key_usage);
 
         if ( add_status_extension) {
-            const auto issuer_id = pvxs::certs::CertStatus::getSkId(root ? root : issuer);
+            const auto issuer_id = cms::cert::CertStatus::getSkId(root ? root : issuer);
             addCustomExtensionByNid(cert, pvxs::ossl::NID_SPvaCertStatusURI, getCertStatusURI("CERT", issuer_id, serial));
         }
 

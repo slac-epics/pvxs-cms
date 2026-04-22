@@ -19,8 +19,8 @@
 #include "configcms.h"
 #include "openssl.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 class CmsStatusManager;
 
@@ -192,5 +192,5 @@ std::vector<uint8_t> CertStatusFactory::ocspResponseToBytes(const ossl_ptr<OCSP_
     return resp_bytes;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

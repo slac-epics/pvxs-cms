@@ -17,6 +17,7 @@
 #include <openssl/x509.h>
 
 #include <pvxs/config.h>
+#include <pvxs/data.h>
 #include <pvxs/log.h>
 #include <pvxs/nt.h>
 
@@ -40,8 +41,18 @@ DEFINE_LOGGER(status_setup, "pvxs.certs.status");
 #define PERMANENTLY_VALID_STATUS (time_t)((~(unsigned long long)0) >> 1)
 #endif
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+using pvxs::ossl_ptr;
+using pvxs::ossl_shared_ptr;
+using pvxs::SB;
+using pvxs::shared_array;
+using pvxs::TypeCode;
+using pvxs::TypeDef;
+using pvxs::Value;
+namespace nt = pvxs::nt;
+namespace members = pvxs::members;
 
 /**
  * @brief Get the Certificate Status PV base.
@@ -1167,7 +1178,7 @@ struct UnCertifiedCertificateStatus final : CertificateStatus {
                             CertDate(PERMANENTLY_VALID_STATUS), CertDate(static_cast<time_t>(0))) {}
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERTSTATUS_H_

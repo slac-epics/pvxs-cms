@@ -23,6 +23,10 @@ struct ifaddrs;
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::SanEntry;
+    using cms::cert::CertDate;
+    using cms::cert::YES;
+    using cms::cert::NO;
 
 /**
  * @brief Parse a comma-separated SAN string into a vector of SanEntry.

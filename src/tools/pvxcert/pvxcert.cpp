@@ -115,7 +115,14 @@ static std::string timePointToUtc(const std::chrono::system_clock::time_point& t
 }
 
 static void dumpStatusSection(const Value& result, const std::string& cert_id) {
-    using namespace pvxs::certs;
+    using cms::cert::CmsStatusManager;
+    using cms::cert::cert_state_name;
+    using cms::cert::CertDate;
+    using cms::cert::getCertId;
+    using cms::cert::IdFileFactory;
+    using cms::cert::ocsp_cert_state_name;
+    using cms::cert::REVOKED;
+    using cms::cert::ScheduleWindow;
     static const char* const kDayNames[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
     std::cout << "\nCertificate Status\n"
@@ -299,7 +306,7 @@ static void dumpOcspSection(const Value& result) {
             const ASN1_GENERALIZEDTIME* produced = OCSP_resp_get0_produced_at(basic.get());
             if (produced) {
                 writeLabel(std::cout, "Produced At");
-                std::cout << certs::CertDate(produced).s << "\n";
+                std::cout << cms::cert::CertDate(produced).s << "\n";
             }
         }
 
@@ -356,12 +363,12 @@ static void dumpOcspSection(const Value& result) {
             writeLabel(std::cout, "Certificate Status", 4);
             std::cout << status_label << "\n";
             writeLabel(std::cout, "This Update", 4);
-            std::cout << (this_upd ? certs::CertDate(this_upd).s : "(none)") << "\n";
+            std::cout << (this_upd ? cms::cert::CertDate(this_upd).s : "(none)") << "\n";
             writeLabel(std::cout, "Next Update", 4);
-            std::cout << (next_upd ? certs::CertDate(next_upd).s : "(none)") << "\n";
+            std::cout << (next_upd ? cms::cert::CertDate(next_upd).s : "(none)") << "\n";
             if (cert_status == V_OCSP_CERTSTATUS_REVOKED) {
                 writeLabel(std::cout, "Revocation Time", 4);
-                std::cout << (rev_time ? certs::CertDate(rev_time).s : "(none)") << "\n";
+                std::cout << (rev_time ? cms::cert::CertDate(rev_time).s : "(none)") << "\n";
                 const char* reason_label = (reason >= 0 && reason <= 9) ? kCrlReasons[reason] : "unknown";
                 writeLabel(std::cout, "Revocation Reason", 4);
                 std::cout << reason_label << "\n";
@@ -693,21 +700,21 @@ int main(int argc, char *argv[]) {
             cert_id = "CERT:METRICS";
         } else if (!cert_file.empty()) {
             try {
-                auto cert_data = certs::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
+                auto cert_data = cms::cert::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
                 if (cert_data.cert == nullptr) {
                     throw std::runtime_error("Failed to read certificate from file");
                 }
 
                 if (action == REVOKE) {
                     try {
-                        cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
+                        cert_id = cms::cert::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
                     } catch (...) {
-                        cert_id = "CERT:STATUS:" + certs::CmsStatusManager::getCertIdFromCert(cert_data.cert.get());
+                        cert_id = "CERT:STATUS:" + cms::cert::CmsStatusManager::getCertIdFromCert(cert_data.cert.get());
                     }
                 } else {
                     std::string config_id{};
                     try {
-                        config_id = certs::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
+                        config_id = cms::cert::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
                     } catch (...) {
                     }
 
@@ -763,7 +770,7 @@ int main(int argc, char *argv[]) {
                                   << std::endl;
                     }
                     try {
-                        cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
+                        cert_id = cms::cert::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
                     } catch (std::exception &e) {
                         std::cout << "Online Certificate Status: " << std::endl
                                   << "============================================" << std::endl
@@ -795,7 +802,7 @@ int main(int argc, char *argv[]) {
                 return 3;
             }
             const uint64_t serial = parseSerial(issuer_serial_string.substr(colon + 1));
-            issuer_serial_string = certs::getCertId(issuer, serial);
+            issuer_serial_string = cms::cert::getCertId(issuer, serial);
             cert_id = "CERT:STATUS:" + issuer_serial_string;
         }
 
@@ -812,6 +819,8 @@ int main(int argc, char *argv[]) {
             std::chrono::system_clock::time_point dump_req_t, dump_resp_t;
 
             switch (action) {
+                case NONE:
+                    break;
                 case STATUS:
                     if (dump) {
                         epicsEvent dump_done;
@@ -856,7 +865,7 @@ int main(int argc, char *argv[]) {
                     bool show_only = (schedule_values.size() == 1 && schedule_values[0] == "show");
                     bool clear_all = (schedule_values.size() == 1 && schedule_values[0] == "none");
 
-                    std::vector<certs::ScheduleWindow> windows;
+                    std::vector<cms::cert::ScheduleWindow> windows;
                     if (!show_only && !clear_all) {
                         for (const auto &sv : schedule_values) {
                             auto c1 = sv.find(',');
@@ -865,7 +874,7 @@ int main(int argc, char *argv[]) {
                                 log_err_printf(certslog, "Invalid --schedule format '%s': expected day,HH:MM,HH:MM (or 'show'/'none')\n", sv.c_str());
                                 return 3;
                             }
-                            certs::ScheduleWindow sw;
+                            cms::cert::ScheduleWindow sw;
                             sw.day_of_week = sv.substr(0, c1);
                             sw.start_time  = sv.substr(c1 + 1, c2 - c1 - 1);
                             sw.end_time    = sv.substr(c2 + 1);
@@ -966,7 +975,7 @@ int main(int argc, char *argv[]) {
                         }
                     }
 
-                    if (result["value.index"].as<uint32_t>() == certs::REVOKED) {
+                    if (result["value.index"].as<uint32_t>() == cms::cert::REVOKED) {
                         std::cout << "Revocation Date: " << result["ocsp_revocation_date"].as<std::string>() << std::endl;
                     }
                     std::cout << "--------------------------------------------\n" << std::endl;

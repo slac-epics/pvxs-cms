@@ -18,6 +18,7 @@
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::CertDate;
 
 /**
  * @brief Define the options for the authnkrb tool

@@ -71,7 +71,7 @@ std::ostream &operator<<(std::ostream &strm, const ShowX509 &cert) {
         const ossl_ptr<BIO> io(__FILE__, __LINE__, BIO_new(BIO_s_mem()));
         {
             try {
-                const auto cert_id = certs::CmsStatusManager::getCertIdFromCert(cert.cert);
+                const auto cert_id = cms::cert::CmsStatusManager::getCertIdFromCert(cert.cert);
                 (void)BIO_printf(io.get(), "\nCertificate ID : ");
                 (void)BIO_printf(io.get(), cert_id.c_str());
             } catch (...) {}
@@ -81,12 +81,12 @@ std::ostream &operator<<(std::ostream &strm, const ShowX509 &cert) {
         (void)BIO_printf(io.get(), "\nIssuer Subject : ");
         (void)X509_NAME_print(io.get(), issuer, 1024);
         if (const auto atm = X509_get0_notBefore(cert.cert)) {
-            const certs::CertDate the_date(atm);
+            const cms::cert::CertDate the_date(atm);
             (void)BIO_printf(io.get(), "\nValid From     : ");
             (void)BIO_printf(io.get(), the_date.s.c_str());
         }
         if (const auto atm = X509_get0_notAfter(cert.cert)) {
-            const certs::CertDate the_date(atm);
+            const cms::cert::CertDate the_date(atm);
             (void)BIO_printf(io.get(), "\nExpires On     : ");
             (void)BIO_printf(io.get(), the_date.s.c_str());
         }
@@ -373,7 +373,7 @@ std::ostream& operator<<(std::ostream& strm, const ShowX509Verbose& show) {
 
     try {
         writeLabel(strm, "PVXS Cert ID");
-        strm << certs::CmsStatusManager::getCertIdFromCert(cert) << "\n";
+        strm << cms::cert::CmsStatusManager::getCertIdFromCert(cert) << "\n";
     } catch (...) {}
 
     writeLabel(strm, "Version");
@@ -393,11 +393,11 @@ std::ostream& operator<<(std::ostream& strm, const ShowX509Verbose& show) {
     writeSubHeader(strm, "Validity Period");
     if (const ASN1_TIME* t = X509_get0_notBefore(cert)) {
         writeLabel(strm, "Not Before", 4);
-        strm << certs::CertDate(t).s << "\n";
+        strm << cms::cert::CertDate(t).s << "\n";
     }
     if (const ASN1_TIME* t = X509_get0_notAfter(cert)) {
         writeLabel(strm, "Not After", 4);
-        strm << certs::CertDate(t).s << "\n";
+        strm << cms::cert::CertDate(t).s << "\n";
     }
 
     {
@@ -604,11 +604,11 @@ std::ostream& operator<<(std::ostream& strm, const ShowX509Verbose& show) {
     writeSans(strm, cert);
 
     try {
-        const std::string status_pv = certs::CmsStatusManager::getStatusPvFromCert(cert);
+        const std::string status_pv = cms::cert::CmsStatusManager::getStatusPvFromCert(cert);
         if (!status_pv.empty()) { writeLabel(strm, "PVXS Status PV URI", 4); strm << status_pv << "\n"; }
     } catch (...) {}
     try {
-        const std::string config_uri = certs::CmsStatusManager::getConfigPvFromCert(cert);
+        const std::string config_uri = cms::cert::CmsStatusManager::getConfigPvFromCert(cert);
         if (!config_uri.empty()) { writeLabel(strm, "PVXS Config URI", 4); strm << config_uri << "\n"; }
     } catch (...) {}
 

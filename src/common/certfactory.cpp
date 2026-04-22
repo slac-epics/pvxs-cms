@@ -40,8 +40,11 @@
 #include "security.h"
 #include "utilpvt.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+namespace ossl = pvxs::ossl;
+namespace ssl = pvxs::ssl;
 
 DEFINE_LOGGER(certs, "pvxs.certs.cms");
 
@@ -657,5 +660,5 @@ void CertFactory::set_skid(const ossl_ptr<X509> &certificate) {
     skid_ = skid_ss.str();
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

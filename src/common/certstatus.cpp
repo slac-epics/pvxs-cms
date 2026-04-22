@@ -25,8 +25,8 @@
 #  define PVXS_WEAK
 #endif
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 PVXS_WEAK
 OCSPStatus::OCSPStatus(ocspcertstatus_t ocsp_status, const shared_array<const uint8_t> &ocsp_bytes, CertDate status_date, CertDate status_valid_until_time,
@@ -94,5 +94,5 @@ PVXS_WEAK
 CertificateStatus ParsedOCSPStatus::status() {
     return {true, (PVACertStatus)(ocsp_status == OCSP_CERTSTATUS_GOOD ? VALID : UNKNOWN), ocsp_status, status_date, status_valid_until_date, revocation_date};
 }
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
