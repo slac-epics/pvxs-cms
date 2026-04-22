@@ -39,7 +39,7 @@
 namespace cms {
 namespace cert {
 
-using pvxs::ossl_ptr;
+using cms::detail::ossl_ptr;
 
 /**
  * @brief Class used to create OCSP certificate status responses
@@ -73,7 +73,7 @@ class CertStatusFactory {
      * @see createPVACertificateStatus()
      */
     CertStatusFactory(const ossl_ptr<X509>& cert_auth_cert, const ossl_ptr<EVP_PKEY>& cert_auth_pkey,
-                      const pvxs::ossl_shared_ptr<STACK_OF(X509)>& cert_auth_cert_chain, const uint32_t cert_status_validity_mins = 30,
+                      const cms::detail::ossl_shared_ptr<STACK_OF(X509)>& cert_auth_cert_chain, const uint32_t cert_status_validity_mins = 30,
                       const uint32_t cert_status_validity_secs = 0)
         : cert_auth_cert_(cert_auth_cert),
           cert_auth_pkey_(cert_auth_pkey),
@@ -164,7 +164,7 @@ class CertStatusFactory {
    private:
     const ossl_ptr<X509>& cert_auth_cert_;                               // certificate authority certificate to encode in the OCSP responses
     const ossl_ptr<EVP_PKEY>& cert_auth_pkey_;                           // certificate authority's private key to sign the OCSP responses
-    const pvxs::ossl_shared_ptr<STACK_OF(X509)>& cert_auth_cert_chain_;  // certificate authority certificate chain to encode in the OCSP responses
+    const cms::detail::ossl_shared_ptr<STACK_OF(X509)>& cert_auth_cert_chain_;  // certificate authority certificate chain to encode in the OCSP responses
   public:
     const uint32_t cert_status_validity_mins_;                           // The status validity period in minutes to encode in the OCSP responses
     const uint32_t cert_status_validity_secs_;                           // The status validity period additional seconds to encode in the OCSP responses

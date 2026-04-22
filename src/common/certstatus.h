@@ -44,9 +44,9 @@ DEFINE_LOGGER(status_setup, "pvxs.certs.status");
 namespace cms {
 namespace cert {
 
-using pvxs::ossl_ptr;
-using pvxs::ossl_shared_ptr;
-using pvxs::SB;
+using cms::detail::ossl_ptr;
+using cms::detail::ossl_shared_ptr;
+using cms::detail::SB;
 using pvxs::shared_array;
 using pvxs::TypeCode;
 using pvxs::TypeDef;

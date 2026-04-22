@@ -32,13 +32,13 @@ namespace auth {
     namespace members = ::pvxs::members;
 
     using ::pvxs::Member;
-    using ::pvxs::SB;
+    using ::cms::detail::SB;
     using ::pvxs::TypeCode;
     using ::pvxs::TypeDef;
     using ::pvxs::Value;
     using ::pvxs::logger_config_env;
     using ::pvxs::logger_level_set;
-    using ::pvxs::ossl_ptr;
+    using ::cms::detail::ossl_ptr;
     using ::pvxs::shared_array;
     using ::cms::cert::AuthnCredentials;
     using ::cms::cert::CertCreationRequest;

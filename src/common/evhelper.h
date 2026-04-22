@@ -109,4 +109,18 @@ typedef ev_owned_ptr<event> evevent;
 } // namespace impl
 } // namespace pvxs
 
+namespace cms {
+namespace detail {
+
+using ::pvxs::impl::ev_delete;
+using ::pvxs::impl::mfunction;
+using ::pvxs::impl::evbase;
+using ::pvxs::impl::ev_owned_ptr;
+using ::pvxs::impl::evconfig;
+using ::pvxs::impl::evbaseptr;
+using ::pvxs::impl::evevent;
+
+} // namespace detail
+} // namespace cms
+
 #endif /* EVHELPER_H */

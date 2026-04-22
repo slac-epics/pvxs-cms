@@ -19,8 +19,8 @@ namespace cms {
 namespace cert {
 
 using pvxs::Member;
-using pvxs::ossl_ptr;
-using pvxs::SB;
+using cms::detail::ossl_ptr;
+using cms::detail::SB;
 using pvxs::TypeCode;
 using pvxs::TypeDef;
 using pvxs::Value;

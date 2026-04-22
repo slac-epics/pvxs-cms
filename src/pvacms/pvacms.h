@@ -350,6 +350,10 @@ namespace certs {
     using cms::cert::VALID;
     using cms::cert::PENDING;
     using cms::cert::PENDING_APPROVAL;
+    using cms::detail::ossl_ptr;
+    using cms::detail::ossl_shared_ptr;
+    using cms::detail::sql_ptr;
+    using cms::detail::ServerEv;
 
 std::string sanToJson(const std::vector<SanEntry> &entries);
 std::vector<SanEntry> sanFromJson(const std::string &json);
@@ -376,7 +380,7 @@ class StatusMonitor {
     server::WildcardPV &status_pv_;
     ossl_ptr<X509> &cert_auth_cert_;
     ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
-    pvxs::ossl_shared_ptr<STACK_OF(X509)> &cert_auth_cert_chain_;
+    ossl_shared_ptr<STACK_OF(X509)> &cert_auth_cert_chain_;
     std::map<serial_number_t, time_t> &active_status_validity_;
    private:
     mutable epicsMutex lock_;

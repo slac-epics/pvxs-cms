@@ -29,6 +29,7 @@ namespace certs {
     using cms::cert::EXPIRED;
     using cms::cert::REVOKED;
     using cms::cert::UNKNOWN;
+    using cms::detail::ossl_ptr;
 
 enum SyncUpdateType : int32_t {
     SYNC_INCREMENTAL  = 0,
