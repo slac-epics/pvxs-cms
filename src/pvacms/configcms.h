@@ -307,6 +307,14 @@ class ConfigCms final : public Config {
 
     bool cluster_skip_peer_identity_check = false;
 
+    /**
+     * @brief Interval in seconds between SQLite integrity checks and WAL checkpoints.
+     *
+     * Set to 0 to disable periodic integrity checks.
+     * Default: 86400 (24 hours).
+     */
+    uint32_t integrity_check_interval_secs = 86400;
+
     void applyCmsEnv(const std::map<std::string, std::string>& defs);
     static ConfigCms mockCms(int family=AF_INET);
     static ConfigCms forCms();

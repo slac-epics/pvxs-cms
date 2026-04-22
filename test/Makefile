@@ -83,6 +83,12 @@ testcluster_SRCS += openssl.cpp
 testcluster_LIBS += pvxsIoc dbRecStd dbCore ca
 testcluster_SYS_LIBS += sqlite3
 
+# Test SQLite hardening (WAL, busy_timeout, foreign_keys, schema_version)
+TESTS += testsqlitehardening
+TESTPROD_HOST += testsqlitehardening
+testsqlitehardening_SRCS += testsqlitehardening.cpp
+testsqlitehardening_SYS_LIBS += sqlite3
+
 endif # PVXS_ENABLE_PVACMS
 endif # BASE_3_15
 
