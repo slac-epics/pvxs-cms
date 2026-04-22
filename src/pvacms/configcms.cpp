@@ -251,6 +251,16 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         cluster_pv_prefix = pickone.val;
     }
 
+    // EPICS_PVACMS_HEALTH_PV_PREFIX
+    if (pickone({"EPICS_PVACMS_HEALTH_PV_PREFIX"})) {
+        health_pv_prefix = pickone.val;
+    }
+
+    // EPICS_PVACMS_METRICS_PV_PREFIX
+    if (pickone({"EPICS_PVACMS_METRICS_PV_PREFIX"})) {
+        metrics_pv_prefix = pickone.val;
+    }
+
     // EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT
     if (pickone({"EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT"})) {
         try {
@@ -374,6 +384,8 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     }
     defs["EPICS_PVACMS_CERTS_REQUIRE_SUBSCRIPTION"] = (cert_status_subscription == DEFAULT) ? "DEFAULT" : (cert_status_subscription == YES) ? "YES" : "NO";
     defs["EPICS_PVACMS_CLUSTER_PV_PREFIX"] = cluster_pv_prefix;
+    defs["EPICS_PVACMS_HEALTH_PV_PREFIX"] = health_pv_prefix;
+    defs["EPICS_PVACMS_METRICS_PV_PREFIX"] = metrics_pv_prefix;
     defs["EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT"] = std::to_string(cluster_discovery_timeout_secs);
     defs["EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT"] = std::to_string(cluster_bidi_timeout_secs);
     defs["EPICS_PVACMS_INTEGRITY_CHECK_INTERVAL"] = std::to_string(integrity_check_interval_secs);

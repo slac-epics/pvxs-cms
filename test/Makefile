@@ -104,6 +104,16 @@ TESTPROD_HOST += testadaptivemonitor
 testadaptivemonitor_SRCS += testadaptivemonitor.cpp
 testadaptivemonitor_SYS_LIBS += sqlite3
 
+TESTS += testhealthcheck
+TESTPROD_HOST += testhealthcheck
+testhealthcheck_SRCS += testhealthcheck.cpp
+testhealthcheck_SYS_LIBS += sqlite3
+
+TESTS += testoperationalmetrics
+TESTPROD_HOST += testoperationalmetrics
+testoperationalmetrics_SRCS += testoperationalmetrics.cpp
+testoperationalmetrics_SYS_LIBS += sqlite3
+
 endif # PVXS_ENABLE_PVACMS
 endif # BASE_3_15
 
