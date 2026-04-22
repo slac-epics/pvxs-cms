@@ -30,6 +30,7 @@ jobs:
       EXTRA: ${{ matrix.extra }}
       VV: "1"
       CACHEDIR: ${{ github.workspace }}/.cache
+      PVXS: ${{ matrix.pvxs_branch || 'dev' }}
     strategy:
       fail-fast: false
       matrix:
@@ -77,6 +78,20 @@ jobs:
             cmp: clang
             configuration: default
             base: "7.0-secure-pvaccess"
+            extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
+
+          # Sanity build against pvxs tls (release branch) to prove the
+          # #ifdef PVXS_HAS_* guards in pvxs-cms still let it compile and
+          # link when the upstream pvxs does not yet carry the dev-branch
+          # features (SAN_EXTRACT, DISK_OCSP_CACHE, SUSPENDED_STATE,
+          # TCP_ONLY_STATE, ACL_CHANGE, SIGNAL_RIGHTS). Keeps pvxs-cms
+          # source-compatible with the tls release branch.
+          - name: Linux (gcc) EPICS 7.0-secure-pvaccess against pvxs tls
+            os: ubuntu-latest
+            cmp: gcc
+            configuration: default
+            base: "7.0-secure-pvaccess"
+            pvxs_branch: tls
             extra: "PVXS_ENABLE_PVACMS=YES PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=YES"
 
           - name: macOS EPICS 7.0-secure-pvaccess
