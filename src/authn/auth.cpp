@@ -87,6 +87,17 @@ std::shared_ptr<CertCreationRequest> Auth::createCertCreationRequest(const std::
 
         // Do we need to add a configuration uri to the certificate?
         if (!credentials->config_uri_base.empty()) cert_creation_request->ccr["config_uri_base"] = credentials->config_uri_base;
+
+        // Write SAN entries into CCR
+        if (!credentials->san_entries.empty()) {
+            shared_array<Value> san_vals(credentials->san_entries.size());
+            for (size_t i = 0; i < credentials->san_entries.size(); i++) {
+                san_vals[i] = cert_creation_request->ccr["san"].allocMember();
+                san_vals[i]["type"] = credentials->san_entries[i].type;
+                san_vals[i]["value"] = credentials->san_entries[i].value;
+            }
+            cert_creation_request->ccr["san"] = san_vals.freeze();
+        }
     }
     return cert_creation_request;
 }

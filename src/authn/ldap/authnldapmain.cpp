@@ -5,6 +5,10 @@
  */
 #include <CLI/CLI.hpp>
 
+#include <iostream>
+#include <string>
+#include <vector>
+
 #include "authnldap.h"
 #include "authregistry.h"
 #include "configldap.h"
@@ -51,7 +55,8 @@ std::string promptPassword(const std::string &prompt) {
  */
 
 void defineOptions(CLI::App &app, ConfigLdap &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
-                   std::string &usage, std::string &name, std::string &organization, std::string &cert_validity_mins, std::string &cert_pv_prefix) {
+                   std::string &usage, std::string &name, std::string &organization, std::string &cert_validity_mins, std::string &cert_pv_prefix,
+                   std::vector<std::string> &san_values, std::vector<std::string> &server_san_values) {
     app.set_help_flag("", "");  // deactivate built-in help
 
     app.add_flag("-h,--help", help);
@@ -69,6 +74,8 @@ void defineOptions(CLI::App &app, ConfigLdap &config, bool &verbose, bool &debug
     app.add_option("-u,--cert-usage", usage, "Certificate usage.  `server`, `client`, `ioc`");
 
     app.add_option("-t,--time", cert_validity_mins, "Duration of the certificate in minutes.");
+    app.add_option("--san", san_values, "Subject Alternative Name (repeatable, format: type=value)");
+    app.add_option("--server-san", server_san_values, "Server SAN (repeatable, format: type=value)");
 
     app.add_option("-n,--name", name, "Specify the LDAP user name e.g. name e.g. becomes uid=name.  Defaults to logged in username");
     app.add_option("-o,--organization", organization, "Specify the organization e.g. epics.org e.g. becomes dc=epics, dc=org.  Defaults to hostname");
@@ -96,6 +103,8 @@ void showHelp(const char * const program_name) {
         << "  (-o | --organization) <organization>       Specify LDAP org for organization in the certificate.\n"
         << "                                             e.g. epics.org ==> LDAP: dc=epics, dc=org ==> Cert: O=epics.org\n"
         << "                                             Default <hostname>\n"
+        << "        --san <type=value>                   Subject Alternative Name entry (repeatable)\n"
+        << "        --server-san <type=value>            Server SAN entry (repeatable)\n"
         << "  (-t | --time) <minutes>                    Duration of the certificate in minutes.  e.g. 30 or 1d or 1y3M2d4m\n"
         << "  (-p | --password) <name>                   Specify LDAP password. If not specified will prompt for password\n"
         << "        --ldap-host <hostname>               LDAP server host\n"
@@ -115,10 +124,26 @@ int readParameters(int argc, char *argv[], ConfigLdap &config, bool &verbose, bo
     const auto program_name = argv[0];
     bool show_version{false}, help{false}, add_config_uri{false};
     std::string usage{"client"}, name, organization, cert_validity_mins, cert_pv_prefix;
+    std::vector<std::string> san_values, server_san_values;
 
     CLI::App app{"authnldap - Secure PVAccess LDAP Authenticator"};
 
-    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, add_config_uri, usage, name, organization, cert_validity_mins, cert_pv_prefix);
+    defineOptions(app,
+                  config,
+                  verbose,
+                  debug,
+                  daemon_mode,
+                  force,
+                  show_version,
+                  help,
+                  add_config_uri,
+                  usage,
+                  name,
+                  organization,
+                  cert_validity_mins,
+                  cert_pv_prefix,
+                  san_values,
+                  server_san_values);
 
     CLI11_PARSE(app, argc, argv);
 
@@ -188,6 +213,19 @@ int readParameters(int argc, char *argv[], ConfigLdap &config, bool &verbose, bo
 
     if (!cert_pv_prefix.empty()) {
         config.setCertPvPrefix(cert_pv_prefix);
+    }
+
+    for (const auto &sv : san_values) {
+        auto eq = sv.find('=');
+        if (eq != std::string::npos && eq > 0 && eq < sv.size() - 1) {
+            config.san_entries.push_back({sv.substr(0, eq), sv.substr(eq + 1)});
+        }
+    }
+    for (const auto &sv : server_san_values) {
+        auto eq = sv.find('=');
+        if (eq != std::string::npos && eq > 0 && eq < sv.size() - 1) {
+            config.server_san_entries.push_back({sv.substr(0, eq), sv.substr(eq + 1)});
+        }
     }
 
     return 0;

@@ -6,6 +6,7 @@
 
 #include "certfactory.h"
 
+#include <arpa/inet.h>
 #include <limits>
 #include <memory>
 #include <string>
@@ -18,6 +19,7 @@
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
+#include <openssl/x509v3.h>
 
 #include <osiFileName.h>
 
@@ -237,6 +239,14 @@ void CertFactory::setSubject(const ossl_ptr<X509> &certificate) const {
             throw std::runtime_error(SB() << "Failed to set country in certificate subject: " << name_);
         }
         log_debug_printf(certs, "SUBJECT OU: %s\n", org_unit_.c_str());
+        if (!san_entries_.empty()) {
+            std::string san_str;
+            for (const auto &se : san_entries_) {
+                if (!san_str.empty()) san_str += ", ";
+                san_str += se.type + "=" + se.value;
+            }
+            log_debug_printf(certs, "SUBJECT SAN: %s\n", san_str.c_str());
+        }
     }
 }
 
@@ -324,6 +334,70 @@ void CertFactory::addExtensions(const ossl_ptr<X509> &certificate) const {
     }
     if (!extended_usage.empty()) {
         addExtension(certificate, NID_ext_key_usage, extended_usage.c_str());
+    }
+
+    if (!san_entries_.empty()) {
+        GENERAL_NAMES *gens = GENERAL_NAMES_new();
+        if (!gens)
+            throw std::runtime_error("Failed to allocate GENERAL_NAMES");
+
+        for (const auto &entry : san_entries_) {
+            GENERAL_NAME *gen = GENERAL_NAME_new();
+            if (!gen) {
+                GENERAL_NAMES_free(gens);
+                throw std::runtime_error("Failed to allocate GENERAL_NAME");
+            }
+
+            if (entry.type == "ip") {
+                unsigned char buf4[4];
+                unsigned char buf6[16];
+                ASN1_OCTET_STRING *os = ASN1_OCTET_STRING_new();
+                if (!os) {
+                    GENERAL_NAME_free(gen);
+                    GENERAL_NAMES_free(gens);
+                    throw std::runtime_error("Failed to allocate ASN1_OCTET_STRING for IP SAN");
+                }
+                if (inet_pton(AF_INET, entry.value.c_str(), buf4) == 1) {
+                    ASN1_OCTET_STRING_set(os, buf4, 4);
+                } else if (inet_pton(AF_INET6, entry.value.c_str(), buf6) == 1) {
+                    ASN1_OCTET_STRING_set(os, buf6, 16);
+                } else {
+                    ASN1_OCTET_STRING_free(os);
+                    GENERAL_NAME_free(gen);
+                    GENERAL_NAMES_free(gens);
+                    throw std::runtime_error(SB() << "Invalid IP address for SAN: " << entry.value);
+                }
+                gen->type = GEN_IPADD;
+                gen->d.ip = os;
+            } else if (entry.type == "dns" || entry.type == "hostname") {
+                ASN1_IA5STRING *ia5 = ASN1_IA5STRING_new();
+                if (!ia5) {
+                    GENERAL_NAME_free(gen);
+                    GENERAL_NAMES_free(gens);
+                    throw std::runtime_error("Failed to allocate ASN1_IA5STRING for DNS SAN");
+                }
+                ASN1_STRING_set(ia5, entry.value.c_str(), entry.value.size());
+                gen->type = GEN_DNS;
+                gen->d.dNSName = ia5;
+            } else {
+                GENERAL_NAME_free(gen);
+                GENERAL_NAMES_free(gens);
+                throw std::runtime_error(SB() << "Unknown SAN type: " << entry.type);
+            }
+
+            if (!sk_GENERAL_NAME_push(gens, gen)) {
+                GENERAL_NAME_free(gen);
+                GENERAL_NAMES_free(gens);
+                throw std::runtime_error("Failed to append SubjectAltName entry");
+            }
+        }
+
+        if (X509_add1_ext_i2d(certificate.get(), NID_subject_alt_name, gens, 0, X509V3_ADD_DEFAULT) != 1) {
+            GENERAL_NAMES_free(gens);
+            throw std::runtime_error("Failed to add SubjectAltName extension");
+        }
+        GENERAL_NAMES_free(gens);
+        log_debug_printf(certs, "Extension: SubjectAltName (%zu entries)\n", san_entries_.size());
     }
 }
 

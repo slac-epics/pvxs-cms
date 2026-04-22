@@ -6,6 +6,8 @@
 
 #include "configauthn.h"
 
+#include <sstream>
+
 #include "authnstd.h"
 #ifndef _WIN32
 #  include <ifaddrs.h>
@@ -21,6 +23,29 @@ struct ifaddrs;
 
 namespace pvxs {
 namespace certs {
+
+/**
+ * @brief Parse a comma-separated SAN string into a vector of SanEntry.
+ *
+ * Format: "ip=10.0.0.1,dns=host.example.com,hostname=myioc"
+ */
+static std::vector<SanEntry> parseSanString(const std::string &san_str) {
+    std::vector<SanEntry> entries;
+    if (san_str.empty()) return entries;
+
+    std::istringstream stream(san_str);
+    std::string token;
+    while (std::getline(stream, token, ',')) {
+        auto eq_pos = token.find('=');
+        if (eq_pos != std::string::npos && eq_pos > 0 && eq_pos < token.size() - 1) {
+            SanEntry entry;
+            entry.type = token.substr(0, eq_pos);
+            entry.value = token.substr(eq_pos + 1);
+            entries.push_back(std::move(entry));
+        }
+    }
+    return entries;
+}
 
 /**
  * @brief Get the base Authenticator configuration from the environment
@@ -93,6 +118,10 @@ void ConfigAuthN::fromAuthEnv(const std::map<std::string, std::string> &defs) {
     }
 
     if (pickone({"EPICS_PVA_AUTH_CERT_VALIDITY_MINS"})) cert_validity_mins = CertDate::parseDurationMins(pickone.val);
+
+    // EPICS_PVA_AUTH_SAN, EPICS_PVA_AUTH_SERVER_SAN
+    if (pickone({"EPICS_PVA_AUTH_SAN"})) san_entries = parseSanString(pickone.val);
+    if (pickone({"EPICS_PVA_AUTH_SERVER_SAN", "EPICS_PVA_AUTH_SAN"})) server_san_entries = parseSanString(pickone.val);
 }
 
 /**
@@ -118,6 +147,22 @@ void ConfigAuthN::updateDefs(defs_t &defs) const {
     defs["EPICS_PVA_AUTH_NAME"] = name;
     defs["EPICS_PVA_AUTH_ORGANIZATION"] = organization;
     defs["EPICS_PVA_AUTH_ORGANIZATIONAL_UNIT"] = organizational_unit;
+    {
+        std::string san_str;
+        for (size_t i = 0; i < san_entries.size(); ++i) {
+            if (i > 0) san_str += ",";
+            san_str += san_entries[i].type + "=" + san_entries[i].value;
+        }
+        defs["EPICS_PVA_AUTH_SAN"] = san_str;
+    }
+    {
+        std::string server_san_str;
+        for (size_t i = 0; i < server_san_entries.size(); ++i) {
+            if (i > 0) server_san_str += ",";
+            server_san_str += server_san_entries[i].type + "=" + server_san_entries[i].value;
+        }
+        defs["EPICS_PVA_AUTH_SERVER_SAN"] = server_san_str;
+    }
     if (!tls_srv_keychain_pwd.empty()) defs["EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE"] = "<password read>";
 }
 

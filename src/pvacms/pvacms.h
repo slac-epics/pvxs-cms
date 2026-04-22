@@ -41,6 +41,7 @@
     "     O TEXT,"                      \
     "     OU TEXT,"                     \
     "     C TEXT,"                      \
+    "     san TEXT,"                    \
     "     approved INTEGER,"            \
     "     not_before INTEGER,"          \
     "     not_after INTEGER,"           \
@@ -79,7 +80,7 @@
     "WHERE type='table' "                                               \
     "  AND name='schema_version';"
 
-#define PVACMS_SCHEMA_VERSION 3
+#define PVACMS_SCHEMA_VERSION 4
 
 #define SQL_CREATE_AUDIT_TABLE                                              \
     "CREATE TABLE IF NOT EXISTS audit("                                     \
@@ -152,6 +153,7 @@
     "     O,"                         \
     "     OU,"                        \
     "     C,"                         \
+    "     san,"                       \
     "     approved,"                  \
     "     not_before,"                \
     "     not_after,"                 \
@@ -167,6 +169,7 @@
     "     :O,"                        \
     "     :OU,"                       \
     "     :C,"                        \
+    "     :san,"                      \
     "     :approved,"                 \
     "     :not_before,"               \
     "     :not_after,"                \
@@ -195,6 +198,7 @@
     "     , not_after "               \
     "     , renew_by "                \
     "     , status "                  \
+    "     , san "                     \
     "FROM certs "                     \
     "WHERE CN = :CN "                 \
     "  AND O = :O "                   \
@@ -321,8 +325,26 @@
     "ORDER BY status_date DESC "  \
     "LIMIT 1 "
 
+/**
+ * @brief Search certificates by SAN value.
+ *
+ * Uses boundary-aware JSON matching to find certificates whose san column
+ * contains a specific value.  Bind :san_pattern as e.g. '%"10.0.0.1"%'.
+ *
+ * @since UNRELEASED
+ */
+#define SQL_SEARCH_CERTS_BY_SAN \
+    "SELECT serial, CN, san "   \
+    "FROM certs "               \
+    "WHERE san LIKE :san_pattern "
+
 namespace pvxs {
 namespace certs {
+
+struct SanEntry;
+
+std::string sanToJson(const std::vector<SanEntry> &entries);
+std::vector<SanEntry> sanFromJson(const std::string &json);
 
 /**
  * @brief Monitors the certificate status and updates the shared wildcard status pv when any become valid or expire.

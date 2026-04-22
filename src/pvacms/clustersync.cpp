@@ -173,6 +173,7 @@ Value serializeCertsTable(sqlite3 *certs_db,
         row["renewal_due"] = sqlite3_column_int(stmt, 10);
         row["status"] = sqlite3_column_int(stmt, 11);
         row["status_date"] = sqlite3_column_int64(stmt, 12);
+        row["san"] = col_text(13);
         cert_rows.push_back(std::move(row));
     }
     sqlite3_finalize(stmt);
@@ -325,6 +326,7 @@ void ClusterSyncPublisher::sendToSubscriber(SubscriberState &sub) {
         row["renewal_due"] = updates[i]->renewal_due;
         row["status"] = updates[i]->status;
         row["status_date"] = updates[i]->status_date;
+        row["san"] = updates[i]->san;
         certs_arr[i] = std::move(row);
     }
     val["certs"] = certs_arr.freeze();
@@ -382,6 +384,7 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
     update.renewal_due = sqlite3_column_int(stmt, 10);
     update.status      = sqlite3_column_int(stmt, 11);
     update.status_date = sqlite3_column_int64(stmt, 12);
+    update.san        = col_text(13);
     sqlite3_finalize(stmt);
 
     appendToLog(std::move(update));

@@ -7,8 +7,15 @@
 #ifndef PVXS_CONFIGAUTHN_H_
 #define PVXS_CONFIGAUTHN_H_
 
+#include <cstdint>
+#include <map>
+#include <string>
+#include <vector>
+
 #include <pvxs/client.h>
 #include <pvxs/config.h>
+
+#include "security.h"
 
 namespace pvxs {
 namespace certs {
@@ -31,6 +38,8 @@ class ConfigAuthN : public client::Config {
     std::string tls_srv_keychain_pwd{};
 
     int64_t cert_validity_mins = 0; // Minutes for Custom Duration of requested certificate
+    std::vector<SanEntry> san_entries;
+    std::vector<SanEntry> server_san_entries;
 
 void fromAuthEnv(const std::map<std::string, std::string>& defs);
 static std::string getIPAddress();

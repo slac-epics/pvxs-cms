@@ -12,6 +12,7 @@
 
 #include "pvacms.h"
 
+#include <arpa/inet.h>
 #include <dirent.h>
 
 #include <algorithm>
@@ -75,6 +76,7 @@
 #include "pvacmsVersion.h"
 #include "openssl.h"
 #include "ownedptr.h"
+#include "security.h"
 #include "serverev.h"
 #include "sqlite3.h"
 #include "tokenbucket.h"
@@ -242,6 +244,122 @@ CcrTimingTracker &getCcrTimingTracker()
     return tracker;
 }
 
+namespace {
+
+std::string escapeJsonString(const std::string &input)
+{
+    std::string output;
+    output.reserve(input.size());
+    for (const auto ch : input) {
+        switch (ch) {
+        case '\\':
+            output += "\\\\";
+            break;
+        case '"':
+            output += "\\\"";
+            break;
+        case '\n':
+            output += "\\n";
+            break;
+        case '\r':
+            output += "\\r";
+            break;
+        case '\t':
+            output += "\\t";
+            break;
+        default:
+            output += ch;
+            break;
+        }
+    }
+    return output;
+}
+
+std::string unescapeJsonString(const std::string &input)
+{
+    std::string output;
+    output.reserve(input.size());
+    for (size_t i = 0; i < input.size(); i++) {
+        if (input[i] == '\\' && i + 1 < input.size()) {
+            switch (input[i + 1]) {
+            case '\\':
+                output += '\\';
+                break;
+            case '"':
+                output += '"';
+                break;
+            case 'n':
+                output += '\n';
+                break;
+            case 'r':
+                output += '\r';
+                break;
+            case 't':
+                output += '\t';
+                break;
+            default:
+                output += input[i + 1];
+                break;
+            }
+            i++;
+        } else {
+            output += input[i];
+        }
+    }
+    return output;
+}
+
+}  // namespace
+
+std::string sanToJson(const std::vector<SanEntry> &entries)
+{
+    if (entries.empty())
+        return std::string();
+
+    auto json = SB();
+    json << '[';
+    for (size_t i = 0; i < entries.size(); i++) {
+        if (i)
+            json << ',';
+        json << "{\"type\":\"" << escapeJsonString(entries[i].type)
+             << "\",\"value\":\"" << escapeJsonString(entries[i].value)
+             << "\"}";
+    }
+    json << ']';
+    return json.str();
+}
+
+std::vector<SanEntry> sanFromJson(const std::string &json)
+{
+    std::vector<SanEntry> entries;
+    if (json.empty())
+        return entries;
+
+    static const std::string kTypePattern("{\"type\":\"");
+    static const std::string kValuePattern("\",\"value\":\"");
+    static const std::string kEndPattern("\"}");
+
+    size_t pos = 0u;
+    while ((pos = json.find(kTypePattern, pos)) != std::string::npos) {
+        pos += kTypePattern.size();
+        const auto value_pos = json.find(kValuePattern, pos);
+        if (value_pos == std::string::npos)
+            break;
+        const auto end_pos = json.find(kEndPattern, value_pos + kValuePattern.size());
+        if (end_pos == std::string::npos)
+            break;
+
+        SanEntry entry;
+        entry.type = unescapeJsonString(json.substr(pos, value_pos - pos));
+        entry.value = unescapeJsonString(json.substr(value_pos + kValuePattern.size(),
+                                                    end_pos - (value_pos + kValuePattern.size())));
+        entries.push_back(std::move(entry));
+        pos = end_pos + kEndPattern.size();
+    }
+
+    return entries;
+}
+
 struct InflightCcrGuard {
     explicit InflightCcrGuard(std::atomic<uint32_t> &counter)
         : counter_(counter)
@@ -302,6 +420,51 @@ static bool isValidScheduleTime(const std::string &t) {
     return h >= 0 && h <= 23 && m >= 0 && m <= 59;
 }
 
+static void validateSanEntries(const std::vector<SanEntry> &entries) {
+    const auto isValidDnsLabel = [](const std::string &label) {
+        if (label.empty() || label.size() > 63u)
+            return false;
+        if (label.front() == '-' || label.back() == '-')
+            return false;
+        for (const auto ch : label) {
+            if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-')
+                return false;
+        }
+        return true;
+    };
+
+    for (const auto &entry : entries) {
+        if (entry.type == "ip") {
+            unsigned char buf4[4];
+            unsigned char buf6[16];
+            if (inet_pton(AF_INET, entry.value.c_str(), buf4) != 1 &&
+                inet_pton(AF_INET6, entry.value.c_str(), buf6) != 1) {
+                throw std::runtime_error("Invalid SAN value for type '" + entry.type + "': " + entry.value);
+            }
+        } else if (entry.type == "dns") {
+            if (entry.value.empty() || entry.value.size() > 253u)
+                throw std::runtime_error("Invalid SAN value for type '" + entry.type + "': " + entry.value);
+
+            size_t pos = 0u;
+            while (pos < entry.value.size()) {
+                const auto end = entry.value.find('.', pos);
+                const auto label = entry.value.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+                if (!isValidDnsLabel(label))
+                    throw std::runtime_error("Invalid SAN value for type '" + entry.type + "': " + entry.value);
+                if (end == std::string::npos)
+                    break;
+                pos = end + 1u;
+            }
+        } else if (entry.type == "hostname") {
+            if (!isValidDnsLabel(entry.value) || entry.value.find('.') != std::string::npos) {
+                throw std::runtime_error("Invalid SAN value for type '" + entry.type + "': " + entry.value);
+            }
+        } else {
+            throw std::runtime_error("Unknown SAN type: " + entry.type);
+        }
+    }
+}
+
 static std::vector<ScheduleWindow> loadScheduleWindows(sqlite3 *db, uint64_t serial) {
     std::vector<ScheduleWindow> windows;
     sqlite3_stmt *stmt = nullptr;
@@ -324,6 +487,21 @@ static std::vector<ScheduleWindow> loadScheduleWindows(sqlite3 *db, uint64_t ser
     return windows;
 }
 
+static std::string loadSanFromDb(sqlite3 *db, uint64_t serial) {
+    const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
+    sqlite3_stmt *stmt = nullptr;
+    std::string result;
+    if (sqlite3_prepare_v2(db, "SELECT san FROM certs WHERE serial = :serial", -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":serial"), db_serial);
+        if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
+            result = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+        }
+    }
+    if (stmt)
+        sqlite3_finalize(stmt);
+    return result;
+}
+
 static void assignSchedule(Value &value, const std::vector<ScheduleWindow> &schedule_windows) {
     if (schedule_windows.empty())
         return;
@@ -336,6 +514,19 @@ static void assignSchedule(Value &value, const std::vector<ScheduleWindow> &sche
         sched_arr[i]["end_time"] = schedule_windows[i].end_time;
     }
     value["schedule"] = sched_arr.freeze();
+}
+
+static void assignSan(Value &value, const std::vector<SanEntry> &entries) {
+    if (entries.empty())
+        return;
+
+    shared_array<Value> san_arr(entries.size());
+    for (size_t i = 0; i < entries.size(); i++) {
+        san_arr[i] = value["san"].allocMember();
+        san_arr[i]["type"] = entries[i].type;
+        san_arr[i]["value"] = entries[i].value;
+    }
+    value["san"] = san_arr.freeze();
 }
 
 /**
@@ -361,13 +552,17 @@ Value getCreatePrototype() {
                     Member(TypeCode::String, "status_pv"),
                     Member(TypeCode::UInt64, "renew_by"),
                     Member(TypeCode::UInt64, "expiration"),
-                    Member(TypeCode::String, "cert"),
-                    StructA("schedule", {
-                        String("day_of_week"),
-                        String("start_time"),
-                        String("end_time"),
-                    }),
-        }).create();
+                     Member(TypeCode::String, "cert"),
+                     StructA("schedule", {
+                         String("day_of_week"),
+                         String("start_time"),
+                         String("end_time"),
+                     }),
+                     StructA("san", {
+                         String("type"),
+                         String("value"),
+                     }),
+         }).create();
     shared_array<const std::string> choices(CERT_STATES);
     value["value.choices"] = choices.freeze();
     return value;
@@ -572,6 +767,38 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
                     }
                     sqlite3_finalize(mig_stmt);
                     log_info_printf(pvacms, "Applied migration to schema version 3 (cert_schedules table)%s\n", "");
+                }
+                if (db_version < 4) {
+                    sqlite3_stmt *info_stmt = nullptr;
+                    if (sqlite3_prepare_v2(certs_db.get(), "PRAGMA table_info(certs)", -1, &info_stmt, nullptr) != SQLITE_OK) {
+                        throw std::runtime_error(SB() << "Failed to inspect certs table for san column: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    bool san_exists = false;
+                    while (sqlite3_step(info_stmt) == SQLITE_ROW) {
+                        const auto *column_name = reinterpret_cast<const char *>(sqlite3_column_text(info_stmt, 1));
+                        if (column_name && std::string(column_name) == "san") {
+                            san_exists = true;
+                            break;
+                        }
+                    }
+                    sqlite3_finalize(info_stmt);
+                    if (!san_exists) {
+                        if (sqlite3_exec(certs_db.get(), "ALTER TABLE certs ADD COLUMN san TEXT DEFAULT NULL", nullptr, nullptr, nullptr) != SQLITE_OK) {
+                            throw std::runtime_error(SB() << "Failed to add san column to certs table: " << sqlite3_errmsg(certs_db.get()));
+                        }
+                    }
+                    sqlite3_stmt *mig_stmt = nullptr;
+                    if (sqlite3_prepare_v2(certs_db.get(), SQL_INSERT_SCHEMA_VERSION, -1, &mig_stmt, nullptr) != SQLITE_OK) {
+                        throw std::runtime_error(SB() << "Failed to prepare migration version insert: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_bind_int(mig_stmt, 1, 4);
+                    sqlite3_bind_int64(mig_stmt, 2, static_cast<sqlite3_int64>(time(nullptr)));
+                    if (sqlite3_step(mig_stmt) != SQLITE_DONE) {
+                        sqlite3_finalize(mig_stmt);
+                        throw std::runtime_error(SB() << "Failed to record migration to v4: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_finalize(mig_stmt);
+                    log_info_printf(pvacms, "Applied migration to schema version 4 (san column)%s\n", "");
                 }
             } else if (db_version > PVACMS_SCHEMA_VERSION) {
                 log_warn_printf(pvacms, "Database schema version %d is newer than current code version %d — possible downgrade\n",
@@ -1004,6 +1231,14 @@ certstatus_t storeCertificate(const sql_ptr &certs_db, CertFactory &cert_factory
                           cert_factory.country_.c_str(),
                           -1,
                           SQLITE_STATIC);
+        if (!cert_factory.san_entries_.empty()) {
+            auto san_json = sanToJson(cert_factory.san_entries_);
+            sqlite3_bind_text(sql_statement,
+                              sqlite3_bind_parameter_index(sql_statement, ":san"),
+                              san_json.c_str(), -1, SQLITE_TRANSIENT);
+        } else {
+            sqlite3_bind_null(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":san"));
+        }
         sqlite3_bind_int(sql_statement,
                          sqlite3_bind_parameter_index(sql_statement, ":not_before"),
                          static_cast<int>(cert_factory.not_before_));
@@ -1383,6 +1618,20 @@ int64_t onCreateCertificate(ConfigCms &config,
                 schedule_windows.push_back(std::move(sw));
             }
         }
+        std::vector<SanEntry> san_entries;
+        auto san_arr = ccr["san"];
+        if (san_arr) {
+            auto san = san_arr.as<shared_array<const Value>>();
+            for (const auto &entry : san) {
+                SanEntry se;
+                se.type = entry["type"].as<std::string>();
+                se.value = entry["value"].as<std::string>();
+                san_entries.push_back(std::move(se));
+            }
+        }
+        if (!san_entries.empty()) {
+            validateSanEntries(san_entries);
+        }
         switch (config.cert_status_subscription) {
             case YES:
                 if (no_status)
@@ -1485,6 +1734,7 @@ int64_t onCreateCertificate(ConfigCms &config,
                                                cert_auth_pkey.get(),
                                                cert_auth_cert_chain.get(),
                                                state);
+        certificate_factory.san_entries_ = san_entries;
 
         auto reply(getCreatePrototype());
         std::string pem_string;
@@ -1568,6 +1818,7 @@ int64_t onCreateCertificate(ConfigCms &config,
         if (has_renew_by) reply["renew_by"] = renew_by - POSIX_TIME_AT_EPICS_EPOCH;
         if (!pem_string.empty()) reply["cert"] = pem_string;
         assignSchedule(reply, schedule_windows);
+        assignSan(reply, san_entries);
         // Log the certificate info
         const auto org_val = ccr["organization"];
         const auto org_unit_val = ccr["organizational_unit"];
@@ -1582,6 +1833,15 @@ int64_t onCreateCertificate(ConfigCms &config,
         if (org_val) log_info_printf(pvacms, "SUBJECT  O: %s\n", org.c_str());
         if (org_unit_val) log_info_printf(pvacms, "SUBJECT OU: %s\n", org_unit.c_str());
         if (!country.empty()) log_info_printf(pvacms, "SUBJECT  C: %s\n", country.c_str());
+        if (!san_entries.empty()) {
+            std::string san_str;
+            for (const auto &se : san_entries) {
+                if (!san_str.empty()) san_str += ", ";
+                san_str += se.type + "=" + se.value;
+            }
+            log_debug_printf(pvacms, "SUBJECT SAN: %s\n", san_str.c_str());
+            log_info_printf(pvacms, "SUBJECT SAN: %s\n", san_str.c_str());
+        }
         log_info_printf(pvacms, "VALID FROM: %s\n", from.substr(0, from.size()-1).c_str());
         if (has_renew_by) {
             const std::string renew_by_s = std::ctime(&renew_by);
@@ -2613,6 +2873,7 @@ static void insertLoadedCertIfMissing(const ConfigCms &config,
     sqlite3_bind_text (stmt, sqlite3_bind_parameter_index(stmt, ":O"),    o.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text (stmt, sqlite3_bind_parameter_index(stmt, ":OU"),   ou.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text (stmt, sqlite3_bind_parameter_index(stmt, ":C"),    c.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_null (stmt, sqlite3_bind_parameter_index(stmt, ":san"));
     sqlite3_bind_int  (stmt, sqlite3_bind_parameter_index(stmt, ":not_before"), (int)not_before);
     sqlite3_bind_int  (stmt, sqlite3_bind_parameter_index(stmt, ":not_after"),  (int)not_after);
     sqlite3_bind_int  (stmt, sqlite3_bind_parameter_index(stmt, ":renew_by"),   (int)not_after);
@@ -2954,6 +3215,9 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
 
     if (certs_db) {
         assignSchedule(status_value, loadScheduleWindows(certs_db->get(), serial));
+        auto san_json = loadSanFromDb(certs_db->get(), serial);
+        auto san_entries = sanFromJson(san_json);
+        assignSan(status_value, san_entries);
     }
 
     log_debug_printf(pvacms, "Posting Certificate Status: %s = %s\n", pv_name.c_str(), cert_status.status.s.c_str());

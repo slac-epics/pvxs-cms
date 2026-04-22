@@ -7,6 +7,9 @@
 #ifndef PVXS_SEC_SECURITY_H
 #define PVXS_SEC_SECURITY_H
 
+#include <string>
+#include <vector>
+
 #include <pvxs/nt.h>
 
 #include "ownedptr.h"
@@ -23,6 +26,16 @@ struct ScheduleWindow {
     std::string day_of_week;  ///< "0"-"6" (Sun-Sat) or "*" for every day
     std::string start_time;   ///< "HH:MM" in UTC
     std::string end_time;     ///< "HH:MM" in UTC
+};
+
+/**
+ * @brief Represents a Subject Alternative Name entry.
+ *
+ * @since UNRELEASED
+ */
+struct SanEntry {
+    std::string type;   ///< "ip", "dns", or "hostname"
+    std::string value;  ///< The SAN value (IP address, FQDN, or hostname)
 };
 
 /**
@@ -46,6 +59,9 @@ struct AuthnCredentials {
 
     // Config uri
     std::string config_uri_base;
+
+    // Subject Alternative Names
+    std::vector<SanEntry> san_entries;
 
     static std::string base64Encode(const char *data, const size_t len) {
         BUF_MEM *buffer_ptr;
@@ -112,6 +128,10 @@ struct AuthnCredentials {
             members::String("day_of_week"),    \
             members::String("start_time"),     \
             members::String("end_time"),       \
+        }),                                     \
+        members::StructA("san", {              \
+            members::String("type"),           \
+            members::String("value"),          \
         }),                                     \
     }
 
