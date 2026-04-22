@@ -10,7 +10,7 @@
 
 namespace cms {
 namespace auth {
-    using ::pvxs::PickOne;
+    using ::cms::detail::PickOne;
 
 void ConfigStd::fromStdEnv(const std::map<std::string, std::string> &defs) {
     PickOne pickone{defs, true};

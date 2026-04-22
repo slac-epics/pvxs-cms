@@ -14,10 +14,10 @@ DEFINE_LOGGER(cfg, "pvxs.certs.cfg");
 
 namespace cms {
 namespace auth {
-    using ::pvxs::PickOne;
-    using ::pvxs::ensureDirectoryExists;
-    using ::pvxs::getFileContents;
-    using ::pvxs::parseTo;
+    using ::cms::detail::PickOne;
+    using ::cms::detail::ensureDirectoryExists;
+    using ::cms::detail::getFileContents;
+    using ::cms::detail::parseTo;
 
 void ConfigLdap::fromLdapEnv(const std::map<std::string, std::string> &defs) {
     PickOne pickone{defs, true};

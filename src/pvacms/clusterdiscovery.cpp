@@ -31,7 +31,7 @@ namespace cluster {
 namespace client = ::pvxs::client;
 
 using ::pvxs::shared_array;
-using ::pvxs::SB;
+using ::cms::detail::SB;
 using ::pvxs::TypeCode;
 using ::pvxs::TypeDef;
 using ::pvxs::Value;
@@ -43,7 +43,7 @@ using ::pvxs::certs::getTimeStamp;
 using ::pvxs::certs::isValidStatusTransition;
 using ::pvxs::certs::makeJoinRequestValue;
 using ::pvxs::certs::setTimeStamp;
-using ::pvxs::ossl_ptr;
+using ::cms::detail::ossl_ptr;
 
 namespace members = ::pvxs::members;
 

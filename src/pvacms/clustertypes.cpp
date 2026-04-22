@@ -26,6 +26,7 @@ namespace certs {
     using cms::cert::EXPIRED;
     using cms::cert::REVOKED;
     using cms::cert::UNKNOWN;
+    using cms::detail::ossl_ptr;
 
 using namespace pvxs::members;
 

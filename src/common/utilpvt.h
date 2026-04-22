@@ -22,6 +22,7 @@
 
 #include <atomic>
 #include <memory>
+#include <map>
 #include <set>
 #include <string>
 #include <sstream>
@@ -86,7 +87,7 @@ struct loc_bad_alloc final : public std::bad_alloc
 private:
     char msg[64];
 };
-#define BAD_ALLOC() ::pvxs::impl::loc_bad_alloc(__FILE__, __LINE__)
+#define BAD_ALLOC() ::cms::detail::loc_bad_alloc(__FILE__, __LINE__)
 
 //! in-line string builder (eg. for exception messages)
 //! eg. @code throw std::runtime_error(SB()<<"Some message"<<42); @endcode
@@ -371,5 +372,46 @@ struct PickOne {
 };
 
 } // namespace pvxs
+
+namespace cms {
+namespace detail {
+
+using ::pvxs::impl::inUnitTest;
+using ::pvxs::impl::loc_bad_alloc;
+using ::pvxs::SB;
+using ::pvxs::strDiff;
+using ::pvxs::convertPath;
+using ::pvxs::ensureDirectoryExists;
+using ::pvxs::versionString;
+using ::pvxs::getHomeDir;
+using ::pvxs::getFileContents;
+using ::pvxs::getXdgDataHome;
+using ::pvxs::getXdgConfigHome;
+using ::pvxs::getXdgPvaDataHome;
+using ::pvxs::getXdgPvaConfigHome;
+using ::pvxs::impl::threadOnceInfo;
+using ::pvxs::impl::threadOnce_;
+using ::pvxs::impl::threadOnce;
+using ::pvxs::impl::range;
+using ::pvxs::impl::parseTo;
+using ::pvxs::RWLock;
+using ::pvxs::FLock;
+using ::pvxs::osdGetRoles;
+using ::pvxs::logger_shutdown;
+using ::pvxs::logger_config_str;
+using ::pvxs::totv;
+using ::pvxs::Restore;
+using ::pvxs::registerICount;
+using ::pvxs::PickOne;
+
+template<std::atomic<size_t>& Cnt>
+using InstCounter = ::pvxs::InstCounter<Cnt>;
+
+namespace ioc {
+using ::pvxs::ioc::IOCGroupConfigCleanup;
+}
+
+} // namespace detail
+} // namespace cms
 
 #endif // UTILPVT_H

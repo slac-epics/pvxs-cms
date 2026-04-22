@@ -23,11 +23,11 @@ struct ifaddrs;
 
 namespace cms {
 namespace auth {
-    using ::pvxs::SB;
-    using ::pvxs::PickOne;
-    using ::pvxs::ensureDirectoryExists;
-    using ::pvxs::getFileContents;
-    using ::pvxs::getXdgPvaConfigHome;
+    using ::cms::detail::SB;
+    using ::cms::detail::PickOne;
+    using ::cms::detail::ensureDirectoryExists;
+    using ::cms::detail::getFileContents;
+    using ::cms::detail::getXdgPvaConfigHome;
     using ::cms::cert::SanEntry;
     using ::cms::cert::CertDate;
     using ::cms::cert::YES;

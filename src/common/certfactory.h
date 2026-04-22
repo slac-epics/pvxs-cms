@@ -25,8 +25,8 @@
 namespace cms {
 namespace cert {
 
-using pvxs::ossl_ptr;
-using pvxs::ossl_shared_ptr;
+using cms::detail::ossl_ptr;
+using cms::detail::ossl_shared_ptr;
 
 #define PVXS_DEFAULT_AUTH_TYPE "std"
 

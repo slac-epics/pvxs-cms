@@ -53,6 +53,7 @@ using cms::cert::UNKNOWN;
 using cms::cert::OCSP_CERTSTATUS_GOOD;
 using cms::cert::OCSP_CERTSTATUS_REVOKED;
 using cms::cert::OCSP_CERTSTATUS_UNKNOWN;
+using cms::detail::ServerEv;
 using namespace pvxs::certs;
 
 struct Tester {
@@ -69,7 +70,7 @@ struct Tester {
     const std::string issuer_id{CertStatus::getSkId(cert_auth.cert.cert)};
 
     server::WildcardPV status_pv{server::WildcardPV::buildMailbox()};
-    server::ServerEv pvacms;
+    ServerEv pvacms;
     client::Context client;
     CounterMap cert_status_request_counters;
     epicsMutex counter_lock;

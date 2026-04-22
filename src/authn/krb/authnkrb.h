@@ -30,6 +30,7 @@
 
 namespace cms {
 namespace auth {
+    using ::cms::detail::SB;
     using ::cms::cert::AuthnCredentials;
     using ::cms::cert::CertCreationRequest;
     using ::cms::cert::KeyPair;
