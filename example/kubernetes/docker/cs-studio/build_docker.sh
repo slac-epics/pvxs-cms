@@ -17,9 +17,9 @@ pushd "${PROJECTS}"
 trap "popd" EXIT
 
 BASE_IMAGE_NAME="lab_base"
-BASE_IMAGE_TAG="latest"
+BASE_IMAGE_TAG="dev"
 TARGET_IMAGE_NAME="cs-studio"
-TARGET_IMAGE_TAG="latest"
+TARGET_IMAGE_TAG="dev"
 
 echo "--- Building ${TARGET_IMAGE_NAME} Docker image (includes Phoebus build) ---"
 

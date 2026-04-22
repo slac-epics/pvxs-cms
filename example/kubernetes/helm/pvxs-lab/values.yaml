@@ -4,34 +4,34 @@ dockerUsername: "slac-epics"
 images:
   idm:
     name: "idm"
-    tag: "latest"
+    tag: "dev"
   internet:
     name: "internet"
-    tag: "latest"
+    tag: "dev"
   it:
     name: "idm"
-    tag: "latest"
+    tag: "dev"
   testioc:
     name: "testioc"
-    tag: "latest"
+    tag: "dev"
   tstioc:
     name: "tstioc"
-    tag: "latest"
+    tag: "dev"
   ml:
     name: "ml"
-    tag: "latest"
+    tag: "dev"
   mlIoc:
     name: "ml-ioc"
-    tag: "latest"
+    tag: "dev"
   gateway:
     name: "gateway"
-    tag: "latest"
+    tag: "dev"
   lab:
     name: "lab"
-    tag: "latest"
+    tag: "dev"
   csStudio:
     name: "cs-studio"
-    tag: "latest"
+    tag: "dev"
 
 imagePullPolicy: IfNotPresent
 
@@ -298,7 +298,7 @@ csStudioInternet:
     storageClassName: ""
 
 lab:
-  image: "lab:latest"
+  image: "lab:dev"
   replicas: 1
 
   persistence:

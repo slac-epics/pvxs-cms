@@ -80,11 +80,30 @@ function gw_kind_create {
 function gw_kind_load_images {
     _gw_is_docker_desktop_mac || return 1
 
+    # Tag selector — dev branch defaults to "dev" so it matches values.yaml,
+    # but accepts "latest" (or any other tag) via --tag <tag>. The chosen tag
+    # MUST match what gw_deploy passes via --set images.<svc>.tag.
+    local tag="dev"
     local force=0
-    if [[ "$1" == "--force" || "$1" == "-f" ]]; then
-        force=1
-        shift
-    fi
+    while (( $# > 0 )); do
+        case "$1" in
+            --tag)
+                tag="${2:?--tag requires a value (latest|dev)}"
+                shift 2
+                ;;
+            --tag=*)
+                tag="${1#--tag=}"
+                shift
+                ;;
+            --force|-f)
+                force=1
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
 
     if ! kind get clusters 2>/dev/null | grep -qx "${GW_KIND_CLUSTER_NAME}"; then
         echo "Kind cluster '${GW_KIND_CLUSTER_NAME}' not found. Run gw_kind_create first."
@@ -104,11 +123,11 @@ function gw_kind_load_images {
         "docker.io/bitnami/kubectl:latest"
     )
 
-    echo "==> Loading ${#image_names[@]} app images + ${#extra_images[@]} utility images into Kind ..."
+    echo "==> Loading ${#image_names[@]} app images (tag=${tag}) + ${#extra_images[@]} utility images into Kind ..."
 
     local -a full_refs=()
     for name in "${image_names[@]}"; do
-        full_refs+=("${registry}/${username}/${name}:latest")
+        full_refs+=("${registry}/${username}/${name}:${tag}")
     done
     for img in "${extra_images[@]}"; do
         full_refs+=("${img}")
@@ -212,7 +231,35 @@ function gw_deploy {
     local _pwd="${PWD}"
     trap 'cd "${_pwd}"' INT TERM EXIT
     cd "${PVXS_CMS}/example/kubernetes/helm"
-    if [[ "$1" == "-r" ]]; then
+
+    # Tag selector — dev branch defaults to "dev" (matches values.yaml). Pass
+    # --tag latest to deploy the latest-tagged images instead. This MUST stay
+    # in sync with the tag loaded by gw_kind_load_images on Kind clusters.
+    local tag="dev"
+    local reinstall=0
+    local -a passthrough=()
+    while (( $# > 0 )); do
+        case "$1" in
+            -r)
+                reinstall=1
+                shift
+                ;;
+            --tag)
+                tag="${2:?--tag requires a value (latest|dev)}"
+                shift 2
+                ;;
+            --tag=*)
+                tag="${1#--tag=}"
+                shift
+                ;;
+            *)
+                passthrough+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    if (( reinstall )); then
         kubectl delete jobs -n pvxs-lab -l app.kubernetes.io/instance=pvxs-lab --ignore-not-found
         helm uninstall pvxs-lab -n pvxs-lab
         while kubectl get pods -n pvxs-lab -l release=pvxs-lab --no-headers 2>/dev/null | grep -q .; do
@@ -221,14 +268,31 @@ function gw_deploy {
         while kubectl get jobs -n pvxs-lab -l app.kubernetes.io/instance=pvxs-lab --no-headers 2>/dev/null | grep -q .; do
             sleep 1
         done
-        shift
     fi
     if [[ "$(kubectl config current-context 2>/dev/null)" == "${GW_KIND_CONTEXT}" ]]; then
-        gw_kind_load_images || { trap - INT TERM EXIT; cd "${_pwd}"; return 1; }
+        gw_kind_load_images --tag "${tag}" || { trap - INT TERM EXIT; cd "${_pwd}"; return 1; }
     fi
+
+    # Override every per-image tag in values.yaml. Keys must match the
+    # `images.<key>.tag` paths defined there (see helm/pvxs-lab/values.yaml).
+    local -a tag_overrides=(
+        --set "images.idm.tag=${tag}"
+        --set "images.internet.tag=${tag}"
+        --set "images.it.tag=${tag}"
+        --set "images.testioc.tag=${tag}"
+        --set "images.tstioc.tag=${tag}"
+        --set "images.ml.tag=${tag}"
+        --set "images.mlIoc.tag=${tag}"
+        --set "images.gateway.tag=${tag}"
+        --set "images.lab.tag=${tag}"
+        --set "images.csStudio.tag=${tag}"
+        --set "lab.image=lab:${tag}"
+    )
+
     helm upgrade --install pvxs-lab pvxs-lab -n pvxs-lab --create-namespace \
         --set dockerRegistry=${DOCKER_REGISTRY} \
-        --set dockerUsername=${DOCKER_USERNAME} "$@"
+        --set dockerUsername=${DOCKER_USERNAME} \
+        "${tag_overrides[@]}" "${passthrough[@]}"
     trap - INT TERM EXIT
     cd "${_pwd}"
 }
