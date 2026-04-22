@@ -10,7 +10,7 @@
 
 #include "utilpvt.h"
 
-DEFINE_LOGGER(cfg, "pvxs.certs.cfg");
+DEFINE_LOGGER(cfg, "cms.certs.cfg");
 
 namespace cms {
 namespace auth {

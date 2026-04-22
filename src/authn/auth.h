@@ -521,11 +521,11 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
             return parse_result == -1 ? 0 : parse_result;
 
         if (verbose) {
-            logger_level_set(std::string("pvxs.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Info);
-            logger_level_set(std::string("pvxs.auth.ccr").c_str(), pvxs::Level::Info);
+            logger_level_set(std::string("cms.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Info);
+            logger_level_set(std::string("cms.auth.ccr").c_str(), pvxs::Level::Info);
         }
         if (debug)
-            logger_level_set(std::string("pvxs.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Debug);
+            logger_level_set(std::string("cms.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Debug);
 
         // Execute a special case hook if provided
         if (pre_configure_hook) pre_configure_hook(config, authenticator);

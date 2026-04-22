@@ -29,7 +29,7 @@ using namespace pvxs;
 
 namespace {
 
-DEFINE_LOGGER(certslog, "pvxs.certs.tool");
+DEFINE_LOGGER(certslog, "cms.certs.tool");
 
 #if !defined(_WIN32) && !defined(_MSC_VER)
 void setEcho(const bool enable) {

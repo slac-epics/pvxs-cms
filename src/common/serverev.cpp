@@ -22,8 +22,8 @@
 namespace cms {
 namespace detail {
 
-DEFINE_LOGGER(serverio, "pvxs.svr.io");
-DEFINE_LOGGER(serversetup, "pvxs.svr.init");
+DEFINE_LOGGER(serverio, "cms.svr.io");
+DEFINE_LOGGER(serversetup, "cms.svr.init");
 
 ServerEv ServerEv::fromEnv(CustomServerCallback &custom_event_callback)
 {
