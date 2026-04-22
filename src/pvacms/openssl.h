@@ -29,6 +29,23 @@ typedef epicsGuard<epicsMutex> Guard;
 typedef epicsGuardRelease<epicsMutex> UnGuard;
 typedef uint64_t serial_number_t;
 
+namespace pvxs {
+
+namespace client {
+struct Config;
+}
+namespace ossl {
+struct SSLError : std::runtime_error {
+    explicit SSLError(const std::string& msg);
+    virtual ~SSLError();
+};
+}
+namespace server {
+struct Config;
+}
+struct PeerCredentials;
+}  // namespace pvxs
+
 namespace cms {
 namespace cert {
 struct PVACertificateStatus;
@@ -41,16 +58,6 @@ struct cert_status_delete;
 template <typename T>
 using cert_status_ptr = pvxs::ossl_shared_ptr<T, cert_status_delete<T>>;
 }  // namespace cert
-}  // namespace cms
-
-namespace pvxs {
-
-namespace client {
-struct Config;
-}
-namespace server {
-struct Config;
-}
 
 namespace ssl {
 constexpr uint16_t kForClient = 0x01;
@@ -63,16 +70,9 @@ constexpr uint16_t kForClientAndServer = kForClient | kForServer;
 constexpr uint16_t kAnyServer = kForCMS | kForServer;
 
 #define IS_USED_FOR_(USED, USAGE) (((USED) & (USAGE)) == USAGE)
-#define IS_FOR_A_SERVER_(USED) (((USED) & (pvxs::ssl::kAnyServer)) != 0x00)
-}  // namespace ssl
+#define IS_FOR_A_SERVER_(USED) (((USED) & (cms::ssl::kAnyServer)) != 0x00)
 
-struct PeerCredentials;
-namespace ossl {
-
-struct SSLError : std::runtime_error {
-    explicit SSLError(const std::string& msg);
-    virtual ~SSLError();
-};
+using SSLError = pvxs::ossl::SSLError;
 
 struct ShowX509 {
     const X509* cert;
@@ -98,7 +98,7 @@ struct ShowX509Chain {
 std::ostream& operator<<(std::ostream& strm, const ShowX509Chain& chain);
 
 
-}  // namespace ossl
-}  // namespace pvxs
+}  // namespace ssl
+}  // namespace cms
 
 #endif  // PVXS_OPENSSL_H

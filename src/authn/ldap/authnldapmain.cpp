@@ -164,19 +164,19 @@ int readParameters(int argc, char *argv[], ConfigLdap &config, bool &verbose, bo
     }
 
     if (usage == "server") {
-        cert_usage = ssl::kForServer;
+            cert_usage = cms::ssl::kForServer;
         if (config.tls_srv_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVAS_TLS_KEYCHAIN environment variable to create server certificates" << std::endl;
             return 10;
         }
     } else if (usage == "client") {
-        cert_usage = ssl::kForClient;
+            cert_usage = cms::ssl::kForClient;
         if (config.tls_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVA_TLS_KEYCHAIN environment variable to create client certificates" << std::endl;
             return 11;
         }
     } else if (usage == "ioc") {
-        cert_usage = ssl::kForClientAndServer;
+            cert_usage = cms::ssl::kForClientAndServer;
         if (config.tls_srv_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVAS_TLS_KEYCHAIN environment variable to create ioc certificates" << std::endl;
             return 12;
@@ -189,21 +189,21 @@ int readParameters(int argc, char *argv[], ConfigLdap &config, bool &verbose, bo
     // Pull out command line args to override config values
     if ( !name.empty()) {
         switch (cert_usage) {
-            case ssl::kForClient: config.name = name; break;
-            case ssl::kForServer: config.server_name = name; break;
+                case cms::ssl::kForClient: config.name = name; break;
+                case cms::ssl::kForServer: config.server_name = name; break;
             default: config.name = config.server_name = name; break;
         }
     }
     if ( !organization.empty()) {
         switch (cert_usage) {
-            case ssl::kForClient: config.organization = organization; break;
-            case ssl::kForServer: config.server_organization = organization; break;
+                case cms::ssl::kForClient: config.organization = organization; break;
+                case cms::ssl::kForServer: config.server_organization = organization; break;
             default: config.organization = config.server_organization = organization; break;
         }
     }
 
-    const auto name_to_use = cert_usage == ssl::kForClient ? config.name : config.server_name;
-    const auto organization_to_use = cert_usage == ssl::kForClient ? config.organization : config.server_organization;
+            const auto name_to_use = cert_usage == cms::ssl::kForClient ? config.name : config.server_name;
+            const auto organization_to_use = cert_usage == cms::ssl::kForClient ? config.organization : config.server_organization;
 
     if (config.ldap_account_password.empty()) {
         config.ldap_account_password = promptPassword(SB() << "Enter password for " << name_to_use << "@" << organization_to_use << ": ");

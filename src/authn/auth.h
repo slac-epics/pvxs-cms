@@ -414,14 +414,14 @@ CertData getCertificate(bool &retrieved_credentials,
     DEFINE_LOGGER(auth, std::string("pvxs.auth." + authenticator.type_).c_str());
     CertData cert_data;
 
-    if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))) {
+    if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, cms::ssl::kForClient))) {
         // If daemon mode, then add base uri to credentials
         if (daemon_mode) credentials->config_uri_base = config.getCertPvPrefix();
 
         // Copy SAN entries from config based on usage
         {
             const auto &authn_config = static_cast<const ConfigAuthN &>(config);
-            if (IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))
+            if (IS_USED_FOR_(cert_usage, cms::ssl::kForClient))
                 credentials->san_entries = authn_config.san_entries;
             else
                 credentials->san_entries = authn_config.server_san_entries;
@@ -534,7 +534,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
         auto config = ConfigT::fromEnv();
 
         bool verbose{false}, debug{false}, daemon_mode{false}, force{false};
-        uint16_t cert_usage{pvxs::ssl::kForClient};
+        uint16_t cert_usage{cms::ssl::kForClient};
 
         const auto parse_result = readParameters(argc, argv, config, verbose, debug, cert_usage, daemon_mode, force);
         if (parse_result)
@@ -585,7 +585,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
 
         if (cert_data.cert && daemon_mode) {
             authenticator.runAuthNDaemon(config,
-                                         IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient),
+                                         IS_USED_FOR_(cert_usage, cms::ssl::kForClient),
                                          std::move(cert_data),
                                          [&retrieved_credentials,
                                           config,

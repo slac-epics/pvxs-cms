@@ -759,12 +759,12 @@ int main(int argc, char *argv[]) {
                     if (dump) {
                         std::cout << "Certificate Details: " << std::endl
                                   << "============================================" << std::endl
-                                  << ossl::ShowX509Chain{cert_data.cert.get(), cert_data.cert_auth_chain.get()}
+                << cms::ssl::ShowX509Chain{cert_data.cert.get(), cert_data.cert_auth_chain.get()}
                                   << "\n--------------------------------------------\n" << std::endl;
                     } else {
                         std::cout << "Certificate Details: " << std::endl
                                   << "============================================" << std::endl
-                                  << ossl::ShowX509{cert_data.cert.get()} << std::endl
+                << cms::ssl::ShowX509{cert_data.cert.get()} << std::endl
                                   << (san_display.empty() ? "" : "SAN            : " + san_display + "\n")
                                   << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
                                   << std::endl;

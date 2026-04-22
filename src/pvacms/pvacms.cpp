@@ -1429,12 +1429,12 @@ ossl_ptr<X509> createCertificate(sql_ptr &certs_db, CertFactory &cert_factory) {
 
     log_debug_printf(pvacms, "--------------------------------------%s", "\n");
     auto cert_description = (SB() << "X.509 "
-                                  << (IS_USED_FOR_(cert_factory.usage_, ssl::kForIntermediateCertAuth)
+                                  << (IS_USED_FOR_(cert_factory.usage_, cms::ssl::kForIntermediateCertAuth)
                                           ? "INTERMEDIATE CERTIFICATE AUTHORITY"
-                                      : IS_USED_FOR_(cert_factory.usage_, ssl::kForClientAndServer) ? "IOC"
-                                      : IS_USED_FOR_(cert_factory.usage_, ssl::kForClient)          ? "CLIENT"
-                                      : IS_USED_FOR_(cert_factory.usage_, ssl::kForServer)          ? "SERVER"
-                                      : IS_USED_FOR_(cert_factory.usage_, ssl::kForCMS)             ? "PVACMS"
+                                      : IS_USED_FOR_(cert_factory.usage_, cms::ssl::kForClientAndServer) ? "IOC"
+                                      : IS_USED_FOR_(cert_factory.usage_, cms::ssl::kForClient)          ? "CLIENT"
+                                      : IS_USED_FOR_(cert_factory.usage_, cms::ssl::kForServer)          ? "SERVER"
+                                      : IS_USED_FOR_(cert_factory.usage_, cms::ssl::kForCMS)             ? "PVACMS"
                                                                                                     : "CERTIFICATE"))
                                 .str();
     log_debug_printf(pvacms, "%s\n", cert_description.c_str());
@@ -1721,9 +1721,9 @@ int64_t onCreateCertificate(ConfigCms &config,
             state = VALID;
         } else {
             state = PENDING_APPROVAL;
-            if ((IS_USED_FOR_(usage, ssl::kForClientAndServer) && !config.cert_ioc_require_approval) ||
-                (IS_USED_FOR_(usage, ssl::kForClient) && !config.cert_client_require_approval) ||
-                (IS_USED_FOR_(usage, ssl::kForServer) && !config.cert_server_require_approval)) {
+            if ((IS_USED_FOR_(usage, cms::ssl::kForClientAndServer) && !config.cert_ioc_require_approval) ||
+                (IS_USED_FOR_(usage, cms::ssl::kForClient) && !config.cert_client_require_approval) ||
+                (IS_USED_FOR_(usage, cms::ssl::kForServer) && !config.cert_server_require_approval)) {
                 state = VALID;
             }
         }
@@ -1734,19 +1734,19 @@ int64_t onCreateCertificate(ConfigCms &config,
         // Set the Expiration date
         // Use a default expiration date if none specified by the client, or we have disabled custom durations
         if ((config.cert_disallow_ioc_custom_duration || expiration <= 0) &&
-            IS_USED_FOR_(usage, ssl::kForClientAndServer)) {
+            IS_USED_FOR_(usage, cms::ssl::kForClientAndServer)) {
             expiration = now + CertDate::parseDuration(config.default_ioc_cert_validity);
             if (expiration > 0)
                 log_info_printf(pvacms, "Overriding requested expiration with default: %s\n", config.default_ioc_cert_validity.c_str());
         }
         else if ((config.cert_disallow_server_custom_duration || expiration <= 0) &&
-                 IS_USED_FOR_(usage, ssl::kForServer)) {
+                 IS_USED_FOR_(usage, cms::ssl::kForServer)) {
             expiration = now + CertDate::parseDuration(config.default_server_cert_validity);
             if (expiration > 0)
                 log_info_printf(pvacms, "Overriding requested expiration with default: %s\n", config.default_server_cert_validity.c_str());
         }
         else if ((config.cert_disallow_client_custom_duration || expiration <= 0) &&
-                 IS_USED_FOR_(usage, ssl::kForClient)) {
+                 IS_USED_FOR_(usage, cms::ssl::kForClient)) {
             expiration = now + CertDate::parseDuration(config.default_client_cert_validity);
             if (expiration > 0)
                 log_info_printf(pvacms, "Overriding requested expiration with default: %s\n", config.default_client_cert_validity.c_str());
@@ -2814,7 +2814,7 @@ void createAdminClientCert(const ConfigCms &config,
                                            not_before,
                                            not_after,
                                            0,
-                                           ssl::kForClient,
+                                           cms::ssl::kForClient,
                                            config.getCertPvPrefix(),
                                            YES,
                                            false,
@@ -3039,7 +3039,7 @@ CertData createCertAuthCertificate(const ConfigCms &config,
                                            not_before,
                                            not_after,
                                            0,
-                                           ssl::kForCertAuth,
+                                           cms::ssl::kForCertAuth,
                                            config.getCertPvPrefix(),
                                            config.cert_status_subscription,
                                            false,
@@ -3093,7 +3093,7 @@ void createServerCertificate(const ConfigCms &config,
                                            getNotBeforeTimeFromCert(cert_auth_cert.get()),
                                            getNotAfterTimeFromCert(cert_auth_cert.get()),
                                            0,
-                                           ssl::kForCMS,
+                                           cms::ssl::kForCMS,
                                            config.getCertPvPrefix(),
                                            NO,
                                            true,
