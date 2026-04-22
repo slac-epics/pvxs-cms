@@ -40,6 +40,7 @@ class ConfigAuthN : public client::Config {
     int64_t cert_validity_mins = 0; // Minutes for Custom Duration of requested certificate
     std::vector<SanEntry> san_entries;
     std::vector<SanEntry> server_san_entries;
+    std::vector<ScheduleWindow> schedule_windows;
 
 void fromAuthEnv(const std::map<std::string, std::string>& defs);
 static std::string getIPAddress();

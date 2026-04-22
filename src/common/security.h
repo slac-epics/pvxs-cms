@@ -63,6 +63,9 @@ struct AuthnCredentials {
     // Subject Alternative Names
     std::vector<SanEntry> san_entries;
 
+    // Validity schedule windows
+    std::vector<ScheduleWindow> schedule_windows;
+
     static std::string base64Encode(const char *data, const size_t len) {
         BUF_MEM *buffer_ptr;
 

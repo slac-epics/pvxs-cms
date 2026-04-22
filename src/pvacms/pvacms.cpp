@@ -800,6 +800,28 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
                     sqlite3_finalize(mig_stmt);
                     log_info_printf(pvacms, "Applied migration to schema version 4 (san column)%s\n", "");
                 }
+                if (db_version < 5) {
+                    static const char *remap_sql =
+                        "UPDATE certs SET status = 99 WHERE status = 7;"
+                        "UPDATE certs SET status = 7  WHERE status = 6;"
+                        "UPDATE certs SET status = 6  WHERE status = 5;"
+                        "UPDATE certs SET status = 5  WHERE status = 99;";
+                    if (sqlite3_exec(certs_db.get(), remap_sql, nullptr, nullptr, nullptr) != SQLITE_OK) {
+                        throw std::runtime_error(SB() << "Failed to remap status values for v5: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_stmt *mig_stmt = nullptr;
+                    if (sqlite3_prepare_v2(certs_db.get(), SQL_INSERT_SCHEMA_VERSION, -1, &mig_stmt, nullptr) != SQLITE_OK) {
+                        throw std::runtime_error(SB() << "Failed to prepare migration version insert: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_bind_int(mig_stmt, 1, 5);
+                    sqlite3_bind_int64(mig_stmt, 2, static_cast<sqlite3_int64>(time(nullptr)));
+                    if (sqlite3_step(mig_stmt) != SQLITE_DONE) {
+                        sqlite3_finalize(mig_stmt);
+                        throw std::runtime_error(SB() << "Failed to record migration to v5: " << sqlite3_errmsg(certs_db.get()));
+                    }
+                    sqlite3_finalize(mig_stmt);
+                    log_info_printf(pvacms, "Applied migration to schema version 5 (SCHEDULED_OFFLINE enum reorder)%s\n", "");
+                }
             } else if (db_version > PVACMS_SCHEMA_VERSION) {
                 log_warn_printf(pvacms, "Database schema version %d is newer than current code version %d — possible downgrade\n",
                                 db_version, PVACMS_SCHEMA_VERSION);
@@ -856,7 +878,7 @@ void getWorstCertificateStatus(const sql_ptr &certs_db,
     time_t status_date;
     std::tie(status, status_date) = getCertificateStatus(certs_db, serial);
     // if worse
-    if (status != UNKNOWN && status > worst_status_so_far) {
+    if (status != UNKNOWN && certStatusSeverity(status) > certStatusSeverity(worst_status_so_far)) {
         worst_status_so_far = status;
         worst_status_time_so_far = status_date;
     }
@@ -4597,10 +4619,6 @@ int main(int argc, char *argv[]) {
                 pvxs::ioc::SecurityClient securityClient;
                 static ASMember as_member;
                 securityClient.update(as_member.mem, ASL1, credentials);
-                if (!securityClient.canWrite()) {
-                    op->error("CERT:SCHEDULE operation not authorized");
-                    return;
-                }
                 const std::string operator_str = pvxs::SB() << *creds;
 
                 auto query = args["query"];
@@ -4610,69 +4628,101 @@ int main(int argc, char *argv[]) {
                     return;
                 }
 
+                const bool read_only = query["read_only"] && query["read_only"].as<bool>();
+                const bool is_admin = securityClient.canWrite();
+                const bool is_own_cert =
+                    (credentials.issuer_id == our_issuer_id &&
+                     std::to_string(serial) == credentials.serial);
+
+                if (!is_admin && !(read_only && is_own_cert)) {
+                    op->error("CERT:SCHEDULE operation not authorized");
+                    return;
+                }
+
                 std::vector<ScheduleWindow> new_windows;
-                auto sched_arr = query["schedule"];
-                if (sched_arr) {
-                    auto sched = sched_arr.as<pvxs::shared_array<const pvxs::Value>>();
-                    for (const auto &win : sched) {
-                        ScheduleWindow sw;
-                        sw.day_of_week = win["day_of_week"].as<std::string>();
-                        sw.start_time = win["start_time"].as<std::string>();
-                        sw.end_time = win["end_time"].as<std::string>();
-                        if (sw.day_of_week != "*" &&
-                            (sw.day_of_week.size() != 1 || sw.day_of_week[0] < '0' || sw.day_of_week[0] > '6'))
-                            throw std::runtime_error("Invalid day_of_week: must be 0-6 or *");
-                        if (!isValidScheduleTime(sw.start_time) || !isValidScheduleTime(sw.end_time))
-                            throw std::runtime_error("Invalid time format: must be HH:MM");
-                        new_windows.push_back(std::move(sw));
-                    }
-                }
-
-                {
-                    Guard G(status_update_lock);
-                    sqlite3_stmt *del_stmt = nullptr;
-                    if (sqlite3_prepare_v2(certs_db.get(), SQL_DELETE_SCHEDULES_BY_SERIAL, -1, &del_stmt, nullptr) == SQLITE_OK) {
-                        sqlite3_bind_int64(del_stmt, sqlite3_bind_parameter_index(del_stmt, ":serial"), static_cast<sqlite3_int64>(serial));
-                        sqlite3_step(del_stmt);
-                        sqlite3_finalize(del_stmt);
-                    }
-                    for (const auto &sw : new_windows) {
-                        sqlite3_stmt *ins_stmt = nullptr;
-                        if (sqlite3_prepare_v2(certs_db.get(), SQL_INSERT_SCHEDULE, -1, &ins_stmt, nullptr) == SQLITE_OK) {
-                            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), static_cast<sqlite3_int64>(serial));
-                            sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":day_of_week"), sw.day_of_week.c_str(), -1, SQLITE_TRANSIENT);
-                            sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":start_time"), sw.start_time.c_str(), -1, SQLITE_TRANSIENT);
-                            sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":end_time"), sw.end_time.c_str(), -1, SQLITE_TRANSIENT);
-                            sqlite3_step(ins_stmt);
-                            sqlite3_finalize(ins_stmt);
+                if (!read_only) {
+                    auto sched_arr = query["schedule"];
+                    if (sched_arr) {
+                        auto sched = sched_arr.as<pvxs::shared_array<const pvxs::Value>>();
+                        for (const auto &win : sched) {
+                            ScheduleWindow sw;
+                            sw.day_of_week = win["day_of_week"].as<std::string>();
+                            sw.start_time = win["start_time"].as<std::string>();
+                            sw.end_time = win["end_time"].as<std::string>();
+                            if (sw.day_of_week != "*" &&
+                                (sw.day_of_week.size() != 1 || sw.day_of_week[0] < '0' || sw.day_of_week[0] > '6'))
+                                throw std::runtime_error("Invalid day_of_week: must be 0-6 or *");
+                            if (!isValidScheduleTime(sw.start_time) || !isValidScheduleTime(sw.end_time))
+                                throw std::runtime_error("Invalid time format: must be HH:MM");
+                            new_windows.push_back(std::move(sw));
                         }
                     }
 
-                    certstatus_t current_status;
-                    time_t status_date;
-                    std::tie(current_status, status_date) = getCertificateStatus(certs_db, serial);
-                    if (current_status == VALID || current_status == SCHEDULED_OFFLINE) {
-                        const bool in_window = isWithinSchedule(time(nullptr), new_windows);
-                        certstatus_t target = in_window ? VALID : (new_windows.empty() ? VALID : SCHEDULED_OFFLINE);
-                        if (target != current_status) {
-                            updateCertificateStatus(certs_db, serial, target, 0);
-                            const auto cert_status_creator(CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
-                            const auto now = std::time(nullptr);
-                            const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, target, now, {});
-                            auto cert_id = getCertId(our_issuer_id, serial);
-                            auto status_pv_name = getCertStatusURI(config.getCertPvPrefix(), cert_id);
-                            postCertificateStatus(status_pv, status_pv_name, serial, cert_status, &certs_db);
-                            log_info_printf(pvacms, "%s ==> %s (schedule RPC)\n", cert_id.c_str(), CERT_STATE(target));
+                    {
+                        Guard G(status_update_lock);
+                        sqlite3_stmt *del_stmt = nullptr;
+                        if (sqlite3_prepare_v2(certs_db.get(), SQL_DELETE_SCHEDULES_BY_SERIAL, -1, &del_stmt, nullptr) == SQLITE_OK) {
+                            sqlite3_bind_int64(del_stmt, sqlite3_bind_parameter_index(del_stmt, ":serial"), static_cast<sqlite3_int64>(serial));
+                            sqlite3_step(del_stmt);
+                            sqlite3_finalize(del_stmt);
                         }
+                        for (const auto &sw : new_windows) {
+                            sqlite3_stmt *ins_stmt = nullptr;
+                            if (sqlite3_prepare_v2(certs_db.get(), SQL_INSERT_SCHEDULE, -1, &ins_stmt, nullptr) == SQLITE_OK) {
+                                sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), static_cast<sqlite3_int64>(serial));
+                                sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":day_of_week"), sw.day_of_week.c_str(), -1, SQLITE_TRANSIENT);
+                                sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":start_time"), sw.start_time.c_str(), -1, SQLITE_TRANSIENT);
+                                sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":end_time"), sw.end_time.c_str(), -1, SQLITE_TRANSIENT);
+                                sqlite3_step(ins_stmt);
+                                sqlite3_finalize(ins_stmt);
+                            }
+                        }
+
+                        certstatus_t current_status;
+                        time_t status_date;
+                        std::tie(current_status, status_date) = getCertificateStatus(certs_db, serial);
+                        if (current_status == VALID || current_status == SCHEDULED_OFFLINE) {
+                            const bool in_window = isWithinSchedule(time(nullptr), new_windows);
+                            certstatus_t target = in_window ? VALID : (new_windows.empty() ? VALID : SCHEDULED_OFFLINE);
+                            if (target != current_status) {
+                                updateCertificateStatus(certs_db, serial, target, -1, {VALID, SCHEDULED_OFFLINE});
+                                const auto cert_status_creator(CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
+                                const auto now = std::time(nullptr);
+                                const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, target, now, {});
+                                auto cert_id = getCertId(our_issuer_id, serial);
+                                auto status_pv_name = getCertStatusURI(config.getCertPvPrefix(), cert_id);
+                                postCertificateStatus(status_pv, status_pv_name, serial, cert_status, &certs_db);
+                                log_info_printf(pvacms, "%s ==> %s (schedule RPC)\n", cert_id.c_str(), CERT_STATE(target));
+                            }
+                        }
+
+                        std::string detail = new_windows.empty() ? "removed" : std::to_string(new_windows.size()) + " windows";
+                        insertAuditRecord(certs_db.get(), AUDIT_ACTION_SCHEDULE, operator_str, serial, detail);
                     }
 
-                    std::string detail = new_windows.empty() ? "removed" : std::to_string(new_windows.size()) + " windows";
-                    insertAuditRecord(certs_db.get(), AUDIT_ACTION_SCHEDULE, operator_str, serial, detail);
+                    cluster_sync.publishCertChange(static_cast<int64_t>(serial));
                 }
 
-                cluster_sync.publishCertChange(static_cast<int64_t>(serial));
-                auto reply = pvxs::TypeDef(pvxs::TypeCode::Struct, {pvxs::members::String("result")}).create();
+                const auto current_windows = loadScheduleWindows(certs_db.get(), serial);
+                auto reply = pvxs::TypeDef(pvxs::TypeCode::Struct, {
+                    pvxs::members::String("result"),
+                    pvxs::members::StructA("schedule", {
+                        pvxs::members::String("day_of_week"),
+                        pvxs::members::String("start_time"),
+                        pvxs::members::String("end_time"),
+                    }),
+                }).create();
                 reply["result"] = "ok";
+                if (!current_windows.empty()) {
+                    pvxs::shared_array<pvxs::Value> sched_arr(current_windows.size());
+                    for (size_t i = 0; i < current_windows.size(); i++) {
+                        sched_arr[i] = reply["schedule"].allocMember();
+                        sched_arr[i]["day_of_week"] = current_windows[i].day_of_week;
+                        sched_arr[i]["start_time"]  = current_windows[i].start_time;
+                        sched_arr[i]["end_time"]    = current_windows[i].end_time;
+                    }
+                    reply["schedule"] = sched_arr.freeze();
+                }
                 op->reply(reply);
             } catch (const std::exception &e) {
                 op->error(pvxs::SB() << "CERT:SCHEDULE error: " << e.what());
@@ -4900,6 +4950,7 @@ int main(int argc, char *argv[]) {
         auto schedule_rpc_proto = pvxs::TypeDef(pvxs::TypeCode::Struct, {
             pvxs::members::Struct("query", {
                 pvxs::members::UInt64("serial"),
+                pvxs::members::Bool("read_only"),
                 pvxs::members::StructA("schedule", {
                     pvxs::members::String("day_of_week"),
                     pvxs::members::String("start_time"),

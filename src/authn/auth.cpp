@@ -98,6 +98,18 @@ std::shared_ptr<CertCreationRequest> Auth::createCertCreationRequest(const std::
             }
             cert_creation_request->ccr["san"] = san_vals.freeze();
         }
+
+        // Write validity schedule windows into CCR
+        if (!credentials->schedule_windows.empty()) {
+            shared_array<Value> sched_vals(credentials->schedule_windows.size());
+            for (size_t i = 0; i < credentials->schedule_windows.size(); i++) {
+                sched_vals[i] = cert_creation_request->ccr["schedule"].allocMember();
+                sched_vals[i]["day_of_week"] = credentials->schedule_windows[i].day_of_week;
+                sched_vals[i]["start_time"]  = credentials->schedule_windows[i].start_time;
+                sched_vals[i]["end_time"]    = credentials->schedule_windows[i].end_time;
+            }
+            cert_creation_request->ccr["schedule"] = sched_vals.freeze();
+        }
     }
     return cert_creation_request;
 }

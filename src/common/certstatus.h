@@ -298,9 +298,9 @@ class CertStatusSubscriptionException final : public CertStatusException {
     X_IT(PENDING)           \
     X_IT(PENDING_APPROVAL)  \
     X_IT(PENDING_RENEWAL)   \
+    X_IT(SCHEDULED_OFFLINE) \
     X_IT(EXPIRED)           \
-    X_IT(REVOKED)           \
-    X_IT(SCHEDULED_OFFLINE)
+    X_IT(REVOKED)
 
 // All OCSP certificate statuses
 #define OCSP_CERT_STATUS_LIST     \
@@ -346,6 +346,25 @@ enum class cert_status_class_t : int {
     UNKNOWN = 0,
     GOOD = 1,
 };
+
+// Severity ordering for certstatus_t used when selecting the worst status
+// across a CA certificate chain.  Do not use the raw enum ordinals for this
+// purpose: the enum order reflects the certificate lifecycle, not severity.
+//
+// Higher return value = worse status.
+inline int certStatusSeverity(certstatus_t s) noexcept {
+    switch (s) {
+        case REVOKED:           return 6;
+        case EXPIRED:           return 5;
+        case PENDING_RENEWAL:   return 4;
+        case PENDING_APPROVAL:  return 3;
+        case PENDING:           return 2;
+        case SCHEDULED_OFFLINE: return 1;
+        case VALID:             return 0;
+        case UNKNOWN:
+        default:                return -1;
+    }
+}
 
 // Forward declarations
 struct PVACertStatus;
