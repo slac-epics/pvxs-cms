@@ -19,13 +19,13 @@
 #include "authregistry.h"
 #include "utilpvt.h"
 
-DEFINE_LOGGER(auth, "pvxs.auth.krb");
+DEFINE_LOGGER(auth_logger, "pvxs.auth.krb");
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::AuthnCredentials;
-    using cms::cert::CertCreationRequest;
-    using cms::cert::KeyPair;
+namespace cms {
+namespace auth {
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::KeyPair;
 
 /**
  * @brief Registrar for the Kerberos authenticator
@@ -56,7 +56,7 @@ struct AuthNKrbRegistrar {
  */
 std::shared_ptr<AuthnCredentials> AuthNKrb::getCredentials(const client::Config &config, bool) const {
     const auto krb_config = dynamic_cast<const ConfigKrb &>(config);
-    log_debug_printf(auth,
+    log_debug_printf(auth_logger,
                      "\n******************************************\n"
                      "Kerberos Authenticator: %s\n",
                      "Begin acquisition");
@@ -84,7 +84,7 @@ std::shared_ptr<AuthnCredentials> AuthNKrb::getCredentials(const client::Config 
         kerberos_credentials->not_after = now + krb_config.cert_validity_mins * 60;
     }
 
-    log_debug_printf(auth, "\nName: %s, \nOrg: %s, \nnot_before: %lu, \nnot_after: %lu\n", kerberos_credentials->name.c_str(),
+    log_debug_printf(auth_logger, "\nName: %s, \nOrg: %s, \nnot_before: %lu, \nnot_after: %lu\n", kerberos_credentials->name.c_str(),
                      kerberos_credentials->organization.c_str(), kerberos_credentials->not_before, kerberos_credentials->not_after);
 
     return kerberos_credentials;
@@ -99,7 +99,7 @@ std::shared_ptr<AuthnCredentials> AuthNKrb::getCredentials(const client::Config 
  * @return the realm from the kerberos ticket
  */
 std::string AuthNKrb::getRealm() {
-    log_debug_printf(auth,
+    log_debug_printf(auth_logger,
                      "\n******************************************\n"
                      "Kerberos Authenticator: %s\n",
                      "Begin realm extraction");
@@ -147,18 +147,18 @@ const ConfigAuthN &config) const {
 
     // Call base class to set up the common CCR fields.
     auto cert_creation_request = Auth::createCertCreationRequest(credentials, key_pair, usage, config);
-    log_debug_printf(auth, "CCR: created%s", "\n");
+    log_debug_printf(auth_logger, "CCR: created%s", "\n");
 
     OM_uint32 minor_status;
     auto context = GSS_C_NO_CONTEXT;
 
     // Get the target name (e.g. "pvacms/cluster@EPICS.ORG").
-    log_debug_printf(auth, "Getting Target Name: %s\n", krb_validator_service_name.c_str());
+    log_debug_printf(auth_logger, "Getting Target Name: %s\n", krb_validator_service_name.c_str());
     gss_name_t target_name;
     gssNameFromString(krb_validator_service_name, target_name);
 
     // Initialize a security context from a Kerberos ticket.
-    log_debug_printf(auth, "Calling gss_init_sec_context%s", "\n");
+    log_debug_printf(auth_logger, "Calling gss_init_sec_context%s", "\n");
     gss_buffer_desc output_token = GSS_C_EMPTY_BUFFER;
 
     OM_uint32 major_status = gss_init_sec_context(&minor_status,
@@ -173,11 +173,11 @@ const ConfigAuthN &config) const {
     }
 
     // Save the output token from the security context.
-    log_debug_printf(auth, "Obtained Security Token%s", "\n");
+    log_debug_printf(auth_logger, "Obtained Security Token%s", "\n");
     krb_credentials->token = std::vector<uint8_t>(static_cast<uint8_t *>(output_token.value), static_cast<uint8_t *>(output_token.value) + output_token.length);
 
     // MIC generation for message integrity
-    log_debug_printf(auth, "Computing MIC over public key%s", "\n");
+    log_debug_printf(auth_logger, "Computing MIC over public key%s", "\n");
     const std::string public_key_str = key_pair->public_key;
     gss_buffer_desc data_buffer;
     data_buffer.value = reinterpret_cast<void *>(const_cast<char *>(public_key_str.c_str()));
@@ -197,11 +197,11 @@ const ConfigAuthN &config) const {
     gss_release_buffer(&minor_status, &mic_token);
 
     // Clean up
-    log_debug_printf(auth, "Deleting Security Context%s", "\n");
+    log_debug_printf(auth_logger, "Deleting Security Context%s", "\n");
     gss_delete_sec_context(&minor_status, &context, &output_token);
 
     // Add both the security token and the MIC to the certificate creation request.
-    log_debug_printf(auth, "Setting token and MIC in CCR%s", "\n");
+    log_debug_printf(auth_logger, "Setting token and MIC in CCR%s", "\n");
     const shared_array<const uint8_t> token_bytes(krb_credentials->token.begin(), krb_credentials->token.end());
     cert_creation_request->credentials = krb_credentials;
     cert_creation_request->ccr["verifier.token"] = token_bytes;
@@ -314,17 +314,17 @@ std::string AuthNKrb::gssErrorDescription(const OM_uint32 major_status, const OM
  * @throw std::runtime_error if the CCR is not valid
  */
 bool AuthNKrb::verify(Value &ccr, time_t &authenticated_expiration_date) const {
-    log_debug_printf(auth, "Verifying Kerberos CCR request%s", "\n");
+    log_debug_printf(auth_logger, "Verifying Kerberos CCR request%s", "\n");
 
-    log_debug_printf(auth, "Checking Keytab is configured: %s\n", krb_keytab_file.c_str());
+    log_debug_printf(auth_logger, "Checking Keytab is configured: %s\n", krb_keytab_file.c_str());
     if (krb_keytab_file.empty()) {
-        log_debug_printf(auth, "Keytab is NOT configured - ***exiting***: %s\n", krb_keytab_file.c_str());
+        log_debug_printf(auth_logger, "Keytab is NOT configured - ***exiting***: %s\n", krb_keytab_file.c_str());
         throw std::runtime_error(
             "KRB5_KTNAME environment variable needs to be set to point to the location of the keytab.  e.g. ~/.config/pva/1.5/pvacms.keytab");
     }
 
     // Acquire the correct server credentials.
-    log_debug_printf(auth, "Server name into name buffer: %s\n", krb_validator_service_name.c_str());
+    log_debug_printf(auth_logger, "Server name into name buffer: %s\n", krb_validator_service_name.c_str());
     gss_name_t serverName = GSS_C_NO_NAME;
     gss_buffer_desc nameBuf;
     nameBuf.value = (void *)krb_validator_service_name.c_str();  // e.g. "pvacms/cluster@EPICS.ORG"
@@ -333,31 +333,31 @@ bool AuthNKrb::verify(Value &ccr, time_t &authenticated_expiration_date) const {
     OM_uint32 minor_status, major_status;
     major_status = gss_import_name(&minor_status, &nameBuf, GSS_KRB5_NT_PRINCIPAL_NAME, &serverName);
     if (GSS_ERROR(major_status)) {
-        log_debug_printf(auth, "Error importing name: %s\n", krb_validator_service_name.c_str());
+        log_debug_printf(auth_logger, "Error importing name: %s\n", krb_validator_service_name.c_str());
         throw std::runtime_error("Failed to import server name");
     }
 
-    log_debug_printf(auth, "Acquire Server Credentials for PVACMS service: %s\n", krb_validator_service_name.c_str());
+    log_debug_printf(auth_logger, "Acquire Server Credentials for PVACMS service: %s\n", krb_validator_service_name.c_str());
     auto serverCred = GSS_C_NO_CREDENTIAL;
     major_status = gss_acquire_cred(&minor_status, serverName, GSS_C_INDEFINITE, GSS_C_NO_OID_SET, GSS_C_ACCEPT, &serverCred, nullptr, nullptr);
     if (GSS_ERROR(major_status)) {
-        log_debug_printf(auth, "Failed to acquire server credentials: %s\n", krb_validator_service_name.c_str());
+        log_debug_printf(auth_logger, "Failed to acquire server credentials: %s\n", krb_validator_service_name.c_str());
         throw std::runtime_error("Failed to acquire server credentials");
     }
 
     // Extract and decode the client token from the CCR.
-    log_debug_printf(auth, "Get GSS-API Token from CCR: %s", "\n");
+    log_debug_printf(auth_logger, "Get GSS-API Token from CCR: %s", "\n");
     auto token_bytes = ccr["verifier.token"].as<shared_array<const uint8_t>>();
     std::vector<uint8_t> vec_bytes(token_bytes.begin(), token_bytes.end());
 
-    log_debug_printf(auth, "Convert token to gss_buffer_desc: %s", "\n");
+    log_debug_printf(auth_logger, "Convert token to gss_buffer_desc: %s", "\n");
     gss_buffer_desc client_token;
     client_token.length = vec_bytes.size();
     std::unique_ptr<uint8_t[]> buffer(new uint8_t[client_token.length]);
     client_token.value = buffer.get();
     std::copy(vec_bytes.begin(), vec_bytes.end(), static_cast<uint8_t *>(client_token.value));
 
-    log_debug_printf(auth, "Accept this client token: %s", "\n");
+    log_debug_printf(auth_logger, "Accept this client token: %s", "\n");
     // Accept the client's token to establish a security context.
     auto context = GSS_C_NO_CONTEXT;
     gss_buffer_desc server_token;
@@ -366,7 +366,7 @@ bool AuthNKrb::verify(Value &ccr, time_t &authenticated_expiration_date) const {
                                           nullptr, nullptr, nullptr);
 
     if (GSS_ERROR(major_status)) {
-        log_debug_printf(auth, "Failed to accept client token: %s\n", gssErrorDescription(major_status, minor_status).c_str());
+        log_debug_printf(auth_logger, "Failed to accept client token: %s\n", gssErrorDescription(major_status, minor_status).c_str());
         throw std::runtime_error(SB() << "Verify Credentials: Failed to validate kerberos token: " << gssErrorDescription(major_status, minor_status));
     }
 
@@ -386,7 +386,7 @@ bool AuthNKrb::verify(Value &ccr, time_t &authenticated_expiration_date) const {
         throw std::runtime_error(SB() << "Verify Credentials: Failed to get peer lifetime: " << gssErrorDescription(major_status, minor_status));
     }
 
-    log_debug_printf(auth, "Get peer name: %s", "\n");
+    log_debug_printf(auth_logger, "Get peer name: %s", "\n");
     gss_buffer_desc peer_name_buffer;
     major_status = gss_display_name(&minor_status, initiator_name, &peer_name_buffer, nullptr);
     if (GSS_ERROR(major_status)) {
@@ -401,7 +401,7 @@ bool AuthNKrb::verify(Value &ccr, time_t &authenticated_expiration_date) const {
     // Compose the expected peer principal from CCR fields.
     auto peer_principal_name(ccr["name"].as<std::string>() + "@" + ccr["organization"].as<std::string>());
 
-    log_debug_printf(auth, "Check against CCR: %s", "\n");
+    log_debug_printf(auth_logger, "Check against CCR: %s", "\n");
     if (peer_principal_name != ctx_principal) {
         throw std::runtime_error(SB() << "Verify Credentials: Kerberos name does not match name in CCR: " << peer_principal_name << " != " << ctx_principal);
     }
@@ -437,7 +437,7 @@ bool AuthNKrb::verify(Value &ccr, time_t &authenticated_expiration_date) const {
     if (GSS_ERROR(major_status)) {
         throw std::runtime_error(SB() << "MIC verification failed: " << gssErrorDescription(major_status, minor_status));
     }
-    log_debug_printf(auth, "MIC verification succeeded%s", "\n");
+    log_debug_printf(auth_logger, "MIC verification succeeded%s", "\n");
 
     // Optionally, clean up the security context if it is no longer needed.
     // gss_delete_sec_context(&minor_status, &context, GSS_C_NO_BUFFER);
@@ -462,12 +462,12 @@ PrincipalInfo AuthNKrb::getPrincipalInfo() {
     auto cred_handle = GSS_C_NO_CREDENTIAL;
     OM_uint32 lifetime = 0;
 
-    log_debug_printf(auth, "gss_acquire_cred: GSS_C_NO_NAME, GSS_C_INDEFINITE, GSS_C_NO_OID_SET, GSS_C_INITIATE%s", "\n");
+    log_debug_printf(auth_logger, "gss_acquire_cred: GSS_C_NO_NAME, GSS_C_INDEFINITE, GSS_C_NO_OID_SET, GSS_C_INITIATE%s", "\n");
     OM_uint32 major_status = gss_acquire_cred(&minor_status, GSS_C_NO_NAME, GSS_C_INDEFINITE, GSS_C_NO_OID_SET, GSS_C_INITIATE, &cred_handle, nullptr, nullptr);
     if (major_status != GSS_S_COMPLETE)
         throw std::runtime_error(SB() << "getPrincipalInfo: Failed to acquire credentials: " << gssErrorDescription(major_status, minor_status));
 
-    log_debug_printf(auth, "gss_inquire_cred%s", "\n");
+    log_debug_printf(auth_logger, "gss_inquire_cred%s", "\n");
     major_status = gss_inquire_cred(&minor_status, cred_handle, &name, &lifetime, nullptr, nullptr);
     if (major_status != GSS_S_COMPLETE) {
         const auto error_description = gssErrorDescription(major_status, minor_status, true);
@@ -475,7 +475,7 @@ PrincipalInfo AuthNKrb::getPrincipalInfo() {
         throw std::runtime_error(SB() << "getPrincipalInfo: Failed to inquire credentials: " << error_description);
     }
 
-    log_debug_printf(auth, "gss_display_name%s", "\n");
+    log_debug_printf(auth_logger, "gss_display_name%s", "\n");
     major_status = gss_display_name(&minor_status, name, &name_buffer, nullptr);
     if (major_status != GSS_S_COMPLETE) {
         const auto error_description = gssErrorDescription(major_status, minor_status);
@@ -494,5 +494,5 @@ PrincipalInfo AuthNKrb::getPrincipalInfo() {
     return {principal, lifetime};
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

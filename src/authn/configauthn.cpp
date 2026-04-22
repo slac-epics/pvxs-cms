@@ -21,12 +21,17 @@
 struct ifaddrs;
 #endif
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::SanEntry;
-    using cms::cert::CertDate;
-    using cms::cert::YES;
-    using cms::cert::NO;
+namespace cms {
+namespace auth {
+    using ::pvxs::SB;
+    using ::pvxs::PickOne;
+    using ::pvxs::ensureDirectoryExists;
+    using ::pvxs::getFileContents;
+    using ::pvxs::getXdgPvaConfigHome;
+    using ::cms::cert::SanEntry;
+    using ::cms::cert::CertDate;
+    using ::cms::cert::YES;
+    using ::cms::cert::NO;
 
 /**
  * @brief Parse a comma-separated SAN string into a vector of SanEntry.
@@ -242,5 +247,5 @@ std::string ConfigAuthN::getIPAddress() {
 #endif
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

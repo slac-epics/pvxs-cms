@@ -8,13 +8,14 @@
 
 #include "serverev.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    namespace server = ::pvxs::server;
 
 //! Create a new Server using the current configuration with a custom file event callback
 server::ServerEv Config::build(const server::CustomServerCallback &cert_file_event_callback) const {
     return {*this, cert_file_event_callback};
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

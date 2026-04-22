@@ -22,11 +22,11 @@
 #define PVXS_LDAP_AUTH_PUB_KEY_ATTRIBUTE "epicsPublicKey"
 #define PVXS_LDAP_AUTH_PEOPLE_GROUP "People"
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::AuthnCredentials;
-    using cms::cert::CertCreationRequest;
-    using cms::cert::KeyPair;
+namespace cms {
+namespace auth {
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::KeyPair;
 
 /**
  * The subclass of Credentials that contains the AuthNLdap specific
@@ -98,7 +98,7 @@ class AuthNLdap final : public Auth {
     static std::string getPublicKeyFromLDAP(const std::string &ldap_server, int ldap_port, const std::string &uid, const std::string &organization);
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #endif  // PVXS_AUTH_LDAP_H

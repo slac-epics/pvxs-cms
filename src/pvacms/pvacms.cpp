@@ -97,9 +97,11 @@ DEFINE_LOGGER(pvacmsmonitor, "pvxs.certs");
 
 namespace pvxs {
 namespace certs {
-    using cms::cert::DbCert;
-    using cms::cert::IdFileFactory;
-    using cms::cert::KeyPair;
+using cms::auth::Auth;
+using cms::auth::AuthRegistry;
+using cms::cert::DbCert;
+using cms::cert::IdFileFactory;
+using cms::cert::KeyPair;
     using cms::cert::SanEntry;
     using cms::cert::ScheduleWindow;
     using cms::cert::CertFactory;

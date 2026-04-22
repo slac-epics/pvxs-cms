@@ -27,17 +27,17 @@
 
 DEFINE_LOGGER(config, "pvxs.auth.config");
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::AuthnCredentials;
-    using cms::cert::CertCreationRequest;
-    using cms::cert::KeyPair;
-    using cms::cert::CertStatus;
-    using cms::cert::CmsStatusManager;
-    using cms::cert::CertData;
-    using cms::cert::CertDate;
-    using cms::cert::CertStatusNoExtensionException;
-    using cms::cert::getConfigURI;
+namespace cms {
+namespace auth {
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::KeyPair;
+    using ::cms::cert::CertStatus;
+    using ::cms::cert::CmsStatusManager;
+    using ::cms::cert::CertData;
+    using ::cms::cert::CertDate;
+    using ::cms::cert::CertStatusNoExtensionException;
+    using ::cms::cert::getConfigURI;
 
 /**
  * @brief Get a pointer to the singleton Auth object for the given type.
@@ -320,5 +320,5 @@ std::string Auth::formatTimeDuration(time_t total_seconds) {
 }
 
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

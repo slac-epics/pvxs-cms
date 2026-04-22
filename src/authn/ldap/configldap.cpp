@@ -12,8 +12,12 @@
 
 DEFINE_LOGGER(cfg, "pvxs.certs.cfg");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    using ::pvxs::PickOne;
+    using ::pvxs::ensureDirectoryExists;
+    using ::pvxs::getFileContents;
+    using ::pvxs::parseTo;
 
 void ConfigLdap::fromLdapEnv(const std::map<std::string, std::string> &defs) {
     PickOne pickone{defs, true};
@@ -59,5 +63,5 @@ void ConfigLdap::updateDefs(defs_t &defs) const {
     defs["EPICS_AUTH_LDAP_PORT"] = std::to_string(ldap_port);
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

@@ -16,9 +16,9 @@
 #include "openssl.h"
 #include "p12filefactory.h"
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::CertDate;
+namespace cms {
+namespace auth {
+    using ::cms::cert::CertDate;
 
 /**
  * @brief Define the options for the authnkrb tool
@@ -148,25 +148,25 @@ int readParameters(const int argc, char *argv[], ConfigKrb &config, bool &verbos
             std::cerr << "Error: -V option cannot be used with any other options.\n";
             return 10;
         }
-        std::cout << version_information;
+        std::cout << pvxs::version_information;
         exit(0);
     }
 
     // Set the certificate usage based on the command line parameters
     if (usage == "server") {
-            cert_usage = cms::ssl::kForServer;
+            cert_usage = ::cms::ssl::kForServer;
         if (config.tls_srv_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVAS_TLS_KEYCHAIN environment variable to create server certificates" << std::endl;
             return 10;
         }
     } else if (usage == "client") {
-            cert_usage = cms::ssl::kForClient;
+            cert_usage = ::cms::ssl::kForClient;
         if (config.tls_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVA_TLS_KEYCHAIN environment variable to create client certificates" << std::endl;
             return 11;
         }
     } else if (usage == "ioc") {
-            cert_usage = cms::ssl::kForClientAndServer;
+            cert_usage = ::cms::ssl::kForClientAndServer;
         if (config.tls_srv_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVAS_TLS_KEYCHAIN environment variable to create ioc certificates" << std::endl;
             return 12;
@@ -199,10 +199,12 @@ int readParameters(const int argc, char *argv[], ConfigKrb &config, bool &verbos
     return 0;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
-using namespace pvxs::certs;
+using cms::auth::AuthNKrb;
+using cms::auth::ConfigKrb;
+using cms::auth::runAuthenticator;
 
 /**
  * @brief Main function for the authnkrb tool
