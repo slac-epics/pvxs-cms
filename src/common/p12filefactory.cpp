@@ -35,8 +35,8 @@
 namespace cms {
 namespace cert {
 
-using pvxs::ensureDirectoryExists;
-using pvxs::file_ptr;
+using cms::detail::ensureDirectoryExists;
+using cms::detail::file_ptr;
 
 DEFINE_LOGGER(filelogger, "pvxs.p12");
 

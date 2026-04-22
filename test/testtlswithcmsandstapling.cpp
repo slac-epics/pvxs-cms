@@ -58,6 +58,7 @@ using cms::cert::CertDate;
 using cms::cert::getCertStatusPv;
 using cms::cert::VALID;
 using cms::cert::REVOKED;
+using cms::detail::ServerEv;
 using namespace pvxs::certs;
 
 namespace {
@@ -86,7 +87,7 @@ struct Tester {
     std::shared_ptr<server::WildcardSource> source;
     server::WildcardPV status_pv{server::WildcardPV::buildMailbox()};
     server::Config server_config;
-    server::ServerEv pvacms;
+    ServerEv pvacms;
     client::Context client;
     CounterMap cert_status_request_counters;
     epicsEvent cert_status_evt;

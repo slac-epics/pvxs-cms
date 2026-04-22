@@ -20,7 +20,7 @@
 namespace cms {
 namespace cert {
 
-using pvxs::ossl_ptr;
+using cms::detail::ossl_ptr;
 
 /**
  * @class P12FileFactory

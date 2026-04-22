@@ -19,21 +19,21 @@
 #include "certstatusmanager.h"
 #include "evhelper.h"
 
-namespace pvxs {
-namespace server {
+namespace cms {
+namespace detail {
 
 DEFINE_LOGGER(serverio, "pvxs.svr.io");
 DEFINE_LOGGER(serversetup, "pvxs.svr.init");
 
 ServerEv ServerEv::fromEnv(CustomServerCallback &custom_event_callback)
 {
-    return certs::Config::fromEnv().build(custom_event_callback);
+    return auth::Config::fromEnv().build(custom_event_callback);
 }
 
 client::Config ServerEv::clientConfig() const { return base_.clientConfig();}
 
 
-ServerEv::ServerEv(const certs::Config &config, const CustomServerCallback &custom_cert_event_callback) : base_(config) {
+ServerEv::ServerEv(const Config &config, const CustomServerCallback &custom_cert_event_callback) : base_(config) {
     auto internal(std::make_shared<Pvt>(*this, custom_cert_event_callback));
     internal->self = internal;
 
@@ -68,7 +68,7 @@ ServerEv::Pvt::Pvt(ServerEv &svr, const CustomServerCallback &custom_cert_event_
     , custom_server_callback_timer(__FILE__, __LINE__, event_new(acceptor_loop.base, -1, EV_TIMEOUT, doCustomServerCallback, this)) {
 
     // Cast away constness as this is constructor and we know it is ok
-    auto& cfg = const_cast<Config&>(svr.config());
+    auto& cfg = const_cast<server::Config&>(svr.config());
 
     // Clean out GUID created by the base constructor
     cfg.guid.fill(0);
@@ -120,5 +120,5 @@ void ServerEv::Pvt::doCustomServerCallback(evutil_socket_t fd, short evt, void* 
     }
 }
 
-} // serverx
-} // pvxs
+} // namespace detail
+} // namespace cms

@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <osiSock.h>
 
@@ -22,25 +23,21 @@ namespace cms {
 namespace auth {
 class Config;
 }
-}
+namespace detail {
 
-namespace pvxs {
-namespace certs {
 using cms::auth::Config;
-}
 
-namespace server {
+namespace client = ::pvxs::client;
+namespace server = ::pvxs::server;
 
 using CustomServerCallback = std::function<timeval(short)>;
 static constexpr timeval kCustomCallbackIntervalInitial{0, 0};
 static constexpr timeval kCustomCallbackInterval{15, 0};
 
-struct EnhancedConfig;
-
 class ServerEv {
 public:
     constexpr ServerEv() = default;
-    ServerEv(const certs::Config &config, const CustomServerCallback &custom_cert_event_callback);
+    ServerEv(const cms::auth::Config &config, const CustomServerCallback &custom_cert_event_callback);
     ServerEv(const ServerEv&) = default;
     ServerEv(ServerEv&& o) = default;
     ServerEv& operator=(const ServerEv&) = default;
@@ -52,14 +49,14 @@ public:
     ServerEv& stop()      { stopCb();  base_.stop();                  return *this; }
     ServerEv& run()       { startCb(); base_.run();       stopCb();   return *this; }
     ServerEv& interrupt() {            base_.interrupt();             return *this; }
-    void reconfigure(const Config&) { stopCb();  base_.reconfigure(Config()); startCb(); }
-    const Config& config() const {return base_.config();}
+    void reconfigure(const server::Config& config) { stopCb();  base_.reconfigure(config); startCb(); }
+    const server::Config& config() const {return base_.config();}
     client::Config clientConfig() const;
-    ServerEv& addPV(const std::string& name, const SharedPV& pv) { base_.addPV(name, pv); return *this; }
+    ServerEv& addPV(const std::string& name, const server::SharedPV& pv) { base_.addPV(name, pv); return *this; }
     ServerEv& removePV(const std::string& name) { base_.removePV(name); return *this;}
-    ServerEv& addSource(const std::string& name, const std::shared_ptr<Source>& src, int order =0) { base_.addSource(name, src, order); return *this; }
-    std::shared_ptr<Source> removeSource(const std::string& name, int order =0) { return base_.removeSource(name, order); }
-    std::shared_ptr<Source> getSource(const std::string& name, int order =0) { return base_.getSource(name, order); }
+    ServerEv& addSource(const std::string& name, const std::shared_ptr<server::Source>& src, int order =0) { base_.addSource(name, src, order); return *this; }
+    std::shared_ptr<server::Source> removeSource(const std::string& name, int order =0) { return base_.removeSource(name, order); }
+    std::shared_ptr<server::Source> getSource(const std::string& name, int order =0) { return base_.getSource(name, order); }
     std::vector<std::pair<std::string, int> > listSource() { return base_.listSource(); }
 
     explicit operator bool() const { return !!base_;}
@@ -68,7 +65,7 @@ public:
 
     struct Pvt;
 private:
-    Server base_;
+    server::Server base_;
     std::shared_ptr<Pvt> pvt;
     void startCb();
     void stopCb();
@@ -86,7 +83,7 @@ struct ServerEv::Pvt {
     static void doCustomServerCallback(evutil_socket_t fd, short evt, void* raw);
 };
 
-} // serverx
-} // pvxs
+} // namespace detail
+} // namespace cms
 
 #endif //PVXS_SERVEREV_H
