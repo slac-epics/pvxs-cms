@@ -9,23 +9,6 @@
 
 #include <pvxs/version.h>
 
-#include "ownedptr.h"
-
-namespace pvxs {
-namespace ossl {
-
-struct OSSLGbl {
-    bool tls_disabled {false};
-    ossl_ptr<OSSL_LIB_CTX> libctx;
-    int SSL_CTX_ex_idx;
-#ifdef PVXS_ENABLE_SSLKEYLOGFILE
-    file_ptr keylog;
-    epicsMutex keylock;
-#endif
-};
-
-PVXS_API extern OSSLGbl* ossl_gbl;
-
 // Custom OIDs
 // TODO Register these unassigned OIDs for EPICS
 
@@ -41,12 +24,29 @@ PVXS_API extern OSSLGbl* ossl_gbl;
 #define SN_SPvaCertConfigURI "ASN.1 - SPvaCertConfigURI"
 #define LN_SPvaCertConfigURI "EPICS SPVA Certificate Config URI"
 
-PVXS_API extern void osslInit();
+namespace pvxs {
+namespace ossl {
 
+struct OSSLGbl;
+
+PVXS_API extern OSSLGbl* ossl_gbl;
+PVXS_API extern void osslInit();
 PVXS_API extern int NID_SPvaCertStatusURI;
 PVXS_API extern int NID_SPvaCertConfigURI;
 
 }  // namespace ossl
 }  // namespace pvxs
+
+namespace cms {
+namespace ssl {
+
+using OSSLGbl = pvxs::ossl::OSSLGbl;
+using pvxs::ossl::ossl_gbl;
+using pvxs::ossl::osslInit;
+using pvxs::ossl::NID_SPvaCertStatusURI;
+using pvxs::ossl::NID_SPvaCertConfigURI;
+
+}  // namespace ssl
+}  // namespace cms
 
 #endif  // PVXS_OPENSSL_GBL_H

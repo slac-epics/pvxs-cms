@@ -43,9 +43,6 @@
 namespace cms {
 namespace cert {
 
-namespace ossl = pvxs::ossl;
-namespace ssl = pvxs::ssl;
-
 DEFINE_LOGGER(certs, "pvxs.certs.cms");
 
 /**
@@ -58,7 +55,7 @@ DEFINE_LOGGER(certs, "pvxs.certs.cms");
  */
 ossl_ptr<X509> CertFactory::create() {
     // 0. Make sure the custom certificate extensions have been registered
-    ossl::osslInit();
+    cms::ssl::osslInit();
 
     // 1. Create an empty certificate
     ossl_ptr<X509> certificate(X509_new());
@@ -109,7 +106,7 @@ ossl_ptr<X509> CertFactory::create() {
     addExtension(certificate, NID_authority_key_identifier, "keyid:always,issuer:always");
 
     // 11. Add EPICS status, config subscription, and must-renew-by, extensions, if required and is not CMS itself
-    if (!IS_USED_FOR_(usage_, ssl::kForCMS)) {
+    if (!IS_USED_FOR_(usage_, cms::ssl::kForCMS)) {
         const auto issuer_id = CertStatus::getSkId(issuer_certificate_ptr_);
         const auto skid = CertStatus::getSkId(certificate);
 
@@ -124,11 +121,11 @@ ossl_ptr<X509> CertFactory::create() {
         }
 
         if (add_status_subscription) {
-            addCustomExtensionByNid(certificate, ossl::NID_SPvaCertStatusURI, getCertStatusURI(cert_pv_prefix_, issuer_id, serial_));
+        addCustomExtensionByNid(certificate, cms::ssl::NID_SPvaCertStatusURI, getCertStatusURI(cert_pv_prefix_, issuer_id, serial_));
         }
 
         if (!cert_config_uri_base_.empty()) {
-            addCustomExtensionByNid(certificate, ossl::NID_SPvaCertConfigURI, getConfigURI(cert_pv_prefix_, issuer_id, skid));
+        addCustomExtensionByNid(certificate, cms::ssl::NID_SPvaCertConfigURI, getConfigURI(cert_pv_prefix_, issuer_id, skid));
         }
     }
 
@@ -312,14 +309,14 @@ void CertFactory::addExtensions(const ossl_ptr<X509> &certificate) const {
     addExtension(certificate, NID_subject_key_identifier, "hash", certificate.get());
 
     // Basic Constraints
-    auto basic_constraint(IS_USED_FOR_(usage_, ssl::kForCertAuth) ? "critical,CA:TRUE" : "CA:FALSE");
+    auto basic_constraint(IS_USED_FOR_(usage_, cms::ssl::kForCertAuth) ? "critical,CA:TRUE" : "CA:FALSE");
     addExtension(certificate, NID_basic_constraints, basic_constraint);
 
     // Key usage
     std::string usage;
-    if (IS_USED_FOR_(usage_, ssl::kForIntermediateCertAuth)) {
+    if (IS_USED_FOR_(usage_, cms::ssl::kForIntermediateCertAuth)) {
         usage = "digitalSignature,cRLSign,keyCertSign";
-    } else if (IS_USED_FOR_(usage_, ssl::kForCertAuth)) {
+    } else if (IS_USED_FOR_(usage_, cms::ssl::kForCertAuth)) {
         usage = "cRLSign,keyCertSign";
     } else if (IS_FOR_A_SERVER_(usage_)) {
         usage = "digitalSignature,keyEncipherment";
@@ -332,15 +329,15 @@ void CertFactory::addExtensions(const ossl_ptr<X509> &certificate) const {
 
     // Extended Key Usage: conditionally set based on `usage_`
     std::string extended_usage;
-    if (IS_USED_FOR_(usage_, ssl::kForClientAndServer)) {
+    if (IS_USED_FOR_(usage_, cms::ssl::kForClientAndServer)) {
         extended_usage = "clientAuth,serverAuth";
-    } else if (IS_USED_FOR_(usage_, ssl::kForClient)) {
+    } else if (IS_USED_FOR_(usage_, cms::ssl::kForClient)) {
         extended_usage = "clientAuth";
-    } else if (IS_USED_FOR_(usage_, ssl::kForServer)) {
+    } else if (IS_USED_FOR_(usage_, cms::ssl::kForServer)) {
         extended_usage = "serverAuth";
-    } else if (IS_USED_FOR_(usage_, ssl::kForIntermediateCertAuth)) {
+    } else if (IS_USED_FOR_(usage_, cms::ssl::kForIntermediateCertAuth)) {
         extended_usage = "serverAuth,clientAuth,OCSPSigning";
-    } else if (IS_USED_FOR_(usage_, ssl::kForCMS)) {
+    } else if (IS_USED_FOR_(usage_, cms::ssl::kForCMS)) {
         extended_usage = "serverAuth,clientAuth,OCSPSigning";
     }
     if (!extended_usage.empty()) {
@@ -534,7 +531,7 @@ void CertFactory::addCustomExtensionByNid(const ossl_ptr<X509> &certificate, con
     unsigned char *dbuf = nullptr;
     const auto dbuflen = i2d_ASN1_IA5STRING(ival.get(), &dbuf); // encode
     if (dbuflen < 0)
-        throw ossl::SSLError("Adding custom extension: Failed to create ASN1_IA5STRING object");
+        throw cms::ssl::SSLError("Adding custom extension: Failed to create ASN1_IA5STRING object");
 
     // ensure OPENSSL_free()
     const ossl_ptr<unsigned char> dholder(__FILE__, __LINE__, dbuf);
@@ -543,17 +540,17 @@ void CertFactory::addCustomExtensionByNid(const ossl_ptr<X509> &certificate, con
     // can't use s2i_ASN1_OCTET_STRING() as DER is not nil terminated string
     const ossl_ptr<ASN1_OCTET_STRING> idval(__FILE__, __LINE__, ASN1_OCTET_STRING_new());
     if (!ASN1_OCTET_STRING_set(idval.get(), dbuf, dbuflen))
-        throw ossl::SSLError("Adding custom extension: Failed to set ASN1_OCTET_STRING");
+        throw cms::ssl::SSLError("Adding custom extension: Failed to set ASN1_OCTET_STRING");
 
     // Create a new non-critical extension using wrapped, encoded, PV name as value
     const ossl_ptr<X509_EXTENSION> ext(X509_EXTENSION_create_by_NID(nullptr, nid, false, idval.get()), false);
     if (!ext) {
-        throw ossl::SSLError("Adding custom extension: Failed to create X509_EXTENSION");
+        throw cms::ssl::SSLError("Adding custom extension: Failed to create X509_EXTENSION");
     }
 
     // Add the extension to the certificate
     if (!X509_add_ext(certificate.get(), ext.get(), -1)) {
-        throw ossl::SSLError("Failed to add X509_EXTENSION to certificate");
+        throw cms::ssl::SSLError("Failed to add X509_EXTENSION to certificate");
     }
 
     log_debug_printf(certs, "Extension [%*d]: %-*s = \"%s\"\n", 3, nid, 32, nid2String(nid), value.c_str());
