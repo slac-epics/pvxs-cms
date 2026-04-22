@@ -61,7 +61,7 @@
     "  , renewal_due = :renewal_due"       \
     "  , status = :status"                 \
     "  , status_date = :status_date "      \
-    "  , san = :san"                       \
+    "  , san = :san "                      \
     "WHERE serial = :serial"
 
 #define SQL_SYNC_INSERT_CERT                    \
