@@ -19,12 +19,17 @@
 struct ifaddrs;
 #endif
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::SanEntry;
-    using cms::cert::CertDate;
-    using cms::cert::YES;
-    using cms::cert::NO;
+namespace cms {
+namespace auth {
+    using ::pvxs::SB;
+    using ::pvxs::PickOne;
+    using ::pvxs::ensureDirectoryExists;
+    using ::pvxs::getFileContents;
+    using ::pvxs::getXdgPvaConfigHome;
+    using ::cms::cert::SanEntry;
+    using ::cms::cert::CertDate;
+    using ::cms::cert::YES;
+    using ::cms::cert::NO;
 
 /**
  * @brief Get the base Authenticator configuration from the environment
@@ -197,5 +202,5 @@ std::string ConfigAuthN::getIPAddress() {
 #endif
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

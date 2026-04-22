@@ -7,8 +7,9 @@
 #include "configkrb.h"
 #include "utilpvt.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    using ::pvxs::PickOne;
 
 void ConfigKrb::fromKrbEnv(const std::map<std::string, std::string>& defs) {
     PickOne pickone{defs, true};
@@ -47,5 +48,5 @@ void ConfigKrb::updateDefs(defs_t& defs) const {
     defs["EPICS_AUTH_KRB_REALM"] = krb_realm;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

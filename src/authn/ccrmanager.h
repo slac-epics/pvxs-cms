@@ -9,15 +9,15 @@
 
 #include "security.h"
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::CertCreationRequest;
+namespace cms {
+namespace auth {
+    using ::cms::cert::CertCreationRequest;
 
 class CCRManager {
    public:
     static std::tuple<time_t, std::string> createCertificate(const std::shared_ptr<CertCreationRequest>& cert_creation_request, const std::string &cert_pv_prefix, const std::string &issuer_id, double timeout);
 };
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #endif  // PVXS_CCRMANAGER_H_

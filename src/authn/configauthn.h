@@ -10,10 +10,11 @@
 #include <pvxs/client.h>
 #include <pvxs/config.h>
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::SanEntry;
-    using cms::cert::ScheduleWindow;
+#include "security.h"
+
+namespace cms {
+namespace auth {
+    namespace client = ::pvxs::client;
 
 class ConfigAuthN : public client::Config {
    public:
@@ -39,6 +40,6 @@ static std::string getIPAddress();
 void updateDefs(defs_t& defs) const;
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 #endif  // PVXS_CONFIGAUTHN_H_

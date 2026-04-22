@@ -8,8 +8,9 @@
 
 #include "utilpvt.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    using ::pvxs::PickOne;
 
 void ConfigStd::fromStdEnv(const std::map<std::string, std::string> &defs) {
     PickOne pickone{defs, true};
@@ -19,5 +20,5 @@ void ConfigStd::updateDefs(defs_t &defs) const {
     ConfigAuthN::updateDefs(defs);
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

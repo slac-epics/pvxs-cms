@@ -16,13 +16,13 @@
 
 #include <CLI/CLI.hpp>
 
-DEFINE_LOGGER(auth, "pvxs.auth.std");
+DEFINE_LOGGER(auth_logger, "pvxs.auth.std");
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::AuthnCredentials;
-    using cms::cert::CertCreationRequest;
-    using cms::cert::KeyPair;
+namespace cms {
+namespace auth {
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::KeyPair;
 
 /**
  * @brief Registrar for the standard authenticator
@@ -129,7 +129,7 @@ static std::string getCountryCode() {
 std::shared_ptr<AuthnCredentials> AuthNStd::getCredentials(const client::Config &config, const bool for_client) const {
     const auto &std_config = dynamic_cast<const ConfigStd &>(config);
 
-    log_debug_printf(auth,
+    log_debug_printf(auth_logger,
                      "\n******************************************\nDefault, "
                      "Standard Authenticator: %s\n",
                      "Begin acquisition");
@@ -149,7 +149,7 @@ std::shared_ptr<AuthnCredentials> AuthNStd::getCredentials(const client::Config 
         std_credentials->organization = "";
         std_credentials->organization_unit = "";
         std_credentials->country = "";
-        log_debug_printf(auth, "Trust Anchor%s\n", "");
+        log_debug_printf(auth_logger, "Trust Anchor%s\n", "");
         return std_credentials;
     }
     if (for_client) {
@@ -176,7 +176,7 @@ std::shared_ptr<AuthnCredentials> AuthNStd::getCredentials(const client::Config 
             std_credentials->country = getCountryCode();
     }
 
-    log_debug_printf(auth,
+    log_debug_printf(auth_logger,
                      "Standard Credentials retrieved for: %s@%s\n",
                      std_credentials->name.c_str(),
                      std_credentials->organization.c_str());
@@ -225,5 +225,5 @@ bool AuthNStd::verify(Value &ccr, time_t &authenticated_expiration_date) const {
     return true;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
