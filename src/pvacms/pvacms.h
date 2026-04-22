@@ -338,8 +338,9 @@
     "FROM certs "               \
     "WHERE san LIKE :san_pattern "
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+    using pvxs::Value;
+    namespace server = pvxs::server;
     using cms::cert::DbCert;
     using cms::cert::KeyPair;
     using cms::cert::SanEntry;
@@ -583,7 +584,6 @@ uint64_t getParameters(const std::list<std::string> &parameters);
 template <typename T>
 void setValue(Value &target, const std::string &field, const T &new_value);
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cms
 
 #endif  // PVXS_PVACMS_H

@@ -35,6 +35,7 @@
 
 namespace {
 using namespace pvxs;
+using cms::ConfigCms;
 using cms::cert::CertStatus;
 using cms::cert::CmsStatusManager;
 using cms::cert::CertStatusFactory;

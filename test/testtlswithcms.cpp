@@ -59,6 +59,7 @@ using cms::cert::getCertStatusPv;
 using cms::cert::VALID;
 using cms::cert::REVOKED;
 using cms::detail::ServerEv;
+using cms::ConfigCms;
 using namespace pvxs::certs;
 
 namespace {

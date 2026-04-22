@@ -95,8 +95,20 @@
 DEFINE_LOGGER(pvacms, "pvxs.certs.cms");
 DEFINE_LOGGER(pvacmsmonitor, "pvxs.certs");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+using pvxs::Value;
+using pvxs::shared_array;
+using pvxs::version_information;
+using pvxs::NoConvert;
+using pvxs::impl::ConfigCommon;
+namespace server = pvxs::server;
+namespace client = pvxs::client;
+namespace nt = pvxs::nt;
+namespace members = pvxs::members;
+using pvxs::parseTo;
+using cms::detail::SB;
+using cms::detail::ensureDirectoryExists;
+using cms::detail::getFileContents;
 using cms::auth::Auth;
 using cms::auth::AuthRegistry;
 using cms::cert::DbCert;
@@ -4519,8 +4531,7 @@ int readParameters(int argc,
     return 0;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cms
 
 int main(int argc, char *argv[]) {
     using cms::cert::CertFactory;
@@ -4554,7 +4565,7 @@ using cms::cluster::ClusterController;
 using cms::cluster::ClusterDiscovery;
 using cms::cluster::ClusterSyncPublisher;
 using cms::cluster::TokenBucket;
-using namespace pvxs::certs;
+    using namespace cms;
     using namespace pvxs::server;
 
     try {
