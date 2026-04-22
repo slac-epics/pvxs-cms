@@ -12,8 +12,8 @@
 
 #include "auth.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
 
 /**
  * @brief The AuthRegistry class is a singleton that manages the registration of Authenticatora.
@@ -74,7 +74,7 @@ class AuthRegistry {
     AuthRegistry() = default;
     std::map<std::string, std::unique_ptr<Auth>> registry;
 };
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #endif  // AUTHREGISTRY_H

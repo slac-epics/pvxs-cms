@@ -16,11 +16,17 @@
 
 DEFINE_LOGGER(auth_log, "pvxs.auth.ccr");
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::CertCreationRequest;
-    using cms::cert::CertDate;
-    using cms::cert::getCertCreatePv;
+namespace cms {
+namespace auth {
+    namespace client = ::pvxs::client;
+    namespace nt = ::pvxs::nt;
+    namespace members = ::pvxs::members;
+
+    using ::pvxs::Value;
+    using ::serial_number_t;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::CertDate;
+    using ::cms::cert::getCertCreatePv;
 
 using namespace members;
 
@@ -75,5 +81,5 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     }
     return {0, pem_string};
 }
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

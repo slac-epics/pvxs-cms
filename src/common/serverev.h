@@ -18,9 +18,15 @@
 #include "evhelper.h"
 #include "wildcardpv.h"
 
+namespace cms {
+namespace auth {
+class Config;
+}
+}
+
 namespace pvxs {
 namespace certs {
-class Config;
+using cms::auth::Config;
 }
 
 namespace server {

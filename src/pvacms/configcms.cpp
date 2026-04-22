@@ -18,6 +18,7 @@ DEFINE_LOGGER(cert_cfg, "pvxs.certs.cfg");
 
 namespace pvxs {
 namespace certs {
+    using cms::auth::AuthRegistry;
     using cms::cert::CertDate;
     using cms::cert::CertStatusSubscription;
     using cms::cert::DEFAULT;

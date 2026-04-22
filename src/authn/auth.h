@@ -25,19 +25,32 @@
 #include "security.h"
 #include "serverev.h"
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::AuthnCredentials;
-    using cms::cert::CertCreationRequest;
-    using cms::cert::IdFileFactory;
-    using cms::cert::KeyPair;
-    using cms::cert::CertFactory;
-    using cms::cert::CertStatus;
-    using cms::cert::CmsStatusManager;
-    using cms::cert::CertStatusFactory;
-    using cms::cert::CertData;
-    using cms::cert::getCertId;
-    using cms::cert::VALID;
+namespace cms {
+namespace auth {
+    namespace client = ::pvxs::client;
+    namespace server = ::pvxs::server;
+    namespace members = ::pvxs::members;
+
+    using ::pvxs::Member;
+    using ::pvxs::SB;
+    using ::pvxs::TypeCode;
+    using ::pvxs::TypeDef;
+    using ::pvxs::Value;
+    using ::pvxs::logger_config_env;
+    using ::pvxs::logger_level_set;
+    using ::pvxs::ossl_ptr;
+    using ::pvxs::shared_array;
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::IdFileFactory;
+    using ::cms::cert::KeyPair;
+    using ::cms::cert::CertFactory;
+    using ::cms::cert::CertStatus;
+    using ::cms::cert::CmsStatusManager;
+    using ::cms::cert::CertStatusFactory;
+    using ::cms::cert::CertData;
+    using ::cms::cert::getCertId;
+    using ::cms::cert::VALID;
 
 /**
  * @class Auth
@@ -46,7 +59,6 @@ namespace certs {
  * The Auth class provides an interface for retrieving credentials and
  * creating and validating Certificate Creation Requests (CCRs).
  */
-using namespace certs;
 class Auth {
  public:
     std::string type_{};
@@ -303,8 +315,6 @@ class Auth {
      * @return The prototype of the data returned for a certificate configuration PV
      */
     static Value getConfigurationPrototype() {
-        using namespace members;
-
         auto value = TypeDef(TypeCode::Struct,
                              {
                                  Member(TypeCode::UInt64, "serial"),
@@ -411,17 +421,17 @@ CertData getCertificate(bool &retrieved_credentials,
                         const std::string &tls_keychain_file,
                         const std::string &tls_keychain_pwd,
                         bool daemon_mode) {
-    DEFINE_LOGGER(auth, std::string("pvxs.auth." + authenticator.type_).c_str());
+    DEFINE_LOGGER(auth_logger, std::string("pvxs.auth." + authenticator.type_).c_str());
     CertData cert_data;
 
-    if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, cms::ssl::kForClient))) {
+    if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, ::cms::ssl::kForClient))) {
         // If daemon mode, then add base uri to credentials
         if (daemon_mode) credentials->config_uri_base = config.getCertPvPrefix();
 
         // Copy SAN entries from config based on usage
         {
             const auto &authn_config = static_cast<const ConfigAuthN &>(config);
-            if (IS_USED_FOR_(cert_usage, cms::ssl::kForClient))
+            if (IS_USED_FOR_(cert_usage, ::cms::ssl::kForClient))
                 credentials->san_entries = authn_config.san_entries;
             else
                 credentials->san_entries = authn_config.server_san_entries;
@@ -429,7 +439,7 @@ CertData getCertificate(bool &retrieved_credentials,
         }
 
         std::shared_ptr<KeyPair> key_pair;
-        log_debug_printf(auth, "Credentials retrieved for: %s authenticator\n", authenticator.type_.c_str());
+        log_debug_printf(auth_logger, "Credentials retrieved for: %s authenticator\n", authenticator.type_.c_str());
         retrieved_credentials = true;
 
         // Get or create the key pair.  Store it in the keychain file if not already present
@@ -439,7 +449,7 @@ CertData getCertificate(bool &retrieved_credentials,
         } catch (std::exception &e) {
             // Make a new key pair file
             try {
-                log_debug_printf(auth, "%s\n", e.what());
+                log_debug_printf(auth_logger, "%s\n", e.what());
                 key_pair = IdFileFactory::createKeyPair();
             } catch (std::exception &new_e) {
                 throw std::runtime_error(SB() << "Error creating client key: " << new_e.what());
@@ -449,7 +459,7 @@ CertData getCertificate(bool &retrieved_credentials,
         // Create a Certificate Creation Request (CCR) using the credentials and key pair
         auto cert_creation_request = authenticator.createCertCreationRequest(credentials, key_pair, cert_usage, config);
 
-        log_debug_printf(auth, "CCR created for: %s Authenticator\n", authenticator.type_.c_str());
+        log_debug_printf(auth_logger, "CCR created for: %s Authenticator\n", authenticator.type_.c_str());
 
         // Attempt to create a certificate with the Certificate Creation Request (CCR)
         time_t renew_by;
@@ -461,7 +471,7 @@ CertData getCertificate(bool &retrieved_credentials,
 
         // If the certificate was created successfully, write it to the keychain file
         if (!p12_pem_string.empty()) {
-            log_debug_printf(auth, "Cert generated by PVACMS and successfully received: %s\n", p12_pem_string.c_str());
+            log_debug_printf(auth_logger, "Cert generated by PVACMS and successfully received: %s\n", p12_pem_string.c_str());
 
             // Attempt to write the certificate and private key to a cert file protected by the configured password
             auto file_factory =
@@ -480,29 +490,29 @@ CertData getCertificate(bool &retrieved_credentials,
             const std::string expiration_s = std::ctime(&expiration_t);
 
             // Log the certificate info
-            log_info_printf(auth, "   CERT ID: %s\n", getCertId(issuer_id, serial_number).c_str());
-            log_info_printf(auth, "AUTHN TYPE: %s\n", authenticator.type_.c_str());
-            log_info_printf(auth, " OUTPUT TO: %s\n", tls_keychain_file.c_str());
-            log_info_printf(auth, "SUBJECT CN: %s\n", credentials->name.c_str());
-            if (!credentials->organization.empty()) log_info_printf(auth, "SUBJECT  O: %s\n", credentials->organization.c_str());
-            if (!credentials->organization_unit.empty()) log_info_printf(auth, "SUBJECT OU: %s\n", credentials->organization_unit.c_str());
-            if (!credentials->country.empty()) log_info_printf(auth, "SUBJECT  C:%s\n", credentials->country.c_str());
+            log_info_printf(auth_logger, "   CERT ID: %s\n", getCertId(issuer_id, serial_number).c_str());
+            log_info_printf(auth_logger, "AUTHN TYPE: %s\n", authenticator.type_.c_str());
+            log_info_printf(auth_logger, " OUTPUT TO: %s\n", tls_keychain_file.c_str());
+            log_info_printf(auth_logger, "SUBJECT CN: %s\n", credentials->name.c_str());
+            if (!credentials->organization.empty()) log_info_printf(auth_logger, "SUBJECT  O: %s\n", credentials->organization.c_str());
+            if (!credentials->organization_unit.empty()) log_info_printf(auth_logger, "SUBJECT OU: %s\n", credentials->organization_unit.c_str());
+            if (!credentials->country.empty()) log_info_printf(auth_logger, "SUBJECT  C:%s\n", credentials->country.c_str());
             if (!credentials->san_entries.empty()) {
                 std::string san_str;
                 for (const auto &se : credentials->san_entries) {
                     if (!san_str.empty()) san_str += ", ";
                     san_str += se.type + "=" + se.value;
                 }
-                log_info_printf(auth, "SUBJECT SAN: %s\n", san_str.c_str());
+                log_info_printf(auth_logger, "SUBJECT SAN: %s\n", san_str.c_str());
             }
-            log_info_printf(auth, "VALID FROM: %s\n", from.substr(0, from.size()-1).c_str());
+            log_info_printf(auth_logger, "VALID FROM: %s\n", from.substr(0, from.size()-1).c_str());
             if (renew_by) {
                 const std::string renew_by_date = std::ctime(&renew_by);
-                log_info_printf(auth, "RENEWAL BY: %s\n", renew_by_date.substr(0, renew_by_date.size()-1).c_str());
+                log_info_printf(auth_logger, "RENEWAL BY: %s\n", renew_by_date.substr(0, renew_by_date.size()-1).c_str());
             }
-            log_info_printf(auth, "EXPIRES ON: %s\n", expiration_s.substr(0, expiration_s.size()-1).c_str());
+            log_info_printf(auth_logger, "EXPIRES ON: %s\n", expiration_s.substr(0, expiration_s.size()-1).c_str());
             std::cout << "Certificate identifier  : " << getCertId(issuer_id, serial_number) << std::endl;
-            log_info_printf(auth, "--------------------------------------%s", "\n");
+            log_info_printf(auth_logger, "--------------------------------------%s", "\n");
         }
     }
     return cert_data;
@@ -525,7 +535,7 @@ CertData getCertificate(bool &retrieved_credentials,
 template <typename ConfigT, typename AuthT>
 int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT &)> pre_configure_hook) {
     AuthT authenticator{};
-    DEFINE_LOGGER(auth, std::string("pvxs.auth." + authenticator.type_).c_str());
+    DEFINE_LOGGER(auth_logger, std::string("pvxs.auth." + authenticator.type_).c_str());
     ;
     logger_config_env();
     bool retrieved_credentials{false};
@@ -534,7 +544,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
         auto config = ConfigT::fromEnv();
 
         bool verbose{false}, debug{false}, daemon_mode{false}, force{false};
-        uint16_t cert_usage{cms::ssl::kForClient};
+        uint16_t cert_usage{::cms::ssl::kForClient};
 
         const auto parse_result = readParameters(argc, argv, config, verbose, debug, cert_usage, daemon_mode, force);
         if (parse_result)
@@ -578,14 +588,14 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
                                        tls_keychain_file,
                                        tls_keychain_pwd, daemon_mode);
         } else if (!daemon_mode) {
-            log_warn_printf(auth,
+            log_warn_printf(auth_logger,
                             "%s: Valid certificate found: Use `--force` flag to overwrite\n",
                             tls_keychain_file.c_str());
         }
 
         if (cert_data.cert && daemon_mode) {
             authenticator.runAuthNDaemon(config,
-                                         IS_USED_FOR_(cert_usage, cms::ssl::kForClient),
+                                         IS_USED_FOR_(cert_usage, ::cms::ssl::kForClient),
                                          std::move(cert_data),
                                          [&retrieved_credentials,
                                           config,
@@ -604,14 +614,14 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
         return 0;
     } catch (std::exception &e) {
         if (retrieved_credentials)
-            log_warn_printf(auth, "%s\n", e.what());
+            log_warn_printf(auth_logger, "%s\n", e.what());
         else
-            log_err_printf(auth, "%s\n", e.what());
+            log_err_printf(auth_logger, "%s\n", e.what());
         return -1;
     }
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #endif  // PVXS_AUTH_H

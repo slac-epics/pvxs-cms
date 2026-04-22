@@ -12,13 +12,14 @@
 
 #include "configauthn.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+
 
 class ConfigLdap final : public ConfigAuthN {
    public:
     ConfigLdap& applyEnv() {
-        Config::applyEnv();
+        client::Config::applyEnv();
         tls_disabled = true;
         return *this;
     }
@@ -41,7 +42,7 @@ class ConfigLdap final : public ConfigAuthN {
 
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #endif  // PVXS_CONFIGLDAP_H_

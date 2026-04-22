@@ -11,8 +11,9 @@
 
 #include "serverev.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    namespace server = ::pvxs::server;
 
 class Config : public server::Config {
    public:
@@ -38,6 +39,6 @@ class Config : public server::Config {
     server::ServerEv build(const server::CustomServerCallback &cert_file_event_callback = {}) const;
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 #endif  // PVXS_CONFIGCERTS_H_

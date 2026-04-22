@@ -17,8 +17,9 @@
 #define PVXS_KRB_DEFAULT_VALIDATOR_REALM "EPICS.ORG"
 #define PVXS_KRB_DEFAULT_VALIDATOR_SERVICE_NAME PVXS_KRB_DEFAULT_VALIDATOR_SERVICE PVXS_KRB_DEFAULT_VALIDATOR_CLUSTER_PART PVXS_KRB_DEFAULT_VALIDATOR_REALM
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+
 
 /**
  * @brief Configuration for the Kerberos authenticator
@@ -31,7 +32,7 @@ namespace certs {
 class ConfigKrb final : public ConfigAuthN {
    public:
     ConfigKrb& applyEnv() {
-        Config::applyEnv();
+        client::Config::applyEnv();
         tls_disabled = true;
         return *this;
     }
@@ -66,7 +67,7 @@ class ConfigKrb final : public ConfigAuthN {
 
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #endif  // PVXS_CONFIGKRB_H_

@@ -16,14 +16,14 @@
 #include "openssl.h"
 #include "p12filefactory.h"
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::CertCreationRequest;
-    using cms::cert::IdFileFactory;
-    using cms::cert::ScheduleWindow;
-    using cms::cert::CertDate;
-    using cms::cert::VALID;
-    using cms::cert::PENDING_APPROVAL;
+namespace cms {
+namespace auth {
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::IdFileFactory;
+    using ::cms::cert::ScheduleWindow;
+    using ::cms::cert::CertDate;
+    using ::cms::cert::VALID;
+    using ::cms::cert::PENDING_APPROVAL;
 
 /**
  * @brief Define the options for the authnstd tool
@@ -172,25 +172,25 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
             std::cerr << "Error: -V option cannot be used with any other options.\n";
             return 10;
         }
-        std::cout << version_information;
+        std::cout << pvxs::version_information;
         exit(0);
     }
 
     // Set the certificate usage based on the command line parameters
     if (usage == "server") {
-            cert_usage = cms::ssl::kForServer;
+            cert_usage = ::cms::ssl::kForServer;
         if (config.tls_srv_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVAS_TLS_KEYCHAIN environment variable to create server certificates" << std::endl;
             return 10;
         }
     } else if (usage == "client") {
-            cert_usage = cms::ssl::kForClient;
+            cert_usage = ::cms::ssl::kForClient;
         if (config.tls_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVA_TLS_KEYCHAIN environment variable to create client certificates" << std::endl;
             return 11;
         }
     } else if (usage == "ioc") {
-            cert_usage = cms::ssl::kForClientAndServer;
+            cert_usage = ::cms::ssl::kForClientAndServer;
         if (config.tls_srv_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVAS_TLS_KEYCHAIN environment variable to create ioc certificates" << std::endl;
             return 12;
@@ -203,29 +203,29 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
     // Pull out command line args to override config values
     if ( !name.empty()) {
         switch (cert_usage) {
-                case cms::ssl::kForClient: config.name = name; break;
-                case cms::ssl::kForServer: config.server_name = name; break;
+                case ::cms::ssl::kForClient: config.name = name; break;
+                case ::cms::ssl::kForServer: config.server_name = name; break;
             default: config.name = config.server_name = name; break;
         }
     }
     if ( !organization.empty()) {
         switch (cert_usage) {
-                case cms::ssl::kForClient: config.organization = organization; break;
-                case cms::ssl::kForServer: config.server_organization = organization; break;
+                case ::cms::ssl::kForClient: config.organization = organization; break;
+                case ::cms::ssl::kForServer: config.server_organization = organization; break;
             default: config.organization = config.server_organization = organization; break;
         }
     }
     if ( !organizational_unit.empty()) {
         switch (cert_usage) {
-                case cms::ssl::kForClient: config.organizational_unit = organizational_unit; break;
-                case cms::ssl::kForServer: config.server_organizational_unit = organizational_unit; break;
+                case ::cms::ssl::kForClient: config.organizational_unit = organizational_unit; break;
+                case ::cms::ssl::kForServer: config.server_organizational_unit = organizational_unit; break;
             default: config.organizational_unit = config.server_organizational_unit = organizational_unit; break;
         }
     }
     if ( !country.empty()) {
         switch (cert_usage) {
-                case cms::ssl::kForClient: config.country = country; break;
-                case cms::ssl::kForServer: config.server_country = country; break;
+                case ::cms::ssl::kForClient: config.country = country; break;
+                case ::cms::ssl::kForServer: config.server_country = country; break;
             default: config.country = config.server_country = country; break;
         }
     }
@@ -295,13 +295,15 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
     return 0;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 using cms::cert::CertDate;
 using cms::cert::VALID;
 using cms::cert::PENDING_APPROVAL;
-using namespace pvxs::certs;
+using cms::auth::AuthNStd;
+using cms::auth::ConfigStd;
+using cms::auth::runAuthenticator;
 
 /**
  * @brief Main function for the authnstd tool

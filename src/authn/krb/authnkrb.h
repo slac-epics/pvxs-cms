@@ -28,11 +28,11 @@
 #define PVXS_KRB_AUTH_TYPE "krb"
 #define GSS_STATUS_BUFFER_LEN 1024
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::AuthnCredentials;
-    using cms::cert::CertCreationRequest;
-    using cms::cert::KeyPair;
+namespace cms {
+namespace auth {
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::KeyPair;
 
 // Declarations
 extern gss_OID_desc krb5_oid_desc;
@@ -189,7 +189,7 @@ class AuthNKrb final : public Auth {
     static PrincipalInfo getPrincipalInfo();
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #endif  // PVXS_AUTH_KERB_H
