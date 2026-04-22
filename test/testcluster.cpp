@@ -26,7 +26,7 @@
 #include "pvacmsVersion.h"
 
 using namespace pvxs;
-using namespace pvxs::certs;
+using namespace cms;
 using cms::cluster::applySyncSnapshot;
 using cms::cluster::CertUpdate;
 using cms::cluster::ClusterController;
