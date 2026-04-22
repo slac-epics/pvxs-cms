@@ -99,7 +99,15 @@ struct client1 {};
 struct client2 {};
 }  // namespace tag
 
-namespace certs {
+}  // namespace pvxs
+
+namespace cms {
+    using pvxs::Value;
+    using pvxs::shared_array;
+    namespace server = pvxs::server;
+    namespace client = pvxs::client;
+    namespace tag = pvxs::tag;
+    using cms::detail::file_ptr;
     using cms::cert::CertDate;
     using cms::cert::CertStatus;
 using cms::cert::CertStatusFactory;
@@ -467,8 +475,9 @@ void waitCounterAtLeast(const CounterMap &counters, epicsEvent &cert_status_evt,
     }
 }
 
-}  // namespace certs
+}  // namespace cms
 
+namespace pvxs {
 namespace server {
 
 class MockSource final : public Source {
