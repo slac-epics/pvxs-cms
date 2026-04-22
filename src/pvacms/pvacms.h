@@ -320,7 +320,7 @@ class StatusMonitor {
     ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     pvxs::ossl_shared_ptr<STACK_OF(X509)> &cert_auth_cert_chain_;
     std::map<serial_number_t, time_t> &active_status_validity_;
-  private:
+   private:
     mutable epicsMutex lock_;
     mutable time_t last_maintenance_time_{0};
     mutable time_t last_checkpoint_time_{time(nullptr)};
@@ -389,6 +389,11 @@ class StatusMonitor {
         if (interval == 0) return false;
         return (time(nullptr) - last_checkpoint_time_) >= static_cast<time_t>(interval);
     }
+    bool shouldRunBackup() const {
+        const auto interval = config_.backup_interval_secs;
+        if (interval == 0) return false;
+        return (time(nullptr) - last_backup_time_) >= static_cast<time_t>(interval);
+    }
     void setDbIntegrityOk(bool ok) const { db_integrity_ok_ = ok; }
     void setHealthPV(server::SharedPV *pv) { health_pv_ = pv; }
     void setMetricsPV(server::SharedPV *pv) { metrics_pv_ = pv; }
@@ -450,6 +455,8 @@ void createAdminClientCert(const ConfigCms &config, sql_ptr &certs_db, const oss
                            const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_cert_chain, const std::string &admin_name = "admin");
 
 void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file);
+
+bool performBackup(sqlite3 *src_db, const std::string &dest_path);
 
 void insertAuditRecord(sqlite3 *db, const std::string &action,
                        const std::string &operator_id, uint64_t serial,

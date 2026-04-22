@@ -12,9 +12,12 @@
 
 #include "pvacms.h"
 
+#include <dirent.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cstdio>
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
@@ -138,6 +141,81 @@ std::atomic<uint64_t> &getCertsRevokedCounter()
 {
     static std::atomic<uint64_t> counter{0u};
     return counter;
+}
+
+void pruneOldBackups(const std::string &dir, uint32_t max_count)
+{
+    if (max_count == 0) return;
+
+    std::vector<std::string> backups;
+    DIR *d = opendir(dir.c_str());
+    if (!d) return;
+
+    while (auto *entry = readdir(d)) {
+        std::string name = entry->d_name;
+        if (name.find("certs_backup_") == 0u && name.size() > 3u &&
+            name.substr(name.size() - 3u) == ".db") {
+            backups.push_back(dir + "/" + name);
+        }
+    }
+    closedir(d);
+
+    std::sort(backups.begin(), backups.end());
+
+    while (backups.size() > max_count) {
+        if (std::remove(backups.front().c_str()) == 0) {
+            log_info_printf(pvacms, "Pruned old backup: %s\n", backups.front().c_str());
+        }
+        backups.erase(backups.begin());
+    }
+}
+
+bool performBackup(sqlite3 *src_db, const std::string &dest_path)
+{
+    log_info_printf(pvacms, "Starting database backup to %s\n", dest_path.c_str());
+
+    sqlite3 *dest_db = nullptr;
+    if (sqlite3_open(dest_path.c_str(), &dest_db) != SQLITE_OK) {
+        log_err_printf(pvacms, "Database backup open failed for %s: %s\n",
+                       dest_path.c_str(), dest_db ? sqlite3_errmsg(dest_db) : "sqlite3_open failed");
+        if (dest_db) sqlite3_close(dest_db);
+        return false;
+    }
+
+    sqlite3_backup *backup = sqlite3_backup_init(dest_db, "main", src_db, "main");
+    if (!backup) {
+        log_err_printf(pvacms, "Database backup init failed for %s: %s\n",
+                       dest_path.c_str(), sqlite3_errmsg(dest_db));
+        sqlite3_close(dest_db);
+        return false;
+    }
+
+    const int step_status = sqlite3_backup_step(backup, -1);
+    const int finish_status = sqlite3_backup_finish(backup);
+    const bool ok = step_status == SQLITE_DONE && finish_status == SQLITE_OK;
+
+    if (!ok) {
+        log_err_printf(pvacms, "Database backup failed for %s: %s\n",
+                       dest_path.c_str(), sqlite3_errmsg(dest_db));
+        sqlite3_close(dest_db);
+        return false;
+    }
+
+    if (sqlite3_close(dest_db) != SQLITE_OK) {
+        log_err_printf(pvacms, "Database backup close failed for %s: %s\n",
+                       dest_path.c_str(), sqlite3_errmsg(dest_db));
+        return false;
+    }
+
+    struct stat st;
+    if (stat(dest_path.c_str(), &st) == 0) {
+        log_info_printf(pvacms, "Completed database backup to %s (%lld bytes)\n",
+                        dest_path.c_str(), static_cast<long long>(st.st_size));
+    } else {
+        log_info_printf(pvacms, "Completed database backup to %s\n", dest_path.c_str());
+    }
+
+    return true;
 }
 
 struct CcrTimingTracker {
@@ -3398,6 +3476,33 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
         }
     }
 
+    if (status_monitor_params.shouldRunBackup()) {
+        try {
+            std::string backup_dir = status_monitor_params.config_.backup_dir;
+            if (backup_dir.empty()) {
+                const auto pos = status_monitor_params.config_.certs_db_filename.find_last_of('/');
+                backup_dir = (pos != std::string::npos)
+                    ? status_monitor_params.config_.certs_db_filename.substr(0, pos)
+                    : ".";
+            }
+
+            char time_buf[32] = {0};
+            const time_t now_time = time(nullptr);
+            struct tm tm_buf;
+            gmtime_r(&now_time, &tm_buf);
+            strftime(time_buf, sizeof(time_buf), "%Y%m%d_%H%M%S", &tm_buf);
+            std::string backup_path = backup_dir + "/certs_backup_" + time_buf + ".db";
+            ensureDirectoryExists(backup_path);
+
+            if (performBackup(status_monitor_params.certs_db_.get(), backup_path)) {
+                status_monitor_params.recordBackupRun();
+                pruneOldBackups(backup_dir, status_monitor_params.config_.backup_retention);
+            }
+        } catch (const std::exception &e) {
+            log_err_printf(pvacms, "Periodic backup failed: %s\n", e.what());
+        }
+    }
+
     uint32_t computed_secs;
     if (near_transition_count == 0) {
         computed_secs = clamped_interval_max;
@@ -3590,6 +3695,14 @@ int readParameters(int argc,
     app.add_option("--monitor-interval-max",
                    config.monitor_interval_max_secs,
                    "Maximum status monitor interval in seconds.  Default 60");
+    app.add_option("--backup", config.backup_path,
+                   "Perform one-shot database backup to specified path, then exit");
+    app.add_option("--backup-interval", config.backup_interval_secs,
+                   "Seconds between periodic database backups.  0=disabled.  Default 0");
+    app.add_option("--backup-dir", config.backup_dir,
+                   "Directory for periodic backup files.  Default: same as database file");
+    app.add_option("--backup-retention", config.backup_retention,
+                   "Maximum number of backup files to keep.  Default 7");
     // Add any parameters for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry())
         authn_entry.second->addOptions(app, authn_config_map);
@@ -3691,6 +3804,10 @@ int readParameters(int argc,
             << "        --max-concurrent-ccr <count>         Maximum in-flight certificate creation requests. Default 100\n"
             << "        --monitor-interval-min <secs>        Minimum status monitor interval. Default 5\n"
             << "        --monitor-interval-max <secs>        Maximum status monitor interval. Default 60\n"
+            << "        --backup <path>                      One-shot backup to specified path, then exit\n"
+            << "        --backup-interval <secs>             Seconds between periodic backups. 0=disabled. Default 0\n"
+            << "        --backup-dir <path>                  Directory for periodic backup files\n"
+            << "        --backup-retention <count>           Maximum backup files to keep. Default 7\n"
             << "  (-v | --verbose)                           Verbose mode\n"
             << std::endl
             << "admin options:\n"
@@ -3739,6 +3856,8 @@ int readParameters(int argc,
         ensureDirectoryExists(config.admin_keychain_file);
     if (!config.certs_db_filename.empty())
         ensureDirectoryExists(config.certs_db_filename);
+    if (!config.backup_path.empty())
+        ensureDirectoryExists(config.backup_path);
     if (!cert_auth_password_file.empty()) {
         ensureDirectoryExists(cert_auth_password_file);
         config.cert_auth_keychain_pwd = getFileContents(cert_auth_password_file);
@@ -3823,6 +3942,20 @@ int main(int argc, char *argv[]) {
         if (verbose)
             logger_level_set("pvxs.certs.*", pvxs::Level::Info);
         pvxs::logger_config_env();
+
+        if (!config.backup_path.empty()) {
+            std::string backup_dest = config.backup_path;
+            if (backup_dest.size() < 3 || backup_dest.substr(backup_dest.size() - 3) != ".db")
+                backup_dest += ".db";
+            if (sqlite3_open_v2(config.certs_db_filename.c_str(), certs_db.acquire(),
+                                SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+                std::cerr << "Cannot open database for backup: " << config.certs_db_filename << std::endl;
+                return 1;
+            }
+            const bool ok = performBackup(certs_db.get(), backup_dest);
+            if (ok) std::cout << "Database backup written: " << backup_dest << std::endl;
+            return ok ? 0 : 1;
+        }
 
         // Initialize the certificates database
         initCertsDatabase(certs_db, config.certs_db_filename);

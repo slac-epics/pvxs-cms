@@ -330,6 +330,10 @@ class ConfigCms final : public Config {
     uint32_t max_concurrent_ccr = 100;
     uint32_t monitor_interval_min_secs = 5;
     uint32_t monitor_interval_max_secs = 60;
+    std::string backup_path;
+    uint32_t backup_interval_secs = 0;
+    std::string backup_dir;
+    uint32_t backup_retention = 7;
 
     void applyCmsEnv(const std::map<std::string, std::string>& defs);
     static ConfigCms mockCms(int family=AF_INET);
