@@ -20,7 +20,7 @@
 #include "security.h"
 #include "trustanchors.h"
 
-DEFINE_LOGGER(auth_log, "pvxs.auth.ccr");
+DEFINE_LOGGER(auth_log, "cms.auth.ccr");
 
 namespace cms {
 namespace auth {

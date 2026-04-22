@@ -79,7 +79,7 @@ extern "C" void serverSignalHandler(int) {
 
 namespace {
 
-DEFINE_LOGGER(perflog, "pvxs.perf");
+DEFINE_LOGGER(perflog, "cms.perf");
 
 /**
  * @brief Fixed ports for the PVACMS child process launched by --setup-cms.

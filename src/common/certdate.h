@@ -28,7 +28,7 @@
 // as text and can be compared as a string without being parsed.
 #define CERT_TIME_FORMAT "%Y-%m-%d %H:%M:%S UTC"
 
-DEFINE_LOGGER(certs_time, "pvxs.certs.date");
+DEFINE_LOGGER(certs_time, "cms.certs.date");
 namespace cms {
 namespace cert {
 

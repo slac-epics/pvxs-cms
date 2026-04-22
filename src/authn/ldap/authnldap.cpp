@@ -29,7 +29,7 @@
 #include "auth.h"
 #include "authregistry.h"
 
-DEFINE_LOGGER(auth_ldap, "pvxs.auth.ldap");
+DEFINE_LOGGER(auth_ldap, "cms.auth.ldap");
 
 namespace cms {
 namespace auth {

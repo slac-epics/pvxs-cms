@@ -21,7 +21,7 @@
 
 #include <CLI/CLI.hpp>
 
-DEFINE_LOGGER(auth_std, "pvxs.auth.std");
+DEFINE_LOGGER(auth_std, "cms.auth.std");
 
 namespace cms {
 namespace auth {

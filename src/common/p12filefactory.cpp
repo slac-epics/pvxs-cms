@@ -38,7 +38,7 @@ namespace cert {
 using cms::detail::ensureDirectoryExists;
 using cms::detail::file_ptr;
 
-DEFINE_LOGGER(filelogger, "pvxs.p12");
+DEFINE_LOGGER(filelogger, "cms.p12");
 
 /**
  * @brief Get a key pair from a P12 file
