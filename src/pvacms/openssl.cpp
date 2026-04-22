@@ -23,26 +23,10 @@
 #error TLS 1.3 support required.  Upgrade to openssl >= 1.1.0
 #endif
 
-namespace pvxs {
-namespace ossl {
+namespace cms {
+namespace ssl {
 
-SSLError::SSLError(const std::string &msg)
-    : std::runtime_error([&msg]() -> std::string {
-          std::ostringstream strm;
-          const char *file = nullptr;
-          int line = 0;
-          const char *data = nullptr;
-          int flags = 0;
-          while (const auto err = ERR_get_error_all(&file, &line, nullptr, &data, &flags)) {
-              strm << file << ':' << line << ':' << ERR_reason_error_string(err);
-              if (data && (flags & ERR_TXT_STRING)) strm << ':' << data;
-              strm << ", ";
-          }
-          strm << msg;
-          return strm.str();
-      }()) {}
-
-SSLError::~SSLError() = default;
+using pvxs::ossl_ptr;
 
 std::ostream &operator<<(std::ostream &strm, const ShowX509 &cert) {
     if (cert.cert) {
