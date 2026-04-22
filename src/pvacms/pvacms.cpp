@@ -12,8 +12,16 @@
 
 #include "pvacms.h"
 
-#include <arpa/inet.h>
-#include <dirent.h>
+#ifdef _WIN32
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#else
+#  include <arpa/inet.h>
+#  include <dirent.h>
+#endif
 
 #include <algorithm>
 #include <atomic>

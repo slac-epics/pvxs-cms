@@ -62,6 +62,7 @@ USR_CPPFLAGS += -I$(PVACMS_DIR)
 # Source search path for pvacms and its shared sources
 SRC_DIRS += $(COMMON_DIR)
 SRC_DIRS += $(AUTHN_DIR)
+SRC_DIRS += $(PVACMS_DIR)
 
 # PVXS_ENABLE_PVACMS: gate CMS-server build + sqlite3 dependency.
 # Default YES; set to NO in EXTRA or CONFIG_SITE.local to disable.

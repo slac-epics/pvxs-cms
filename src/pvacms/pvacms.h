@@ -430,6 +430,12 @@ class StatusMonitor {
         return (time(nullptr) - last_maintenance_time_) >= static_cast<time_t>(interval);
     }
 
+    bool shouldRunBackup() const {
+        const auto interval = config_.backup_interval_secs;
+        if (interval == 0) return false;
+        return (time(nullptr) - last_backup_time_) >= static_cast<time_t>(interval);
+    }
+
     void recordMaintenanceRun() const { last_maintenance_time_ = time(nullptr); }
     void recordCheckpointRun() const { last_checkpoint_time_ = time(nullptr); }
     void recordBackupRun() const { last_backup_time_ = time(nullptr); }
@@ -438,11 +444,6 @@ class StatusMonitor {
         const auto interval = config_.integrity_check_interval_secs;
         if (interval == 0) return false;
         return (time(nullptr) - last_checkpoint_time_) >= static_cast<time_t>(interval);
-    }
-    bool shouldRunBackup() const {
-        const auto interval = config_.backup_interval_secs;
-        if (interval == 0) return false;
-        return (time(nullptr) - last_backup_time_) >= static_cast<time_t>(interval);
     }
     void setDbIntegrityOk(bool ok) const { db_integrity_ok_ = ok; }
     void setHealthPV(server::SharedPV *pv) { health_pv_ = pv; }
