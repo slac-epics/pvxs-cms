@@ -36,6 +36,8 @@
 namespace {
 using namespace pvxs;
 using cms::ConfigCms;
+using cms::CertCtx;
+using cms::CounterMap;
 using cms::cert::CertStatus;
 using cms::cert::CmsStatusManager;
 using cms::cert::CertStatusFactory;
@@ -55,7 +57,6 @@ using cms::cert::OCSP_CERTSTATUS_GOOD;
 using cms::cert::OCSP_CERTSTATUS_REVOKED;
 using cms::cert::OCSP_CERTSTATUS_UNKNOWN;
 using cms::detail::ServerEv;
-using namespace pvxs::certs;
 
 struct Tester {
     // Pristine values

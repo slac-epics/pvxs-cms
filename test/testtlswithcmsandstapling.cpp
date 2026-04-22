@@ -60,7 +60,8 @@ using cms::cert::VALID;
 using cms::cert::REVOKED;
 using cms::detail::ServerEv;
 using cms::ConfigCms;
-using namespace pvxs::certs;
+using cms::CertCtx;
+using cms::CounterMap;
 
 namespace {
 
