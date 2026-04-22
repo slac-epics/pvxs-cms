@@ -475,6 +475,24 @@ class MockSource final : public Source {
             , cert_status_subscribe_cb_(std::move(cb))
         {}
 
+#ifdef PVXS_HAS_SIGNAL_RIGHTS
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Winconsistent-missing-override"
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wsuggest-override"
+#endif
+        virtual void signalRights(bool writable) {
+            if (inner_) inner_->signalRights(writable);
+        }
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic pop
+#endif
+#endif
+
         void onOp(std::function<void(std::unique_ptr<ConnectOp>&&)>&& fn) override {
             inner_->onOp(std::move(fn));
         }
