@@ -12,6 +12,8 @@
 #ifndef PVXS_PVACMS_H
 #define PVXS_PVACMS_H
 
+#include <ctime>
+#include <functional>
 #include <iostream>
 #include <vector>
 
@@ -324,6 +326,12 @@ class StatusMonitor {
     mutable time_t last_checkpoint_time_{time(nullptr)};
     mutable time_t last_backup_time_{0};
     mutable bool db_integrity_ok_{true};
+    server::SharedPV *health_pv_{nullptr};
+    server::SharedPV *metrics_pv_{nullptr};
+    Value health_proto_{};
+    Value metrics_proto_{};
+    time_t start_time_{0};
+    std::function<uint32_t()> get_cluster_member_count_;
   public:
     StatusMonitor(ConfigCms &config, sql_ptr &certs_db, std::string &issuer_id, server::WildcardPV &status_pv, ossl_ptr<X509> &cert_auth_cert,
                   ossl_ptr<EVP_PKEY> &cert_auth_pkey, ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
@@ -335,7 +343,8 @@ class StatusMonitor {
           cert_auth_cert_(cert_auth_cert),
           cert_auth_pkey_(cert_auth_pkey),
           cert_auth_cert_chain_(cert_auth_chain),
-          active_status_validity_(active_status_validity) {}
+          active_status_validity_(active_status_validity),
+          start_time_(time(nullptr)) {}
 
     std::vector<serial_number_t> getActiveSerials() const {
         const auto cutoff{time(nullptr) - static_cast<uint64_t>(config_.getRequestTimeout())};
@@ -381,6 +390,17 @@ class StatusMonitor {
         return (time(nullptr) - last_checkpoint_time_) >= static_cast<time_t>(interval);
     }
     void setDbIntegrityOk(bool ok) const { db_integrity_ok_ = ok; }
+    void setHealthPV(server::SharedPV *pv) { health_pv_ = pv; }
+    void setMetricsPV(server::SharedPV *pv) { metrics_pv_ = pv; }
+    void setHealthProto(const Value &proto) { health_proto_ = proto; }
+    void setMetricsProto(const Value &proto) { metrics_proto_ = proto; }
+    void setClusterMemberCount(std::function<uint32_t()> fn) { get_cluster_member_count_ = std::move(fn); }
+    uint32_t getClusterMemberCount() const { return get_cluster_member_count_ ? get_cluster_member_count_() : 1u; }
+    server::SharedPV *getHealthPV() const { return health_pv_; }
+    server::SharedPV *getMetricsPV() const { return metrics_pv_; }
+    Value cloneHealthValue() const { return health_proto_.cloneEmpty(); }
+    Value cloneMetricsValue() const { return metrics_proto_.cloneEmpty(); }
+    time_t getStartTime() const { return start_time_; }
 };
 
 void checkForDuplicates(const sql_ptr &certs_db, const CertFactory &cert_factory);

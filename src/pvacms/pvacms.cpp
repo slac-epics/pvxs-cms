@@ -27,11 +27,13 @@
 #include <list>
 #include <locale>
 #include <memory>
+#include <mutex>
 #include <random>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <sys/stat.h>
 #include <thread>
 #include <tuple>
 #include <vector>
@@ -124,6 +126,41 @@ std::atomic<uint32_t> &getCreateCertificateInflightCount()
 {
     static std::atomic<uint32_t> inflight{0u};
     return inflight;
+}
+
+std::atomic<uint64_t> &getCertsCreatedCounter()
+{
+    static std::atomic<uint64_t> counter{0u};
+    return counter;
+}
+
+std::atomic<uint64_t> &getCertsRevokedCounter()
+{
+    static std::atomic<uint64_t> counter{0u};
+    return counter;
+}
+
+struct CcrTimingTracker {
+    mutable std::mutex mtx_;
+    double total_ms_{0.0};
+    uint64_t count_{0u};
+
+    void record(double ms) {
+        std::lock_guard<std::mutex> lk(mtx_);
+        total_ms_ += ms;
+        ++count_;
+    }
+
+    double averageMs() const {
+        std::lock_guard<std::mutex> lk(mtx_);
+        return count_ > 0 ? total_ms_ / static_cast<double>(count_) : 0.0;
+    }
+};
+
+CcrTimingTracker &getCcrTimingTracker()
+{
+    static CcrTimingTracker tracker;
+    return tracker;
 }
 
 struct InflightCcrGuard {
@@ -275,6 +312,33 @@ Value getIssuerValue(const std::string &issuer_id,
  */
 Value getRootValue(const std::string &issuer_id, const ossl_ptr<X509> &root_cert) {
     return createCertificateValue(issuer_id, root_cert, nullptr);
+}
+
+Value makeHealthValue() {
+    using namespace pvxs::members;
+
+    return TypeDef(TypeCode::Struct, {
+        Bool("ok"),
+        Bool("db_ok"),
+        Bool("ca_valid"),
+        UInt64("uptime_secs"),
+        UInt64("cert_count"),
+        UInt32("cluster_members"),
+        String("last_check"),
+    }).create();
+}
+
+Value makeMetricsValue() {
+    using namespace pvxs::members;
+
+    return TypeDef(TypeCode::Struct, {
+        UInt64("certs_created"),
+        UInt64("certs_revoked"),
+        UInt64("certs_active"),
+        Member(TypeCode::Float64, "avg_ccr_time_ms"),
+        UInt64("db_size_bytes"),
+        UInt64("uptime_secs"),
+    }).create();
 }
 
 /**
@@ -1058,9 +1122,10 @@ int64_t onCreateCertificate(ConfigCms &config,
                          std::unique_ptr<server::ExecOp> &&op,
                          Value &&args,
                          const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
-                         const ossl_ptr<X509> &cert_auth_cert,
-                         const ossl_shared_ptr<stack_st_X509> &cert_auth_cert_chain,
-                         std::string issuer_id) {
+                          const ossl_ptr<X509> &cert_auth_cert,
+                          const ossl_shared_ptr<stack_st_X509> &cert_auth_cert_chain,
+                          std::string issuer_id) {
+    auto ccr_start = std::chrono::steady_clock::now();
     auto ccr = args["query"];
 
     auto pub_key = ccr["pub_key"].as<std::string>();
@@ -1336,6 +1401,10 @@ int64_t onCreateCertificate(ConfigCms &config,
         insertAuditRecord(certs_db.get(), AUDIT_ACTION_CREATE,
                           SB() << type << ":" << name,
                           serial, SB() << "state=" << CERT_STATE(state));
+        getCertsCreatedCounter().fetch_add(1u);
+        auto ccr_end = std::chrono::steady_clock::now();
+        double ccr_ms = std::chrono::duration<double, std::milli>(ccr_end - ccr_start).count();
+        getCcrTimingTracker().record(ccr_ms);
         return static_cast<int64_t>(serial);
     } catch (std::exception &e) {
         // For any type of error return an error to the caller
@@ -1452,6 +1521,7 @@ void onRevoke(const ConfigCms &config,
         updateCertificateStatus(certs_db, serial, REVOKED, 0);
         insertAuditRecord(certs_db.get(), AUDIT_ACTION_REVOKE, operator_id,
                           serial, "");
+        getCertsRevokedCounter().fetch_add(1u);
 
         const auto revocation_date = std::time(nullptr);
         const auto ocsp_status =
@@ -3243,6 +3313,91 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
         return {};
     }
 
+    if (auto *health_pv = status_monitor_params.getHealthPV()) {
+        try {
+            const time_t now_time = time(nullptr);
+            bool db_ok = status_monitor_params.isDbIntegrityOk();
+            uint64_t cert_count = 0u;
+
+            sqlite3_stmt *health_count_stmt = nullptr;
+            if (sqlite3_prepare_v2(status_monitor_params.certs_db_.get(),
+                                   "SELECT COUNT(*) FROM certs", -1, &health_count_stmt, nullptr) == SQLITE_OK) {
+                if (sqlite3_step(health_count_stmt) == SQLITE_ROW) {
+                    cert_count = static_cast<uint64_t>(sqlite3_column_int64(health_count_stmt, 0));
+                } else {
+                    db_ok = false;
+                }
+            } else {
+                db_ok = false;
+            }
+            if (health_count_stmt) {
+                sqlite3_finalize(health_count_stmt);
+            }
+
+            bool ca_valid = false;
+            if (status_monitor_params.cert_auth_cert_) {
+                const ASN1_TIME *not_after = X509_get0_notAfter(status_monitor_params.cert_auth_cert_.get());
+                ca_valid = not_after && (X509_cmp_current_time(not_after) > 0);
+            }
+
+            char time_buf[32] = {0};
+            struct tm tm_buf;
+            gmtime_r(&now_time, &tm_buf);
+            strftime(time_buf, sizeof(time_buf), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+
+            auto value = status_monitor_params.cloneHealthValue();
+            value["ok"] = db_ok && ca_valid;
+            value["db_ok"] = db_ok;
+            value["ca_valid"] = ca_valid;
+            value["uptime_secs"] = static_cast<uint64_t>(now_time - status_monitor_params.getStartTime());
+            value["cert_count"] = cert_count;
+            value["cluster_members"] = status_monitor_params.getClusterMemberCount();
+            value["last_check"] = std::string(time_buf);
+
+            health_pv->post(value);
+        } catch (const std::exception &e) {
+            log_warn_printf(pvacms, "Health PV update failed: %s\n", e.what());
+        }
+    }
+
+    if (auto *metrics_pv = status_monitor_params.getMetricsPV()) {
+        try {
+            auto value = status_monitor_params.cloneMetricsValue();
+            value["certs_created"] = getCertsCreatedCounter().load();
+            value["certs_revoked"] = getCertsRevokedCounter().load();
+
+            uint64_t active_count = 0u;
+            sqlite3_stmt *active_stmt = nullptr;
+            if (sqlite3_prepare_v2(status_monitor_params.certs_db_.get(),
+                                   "SELECT COUNT(*) FROM certs WHERE status = 1", -1, &active_stmt, nullptr) == SQLITE_OK) {
+                if (sqlite3_step(active_stmt) == SQLITE_ROW) {
+                    active_count = static_cast<uint64_t>(sqlite3_column_int64(active_stmt, 0));
+                }
+            }
+            if (active_stmt) sqlite3_finalize(active_stmt);
+            value["certs_active"] = active_count;
+
+            value["avg_ccr_time_ms"] = getCcrTimingTracker().averageMs();
+
+            uint64_t db_size = 0u;
+            struct stat st;
+            if (stat(status_monitor_params.config_.certs_db_filename.c_str(), &st) == 0) {
+                db_size = static_cast<uint64_t>(st.st_size);
+                std::string wal_path = status_monitor_params.config_.certs_db_filename + "-wal";
+                struct stat wal_st;
+                if (stat(wal_path.c_str(), &wal_st) == 0) {
+                    db_size += static_cast<uint64_t>(wal_st.st_size);
+                }
+            }
+            value["db_size_bytes"] = db_size;
+            value["uptime_secs"] = static_cast<uint64_t>(time(nullptr) - status_monitor_params.getStartTime());
+
+            metrics_pv->post(value);
+        } catch (const std::exception &e) {
+            log_warn_printf(pvacms, "Metrics PV update failed: %s\n", e.what());
+        }
+    }
+
     uint32_t computed_secs;
     if (near_transition_count == 0) {
         computed_secs = clamped_interval_max;
@@ -3393,6 +3548,12 @@ int readParameters(int argc,
     app.add_option("--cert-pv-prefix",
                    cert_pv_prefix,
                    "Specifies the prefix for all PVs published by this PVACMS.  Default `CERT`");
+    app.add_option("--health-pv-prefix",
+                   config.health_pv_prefix,
+                   "Prefix for health check PV name.  Default `CERT:HEALTH`");
+    app.add_option("--metrics-pv-prefix",
+                   config.metrics_pv_prefix,
+                   "Prefix for operational metrics PV name.  Default `CERT:METRICS`");
     app.add_option("--cluster-pv-prefix",
                    config.cluster_pv_prefix,
                    "Prefix for cluster PV names.  Default `CERT:CLUSTER`");
@@ -3516,6 +3677,8 @@ int readParameters(int argc,
             << "        --status-validity-mins               Set Status Validity Time in Minutes\n"
             << "        --cert-pv-prefix <cert_pv_prefix>    Specifies the prefix for all PVs published by this "
                "PVACMS.  Default `CERT`\n"
+            << "        --health-pv-prefix <prefix>          Health check PV name prefix. Default `CERT:HEALTH`\n"
+            << "        --metrics-pv-prefix <prefix>         Operational metrics PV name prefix. Default `CERT:METRICS`\n"
             << "        --cluster-mode                        Enable cluster mode for multi-node replication\n"
             << "        --cluster-pv-prefix <prefix>         Prefix for cluster PV names. Default `CERT:CLUSTER`\n"
             << "        --cluster-discovery-timeout <secs>   Seconds to wait for cluster discovery. Default 10\n"
@@ -3748,6 +3911,8 @@ int main(int argc, char *argv[]) {
 
         // Create the PVs
         SharedPV create_pv(SharedPV::buildReadonly());
+        SharedPV health_pv(SharedPV::buildReadonly());
+        SharedPV metrics_pv(SharedPV::buildReadonly());
         SharedPV root_pv(SharedPV::buildReadonly());
         SharedPV issuer_pv(SharedPV::buildReadonly());
         WildcardPV status_pv(WildcardPV::buildMailbox());
@@ -3943,6 +4108,13 @@ int main(int argc, char *argv[]) {
                                              cert_auth_pkey,
                                              cert_auth_chain,
                                              active_status_validity);
+        status_monitor_params.setHealthPV(&health_pv);
+        status_monitor_params.setMetricsPV(&metrics_pv);
+        if (config.cluster_mode) {
+            status_monitor_params.setClusterMemberCount([&cluster_ctrl]() -> uint32_t {
+                return static_cast<uint32_t>(cluster_ctrl.getMembers().size());
+            });
+        }
 
         // Create a server with a certificate monitoring function attached to the cert file monitor timer
         // Return true to indicate that we want the file monitor time to run after this
@@ -3966,9 +4138,35 @@ int main(int argc, char *argv[]) {
             .addPV(getCertAuthRootPv(config.getCertPvPrefix()), root_pv)
             .addPV(getCertAuthRootPv(config.getCertPvPrefix(), our_issuer_id), root_pv)
             .addPV(getCertIssuerPv(config.getCertPvPrefix()), issuer_pv)
-            .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv);
+            .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv)
+            .addPV(config.health_pv_prefix, health_pv)
+            .addPV(config.health_pv_prefix + ":" + our_issuer_id, health_pv)
+            .addPV(config.metrics_pv_prefix, metrics_pv)
+            .addPV(config.metrics_pv_prefix + ":" + our_issuer_id, metrics_pv);
+
+        auto health_value = makeHealthValue();
+        health_value["ok"] = true;
+        health_value["db_ok"] = true;
+        health_value["ca_valid"] = true;
+        health_value["uptime_secs"] = static_cast<uint64_t>(0u);
+        health_value["cert_count"] = static_cast<uint64_t>(0u);
+        health_value["cluster_members"] = config.cluster_mode ? static_cast<uint32_t>(0u) : static_cast<uint32_t>(1u);
+        health_value["last_check"] = std::string();
+
+        auto metrics_value = makeMetricsValue();
+        metrics_value["certs_created"] = static_cast<uint64_t>(0u);
+        metrics_value["certs_revoked"] = static_cast<uint64_t>(0u);
+        metrics_value["certs_active"] = static_cast<uint64_t>(0u);
+        metrics_value["avg_ccr_time_ms"] = 0.0;
+        metrics_value["db_size_bytes"] = static_cast<uint64_t>(0u);
+        metrics_value["uptime_secs"] = static_cast<uint64_t>(0u);
+
+        health_pv.open(health_value);
+        metrics_pv.open(metrics_value);
         root_pv.open(root_pv_value);
         issuer_pv.open(issuer_pv_value);
+        status_monitor_params.setHealthProto(health_value);
+        status_monitor_params.setMetricsProto(metrics_value);
 
         std::string cluster_status;
         std::unique_ptr<ClusterDiscovery> cluster_discovery;
