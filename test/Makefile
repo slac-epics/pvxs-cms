@@ -114,6 +114,11 @@ TESTPROD_HOST += testoperationalmetrics
 testoperationalmetrics_SRCS += testoperationalmetrics.cpp
 testoperationalmetrics_SYS_LIBS += sqlite3
 
+PROD_HOST += testdatabasebackup
+testdatabasebackup_SRCS += testdatabasebackup.cpp
+testdatabasebackup_SYS_LIBS += sqlite3
+TESTS += testdatabasebackup
+
 endif # PVXS_ENABLE_PVACMS
 endif # BASE_3_15
 

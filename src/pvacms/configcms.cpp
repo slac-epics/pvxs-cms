@@ -334,6 +334,26 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         }
     }
 
+    if (pickone({"EPICS_PVACMS_BACKUP_INTERVAL"})) {
+        try {
+            backup_interval_secs = static_cast<uint32_t>(parseTo<uint64_t>(pickone.val));
+        } catch (std::exception &e) {
+            log_err_printf(cert_cfg, "%s invalid interval: %s\n", pickone.name.c_str(), e.what());
+        }
+    }
+
+    if (pickone({"EPICS_PVACMS_BACKUP_DIR"})) {
+        backup_dir = pickone.val;
+    }
+
+    if (pickone({"EPICS_PVACMS_BACKUP_RETENTION"})) {
+        try {
+            backup_retention = static_cast<uint32_t>(parseTo<uint64_t>(pickone.val));
+        } catch (std::exception &e) {
+            log_err_printf(cert_cfg, "%s invalid retention: %s\n", pickone.name.c_str(), e.what());
+        }
+    }
+
 }
 
 /**
@@ -395,6 +415,9 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     defs["EPICS_PVACMS_MAX_CONCURRENT_CCR"] = std::to_string(max_concurrent_ccr);
     defs["EPICS_PVACMS_MONITOR_INTERVAL_MIN"] = std::to_string(monitor_interval_min_secs);
     defs["EPICS_PVACMS_MONITOR_INTERVAL_MAX"] = std::to_string(monitor_interval_max_secs);
+    defs["EPICS_PVACMS_BACKUP_INTERVAL"] = std::to_string(backup_interval_secs);
+    if (!backup_dir.empty()) defs["EPICS_PVACMS_BACKUP_DIR"] = backup_dir;
+    defs["EPICS_PVACMS_BACKUP_RETENTION"] = std::to_string(backup_retention);
 
     // Add any defs for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry()) authn_entry.second->updateDefs(defs);
