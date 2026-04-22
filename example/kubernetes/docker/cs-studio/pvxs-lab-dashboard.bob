@@ -207,7 +207,7 @@
             <width>200</width>
           </widget>
 
-          <!-- test:compressExample — compressed data -->
+          <!-- test:compressExample — compressed circular buffer (read-only scalar display) -->
           <widget type="label" version="2.0.0">
             <name>lbl_compressExample</name>
             <text>test:compressExample</text>
@@ -279,7 +279,7 @@
             </foreground_color>
           </widget>
 
-          <!-- test:arrayExample — array -->
+          <!-- test:arrayExample — array (read-only) -->
           <widget type="label" version="2.0.0">
             <name>lbl_arrayExample</name>
             <text>test:arrayExample</text>
@@ -303,7 +303,7 @@
             <width>400</width>
           </widget>
 
-          <!-- test:vectorExampleD1 — vector -->
+          <!-- test:vectorExampleD1 — vector (read-only) -->
           <widget type="label" version="2.0.0">
             <name>lbl_vectorD1</name>
             <text>test:vectorExampleD1</text>
@@ -327,7 +327,7 @@
             <width>400</width>
           </widget>
 
-          <!-- test:vectorExampleD2 — vector -->
+          <!-- test:vectorExampleD2 — vector (read-only) -->
           <widget type="label" version="2.0.0">
             <name>lbl_vectorD2</name>
             <text>test:vectorExampleD2</text>
@@ -351,13 +351,17 @@
             <width>400</width>
           </widget>
 
-          <!-- test:structExample — struct -->
+          <!-- ── test:structExample — individual leaf fields ── -->
           <widget type="label" version="2.0.0">
-            <name>lbl_structExample</name>
+            <name>lbl_structExample_hdr</name>
             <text>test:structExample</text>
             <x>10</x>
             <y>370</y>
             <width>180</width>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
           </widget>
           <widget type="led" version="2.0.0">
             <name>led_structExample</name>
@@ -367,112 +371,236 @@
             <width>16</width>
             <height>16</height>
           </widget>
-          <widget type="table" version="2.0.0">
-            <name>val_structExample</name>
-            <pv_name>pva://test:structExample</pv_name>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_struct_val_a</name>
+            <text>.value.a</text>
+            <x>30</x>
+            <y>395</y>
+            <width>150</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_struct_val_a</name>
+            <pv_name>pva://test:structExample/ai.value</pv_name>
             <x>200</x>
-            <y>370</y>
-            <width>500</width>
-            <height>80</height>
-            <editable>false</editable>
+            <y>395</y>
+            <width>160</width>
           </widget>
 
-          <!-- test:tableExample — NTTable -->
           <widget type="label" version="2.0.0">
-            <name>lbl_tableExample</name>
+            <name>lbl_struct_val_b</name>
+            <text>.value.b</text>
+            <x>30</x>
+            <y>420</y>
+            <width>150</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_struct_val_b</name>
+            <pv_name>pva://test:structExample/calc.value</pv_name>
+            <x>200</x>
+            <y>420</y>
+            <width>160</width>
+          </widget>
+
+          <!-- ── test:tableExample — connection indicator only (NTTable, read-only) ── -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_tableExample_hdr</name>
             <text>test:tableExample</text>
             <x>10</x>
-            <y>460</y>
+            <y>455</y>
             <width>180</width>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
           </widget>
           <widget type="led" version="2.0.0">
             <name>led_tableExample</name>
             <pv_name>pva://test:tableExample</pv_name>
             <x>180</x>
-            <y>460</y>
+            <y>455</y>
             <width>16</width>
             <height>16</height>
           </widget>
-          <widget type="table" version="2.0.0">
-            <name>val_tableExample</name>
-            <pv_name>pva://test:tableExample</pv_name>
+          <widget type="label" version="2.0.0">
+            <name>lbl_tableExample_note</name>
+            <text>(NTTable — connection indicator only)</text>
             <x>200</x>
-            <y>460</y>
-            <width>500</width>
-            <height>100</height>
-            <editable>false</editable>
+            <y>455</y>
+            <width>280</width>
+            <font>
+              <font family="Liberation Sans" style="ITALIC" size="12.0">
+              </font>
+            </font>
+            <foreground_color>
+              <color red="128" green="128" blue="128">
+              </color>
+            </foreground_color>
           </widget>
 
-          <!-- test:groupExampleAS — group/struct -->
+          <!-- ── test:groupExampleAS — leaf fields ── -->
           <widget type="label" version="2.0.0">
-            <name>lbl_groupAS</name>
+            <name>lbl_groupAS_hdr</name>
             <text>test:groupExampleAS</text>
             <x>10</x>
-            <y>570</y>
-            <width>180</width>
+            <y>490</y>
+            <width>190</width>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
           </widget>
           <widget type="led" version="2.0.0">
             <name>led_groupAS</name>
             <pv_name>pva://test:groupExampleAS</pv_name>
-            <x>180</x>
-            <y>570</y>
+            <x>190</x>
+            <y>490</y>
             <width>16</width>
             <height>16</height>
           </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_groupAS_a</name>
+            <text>.a</text>
+            <x>30</x>
+            <y>515</y>
+            <width>150</width>
+          </widget>
           <widget type="textupdate" version="2.0.0">
-            <name>val_groupAS</name>
-            <pv_name>pva://test:groupExampleAS</pv_name>
+            <name>val_groupAS_a</name>
+            <pv_name>pva://test:tableExample/value.A</pv_name>
             <x>200</x>
-            <y>570</y>
-            <width>400</width>
+            <y>515</y>
+            <width>160</width>
           </widget>
 
-          <!-- test:groupExampleSave — group/struct -->
           <widget type="label" version="2.0.0">
-            <name>lbl_groupSave</name>
+            <name>lbl_groupAS_b</name>
+            <text>.b</text>
+            <x>30</x>
+            <y>540</y>
+            <width>150</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_groupAS_b</name>
+            <pv_name>pva://test:tableExample/value.B</pv_name>
+            <x>200</x>
+            <y>540</y>
+            <width>160</width>
+          </widget>
+
+          <!-- ── test:groupExampleSave — leaf fields (writable) ── -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_groupSave_hdr</name>
             <text>test:groupExampleSave</text>
             <x>10</x>
-            <y>600</y>
-            <width>180</width>
+            <y>575</y>
+            <width>190</width>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
+            <foreground_color>
+              <color red="0" green="80" blue="160">
+              </color>
+            </foreground_color>
           </widget>
           <widget type="led" version="2.0.0">
             <name>led_groupSave</name>
             <pv_name>pva://test:groupExampleSave</pv_name>
-            <x>180</x>
-            <y>600</y>
+            <x>190</x>
+            <y>575</y>
             <width>16</width>
             <height>16</height>
           </widget>
-          <widget type="textupdate" version="2.0.0">
-            <name>val_groupSave</name>
-            <pv_name>pva://test:groupExampleSave</pv_name>
-            <x>200</x>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_groupSave_a</name>
+            <text>.a</text>
+            <x>30</x>
             <y>600</y>
-            <width>400</width>
+            <width>150</width>
+          </widget>
+          <widget type="textentry" version="3.0.0">
+            <name>val_groupSave_a</name>
+            <pv_name>pva://test:tableExample/value.A</pv_name>
+            <x>200</x>
+            <y>597</y>
+            <width>160</width>
+            <height>26</height>
           </widget>
 
-          <!-- test:structExampleSave — struct -->
           <widget type="label" version="2.0.0">
-            <name>lbl_structSave</name>
+            <name>lbl_groupSave_b</name>
+            <text>.b</text>
+            <x>30</x>
+            <y>632</y>
+            <width>150</width>
+          </widget>
+          <widget type="textentry" version="3.0.0">
+            <name>val_groupSave_b</name>
+            <pv_name>pva://test:tableExample/value.B</pv_name>
+            <x>200</x>
+            <y>629</y>
+            <width>160</width>
+            <height>26</height>
+          </widget>
+
+          <!-- ── test:structExampleSave — leaf fields (writable) ── -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_structSave_hdr</name>
             <text>test:structExampleSave</text>
             <x>10</x>
-            <y>630</y>
-            <width>180</width>
+            <y>665</y>
+            <width>190</width>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
+            <foreground_color>
+              <color red="0" green="80" blue="160">
+              </color>
+            </foreground_color>
           </widget>
           <widget type="led" version="2.0.0">
             <name>led_structSave</name>
             <pv_name>pva://test:structExampleSave</pv_name>
-            <x>180</x>
-            <y>630</y>
+            <x>190</x>
+            <y>665</y>
             <width>16</width>
             <height>16</height>
           </widget>
-          <widget type="textupdate" version="2.0.0">
-            <name>val_structSave</name>
-            <pv_name>pva://test:structExampleSave</pv_name>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_structSave_a</name>
+            <text>.value.a</text>
+            <x>30</x>
+            <y>690</y>
+            <width>150</width>
+          </widget>
+          <widget type="textentry" version="3.0.0">
+            <name>val_structSave_a</name>
+            <pv_name>pva://test:structExampleSave/value</pv_name>
             <x>200</x>
-            <y>630</y>
-            <width>400</width>
+            <y>687</y>
+            <width>160</width>
+            <height>26</height>
+          </widget>
+
+          <widget type="label" version="2.0.0">
+            <name>lbl_structSave_b</name>
+            <text>.value.b</text>
+            <x>30</x>
+            <y>720</y>
+            <width>150</width>
+          </widget>
+          <widget type="textentry" version="3.0.0">
+            <name>val_structSave_b</name>
+            <pv_name>pva://test:structExampleSave/value</pv_name>
+            <x>200</x>
+            <y>717</y>
+            <width>160</width>
+            <height>26</height>
           </widget>
         </children>
       </tab>
@@ -925,6 +1053,375 @@
             <x>200</x>
             <y>100</y>
             <width>200</width>
+          </widget>
+        </children>
+      </tab>
+
+      <!-- ============================================================ -->
+      <!-- Tab 4: PVACMS — Certificate Management Service               -->
+      <!-- Shows CERT:HEALTH and CERT:METRICS PVs                       -->
+      <!-- ============================================================ -->
+      <tab>
+        <name>PVACMS</name>
+        <children>
+          <widget type="label" version="2.0.0">
+            <name>pvacms_header</name>
+            <text>PVACMS — Certificate Management Service</text>
+            <x>10</x>
+            <y>5</y>
+            <width>600</width>
+            <height>25</height>
+            <font>
+              <font name="Header 3" family="Liberation Sans" style="BOLD" size="16.0">
+              </font>
+            </font>
+          </widget>
+
+          <!-- ── Section: Health ── -->
+          <widget type="label" version="2.0.0">
+            <name>pvacms_health_hdr</name>
+            <text>Health  (CERT:HEALTH)</text>
+            <x>10</x>
+            <y>40</y>
+            <width>300</width>
+            <height>22</height>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
+            <foreground_color>
+              <color red="0" green="100" blue="0">
+              </color>
+            </foreground_color>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_health_conn</name>
+            <pv_name>pva://CERT:HEALTH</pv_name>
+            <x>310</x>
+            <y>42</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>health_tls</name>
+            <pv_name>pva://CERT:HEALTH</pv_name>
+            <display_mode>0</display_mode>
+            <x>335</x>
+            <y>40</y>
+            <width>110</width>
+            <height>22</height>
+          </widget>
+
+          <!-- ok — overall health boolean -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_health_ok</name>
+            <text>Overall OK:</text>
+            <x>30</x>
+            <y>70</y>
+            <width>160</width>
+          </widget>
+          <widget type="bool_button" version="2.0.0">
+            <name>val_health_ok</name>
+            <pv_name>pva://CERT:HEALTH/ok</pv_name>
+            <x>200</x>
+            <y>67</y>
+            <width>80</width>
+            <height>26</height>
+            <on_label>OK</on_label>
+            <off_label>FAULT</off_label>
+            <on_color>
+              <color name="OK" red="0" green="200" blue="0">
+              </color>
+            </on_color>
+            <off_color>
+              <color name="FAULT" red="220" green="0" blue="0">
+              </color>
+            </off_color>
+            <enabled>false</enabled>
+          </widget>
+
+          <!-- db_ok -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_health_db_ok</name>
+            <text>DB Integrity:</text>
+            <x>30</x>
+            <y>100</y>
+            <width>160</width>
+          </widget>
+          <widget type="bool_button" version="2.0.0">
+            <name>val_health_db_ok</name>
+            <pv_name>pva://CERT:HEALTH/db_ok</pv_name>
+            <x>200</x>
+            <y>97</y>
+            <width>80</width>
+            <height>26</height>
+            <on_label>OK</on_label>
+            <off_label>ERROR</off_label>
+            <on_color>
+              <color name="OK" red="0" green="200" blue="0">
+              </color>
+            </on_color>
+            <off_color>
+              <color name="FAULT" red="220" green="0" blue="0">
+              </color>
+            </off_color>
+            <enabled>false</enabled>
+          </widget>
+
+          <!-- ca_valid -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_health_ca_valid</name>
+            <text>CA Certificate Valid:</text>
+            <x>30</x>
+            <y>130</y>
+            <width>160</width>
+          </widget>
+          <widget type="bool_button" version="2.0.0">
+            <name>val_health_ca_valid</name>
+            <pv_name>pva://CERT:HEALTH/ca_valid</pv_name>
+            <x>200</x>
+            <y>127</y>
+            <width>80</width>
+            <height>26</height>
+            <on_label>VALID</on_label>
+            <off_label>EXPIRED</off_label>
+            <on_color>
+              <color name="OK" red="0" green="200" blue="0">
+              </color>
+            </on_color>
+            <off_color>
+              <color name="FAULT" red="220" green="0" blue="0">
+              </color>
+            </off_color>
+            <enabled>false</enabled>
+          </widget>
+
+          <!-- uptime_secs -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_health_uptime</name>
+            <text>Uptime (s):</text>
+            <x>30</x>
+            <y>160</y>
+            <width>160</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_health_uptime</name>
+            <pv_name>pva://CERT:HEALTH/uptime_secs</pv_name>
+            <x>200</x>
+            <y>158</y>
+            <width>140</width>
+          </widget>
+
+          <!-- cert_count -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_health_cert_count</name>
+            <text>Total Certificates:</text>
+            <x>30</x>
+            <y>190</y>
+            <width>160</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_health_cert_count</name>
+            <pv_name>pva://CERT:HEALTH/cert_count</pv_name>
+            <x>200</x>
+            <y>188</y>
+            <width>140</width>
+          </widget>
+
+          <!-- cluster_members -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_health_cluster_members</name>
+            <text>Cluster Members:</text>
+            <x>30</x>
+            <y>220</y>
+            <width>160</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_health_cluster_members</name>
+            <pv_name>pva://CERT:HEALTH/cluster_members</pv_name>
+            <x>200</x>
+            <y>218</y>
+            <width>140</width>
+          </widget>
+
+          <!-- last_check -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_health_last_check</name>
+            <text>Last Check (UTC):</text>
+            <x>30</x>
+            <y>250</y>
+            <width>160</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_health_last_check</name>
+            <pv_name>pva://CERT:HEALTH/last_check</pv_name>
+            <x>200</x>
+            <y>248</y>
+            <width>220</width>
+          </widget>
+
+          <!-- ── Separator ── -->
+          <widget type="label" version="2.0.0">
+            <name>pvacms_sep</name>
+            <text> </text>
+            <x>10</x>
+            <y>280</y>
+            <width>860</width>
+            <height>2</height>
+            <background_color>
+              <color red="180" green="180" blue="180">
+              </color>
+            </background_color>
+            <transparent>false</transparent>
+          </widget>
+
+          <!-- ── Section: Metrics ── -->
+          <widget type="label" version="2.0.0">
+            <name>pvacms_metrics_hdr</name>
+            <text>Metrics  (CERT:METRICS)</text>
+            <x>10</x>
+            <y>292</y>
+            <width>300</width>
+            <height>22</height>
+            <font>
+              <font name="Default Bold" family="Liberation Sans" style="BOLD" size="14.0">
+              </font>
+            </font>
+            <foreground_color>
+              <color red="0" green="60" blue="160">
+              </color>
+            </foreground_color>
+          </widget>
+          <widget type="led" version="2.0.0">
+            <name>led_metrics_conn</name>
+            <pv_name>pva://CERT:METRICS</pv_name>
+            <x>310</x>
+            <y>294</y>
+            <width>16</width>
+            <height>16</height>
+          </widget>
+          <widget type="pva_security" version="2.0.0">
+            <name>metrics_tls</name>
+            <pv_name>pva://CERT:METRICS</pv_name>
+            <display_mode>0</display_mode>
+            <x>335</x>
+            <y>292</y>
+            <width>110</width>
+            <height>22</height>
+          </widget>
+
+          <!-- certs_created -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_metrics_created</name>
+            <text>Certs Created:</text>
+            <x>30</x>
+            <y>322</y>
+            <width>160</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_metrics_created</name>
+            <pv_name>pva://CERT:METRICS/certs_created</pv_name>
+            <x>200</x>
+            <y>320</y>
+            <width>140</width>
+          </widget>
+
+          <!-- certs_revoked -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_metrics_revoked</name>
+            <text>Certs Revoked:</text>
+            <x>30</x>
+            <y>352</y>
+            <width>160</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_metrics_revoked</name>
+            <pv_name>pva://CERT:METRICS/certs_revoked</pv_name>
+            <x>200</x>
+            <y>350</y>
+            <width>140</width>
+          </widget>
+
+          <!-- certs_active -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_metrics_active</name>
+            <text>Certs Active:</text>
+            <x>30</x>
+            <y>382</y>
+            <width>160</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_metrics_active</name>
+            <pv_name>pva://CERT:METRICS/certs_active</pv_name>
+            <x>200</x>
+            <y>380</y>
+            <width>140</width>
+          </widget>
+
+          <!-- avg_ccr_time_ms -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_metrics_ccr_time</name>
+            <text>Avg CCR Time (ms):</text>
+            <x>30</x>
+            <y>412</y>
+            <width>160</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_metrics_ccr_time</name>
+            <pv_name>pva://CERT:METRICS/avg_ccr_time_ms</pv_name>
+            <x>200</x>
+            <y>410</y>
+            <width>140</width>
+          </widget>
+
+          <!-- db_size_bytes -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_metrics_db_size</name>
+            <text>DB Size (bytes):</text>
+            <x>30</x>
+            <y>442</y>
+            <width>160</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_metrics_db_size</name>
+            <pv_name>pva://CERT:METRICS/db_size_bytes</pv_name>
+            <x>200</x>
+            <y>440</y>
+            <width>140</width>
+          </widget>
+
+          <!-- uptime_secs (metrics) -->
+          <widget type="label" version="2.0.0">
+            <name>lbl_metrics_uptime</name>
+            <text>Uptime (s):</text>
+            <x>30</x>
+            <y>472</y>
+            <width>160</width>
+          </widget>
+          <widget type="textupdate" version="2.0.0">
+            <name>val_metrics_uptime</name>
+            <pv_name>pva://CERT:METRICS/uptime_secs</pv_name>
+            <x>200</x>
+            <y>470</y>
+            <width>140</width>
+          </widget>
+
+          <!-- ── Note on issuer-specific PVs ── -->
+          <widget type="label" version="2.0.0">
+            <name>pvacms_issuer_note</name>
+            <text>Note: per-node PVs also available as CERT:HEALTH:&lt;issuer_id&gt; and CERT:METRICS:&lt;issuer_id&gt;</text>
+            <x>10</x>
+            <y>510</y>
+            <width>700</width>
+            <height>20</height>
+            <font>
+              <font family="Liberation Sans" style="ITALIC" size="12.0">
+              </font>
+            </font>
+            <foreground_color>
+              <color red="100" green="100" blue="100">
+              </color>
+            </foreground_color>
           </widget>
         </children>
       </tab>
