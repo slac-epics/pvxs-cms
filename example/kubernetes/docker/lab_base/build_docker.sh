@@ -12,7 +12,7 @@ trap "popd" EXIT
 BASE_IMAGE_NAME="pvxs-cms"
 BASE_IMAGE_TAG="latest"
 TARGET_IMAGE_NAME="lab_base"
-TARGET_IMAGE_TAG="latest"
+TARGET_IMAGE_TAG="dev"
 
 echo "--- Building ${TARGET_IMAGE_NAME} Docker image ---"
 

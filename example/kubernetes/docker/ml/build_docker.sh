@@ -10,9 +10,9 @@ pushd "${DOCKER_DIR}"
 trap "popd" EXIT
 
 BASE_IMAGE_NAME="idm"
-BASE_IMAGE_TAG="latest"
+BASE_IMAGE_TAG="dev"
 TARGET_IMAGE_NAME="ml"
-TARGET_IMAGE_TAG="latest"
+TARGET_IMAGE_TAG="dev"
 
 echo "--- Building ${TARGET_IMAGE_NAME} Docker image ---"
 
