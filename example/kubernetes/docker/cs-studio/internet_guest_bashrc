@@ -6,7 +6,6 @@ export PROJECT_HOME=/opt/epics
 export EPICS_PVA_AUTH_ORGANIZATION=epics.org
 export EPICS_PVA_NAME_SERVERS="pvxs-lab-gateway:5075 pvxs-lab-ml-gateway:5075"
 export EPICS_PVA_AUTO_ADDR_LIST="NO"
-export EPICS_PVA_TLS_KEYCHAIN=${XDG_CONFIG_HOME}/pva/1.5/client.p12
 unset EPICS_PVA_ADDR_LIST
 
 export EPICS_HOST_ARCH=$(${PROJECT_HOME}/epics-base/startup/EpicsHostArch)

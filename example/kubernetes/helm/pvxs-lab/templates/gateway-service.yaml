@@ -22,6 +22,18 @@ spec:
       protocol: UDP
       port: {{ .Values.ports.pvaUdp }}
       targetPort: pva-udp
+    - name: inet-tcp
+      protocol: TCP
+      port: 5275
+      targetPort: inet-tcp
+    - name: inet-udp
+      protocol: UDP
+      port: 5276
+      targetPort: inet-udp
+    - name: inet-tls
+      protocol: TCP
+      port: 5276
+      targetPort: inet-tls
 
 ---
 apiVersion: v1
