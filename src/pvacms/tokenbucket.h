@@ -12,8 +12,8 @@
 #include <cstdint>
 #include <mutex>
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cluster {
 
 class TokenBucket {
 public:
@@ -84,7 +84,7 @@ private:
     Clock::time_point last_refill_;
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cluster
+}  // namespace cms
 
 #endif  // PVXS_PVACMS_TOKENBUCKET_H_

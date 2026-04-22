@@ -129,6 +129,10 @@ namespace certs {
     using cms::cert::EXPIRED;
     using cms::cert::REVOKED;
     using cms::cert::UNKNOWN;
+    using cms::cluster::ClusterController;
+    using cms::cluster::ClusterDiscovery;
+    using cms::cluster::ClusterSyncPublisher;
+    using cms::cluster::TokenBucket;
 
 // fwd decl
 static void insertLoadedCertIfMissing(const ConfigCms &config,
@@ -4544,6 +4548,10 @@ using cms::cert::SCHEDULED_OFFLINE;
 using cms::cert::EXPIRED;
 using cms::cert::REVOKED;
 using cms::cert::UNKNOWN;
+using cms::cluster::ClusterController;
+using cms::cluster::ClusterDiscovery;
+using cms::cluster::ClusterSyncPublisher;
+using cms::cluster::TokenBucket;
 using namespace pvxs::certs;
     using namespace pvxs::server;
 
