@@ -175,6 +175,19 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             sqlite3_bind_int(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":renewal_due"), row["renewal_due"].as<int32_t>());
             sqlite3_bind_int(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":status"), row["status"].as<int32_t>());
             sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":status_date"), row["status_date"].as<int64_t>());
+            {
+                auto san_field = row["san"];
+                if (san_field) {
+                    auto san_str = san_field.as<std::string>();
+                    if (!san_str.empty()) {
+                        sqlite3_bind_text(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":san"), san_str.c_str(), -1, SQLITE_TRANSIENT);
+                    } else {
+                        sqlite3_bind_null(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":san"));
+                    }
+                } else {
+                    sqlite3_bind_null(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":san"));
+                }
+            }
             sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), serial);
             sqlite3_step(upd_stmt);
             insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
@@ -204,6 +217,19 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             sqlite3_bind_int(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":renewal_due"), row["renewal_due"].as<int32_t>());
             sqlite3_bind_int(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":status"), row["status"].as<int32_t>());
             sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":status_date"), row["status_date"].as<int64_t>());
+            {
+                auto san_field = row["san"];
+                if (san_field) {
+                    auto san_str = san_field.as<std::string>();
+                    if (!san_str.empty()) {
+                        sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":san"), san_str.c_str(), -1, SQLITE_TRANSIENT);
+                    } else {
+                        sqlite3_bind_null(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":san"));
+                    }
+                } else {
+                    sqlite3_bind_null(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":san"));
+                }
+            }
             sqlite3_step(ins_stmt);
             insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
                                   static_cast<uint64_t>(serial), SB() << "status=" << remote_status);

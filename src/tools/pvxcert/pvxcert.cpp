@@ -259,6 +259,18 @@ int main(int argc, char *argv[]) {
                         }
                     }
                 }
+                auto san = result["san"];
+                if (san) {
+                    auto san_arr = san.as<shared_array<const Value>>();
+                    if (san_arr.size() > 0) {
+                        std::string san_str;
+                        for (const auto &entry : san_arr) {
+                            if (!san_str.empty()) san_str += ", ";
+                            san_str += entry["type"].as<std::string>() + "=" + entry["value"].as<std::string>();
+                        }
+                        std::cout << "SAN           : " << san_str << std::endl;
+                    }
+                }
                 if (result["value.index"].as<uint32_t>() == certs::REVOKED) {
                     std::cout << "Revocation Date: " << result["ocsp_revocation_date"].as<std::string>() << std::endl;
                 }

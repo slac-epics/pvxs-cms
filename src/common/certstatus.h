@@ -434,6 +434,10 @@ struct CertStatus {
                             String("start_time"),
                             String("end_time"),
                         }),
+                        StructA("san", {
+                            String("type"),
+                            String("value"),
+                        }),
         }).create();
 
         shared_array<const std::string> choices(CERT_STATES);

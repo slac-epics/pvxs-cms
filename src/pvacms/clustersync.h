@@ -27,7 +27,8 @@
     "SELECT serial, skid, CN, O, OU, C, "  \
     "approved, not_before, not_after, "    \
     "renew_by, renewal_due, "              \
-    "status, status_date "                 \
+    "status, status_date, "                \
+    "san "                                 \
     "FROM certs"
 
 #define SQL_SYNC_SELECT_ALL_SCHEDULES \
@@ -37,7 +38,8 @@
     "SELECT serial, skid, CN, O, OU, C, "  \
     "approved, not_before, not_after, "    \
     "renew_by, renewal_due, "              \
-    "status, status_date "                 \
+    "status, status_date, "                \
+    "san "                                 \
     "FROM certs WHERE serial = ?"
 
 #define SQL_SYNC_CHECK_CERT_STATUS         \
@@ -59,6 +61,7 @@
     "  , renewal_due = :renewal_due"       \
     "  , status = :status"                 \
     "  , status_date = :status_date "      \
+    "  , san = :san"                       \
     "WHERE serial = :serial"
 
 #define SQL_SYNC_INSERT_CERT                    \
@@ -69,6 +72,7 @@
     "     O,"                                   \
     "     OU,"                                  \
     "     C,"                                   \
+    "     san,"                                 \
     "     approved,"                            \
     "     not_before,"                          \
     "     not_after,"                           \
@@ -84,6 +88,7 @@
     "     :O,"                                  \
     "     :OU,"                                 \
     "     :C,"                                  \
+    "     :san,"                                \
     "     :approved,"                           \
     "     :not_before,"                         \
     "     :not_after,"                          \
@@ -159,6 +164,7 @@ struct CertUpdate {
     int32_t renewal_due;
     int32_t status;
     int64_t status_date;
+    std::string san;
 };
 
 /**

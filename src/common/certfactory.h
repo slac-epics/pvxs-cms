@@ -70,6 +70,7 @@ class CertFactory {
     std::string skid_;
     certstatus_t initial_status_;
     bool allow_duplicates_{true};
+    std::vector<SanEntry> san_entries_;
 
     /**
      * @brief Constructor for CertFactory

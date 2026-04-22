@@ -228,29 +228,42 @@ class Auth {
     // Called to have a standard presentation of the CCR for the
     // purposes of generating and verifying signatures
     static std::string ccrToString(const std::shared_ptr<CertCreationRequest> &ccr, const uint16_t &usage) {
-        return SB() << ccr->type                            // Type
-                    << ccr->credentials->name               // Name
-                    << ccr->credentials->country            // Country
-                    << ccr->credentials->organization       // Organization
-                    << ccr->credentials->organization_unit  // Organizational Unit
-                    << ccr->credentials->not_before         // Not before
-                    << ccr->credentials->not_after          // Not After
-                    << ccr->credentials->config_uri_base    // Config URL Base
-                    << usage;                               // Usage
+        SB sb;
+        sb << ccr->type                            // Type
+           << ccr->credentials->name               // Name
+           << ccr->credentials->country            // Country
+           << ccr->credentials->organization       // Organization
+           << ccr->credentials->organization_unit  // Organizational Unit
+           << ccr->credentials->not_before         // Not before
+           << ccr->credentials->not_after          // Not After
+           << ccr->credentials->config_uri_base    // Config URL Base
+           << usage;                               // Usage
+        for (const auto &san : ccr->credentials->san_entries) {
+            sb << san.type << san.value;
+        }
+        return sb;
     }
 
     // Called to have a standard presentation of the CCR for the
     // purposes of generating and verifying signatures
     static std::string ccrToString(const Value &ccr) {
-        return SB() << ccr["type"].as<std::string>()               // Type
-                    << ccr["name"].as<std::string>()               // Name
-                    << ccr["country"].as<std::string>()            // Country
-                    << ccr["organization"].as<std::string>()       // Organization
-                    << ccr["organization_unit"].as<std::string>()  // Organizational Unit
-                    << ccr["not_before"].as<time_t>()              // Not before
-                    << ccr["not_after"].as<time_t>()               // Not After
-                    << ccr["config_uri_base"].as<std::string>()    // Config URL Base
-                    << ccr["usage"].as<uint16_t>();                // Usage
+        SB sb;
+        sb << ccr["type"].as<std::string>()               // Type
+           << ccr["name"].as<std::string>()               // Name
+           << ccr["country"].as<std::string>()            // Country
+           << ccr["organization"].as<std::string>()       // Organization
+           << ccr["organization_unit"].as<std::string>()  // Organizational Unit
+           << ccr["not_before"].as<time_t>()              // Not before
+           << ccr["not_after"].as<time_t>()               // Not After
+           << ccr["config_uri_base"].as<std::string>()    // Config URL Base
+           << ccr["usage"].as<uint16_t>();                // Usage
+        auto san_arr = ccr["san"];
+        if (san_arr.valid()) {
+            for (const auto &san_entry : san_arr.as<shared_array<const Value>>()) {
+                sb << san_entry["type"].as<std::string>() << san_entry["value"].as<std::string>();
+            }
+        }
+        return sb;
     }
 
  private:
@@ -394,6 +407,15 @@ CertData getCertificate(bool &retrieved_credentials,
         // If daemon mode, then add base uri to credentials
         if (daemon_mode) credentials->config_uri_base = config.getCertPvPrefix();
 
+        // Copy SAN entries from config based on usage
+        {
+            const auto &authn_config = static_cast<const ConfigAuthN &>(config);
+            if (IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))
+                credentials->san_entries = authn_config.san_entries;
+            else
+                credentials->san_entries = authn_config.server_san_entries;
+        }
+
         std::shared_ptr<KeyPair> key_pair;
         log_debug_printf(auth, "Credentials retrieved for: %s authenticator\n", authenticator.type_.c_str());
         retrieved_credentials = true;
@@ -453,6 +475,14 @@ CertData getCertificate(bool &retrieved_credentials,
             if (!credentials->organization.empty()) log_info_printf(auth, "SUBJECT  O: %s\n", credentials->organization.c_str());
             if (!credentials->organization_unit.empty()) log_info_printf(auth, "SUBJECT OU: %s\n", credentials->organization_unit.c_str());
             if (!credentials->country.empty()) log_info_printf(auth, "SUBJECT  C:%s\n", credentials->country.c_str());
+            if (!credentials->san_entries.empty()) {
+                std::string san_str;
+                for (const auto &se : credentials->san_entries) {
+                    if (!san_str.empty()) san_str += ", ";
+                    san_str += se.type + "=" + se.value;
+                }
+                log_info_printf(auth, "SUBJECT SAN: %s\n", san_str.c_str());
+            }
             log_info_printf(auth, "VALID FROM: %s\n", from.substr(0, from.size()-1).c_str());
             if (renew_by) {
                 const std::string renew_by_date = std::ctime(&renew_by);

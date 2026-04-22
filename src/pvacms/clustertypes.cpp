@@ -61,6 +61,7 @@ Value makeClusterSyncValue() {
             Int32("renewal_due"),
             Int32("status"),
             Int64("status_date"),
+            String("san"),
         }),
         StructA("cert_schedules", {
             Int64("serial"),
