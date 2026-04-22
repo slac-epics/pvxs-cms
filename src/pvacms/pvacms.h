@@ -525,7 +525,8 @@ bool getPriorApprovalStatus(const sql_ptr &certs_db, const std::string &name, co
 
 void onGetStatus(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
                  const std::string &pv_name, serial_number_t serial, const std::string &issuer_id, const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
-                 const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain);
+                 const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+                 const std::string &our_node_id = {});
 
 void onRevoke(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
               std::unique_ptr<server::ExecOp> &&op, const std::string &pv_name, const std::list<std::string> &parameters,
@@ -559,7 +560,8 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
                             const std::string &pv_name,
                             uint64_t serial,
                             const PVACertificateStatus &cert_status = {},
-                            const sql_ptr *certs_db = nullptr);
+                            const sql_ptr *certs_db = nullptr,
+                            const std::string &node_id = {});
 
 std::string getValidStatusesClause(const std::vector<certstatus_t> &valid_status);
 void bindValidStatusClauses(sqlite3_stmt *sql_statement, const std::vector<certstatus_t> &valid_status = {});

@@ -4,6 +4,8 @@
  * in file LICENSE that is included with this distribution.
  */
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
@@ -44,6 +46,33 @@ using namespace pvxs;
 namespace {
 
 DEFINE_LOGGER(certslog, "pvxs.certs.tool");
+
+// Strict uint64 parse: rejects empty/sign/whitespace/trailing-junk that std::stoull would silently accept,
+// and rewrites std::stoull's opaque "stoull" / "out_of_range" into a message naming the bad input.
+uint64_t parseSerial(const std::string &s) {
+    if (s.empty()) {
+        throw std::runtime_error("malformed certificate serial: empty value (expected <issuer>:<serial>)");
+    }
+    if (!std::isdigit(static_cast<unsigned char>(s.front()))) {
+        throw std::runtime_error("malformed certificate serial '" + s +
+                                 "': must be an unsigned decimal integer");
+    }
+    try {
+        std::size_t pos = 0;
+        const uint64_t value = std::stoull(s, &pos);
+        if (pos != s.size()) {
+            throw std::runtime_error("malformed certificate serial '" + s +
+                                     "': unexpected trailing characters");
+        }
+        return value;
+    } catch (const std::out_of_range &) {
+        throw std::runtime_error("malformed certificate serial '" + s +
+                                 "': value exceeds 64-bit unsigned range");
+    } catch (const std::invalid_argument &) {
+        throw std::runtime_error("malformed certificate serial '" + s +
+                                 "': must be an unsigned decimal integer");
+    }
+}
 
 #if !defined(_WIN32) && !defined(_MSC_VER)
 void setEcho(const bool enable) {
@@ -173,7 +202,12 @@ static void dumpMetadataSection(const std::chrono::system_clock::time_point& req
     writeLabel(std::cout, "Date Requested");     std::cout << timePointToUtc(req_t) << "\n";
     writeLabel(std::cout, "Date Received");      std::cout << timePointToUtc(resp_t) << "\n";
     writeLabel(std::cout, "Response Time");      std::cout << ms << " ms\n";
-    writeLabel(std::cout, "Server Address");     std::cout << peer_addr << "\n";
+    writeLabel(std::cout, "PVACMS Node Address"); std::cout << peer_addr << "\n";
+    {
+        const auto nid = result["pvacms_node_id"].as<std::string>();
+        writeLabel(std::cout, "PVACMS Node ID");
+        std::cout << (nid.empty() ? "(unknown)" : nid) << "\n";
+    }
     writeLabel(std::cout, "Local Interface");    std::cout << iface << "\n";
     writeLabel(std::cout, "Response Size");      std::cout << ocsp_bytes.size() << " bytes\n";
     writeLabel(std::cout, "PV Timestamp");       std::cout << ts_str.str() << "\n";
@@ -400,7 +434,8 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << std::endl
                   << "  APPROVAL and DENIAL of pending certificate approval requests: Can only be made by administrators.\n"
                   << std::endl
-                  << "  REVOCATION of a certificate: Can only be made by an administrator.\n"
+                  << "  REVOCATION of a certificate: Can only be made by an administrator or the certificate owner.\n"
+                  << "  When no cert_id is given, the certificate is read from -f <file> or $EPICS_PVA_TLS_KEYCHAIN.\n"
                   << std::endl
                   << "  SET/SHOW SCHEDULE manages the validity schedule windows for a certificate.\n"
                   << "  Schedules require status monitoring to be enabled on the certificate. Admin only.\n"
@@ -412,8 +447,9 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "  " << program_name << " [options] (-A | --approve) <cert_id>\n"
                   << "                                             APPROVE pending certificate approval request (ADMIN ONLY)\n"
                   << "  " << program_name << " [options] (-D | --deny) <cert_id>  DENY pending certificate approval request (ADMIN ONLY)\n"
-                  << "  " << program_name << " [options] (-R | --revoke) <cert_id>\n"
-                  << "                                             REVOKE certificate (ADMIN ONLY)\n"
+                  << "  " << program_name << " [options] (-R | --revoke) [<cert_id>]\n"
+                  << "                                             REVOKE certificate; if cert_id omitted, reads from\n"
+                  << "                                             -f <file> or $EPICS_PVA_TLS_KEYCHAIN\n"
                   << "  " << program_name << " [options] (-S | --schedule) show <cert_id>\n"
                   << "                                             SHOW current schedule windows (ADMIN ONLY)\n"
                   << "  " << program_name << " [options] (-S | --schedule) none <cert_id>\n"
@@ -465,6 +501,12 @@ int main(int argc, char *argv[]) {
             readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, dump, cert_file, issuer_serial_string, schedule_values);
         if (parse_result) exit(parse_result);
 
+        if (revoke && issuer_serial_string.empty()) {
+            if (cert_file.empty() && !conf.tls_keychain_file.empty()) {
+                cert_file = conf.tls_keychain_file;
+            }
+        }
+
         if (cert_file.empty() && issuer_serial_string.empty() && !approve && !revoke && !deny && schedule_values.empty()) {
             if (!conf.tls_keychain_file.empty()) {
                 cert_file = conf.tls_keychain_file;
@@ -476,8 +518,8 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
-        if (!cert_file.empty() && (approve || revoke || deny)) {
-            log_err_printf(certslog, "Error: -I, -A, -R, or -D cannot be used with -f.%s", "\n");
+        if (!cert_file.empty() && (approve || deny)) {
+            log_err_printf(certslog, "Error: -A or -D cannot be used with -f.%s", "\n");
             return 2;
         }
 
@@ -507,6 +549,10 @@ int main(int argc, char *argv[]) {
             conf.tls_disabled = true;
         }
 
+        if (action != STATUS) {
+            conf.disableStatusCheck();
+        }
+
         auto client = conf.build();
 
         if (verbose) std::cout << "Effective config\n" << conf;
@@ -523,77 +569,105 @@ int main(int argc, char *argv[]) {
                 if (cert_data.cert == nullptr) {
                     throw std::runtime_error("Failed to read certificate from file");
                 }
-                std::string config_id{};
-                try {
-                    config_id = certs::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
-                } catch (...) {
-                }
 
-                std::string san_display;
-                {
-                    const int san_idx = X509_get_ext_by_NID(cert_data.cert.get(), NID_subject_alt_name, -1);
-                    if (san_idx >= 0) {
-                        X509_EXTENSION *ext = X509_get_ext(cert_data.cert.get(), san_idx);
-                        const ASN1_OCTET_STRING *data = X509_EXTENSION_get_data(ext);
-                        const unsigned char *p = data->data;
-                        GENERAL_NAMES *gens = d2i_GENERAL_NAMES(nullptr, &p, static_cast<long>(data->length));
-                        if (gens) {
-                            for (int i = 0; i < sk_GENERAL_NAME_num(gens); i++) {
-                                const GENERAL_NAME *gen = sk_GENERAL_NAME_value(gens, i);
-                                std::string entry;
-                                if (gen->type == GEN_DNS) {
-                                    const auto *dns = reinterpret_cast<const ASN1_IA5STRING *>(gen->d.dNSName);
-                                    entry = "dns=" + std::string(reinterpret_cast<const char *>(dns->data),
-                                                                 static_cast<size_t>(dns->length));
-                                } else if (gen->type == GEN_IPADD) {
-                                    const auto *ip = gen->d.iPAddress;
-                                    if (ip->length == 4) {
-                                        char buf[32];
-                                        snprintf(buf, sizeof(buf), "ip=%d.%d.%d.%d",
-                                                 ip->data[0], ip->data[1], ip->data[2], ip->data[3]);
-                                        entry = buf;
+                if (action == REVOKE) {
+                    try {
+                        cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
+                    } catch (...) {
+                        cert_id = "CERT:STATUS:" + certs::CmsStatusManager::getCertIdFromCert(cert_data.cert.get());
+                    }
+                } else {
+                    std::string config_id{};
+                    try {
+                        config_id = certs::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
+                    } catch (...) {
+                    }
+
+                    std::string san_display;
+                    {
+                        const int san_idx = X509_get_ext_by_NID(cert_data.cert.get(), NID_subject_alt_name, -1);
+                        if (san_idx >= 0) {
+                            X509_EXTENSION *ext = X509_get_ext(cert_data.cert.get(), san_idx);
+                            const ASN1_OCTET_STRING *data = X509_EXTENSION_get_data(ext);
+                            const unsigned char *p = data->data;
+                            GENERAL_NAMES *gens = d2i_GENERAL_NAMES(nullptr, &p, static_cast<long>(data->length));
+                            if (gens) {
+                                for (int i = 0; i < sk_GENERAL_NAME_num(gens); i++) {
+                                    const GENERAL_NAME *gen = sk_GENERAL_NAME_value(gens, i);
+                                    std::string entry;
+                                    if (gen->type == GEN_DNS) {
+                                        const auto *dns = reinterpret_cast<const ASN1_IA5STRING *>(gen->d.dNSName);
+                                        entry = "dns=" + std::string(reinterpret_cast<const char *>(dns->data),
+                                                                     static_cast<size_t>(dns->length));
+                                    } else if (gen->type == GEN_IPADD) {
+                                        const auto *ip = gen->d.iPAddress;
+                                        if (ip->length == 4) {
+                                            char buf[32];
+                                            snprintf(buf, sizeof(buf), "ip=%d.%d.%d.%d",
+                                                     ip->data[0], ip->data[1], ip->data[2], ip->data[3]);
+                                            entry = buf;
+                                        }
+                                    } else if (gen->type == GEN_URI) {
+                                        const auto *uri = reinterpret_cast<const ASN1_IA5STRING *>(gen->d.uniformResourceIdentifier);
+                                        entry = "uri=" + std::string(reinterpret_cast<const char *>(uri->data),
+                                                                     static_cast<size_t>(uri->length));
                                     }
-                                } else if (gen->type == GEN_URI) {
-                                    const auto *uri = reinterpret_cast<const ASN1_IA5STRING *>(gen->d.uniformResourceIdentifier);
-                                    entry = "uri=" + std::string(reinterpret_cast<const char *>(uri->data),
-                                                                 static_cast<size_t>(uri->length));
+                                    if (!entry.empty()) {
+                                        if (!san_display.empty()) san_display += ", ";
+                                        san_display += entry;
+                                    }
                                 }
-                                if (!entry.empty()) {
-                                    if (!san_display.empty()) san_display += ", ";
-                                    san_display += entry;
-                                }
+                                GENERAL_NAMES_free(gens);
                             }
-                            GENERAL_NAMES_free(gens);
                         }
                     }
+                    if (dump) {
+                        std::cout << "Certificate Details: " << std::endl
+                                  << "============================================" << std::endl
+                                  << ossl::ShowX509Chain{cert_data.cert.get(), cert_data.cert_auth_chain.get()}
+                                  << "\n--------------------------------------------\n" << std::endl;
+                    } else {
+                        std::cout << "Certificate Details: " << std::endl
+                                  << "============================================" << std::endl
+                                  << ossl::ShowX509{cert_data.cert.get()} << std::endl
+                                  << (san_display.empty() ? "" : "SAN            : " + san_display + "\n")
+                                  << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
+                                  << std::endl;
+                    }
+                    try {
+                        cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
+                    } catch (std::exception &e) {
+                        std::cout << "Online Certificate Status: " << std::endl
+                                  << "============================================" << std::endl
+                                  << "Not configured: " << e.what() << std::endl;
+                        return 0;
+                    }
                 }
-                if (dump) {
-                    std::cout << "Certificate Details: " << std::endl
-                              << "============================================" << std::endl
-                              << ossl::ShowX509Chain{cert_data.cert.get(), cert_data.cert_auth_chain.get()}
-                              << "\n--------------------------------------------\n" << std::endl;
-                } else {
-                    std::cout << "Certificate Details: " << std::endl
-                              << "============================================" << std::endl
-                              << ossl::ShowX509{cert_data.cert.get()} << std::endl
-                              << (san_display.empty() ? "" : "SAN            : " + san_display + "\n")
-                              << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
-                              << std::endl;
-                }
-                cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
             } catch (std::exception &e) {
-                std::cout << "Online Certificate Status: " << std::endl
-                          << "============================================" << std::endl
-                          << "Not configured: " << e.what() << std::endl;
-                return 0;
+                log_err_printf(certslog, "Error reading certificate from file: %s\n", e.what());
+                return 2;
             }
         } else {
             auto colon = issuer_serial_string.rfind(':');
-            if (colon != std::string::npos) {
-                const std::string issuer = issuer_serial_string.substr(0, colon);
-                const uint64_t serial = std::stoull(issuer_serial_string.substr(colon + 1));
-                issuer_serial_string = certs::getCertId(issuer, serial);
+            if (colon == std::string::npos || colon == 0 || colon == issuer_serial_string.size() - 1) {
+                log_err_printf(certslog,
+                               "Error: malformed cert_id '%s': expected <issuer>:<serial> (e.g. 27975e6b:7246297371190731775)\n",
+                               issuer_serial_string.c_str());
+                return 3;
             }
+            const std::string issuer = issuer_serial_string.substr(0, colon);
+            // issuer_id = first 8 hex digits of the hex SKID (see CmsStatusManager::getIssuerIdFromCert)
+            const bool issuer_ok = (issuer.size() == 8) &&
+                                   std::all_of(issuer.begin(), issuer.end(),
+                                               [](unsigned char c) { return std::isxdigit(c) != 0; });
+            if (!issuer_ok) {
+                log_err_printf(certslog,
+                               "Error: malformed issuer '%s' in cert_id '%s': expected 8 hex digits (e.g. 27975e6b)\n",
+                               issuer.c_str(), issuer_serial_string.c_str());
+                return 3;
+            }
+            const uint64_t serial = parseSerial(issuer_serial_string.substr(colon + 1));
+            issuer_serial_string = certs::getCertId(issuer, serial);
             cert_id = "CERT:STATUS:" + issuer_serial_string;
         }
 
@@ -602,7 +676,7 @@ int main(int argc, char *argv[]) {
                 const auto display_id = issuer_serial_string.empty()
                     ? cert_id.substr(cert_id.find("STATUS:") + 7)
                     : issuer_serial_string;
-                std::cout << actionToString(action, schedule_values) << " ==> " << display_id << std::endl;
+                std::cout << actionToString(action, schedule_values) << " ==> " << display_id << std::flush;
             }
             Value result;
             std::string dump_peer{"(unknown)"};
@@ -649,7 +723,7 @@ int main(int argc, char *argv[]) {
                         log_err_printf(certslog, "Error: cert_id must be <issuer>:<serial> for --schedule\n%s", "");
                         return 3;
                     }
-                    uint64_t serial = std::stoull(issuer_serial_string.substr(colon + 1));
+                    uint64_t serial = parseSerial(issuer_serial_string.substr(colon + 1));
 
                     bool show_only = (schedule_values.size() == 1 && schedule_values[0] == "show");
                     bool clear_all = (schedule_values.size() == 1 && schedule_values[0] == "none");
@@ -762,7 +836,7 @@ int main(int argc, char *argv[]) {
                     std::cout << "--------------------------------------------\n" << std::endl;
                 }
             } else if (action != STATUS)
-                std::cout << " ==> Completed Successfully\n";
+                std::cout << " ==> Completed Successfully" << std::endl;
         } catch (std::exception &e) {
             std::cout << std::endl;
             log_err_printf(certslog, "%s\n", e.what());

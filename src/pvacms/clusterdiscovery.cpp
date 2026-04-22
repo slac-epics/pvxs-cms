@@ -450,11 +450,16 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
                         const auto peer_cert_id = conn.cred->issuer_id + ":" + conn.cred->serial;
 
                         if (conn.cred->issuer_id != issuer_id_) {
-                            log_warn_printf(pvacmscluster,
-                                "Peer issuer_id mismatch on SYNC PV %s: expected %s, got %s\n",
-                                sync_pv.c_str(), issuer_id_.c_str(), conn.cred->issuer_id.c_str());
-                            handleDisconnect(node_id);
-                            break;
+                            if (!skip_peer_identity_check_) {
+                                log_warn_printf(pvacmscluster,
+                                    "Peer issuer_id mismatch on SYNC PV %s: expected %s, got %s\n",
+                                    sync_pv.c_str(), issuer_id_.c_str(), conn.cred->issuer_id.c_str());
+                                handleDisconnect(node_id);
+                                break;
+                            }
+                            log_debug_printf(pvacmscluster,
+                                "Peer identity check skipped for %s (--cluster-skip-peer-identity-check)\n",
+                                sync_pv.c_str());
                         }
 
                         peer_cert_ids_[node_id] = peer_cert_id;

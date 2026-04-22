@@ -40,10 +40,15 @@ spec:
           args:
             - |
               set -eu
-              kubectl create secret generic {{ include "pvxs-lab.fullname" . }}-ca-keychain \
-                --from-file=cert_auth.p12=/certs/cert_auth.p12 \
-                --dry-run=client -o yaml | kubectl apply -f -
-              echo "Secret {{ include "pvxs-lab.fullname" . }}-ca-keychain created/updated"
+              if kubectl get secret {{ include "pvxs-lab.fullname" . }}-ca-keychain \
+                   -n {{ .Release.Namespace }} > /dev/null 2>&1; then
+                echo "Secret {{ include "pvxs-lab.fullname" . }}-ca-keychain already exists, skipping update"
+              else
+                kubectl create secret generic {{ include "pvxs-lab.fullname" . }}-ca-keychain \
+                  --from-file=cert_auth.p12=/certs/cert_auth.p12 \
+                  -n {{ .Release.Namespace }}
+                echo "Secret {{ include "pvxs-lab.fullname" . }}-ca-keychain created"
+              fi
           volumeMounts:
             - name: certs
               mountPath: /certs
