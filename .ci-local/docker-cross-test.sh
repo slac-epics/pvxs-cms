@@ -112,7 +112,7 @@ python .ci/cue.py prepare
 echo "=== Step 2: Clone pvxs dependency ==="
 PVXS_DIR=${CACHEDIR}/pvxs-tls
 if [ ! -d "$PVXS_DIR" ]; then
-  git clone --depth 5 --recursive --branch tls https://github.com/slac-epics/pvxs-tls.git "$PVXS_DIR"
+  git clone --depth 5 --recursive --branch dev https://github.com/slac-epics/pvxs-tls.git "$PVXS_DIR"
 fi
 echo "-include \$(TOP)/../RELEASE.local" > "$PVXS_DIR/configure/RELEASE"
 
