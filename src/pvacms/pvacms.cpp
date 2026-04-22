@@ -120,6 +120,10 @@ namespace certs {
     using cms::cert::EXPIRED;
     using cms::cert::REVOKED;
     using cms::cert::UNKNOWN;
+    using cms::cluster::ClusterController;
+    using cms::cluster::ClusterDiscovery;
+    using cms::cluster::ClusterSyncPublisher;
+    using cms::cluster::TokenBucket;
 
 /** What the authority above this service's certificates is known to be. */
 ocspcertstatus_t ocspStatus();
@@ -3955,6 +3959,10 @@ using cms::cert::SCHEDULED_OFFLINE;
 using cms::cert::EXPIRED;
 using cms::cert::REVOKED;
 using cms::cert::UNKNOWN;
+using cms::cluster::ClusterController;
+using cms::cluster::ClusterDiscovery;
+using cms::cluster::ClusterSyncPublisher;
+using cms::cluster::TokenBucket;
 using namespace pvxs::certs;
     using namespace pvxs::server;
 
