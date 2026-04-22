@@ -43,7 +43,7 @@ namespace certs {
  void defineOptions(CLI::App &app, ConfigStd &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
                     std::string &usage, std::string &name, std::string &organization, std::string &organizational_unit, std::string &country,
                     std::string &cert_validity_mins, std::string &cert_pv_prefix, std::vector<std::string> &san_values,
-                    std::vector<std::string> &server_san_values) {
+                    std::vector<std::string> &server_san_values, std::vector<std::string> &schedule_values) {
     app.set_help_flag("", "");  // deactivate built-in help
 
     app.add_flag("-h,--help", help);
@@ -69,6 +69,7 @@ namespace certs {
     app.add_option("-c,--country", country, "Specify the Certificate's Country");
     app.add_option("--san", san_values, "Subject Alternative Name (repeatable, format: type=value)");
     app.add_option("--server-san", server_san_values, "Server SAN (repeatable, format: type=value)");
+    app.add_option("--schedule", schedule_values, "Validity schedule window (repeatable, format: day,HH:MM,HH:MM where day is 0-6 or *)");
 }
 
 /**
@@ -97,6 +98,7 @@ void showHelp(const char *program_name) {
               << "  (-c | --country) <country>                 Specify country for the certificate. Default locale setting if detectable otherwise `US`\n"
               << "        --san <type=value>                   Subject Alternative Name entry (repeatable)\n"
               << "        --server-san <type=value>            Server SAN entry (repeatable)\n"
+              << "        --schedule <day,HH:MM,HH:MM>         Validity schedule window (repeatable). day=0-6 (Sun-Sat) or *. Times are UTC\n"
               << "  (-t | --time) <minutes>                    Duration of the certificate in minutes.  e.g. 30 or 1d or 1y3M2d4m\n"
               << "  (-D | --daemon)                            Start a daemon that re-requests a certificate on expiration`\n"
               << "        --cert-pv-prefix <cert_pv_prefix>    Specifies the pv prefix to use to contact PVACMS.  Default `CERT`\n"
@@ -125,7 +127,7 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
     auto program_name = argv[0];
     bool show_version{false}, help{false}, add_config_uri{false};
     std::string usage{"client"}, name, organization, organizational_unit, country, cert_validity_mins, cert_pv_prefix;
-    std::vector<std::string> san_values, server_san_values;
+    std::vector<std::string> san_values, server_san_values, schedule_values;
 
     CLI::App app{"authnstd - Secure PVAccess Standard Authenticator"};
 
@@ -146,7 +148,8 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
                   cert_validity_mins,
                   cert_pv_prefix,
                   san_values,
-                  server_san_values);
+                  server_san_values,
+                  schedule_values);
 
     CLI11_PARSE(app, argc, argv);
 
@@ -238,6 +241,24 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
         auto eq = sv.find('=');
         if (eq != std::string::npos && eq > 0 && eq < sv.size() - 1) {
             config.server_san_entries.push_back({sv.substr(0, eq), sv.substr(eq + 1)});
+        }
+    }
+    if (!schedule_values.empty() && config.no_status) {
+        std::cerr << "Error: --schedule requires status monitoring. Cannot combine --schedule with --no-status.\n";
+        return 15;
+    }
+    for (const auto &sv : schedule_values) {
+        auto c1 = sv.find(',');
+        auto c2 = (c1 != std::string::npos) ? sv.find(',', c1 + 1) : std::string::npos;
+        if (c1 != std::string::npos && c2 != std::string::npos && c2 < sv.size() - 1) {
+            ScheduleWindow sw;
+            sw.day_of_week = sv.substr(0, c1);
+            sw.start_time  = sv.substr(c1 + 1, c2 - c1 - 1);
+            sw.end_time    = sv.substr(c2 + 1);
+            config.schedule_windows.push_back(std::move(sw));
+        } else {
+            std::cerr << "Invalid --schedule format '" << sv << "': expected day,HH:MM,HH:MM\n";
+            return 16;
         }
     }
 

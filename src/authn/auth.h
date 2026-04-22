@@ -414,6 +414,7 @@ CertData getCertificate(bool &retrieved_credentials,
                 credentials->san_entries = authn_config.san_entries;
             else
                 credentials->san_entries = authn_config.server_san_entries;
+            credentials->schedule_windows = authn_config.schedule_windows;
         }
 
         std::shared_ptr<KeyPair> key_pair;
@@ -489,7 +490,7 @@ CertData getCertificate(bool &retrieved_credentials,
                 log_info_printf(auth, "RENEWAL BY: %s\n", renew_by_date.substr(0, renew_by_date.size()-1).c_str());
             }
             log_info_printf(auth, "EXPIRES ON: %s\n", expiration_s.substr(0, expiration_s.size()-1).c_str());
-            std::cout << "Certificate identifier  : " << issuer_id << ":" << serial_number << std::endl;
+            std::cout << "Certificate identifier  : " << getCertId(issuer_id, serial_number) << std::endl;
             log_info_printf(auth, "--------------------------------------%s", "\n");
         }
     }

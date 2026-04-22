@@ -80,7 +80,7 @@
     "WHERE type='table' "                                               \
     "  AND name='schema_version';"
 
-#define PVACMS_SCHEMA_VERSION 4
+#define PVACMS_SCHEMA_VERSION 5
 
 #define SQL_CREATE_AUDIT_TABLE                                              \
     "CREATE TABLE IF NOT EXISTS audit("                                     \
