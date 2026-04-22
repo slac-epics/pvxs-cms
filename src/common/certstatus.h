@@ -448,6 +448,7 @@ struct CertStatus {
                         Member(TypeCode::String, "ocsp_certified_until"),
                         Member(TypeCode::String, "ocsp_revocation_date"),
                         Member(TypeCode::UInt8A, "ocsp_response"),
+                        Member(TypeCode::String, "pvacms_node_id"),
                         StructA("schedule", {
                             String("day_of_week"),
                             String("start_time"),

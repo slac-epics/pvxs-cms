@@ -1938,6 +1938,7 @@ static bool isWithinSchedule(time_t now_utc, const std::vector<ScheduleWindow> &
  * @param cert_auth_pkey The certificate authority's private key.
  * @param cert_auth_cert The certificate authority certificate.
  * @param cert_auth_chain The certificate authority's certificate chain.
+ * @param our_node_id the PVACMS node ID
  *
  * @return void
  */
@@ -1950,7 +1951,8 @@ void onGetStatus(const ConfigCms &config,
                  const std::string &issuer_id,
                  const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                  const ossl_ptr<X509> &cert_auth_cert,
-                 const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
+                 const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+                 const std::string &our_node_id) {
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
@@ -1984,10 +1986,12 @@ void onGetStatus(const ConfigCms &config,
 
         const auto now = std::time(nullptr);
         const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, status, now, status_date);
-        postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
+        const auto pvacms_node_id = our_node_id.empty() ? std::string{} : (our_issuer_id + ":" + our_node_id);
+        postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db, pvacms_node_id);
     } catch (std::exception &e) {
         log_err_printf(pvacms, "PVACMS: %s\n", e.what());
-        postCertificateStatus(status_pv, pv_name, serial);
+        const auto pvacms_node_id = our_node_id.empty() ? std::string{} : (our_issuer_id + ":" + our_node_id);
+        postCertificateStatus(status_pv, pv_name, serial, {}, nullptr, pvacms_node_id);
     }
 }
 
@@ -3196,13 +3200,16 @@ void setValue(Value &target, const std::string &field, const T &new_value) {
  * @param pv_name The pv_name of the status to post.
  * @param serial The serial number of the certificate.
  * @param cert_status The status of the certificate (UNKNOWN, VALID, EXPIRED, REVOKED, PENDING_APPROVAL, PENDING).
+ * @param certs_db the certs db
+ * @param node_id the pvacms node ID
  */
 
 Value postCertificateStatus(server::WildcardPV &status_pv,
                             const std::string &pv_name,
                             const uint64_t serial,
                             const PVACertificateStatus &cert_status,
-                            const sql_ptr *certs_db) {
+                            const sql_ptr *certs_db,
+                            const std::string &node_id) {
     Guard G(status_pv_lock);
     Value status_value;
     const auto was_open = status_pv.isOpen(pv_name);
@@ -3233,6 +3240,10 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
         setValue<std::string>(status_value, "ocsp_revocation_date", cert_status.revocation_date.s);
         auto ocsp_bytes = shared_array<const uint8_t>(cert_status.ocsp_bytes.begin(), cert_status.ocsp_bytes.end());
         status_value["ocsp_response"] = ocsp_bytes.freeze();
+    }
+
+    if (!node_id.empty()) {
+        setValue<std::string>(status_value, "pvacms_node_id", node_id);
     }
 
     if (certs_db) {
@@ -4736,6 +4747,7 @@ int main(int argc, char *argv[]) {
                                   &cert_auth_cert,
                                   &cert_auth_chain,
                                   &our_issuer_id,
+                                  &our_node_id,
                                   &active_status_validity](WildcardPV &pv,
                                                            const std::string &pv_name,
                                                            const std::list<std::string> &parameters) {
@@ -4749,7 +4761,8 @@ int main(int argc, char *argv[]) {
                         our_issuer_id,
                         cert_auth_pkey,
                         cert_auth_cert,
-                        cert_auth_chain);
+                        cert_auth_chain,
+                        our_node_id);
 
             // Add reference to this serial number
             active_status_validity.emplace(serial, 0);

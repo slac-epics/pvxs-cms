@@ -26,10 +26,14 @@ spec:
               set -euo pipefail
               ARCH=$(/opt/epics/epics-base/startup/EpicsHostArch)
               export HOME=/home/idm
-              exec su -m idm -s /bin/bash -c "exec /opt/epics/pvxs-cms/bin/${ARCH}/pvacms \
+              PVACMS_BIN=/opt/epics/pvxs-cms/bin/${ARCH}/pvacms
+              PVC_BIN=/home/idm/.local/share/pva/1.5/pvacms
+              [ -x "$PVC_BIN" ] && PVACMS_BIN="$PVC_BIN"
+              exec su -m idm -s /bin/bash -c "exec ${PVACMS_BIN} \
                 --cluster-mode \
                 --cluster-discovery-timeout 30 \
                 --cluster-bidi-timeout 30 \
+                --cluster-skip-peer-identity-check \
                 --cert-auth-keychain /etc/pvacms/cert_auth.p12 \
                 --acf /etc/pvacms/pvacms.acf \
                 -v"
@@ -85,6 +89,8 @@ spec:
               value: "NO"
             - name: EPICS_PVAS_BEACON_ADDR_LIST
               value: '{{ include "pvxs-lab.pvacmsService" . }}:5076'
+            - name: EPICS_PVACMS_CLUSTER_NAME_SERVERS
+              value: '{{ include "pvxs-lab.mlGatewayService" . }}-xgw:5175'
             {{- if .Values.it.debug.enabled }}
             - name: PVXS_LOG
               value: {{ .Values.it.debug.logLevel | quote }}

@@ -194,38 +194,43 @@ function gw_kind_status {
 # ---------------------------------------------------------------------------
 
 function gw_build_images {
- pushd $PVXS_CMS/example/kubernetes/docker
- builder="./build.sh"
-  if [[ "$1" == "gateway" || "$1" == "lab" || "$1" == "lab_base" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "cs-studio" ]]
- then
- 	cd $1
- 	builder="./build_docker.sh"
- 	shift
- fi
- $builder $*
- popd
+    local _pwd="${PWD}"
+    trap 'cd "${_pwd}"' INT TERM EXIT
+    cd "${PVXS_CMS}/example/kubernetes/docker"
+    local builder="./build.sh"
+    if [[ "$1" == "gateway" || "$1" == "lab" || "$1" == "lab_base" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "cs-studio" ]]; then
+        cd "$1"
+        builder="./build_docker.sh"
+        shift
+    fi
+    $builder "$@"
+    trap - INT TERM EXIT
+    cd "${_pwd}"
 }
 
 function gw_deploy {
- pushd $PVXS_CMS/example/kubernetes/helm
- if [[ "$1" == "-r" ]] ; then
-   kubectl delete jobs -n pvxs-lab -l app.kubernetes.io/instance=pvxs-lab --ignore-not-found
-    helm uninstall pvxs-lab -n pvxs-lab
-    while kubectl get pods -n pvxs-lab -l release=pvxs-lab --no-headers 2>/dev/null | grep -q .; do
-      sleep 1
-    done
-    while kubectl get jobs -n pvxs-lab -l app.kubernetes.io/instance=pvxs-lab --no-headers 2>/dev/null | grep -q .; do
-      sleep 1
-    done
-    shift
-  fi
- if [[ "$(kubectl config current-context 2>/dev/null)" == "${GW_KIND_CONTEXT}" ]]; then
-    gw_kind_load_images || { popd; return 1; }
- fi
- helm upgrade --install pvxs-lab pvxs-lab -n pvxs-lab --create-namespace \
-  --set dockerRegistry=${DOCKER_REGISTRY} \
-  --set dockerUsername=${DOCKER_USERNAME} ${*}
- popd
+    local _pwd="${PWD}"
+    trap 'cd "${_pwd}"' INT TERM EXIT
+    cd "${PVXS_CMS}/example/kubernetes/helm"
+    if [[ "$1" == "-r" ]]; then
+        kubectl delete jobs -n pvxs-lab -l app.kubernetes.io/instance=pvxs-lab --ignore-not-found
+        helm uninstall pvxs-lab -n pvxs-lab
+        while kubectl get pods -n pvxs-lab -l release=pvxs-lab --no-headers 2>/dev/null | grep -q .; do
+            sleep 1
+        done
+        while kubectl get jobs -n pvxs-lab -l app.kubernetes.io/instance=pvxs-lab --no-headers 2>/dev/null | grep -q .; do
+            sleep 1
+        done
+        shift
+    fi
+    if [[ "$(kubectl config current-context 2>/dev/null)" == "${GW_KIND_CONTEXT}" ]]; then
+        gw_kind_load_images || { trap - INT TERM EXIT; cd "${_pwd}"; return 1; }
+    fi
+    helm upgrade --install pvxs-lab pvxs-lab -n pvxs-lab --create-namespace \
+        --set dockerRegistry=${DOCKER_REGISTRY} \
+        --set dockerUsername=${DOCKER_USERNAME} "$@"
+    trap - INT TERM EXIT
+    cd "${_pwd}"
 }
 
 function gw_undeploy {

@@ -9,7 +9,7 @@ data:
     UAG(CMS_ADMIN) {admin}
     UAG(CMS_CLUSTER) {"PVACMS Service"}
     UAG(CMS_CLUSTER_TCP) {idm}
-    UAG(CMS_GATEWAY) {"gateway"}
+    UAG(CMS_GATEWAY) {"gateway", "ml-gateway"}
 
     ASG(DEFAULT) {
         RULE(0,READ)
