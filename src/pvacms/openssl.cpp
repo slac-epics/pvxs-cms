@@ -52,7 +52,7 @@ std::ostream &operator<<(std::ostream &strm, const ShowX509 &cert) {
         const ossl_ptr<BIO> io(__FILE__, __LINE__, BIO_new(BIO_s_mem()));
         {
             try {
-                const auto cert_id = certs::CmsStatusManager::getCertIdFromCert(cert.cert);
+                const auto cert_id = cms::cert::CmsStatusManager::getCertIdFromCert(cert.cert);
                 (void)BIO_printf(io.get(), "\nCertificate ID : ");
                 (void)BIO_printf(io.get(), cert_id.c_str());
             } catch (...) {}
@@ -62,12 +62,12 @@ std::ostream &operator<<(std::ostream &strm, const ShowX509 &cert) {
         (void)BIO_printf(io.get(), "\nIssuer Subject : ");
         (void)X509_NAME_print(io.get(), issuer, 1024);
         if (const auto atm = X509_get0_notBefore(cert.cert)) {
-            const certs::CertDate the_date(atm);
+            const cms::cert::CertDate the_date(atm);
             (void)BIO_printf(io.get(), "\nValid From     : ");
             (void)BIO_printf(io.get(), the_date.s.c_str());
         }
         if (const auto atm = X509_get0_notAfter(cert.cert)) {
-            const certs::CertDate the_date(atm);
+            const cms::cert::CertDate the_date(atm);
             (void)BIO_printf(io.get(), "\nExpires On     : ");
             (void)BIO_printf(io.get(), the_date.s.c_str());
         }

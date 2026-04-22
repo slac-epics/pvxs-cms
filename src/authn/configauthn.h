@@ -12,6 +12,8 @@
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::SanEntry;
+    using cms::cert::ScheduleWindow;
 
 class ConfigAuthN : public client::Config {
    public:

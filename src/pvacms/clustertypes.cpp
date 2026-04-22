@@ -16,6 +16,16 @@
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::CertFactory;
+    using cms::cert::certstatus_t;
+    using cms::cert::VALID;
+    using cms::cert::PENDING;
+    using cms::cert::PENDING_APPROVAL;
+    using cms::cert::PENDING_RENEWAL;
+    using cms::cert::SCHEDULED_OFFLINE;
+    using cms::cert::EXPIRED;
+    using cms::cert::REVOKED;
+    using cms::cert::UNKNOWN;
 
 using namespace pvxs::members;
 

@@ -80,6 +80,38 @@ DEFINE_LOGGER(pvacmsmonitor, "pvxs.certs");
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::DbCert;
+    using cms::cert::IdFileFactory;
+    using cms::cert::KeyPair;
+    using cms::cert::SanEntry;
+    using cms::cert::ScheduleWindow;
+    using cms::cert::CertFactory;
+    using cms::cert::CertStatus;
+    using cms::cert::CmsStatusManager;
+    using cms::cert::CertStatusFactory;
+    using cms::cert::CertData;
+    using cms::cert::CertDate;
+    using cms::cert::PVACertificateStatus;
+    using cms::cert::getCertId;
+    using cms::cert::getCertCreatePv;
+    using cms::cert::getCertStatusPvBase;
+    using cms::cert::getCertStatusPv;
+    using cms::cert::getCertIssuerPv;
+    using cms::cert::getCertAuthRootPv;
+    using cms::cert::getCertStatusURI;
+    using cms::cert::certstatus_t;
+    using cms::cert::CertStatusSubscription;
+    using cms::cert::DEFAULT;
+    using cms::cert::YES;
+    using cms::cert::NO;
+    using cms::cert::VALID;
+    using cms::cert::PENDING;
+    using cms::cert::PENDING_APPROVAL;
+    using cms::cert::PENDING_RENEWAL;
+    using cms::cert::SCHEDULED_OFFLINE;
+    using cms::cert::EXPIRED;
+    using cms::cert::REVOKED;
+    using cms::cert::UNKNOWN;
 
 // fwd decl
 static void insertLoadedCertIfMissing(const ConfigCms &config,
@@ -3174,7 +3206,34 @@ int readParameters(int argc,
 }  // namespace pvxs
 
 int main(int argc, char *argv[]) {
-    using namespace pvxs::certs;
+    using cms::cert::CertFactory;
+using cms::cert::CertStatus;
+using cms::cert::CmsStatusManager;
+using cms::cert::CertStatusFactory;
+using cms::cert::CertData;
+using cms::cert::CertDate;
+using cms::cert::PVACertificateStatus;
+using cms::cert::getCertId;
+using cms::cert::getCertCreatePv;
+using cms::cert::getCertStatusPvBase;
+using cms::cert::getCertStatusPv;
+using cms::cert::getCertIssuerPv;
+using cms::cert::getCertAuthRootPv;
+using cms::cert::getCertStatusURI;
+using cms::cert::certstatus_t;
+using cms::cert::CertStatusSubscription;
+using cms::cert::DEFAULT;
+using cms::cert::YES;
+using cms::cert::NO;
+using cms::cert::VALID;
+using cms::cert::PENDING;
+using cms::cert::PENDING_APPROVAL;
+using cms::cert::PENDING_RENEWAL;
+using cms::cert::SCHEDULED_OFFLINE;
+using cms::cert::EXPIRED;
+using cms::cert::REVOKED;
+using cms::cert::UNKNOWN;
+using namespace pvxs::certs;
     using namespace pvxs::server;
 
     try {

@@ -32,8 +32,12 @@
 #include "security.h"
 #include "utilpvt.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+using pvxs::ensureDirectoryExists;
+using pvxs::file_ptr;
+namespace ossl = pvxs::ossl;
 
 DEFINE_LOGGER(filelogger, "pvxs.p12");
 
@@ -318,5 +322,5 @@ void P12FileFactory::writePKCS12File() {
     }
 #endif
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

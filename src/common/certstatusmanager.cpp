@@ -27,8 +27,10 @@
 #include "opensslgbl.h"
 #include "ownedptr.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+namespace ossl = pvxs::ossl;
 
 DEFINE_LOGGER(status, "pvxs.certs.status");
 
@@ -493,5 +495,5 @@ time_t CmsStatusManager::getExpirationDateFromCert(const X509 *cert) {
     // Convert ASN1_TIME to time_t using the CertDate utility
     return CertDate::asn1TimeToTimeT(expiration);
 }
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

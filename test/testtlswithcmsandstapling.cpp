@@ -52,6 +52,12 @@
  *
  */
 using namespace pvxs;
+using cms::cert::CertStatus;
+using cms::cert::CertStatusFactory;
+using cms::cert::CertDate;
+using cms::cert::getCertStatusPv;
+using cms::cert::VALID;
+using cms::cert::REVOKED;
 using namespace pvxs::certs;
 
 namespace {

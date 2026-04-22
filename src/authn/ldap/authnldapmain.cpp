@@ -13,6 +13,8 @@
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::CertDate;
+    using cms::cert::PENDING_APPROVAL;
 
 /**
  * @brief Prompt the user for a password
@@ -197,6 +199,8 @@ int readParameters(int argc, char *argv[], ConfigLdap &config, bool &verbose, bo
 }  // namespace certs
 }  // namespace pvxs
 
+using cms::cert::CertDate;
+using cms::cert::PENDING_APPROVAL;
 using namespace pvxs::certs;
 
 /**

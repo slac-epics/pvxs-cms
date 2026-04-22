@@ -28,6 +28,17 @@
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::AuthnCredentials;
+    using cms::cert::CertCreationRequest;
+    using cms::cert::IdFileFactory;
+    using cms::cert::KeyPair;
+    using cms::cert::CertFactory;
+    using cms::cert::CertStatus;
+    using cms::cert::CmsStatusManager;
+    using cms::cert::CertStatusFactory;
+    using cms::cert::CertData;
+    using cms::cert::getCertId;
+    using cms::cert::VALID;
 
 // Shared authenticator logger; defined in auth.cpp (not here — loggers should
 // not be defined in a header).

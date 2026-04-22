@@ -197,7 +197,7 @@ int main(int argc, char *argv[]) {
 
         if (!cert_file.empty()) {
             try {
-                auto cert_data = certs::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
+                auto cert_data = cms::cert::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
                 if (cert_data.cert == nullptr) {
                     throw std::runtime_error("Failed to read certificate from file");
                 }
@@ -229,6 +229,8 @@ int main(int argc, char *argv[]) {
             }
             Value result;
             switch (action) {
+                case NONE:
+                    break;
                 case STATUS:
                     result = client.get(cert_id).exec()->wait(conf.getRequestTimeout());
                     break;

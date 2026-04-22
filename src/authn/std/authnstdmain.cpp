@@ -15,6 +15,12 @@
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::CertCreationRequest;
+    using cms::cert::IdFileFactory;
+    using cms::cert::ScheduleWindow;
+    using cms::cert::CertDate;
+    using cms::cert::VALID;
+    using cms::cert::PENDING_APPROVAL;
 
 /**
  * @brief Define the options for the authnstd tool
@@ -231,6 +237,9 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
 }  // namespace certs
 }  // namespace pvxs
 
+using cms::cert::CertDate;
+using cms::cert::VALID;
+using cms::cert::PENDING_APPROVAL;
 using namespace pvxs::certs;
 
 /**

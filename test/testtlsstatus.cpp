@@ -35,6 +35,24 @@
 
 namespace {
 using namespace pvxs;
+using cms::cert::CertStatus;
+using cms::cert::CmsStatusManager;
+using cms::cert::CertStatusFactory;
+using cms::cert::CertDate;
+using cms::cert::PVACertificateStatus;
+using cms::cert::CertificateStatus;
+using cms::cert::CertifiedCertificateStatus;
+using cms::cert::OCSPStatus;
+using cms::cert::UnknownCertificateStatus;
+using cms::cert::getCertStatusPv;
+using cms::cert::certstatus_t;
+using cms::cert::VALID;
+using cms::cert::PENDING;
+using cms::cert::REVOKED;
+using cms::cert::UNKNOWN;
+using cms::cert::OCSP_CERTSTATUS_GOOD;
+using cms::cert::OCSP_CERTSTATUS_REVOKED;
+using cms::cert::OCSP_CERTSTATUS_UNKNOWN;
 using namespace pvxs::certs;
 
 struct Tester {

@@ -7,12 +7,24 @@
 #ifndef PVXS_SEC_SECURITY_H
 #define PVXS_SEC_SECURITY_H
 
+#include <string>
+#include <vector>
+
+#include <pvxs/data.h>
 #include <pvxs/nt.h>
 
 #include "ownedptr.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+using pvxs::Member;
+using pvxs::ossl_ptr;
+using pvxs::SB;
+using pvxs::TypeCode;
+using pvxs::TypeDef;
+using pvxs::Value;
+namespace members = pvxs::members;
 
 /**
  * @class AuthnCredentials
@@ -180,7 +192,7 @@ struct KeyPair final {
     }
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_SEC_SECURITY_H

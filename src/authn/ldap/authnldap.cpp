@@ -33,6 +33,10 @@ DEFINE_LOGGER(auth, "pvxs.auth.ldap");
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::AuthnCredentials;
+    using cms::cert::CertCreationRequest;
+    using cms::cert::KeyPair;
+    using cms::cert::CertFactory;
 
 /**
  * @brief Registrar for the LDAP authenticator

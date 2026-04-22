@@ -36,8 +36,10 @@
 #include "certstatus.h"
 #include "ownedptr.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+using pvxs::ossl_ptr;
 
 /**
  * @brief Class used to create OCSP certificate status responses
@@ -218,7 +220,7 @@ class CertStatusFactory {
     }
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERTSTATUSFACTORY_H_

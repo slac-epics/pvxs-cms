@@ -29,15 +29,8 @@ typedef epicsGuard<epicsMutex> Guard;
 typedef epicsGuardRelease<epicsMutex> UnGuard;
 typedef uint64_t serial_number_t;
 
-namespace pvxs {
-
-namespace client {
-struct Config;
-}
-namespace server {
-struct Config;
-}
-namespace certs {
+namespace cms {
+namespace cert {
 struct PVACertificateStatus;
 struct CertificateStatus;
 class CmsStatusManager;
@@ -46,8 +39,18 @@ template <typename T>
 struct cert_status_delete;
 
 template <typename T>
-using cert_status_ptr = ossl_shared_ptr<T, cert_status_delete<T>>;
-}  // namespace certs
+using cert_status_ptr = pvxs::ossl_shared_ptr<T, cert_status_delete<T>>;
+}  // namespace cert
+}  // namespace cms
+
+namespace pvxs {
+
+namespace client {
+struct Config;
+}
+namespace server {
+struct Config;
+}
 
 namespace ssl {
 constexpr uint16_t kForClient = 0x01;
