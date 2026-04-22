@@ -12,6 +12,7 @@
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::CertCreationRequest;
 
 class CCRManager {
    public:

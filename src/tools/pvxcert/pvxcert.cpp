@@ -485,7 +485,7 @@ int main(int argc, char *argv[]) {
 
         if (!cert_file.empty()) {
             try {
-                auto cert_data = certs::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
+                auto cert_data = cms::cert::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
                 cert_id = cms::cert::printKeychainReport(cert_data, std::cout, std::cerr);
                 // An anchors-only keychain has no certificate to ask the status of.
                 if (cert_id.empty()) return 0;
@@ -505,6 +505,8 @@ int main(int argc, char *argv[]) {
             }
             Value result;
             switch (action) {
+                case NONE:
+                    break;
                 case STATUS:
                     result = client.get(cert_id).exec()->wait(conf.getRequestTimeout());
                     break;

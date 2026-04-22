@@ -24,6 +24,9 @@ DEFINE_LOGGER(auth_krb, "pvxs.auth.krb");
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::AuthnCredentials;
+    using cms::cert::CertCreationRequest;
+    using cms::cert::KeyPair;
 
 /**
  * @brief Registrar for the Kerberos authenticator

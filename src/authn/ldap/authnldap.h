@@ -24,6 +24,9 @@
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::AuthnCredentials;
+    using cms::cert::CertCreationRequest;
+    using cms::cert::KeyPair;
 
 /**
  * The subclass of Credentials that contains the AuthNLdap specific

@@ -17,8 +17,10 @@
 #include "ownedptr.h"
 #include "security.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+using pvxs::ossl_ptr;
 
 /**
  * @class P12FileFactory
@@ -62,7 +64,7 @@ class P12FileFactory final : public IdFileFactory {
 #endif
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_P12_FILE_FACTORY_H

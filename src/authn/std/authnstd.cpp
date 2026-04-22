@@ -25,6 +25,9 @@ DEFINE_LOGGER(auth_std, "pvxs.auth.std");
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::AuthnCredentials;
+    using cms::cert::CertCreationRequest;
+    using cms::cert::KeyPair;
 
 /**
  * @brief Registrar for the standard authenticator

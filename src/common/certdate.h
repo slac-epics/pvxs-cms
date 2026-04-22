@@ -29,8 +29,11 @@
 #define CERT_TIME_FORMAT "%Y-%m-%d %H:%M:%S UTC"
 
 DEFINE_LOGGER(certs_time, "pvxs.certs.date");
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+using pvxs::ossl_ptr;
+using pvxs::SB;
 
 /**
  * @brief Current wall-clock time as POSIX seconds, from the EPICS time source.
@@ -525,7 +528,7 @@ struct CertDate {
 
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif //CERTDATE_H

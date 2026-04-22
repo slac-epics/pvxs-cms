@@ -23,6 +23,10 @@ struct ifaddrs;
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::SanEntry;
+    using cms::cert::CertDate;
+    using cms::cert::YES;
+    using cms::cert::NO;
 
 /**
  * @brief Get the base Authenticator configuration from the environment
