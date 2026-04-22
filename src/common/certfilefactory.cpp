@@ -18,7 +18,7 @@
 namespace cms {
 namespace cert {
 
-DEFINE_LOGGER(certs, "pvxs.certs.file");
+DEFINE_LOGGER(certs, "cms.certs.file");
 
 /**
  * @brief Backs-up a file if it exists.

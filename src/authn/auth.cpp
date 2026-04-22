@@ -25,7 +25,7 @@
 #include "p12filefactory.h"
 #include "security.h"
 
-DEFINE_LOGGER(config, "pvxs.auth.config");
+DEFINE_LOGGER(config, "cms.auth.config");
 
 namespace cms {
 namespace auth {

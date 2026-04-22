@@ -19,7 +19,7 @@
 #include "authregistry.h"
 #include "utilpvt.h"
 
-DEFINE_LOGGER(auth_logger, "pvxs.auth.krb");
+DEFINE_LOGGER(auth_logger, "cms.auth.krb");
 
 namespace cms {
 namespace auth {

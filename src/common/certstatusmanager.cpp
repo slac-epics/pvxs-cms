@@ -30,7 +30,7 @@
 namespace cms {
 namespace cert {
 
-DEFINE_LOGGER(status, "pvxs.certs.status");
+DEFINE_LOGGER(status, "cms.certs.status");
 
 /**
  * @brief Retrieves the Online Certificate Status Protocol (OCSP) response from the given byte array.

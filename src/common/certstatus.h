@@ -30,7 +30,7 @@
 typedef epicsGuard<epicsMutex> Guard;
 typedef epicsGuardRelease<epicsMutex> UnGuard;
 
-DEFINE_LOGGER(status_setup, "pvxs.certs.status");
+DEFINE_LOGGER(status_setup, "cms.certs.status");
 
 // Define permanently valid status time
 #if defined(__TIME_T_MAX__)
