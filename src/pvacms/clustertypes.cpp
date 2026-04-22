@@ -14,8 +14,16 @@
 
 #include "certfactory.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+    using pvxs::Value;
+    using pvxs::TypeDef;
+    using pvxs::TypeCode;
+    using pvxs::Member;
+    using pvxs::shared_array;
+    namespace nt = pvxs::nt;
+    namespace members = pvxs::members;
+    namespace xcode = pvxs::xcode;
+    using cms::detail::SB;
     using cms::cert::CertFactory;
     using cms::cert::certstatus_t;
     using cms::cert::VALID;
@@ -204,5 +212,4 @@ bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, Value &payload) 
     return CertFactory::verifySignature(cert_auth_pub_key, clusterEncode(payload), sig);
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cms

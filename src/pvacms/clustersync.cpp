@@ -31,11 +31,11 @@ using ::pvxs::shared_array;
 using ::pvxs::TypeCode;
 using ::pvxs::TypeDef;
 using ::pvxs::Value;
-using ::pvxs::certs::SYNC_FULL_SNAPSHOT;
-using ::pvxs::certs::SYNC_INCREMENTAL;
-using ::pvxs::certs::clusterSign;
-using ::pvxs::certs::makeClusterSyncValue;
-using ::pvxs::certs::setTimeStamp;
+using ::cms::SYNC_FULL_SNAPSHOT;
+using ::cms::SYNC_INCREMENTAL;
+using ::cms::clusterSign;
+using ::cms::makeClusterSyncValue;
+using ::cms::setTimeStamp;
 
 typedef epicsGuard<epicsMutex> Guard;
 
