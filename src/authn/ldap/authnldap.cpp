@@ -31,12 +31,12 @@
 
 DEFINE_LOGGER(auth_ldap, "pvxs.auth.ldap");
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::AuthnCredentials;
-    using cms::cert::CertCreationRequest;
-    using cms::cert::KeyPair;
-    using cms::cert::CertFactory;
+namespace cms {
+namespace auth {
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::KeyPair;
+    using ::cms::cert::CertFactory;
 
 /**
  * @brief Registrar for the LDAP authenticator
@@ -386,8 +386,8 @@ std::string AuthNLdap::getPublicKeyFromLDAP(const std::string &ldap_server,
     return public_key_string;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #ifdef __APPLE__
 #pragma clang diagnostic pop

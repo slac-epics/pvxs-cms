@@ -33,6 +33,7 @@ void splitKeychainSetting(const std::string &value, std::string &file, std::stri
 
 namespace pvxs {
 namespace certs {
+    using cms::auth::AuthRegistry;
     using cms::cert::CertDate;
     using cms::cert::CertStatusSubscription;
     using cms::cert::DEFAULT;

@@ -10,9 +10,9 @@
 #include "certfilefactory.h"
 #include "security.h"
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::CertCreationRequest;
+namespace cms {
+namespace auth {
+    using ::cms::cert::CertCreationRequest;
 
 class CCRManager {
    public:
@@ -39,7 +39,7 @@ class CCRManager {
      */
     static void checkIssuedOrganizationalUnits(const std::vector<std::string> &requested, const std::string &pem_string);
 };
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #endif  // PVXS_CCRMANAGER_H_

@@ -1,0 +1,94 @@
+# Its own namespace. The four topologies under helm/ live in spva-lab, driven by helpers.sh.
+namespace: pvxs-teststand
+
+dockerRegistry: docker.io
+dockerUsername: georgeleveln
+imageTag: latest
+imagePullPolicy: IfNotPresent
+
+# Defaults are the pvxs of this workspace. values-upstream.yaml and values-pva.yaml override.
+images:
+  server: testioc
+  monitor: lab
+
+# Which server and which client. This is the whole difference between the three variants.
+binaries:
+  serverDir: /opt/epics/pvxs/bin
+  serverName: softIocPVX
+  monitorDir: /opt/epics/pvxs/bin
+  monitorName: pvxmonitor
+  monitorArgs: ""
+
+# Same number on both sides of the Service. A PVAccess server names its own port in a search
+# reply and the client dials that port, so a translated port sends the client nowhere.
+# Values files add to this map; Helm merges maps rather than replacing them, so anything set
+# here reaches every variant. Keep it to what all three need.
+serverEnv:
+  EPICS_PVAS_SERVER_PORT: "5075"
+
+ports:
+  pvaTcp: 5075
+  pvaUdp: 5076
+
+pvPrefix: "SIM:"
+
+# How often the monitored records update, and so how often the monitor prints. Must be one of
+# the EPICS scan menu values: ".1 second" ".2 second" ".5 second" "1 second" "2 second"
+# "5 second" "10 second".
+scanRate: "5 second"
+
+# How often the unmonitored records that keep the arrays full run. Faster than scanRate so an
+# array is complete rather than slowly filling, without adding anything to the monitor output.
+fillRate: ".2 second"
+
+# Elements in each of the two array process variables. Raise to 1024 to put a large payload on
+# the wire, which is the likelier trigger for a decode error:
+#   --set arrayLength=1024
+arrayLength: 64
+
+# What the client monitors. Trim it to quieten the output further.
+monitorPvs:
+  - counter
+  - mean
+  - sigma
+  - snr
+  - x_axis
+  - noisy_signal
+  - clean_signal
+
+# supervised: supervisord starts the server and restarts it if it exits.
+# manual:     the pod stays up with nothing listening, for the operator to start by hand.
+startMode: supervised
+
+# Readiness and liveness on the server's PVAccess port. Dropped in manual start mode, where
+# nothing listens until the operator acts.
+# What the server's probes test: none, supervisor, tcp. See server.yaml.
+# The PVA gateway leg. Off unless a permutation needs it; experiment.py turns it on for the
+# "gw" search mode. pvagw lives in the four-topologies gateway image.
+gateway:
+  enabled: false
+  image: gateway
+  args: ""
+
+probeMode: supervisor
+
+# Seconds between SIGTERM and SIGKILL when the pod is deleted. 0 for an abrupt kill.
+terminationGracePeriodSeconds: 30
+
+probes:
+  periodSeconds: 10
+  failureThreshold: 3
+  # The startup probe gets its own budget: 2 s x 30 = 60 s for the server to open its port.
+  startupPeriodSeconds: 2
+  startupFailureThreshold: 30
+  timeoutSeconds: 5
+
+# Keep the server in the Service's endpoints even while it is unready. Turn this off to test
+# whether endpoint churn during pod replacement is what stops the monitor reconnecting.
+publishNotReadyAddresses: true
+
+replicas: 1
+
+# The laboratory access security files require TLS and X.509, which neither upstream pvxs nor
+# the PVA in EPICS Base can parse. Off by default so the variants differ only by binary.
+useAccessSecurity: false

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: teststand
+description: Reproduction laboratory for PVAccess monitor reconnect failure. One PVAccess server behind a Service, one client pod running pvxmonitor against it.
+type: application
+version: 0.1.0
+appVersion: "latest"

@@ -1,0 +1,8 @@
+# Batch 2: how the client finds the server, and which client stack.
+--variant spva     --search udp-pod   --kill graceful --load fast
+--variant spva     --search ns        --kill graceful --load fast
+--variant spva     --search ns-pod    --kill graceful --load fast
+--variant spva     --search broadcast --kill graceful --load fast
+--variant upstream --search udp       --kill abrupt   --load fast-big
+--variant pva      --search udp       --kill abrupt   --load fast
+--variant pva      --search udp       --kill graceful --load fast --probes tcp

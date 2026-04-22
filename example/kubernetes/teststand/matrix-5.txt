@@ -1,0 +1,4 @@
+# Batch 5: upstream pvxs with the hand sequence; an aged client with a long gap; then a soak.
+--variant upstream --search udp --kill manual-delete --load fast --probes none --gap 90
+--variant spva     --search udp --kill manual-delete --load fast --probes none --gap 240 --prerun 180
+--variant spva     --search udp --kill manual-delete --load fast --probes none --gap 20 --observe 30 --repeat 5

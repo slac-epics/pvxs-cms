@@ -1,0 +1,15 @@
+{{- if .Values.useAccessSecurity }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "teststand.acfConfig" . }}
+data:
+  testioc.acf: |
+    ASG(DEFAULT) {
+      RULE(1, READ)
+      RULE(1, WRITE) {
+        PROTOCOL(TLS)
+        METHOD(X509)
+      }
+    }
+{{- end }}

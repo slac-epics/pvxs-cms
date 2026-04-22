@@ -1,0 +1,39 @@
+{{- if .Values.gateway.enabled }}
+{{/*
+The PVA gateway leg SLAC's clients go through. pvagw holds its own client connection to the
+server, so when the server pod is replaced it is the gateway, not the monitor, that has to
+find the server again. A monitor searching via the gateway Service sees only what the
+gateway forwards.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-gateway
+data:
+  gateway.conf: |
+    {
+      "version": 2,
+      "readOnly": true,
+      "clients": [
+        {
+          "name": "upstream",
+          "addrlist": "{{ include "teststand.serverService" . }}",
+          "autoaddrlist": false
+        }
+      ],
+      "servers": [
+        {
+          "name": "downstream",
+          "clients": ["upstream"],
+          "interface": ["0.0.0.0"],
+          "addrlist": "",
+          "autoaddrlist": false,
+          "statusprefix": "GW:STS:",
+          "pvlist": "gateway.pvlist"
+        }
+      ]
+    }
+  gateway.pvlist: |
+    EVALUATION ORDER ALLOW, DENY
+    {{ .Values.pvPrefix }}.* ALLOW
+{{- end }}

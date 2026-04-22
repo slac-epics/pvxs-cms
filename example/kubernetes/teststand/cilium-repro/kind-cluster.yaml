@@ -1,0 +1,11 @@
+# A second cluster, beside spva-lab, configured the way SLAC's is: no kube-proxy, Cilium doing
+# Service translation at the socket layer, and backend termination on.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: cilium-repro
+nodes:
+  - role: control-plane
+networking:
+  disableDefaultCNI: true
+  kubeProxyMode: none
+  podSubnet: 10.244.0.0/16

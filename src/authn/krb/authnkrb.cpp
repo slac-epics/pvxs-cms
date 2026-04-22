@@ -22,11 +22,11 @@
 
 DEFINE_LOGGER(auth_krb, "pvxs.auth.krb");
 
-namespace pvxs {
-namespace certs {
-    using cms::cert::AuthnCredentials;
-    using cms::cert::CertCreationRequest;
-    using cms::cert::KeyPair;
+namespace cms {
+namespace auth {
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::KeyPair;
 
 /**
  * @brief Registrar for the Kerberos authenticator
@@ -499,5 +499,5 @@ PrincipalInfo AuthNKrb::getPrincipalInfo() {
     return {principal, lifetime};
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

@@ -1,0 +1,45 @@
+{{/*
+The client. It holds one monitor open against its own release's server and is the thing under
+observation, so it carries no probe: a probe that failed when the server went away would
+restart this pod and destroy the monitor state the run exists to watch.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "teststand.monitorName" . }}
+  labels:
+{{ include "teststand.monitorSelector" . | indent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+{{ include "teststand.monitorSelector" . | indent 6 }}
+  template:
+    metadata:
+      labels:
+{{ include "teststand.monitorSelector" . | indent 8 }}
+      annotations:
+        # A ConfigMap change does not restart a pod by itself, so the rendered contents are
+        # hashed in here: change a script, the database, or a rate, and the pod rolls.
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        runAsUser: 0
+        fsGroup: 0
+      containers:
+        - name: monitor
+          image: {{ include "teststand.image" (dict "Values" .Values "role" "monitor") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/local/bin/start-monitor"]
+          env:
+            - name: SERVER
+              value: {{ include "teststand.serverService" . | quote }}
+            - name: PORT
+              value: "{{ .Values.ports.pvaTcp }}"
+            - name: PV_PREFIX
+              value: {{ .Values.pvPrefix | quote }}
+{{ include "teststand.zoneEnv" . | indent 12 }}
+          volumeMounts:
+            - {name: scripts, mountPath: /usr/local/bin/start-monitor, subPath: start-monitor.sh}
+      volumes:
+{{ include "teststand.scriptsVolume" . | indent 8 }}
