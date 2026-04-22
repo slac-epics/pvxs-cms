@@ -145,19 +145,31 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             const auto local_status = static_cast<certstatus_t>(sqlite3_column_int(check_stmt, 0));
             sqlite3_finalize(check_stmt);
 
-            if (!isValidStatusTransition(local_status, remote_status))
-                continue;
+            log_debug_printf(pvacmscluster, "Sync merge: serial=%lld local_status=%d remote_status=%d\n",
+                             static_cast<long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
 
-            if (local_status == remote_status)
+            if (!isValidStatusTransition(local_status, remote_status)) {
+                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%lld — invalid transition %d -> %d\n",
+                                 static_cast<long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
                 continue;
+            }
+
+            if (local_status == remote_status) {
+                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%lld — same status %d\n",
+                                 static_cast<long long>(serial), static_cast<int>(local_status));
+                continue;
+            }
 
             if (remote_status == REVOKED && local_status != REVOKED) {
                 result.revoked_skids.push_back(row["skid"].as<std::string>());
             }
 
             sqlite3_stmt *upd_stmt;
-            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, &upd_stmt, nullptr) != SQLITE_OK)
+            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, &upd_stmt, nullptr) != SQLITE_OK) {
+                log_debug_printf(pvacmscluster, "Sync merge: SQL_SYNC_UPDATE_CERT prepare failed for serial=%lld: %s\n",
+                                 static_cast<long long>(serial), sqlite3_errmsg(certs_db));
                 continue;
+            }
 
             auto bind_text = [&](const char *param, const char *field) {
                 const auto s = row[field].as<std::string>();
@@ -189,7 +201,9 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                 }
             }
             sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), serial);
-            sqlite3_step(upd_stmt);
+            auto rc = sqlite3_step(upd_stmt);
+            log_debug_printf(pvacmscluster, "Sync merge: UPDATE serial=%lld rc=%d changes=%d\n",
+                             static_cast<long long>(serial), rc, sqlite3_changes(certs_db));
             insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
                                   static_cast<uint64_t>(serial), SB() << "status=" << remote_status);
             sqlite3_finalize(upd_stmt);

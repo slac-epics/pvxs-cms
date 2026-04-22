@@ -395,15 +395,16 @@ function login_to_cs_studio_from_internet() {
 # ---------------------------------------------------------------------------
 # go_tls — Provision and approve all TLS certificates for the lab cluster
 # ---------------------------------------------------------------------------
-# Creates certs in the correct order so that gateway certs are approved
-# BEFORE the gateways are restarted, avoiding the chicken-and-egg deadlock
-# where an unapproved gateway cert breaks cluster sync.
+# Idempotent: checks cert status via pvxcert before creating/approving.
+# If a cert exists and is VALID, the step is skipped.
+# If a cert exists but is REVOKED/EXPIRED, it is deleted and recreated.
+# If a cert exists but is PENDING_APPROVAL, it is approved (not recreated).
 #
-# Order:
-#   1. Kerberos-authenticated client certs (lab + ml zones)
-#   2. Standard-authenticated client certs (internet zone)
-#   3. IOC server certs (testioc, tstioc, ml-ioc) + restart IOCs
-#   4. Gateway ioc certs (lab gateway, ml gateway) + restart gateways
+# Order (critical — gateways must be approved BEFORE restart):
+#   1. Kerberos client certs (lab + ml zones) — auto-approved
+#   2. Standard client certs (internet zone) — create, approve
+#   3. IOC server certs — create, approve, restart IOCs
+#   4. Gateway ioc certs — create ALL, approve ALL, restart ALL
 # ---------------------------------------------------------------------------
 function go_tls() {
     emulate -L zsh
@@ -411,55 +412,97 @@ function go_tls() {
 
     local NS="pvxs-lab"
     local -a CERT_IDS_TO_APPROVE=()
+    local -i CHANGES=0
 
     _tls_exec() {
         local app=$1 user=$2; shift 2
         kubectl -n $NS exec deploy/pvxs-lab-$app -- bash -c "su - $user -c 'source ~/.${user}_bashrc 2>/dev/null; $*'"
     }
 
-    _tls_has_cert() {
-        local app=$1 user=$2 p12=$3
-        kubectl -n $NS exec deploy/pvxs-lab-$app -- bash -c "su - $user -c 'test -f $p12'" 2>/dev/null
+    _tls_cert_status() {
+        local app=$1 user=$2 p12=${3:-}
+        local pvxcert_args=""
+        if [[ -n "$p12" ]]; then pvxcert_args="-f $p12"; fi
+        local output
+        output=$(_tls_exec $app $user "pvxcert $pvxcert_args 2>&1") 2>/dev/null || true
+        local cstatus=$(echo "$output" | awk '/^Status/ {sub(/^Status *: */, ""); print; exit}')
+        local cid=$(echo "$output" | awk '/^Certificate ID/ {sub(/^Certificate ID *: */, ""); print; exit}')
+        echo "${cstatus:-NONE}|${cid:-NONE}"
     }
 
-    _tls_krb_cert() {
+    _tls_delete_cert() {
+        local app=$1 user=$2
+        echo "  [delete] stale cert on $app/$user"
+        _tls_exec $app $user "rm -f ~/.config/pva/1.5/client.p12 ~/.config/pva/1.5/server.p12" 2>/dev/null || true
+        local keychain=$(_tls_exec $app $user 'echo ${EPICS_PVAS_TLS_KEYCHAIN:-}' 2>/dev/null || true)
+        if [[ -n "$keychain" ]]; then
+            _tls_exec $app $user "rm -f $keychain" 2>/dev/null || true
+        fi
+    }
+
+    _tls_ensure_krb_cert() {
         local app=$1 user=$2 principal=$3 authn_flags=${4:-}
-        local p12="\$HOME/.config/pva/1.5/client.p12"
-        if _tls_has_cert $app $user "$p12"; then
-            echo "  [skip] $principal on $app/$user (cert exists)"
-            return 0
-        fi
-        echo "  [krb] $principal on $app/$user ${authn_flags:+($authn_flags)}"
+        local info=$(_tls_cert_status $app $user "~/.config/pva/1.5/client.p12")
+        local cstatus=${info%%|*}
+        local cert_id=${info#*|}
+
+        case "$cstatus" in
+            VALID)
+                echo "  [ok] $principal on $app/$user ($cert_id)"
+                return 0 ;;
+            REVOKED|EXPIRED)
+                echo "  [terminal] $cstatus — deleting and recreating"
+                _tls_delete_cert $app $user ;;
+            PENDING_APPROVAL)
+                echo "  [approve-needed] $principal on $app/$user ($cert_id)"
+                CERT_IDS_TO_APPROVE+=("$cert_id")
+                CHANGES+=1
+                return 0 ;;
+        esac
+
+        echo "  [krb] $principal on $app/$user"
         _tls_exec $app $user "echo secret | kinit $principal && authnkrb $authn_flags"
+        CHANGES+=1
     }
 
-    _tls_std_cert() {
+    _tls_ensure_std_cert() {
         local app=$1 user=$2 authn_flags=$3
-        local p12
+        local p12="~/.config/pva/1.5/client.p12"
         case "$authn_flags" in
-            *-u\ server*) p12="\$HOME/.config/pva/1.5/server.p12" ;;
-            *-u\ ioc*)    p12="\$(source ~/.${user}_bashrc 2>/dev/null; echo \${EPICS_PVAS_TLS_KEYCHAIN:-\$HOME/.config/pva/1.5/server.p12})" ;;
-            *)            p12="\$HOME/.config/pva/1.5/client.p12" ;;
+            *-u\ server*) p12="~/.config/pva/1.5/server.p12" ;;
+            *-u\ ioc*)    p12="\${EPICS_PVAS_TLS_KEYCHAIN:-~/.config/pva/1.5/server.p12}" ;;
         esac
-        if _tls_has_cert $app $user "$p12"; then
-            echo "  [skip] $user on $app (cert exists)"
-            return 0
-        fi
+        local info=$(_tls_cert_status $app $user "$p12")
+        local cstatus=${info%%|*}
+        local cert_id=${info#*|}
+
+        case "$cstatus" in
+            VALID)
+                echo "  [ok] $user on $app ($cert_id)"
+                return 0 ;;
+            REVOKED|EXPIRED)
+                echo "  [terminal] $cstatus — deleting and recreating"
+                _tls_delete_cert $app $user ;;
+            PENDING_APPROVAL|PENDING)
+                echo "  [approve-needed] $user on $app ($cert_id)"
+                CERT_IDS_TO_APPROVE+=("$cert_id")
+                CHANGES+=1
+                return 0 ;;
+        esac
+
         echo "  [std] $user on $app ${authn_flags:+($authn_flags)}"
         local output
         output=$(_tls_exec $app $user "authnstd $authn_flags")
         echo "$output"
-        local cert_id
         cert_id=$(echo "$output" | grep -oE '[a-f0-9]{8}:[0-9]+' | head -1)
         if [[ -n "$cert_id" ]]; then
             CERT_IDS_TO_APPROVE+=("$cert_id")
         fi
+        CHANGES+=1
     }
 
     _tls_approve_all() {
-        if (( ${#CERT_IDS_TO_APPROVE[@]} == 0 )); then
-            return 0
-        fi
+        if (( ${#CERT_IDS_TO_APPROVE[@]} == 0 )); then return 0; fi
         local id
         for id in "${CERT_IDS_TO_APPROVE[@]}"; do
             echo "  [approve] $id"
@@ -475,59 +518,89 @@ function go_tls() {
     # -----------------------------------------------------------------------
     echo "=== Step 1: Kerberos client certs (lab zone) ==="
     # -----------------------------------------------------------------------
-    _tls_krb_cert cs-studio-lab operator "operator@EPICS.ORG"
-    _tls_krb_cert cs-studio-lab guest    "guest@EPICS.ORG"
+    _tls_ensure_krb_cert cs-studio-lab operator "operator@EPICS.ORG"
+    _tls_ensure_krb_cert cs-studio-lab guest    "guest@EPICS.ORG"
+    _tls_approve_all
 
     # -----------------------------------------------------------------------
     echo "=== Step 2: Kerberos client certs (ML zone) ==="
     # -----------------------------------------------------------------------
-    _tls_krb_cert cs-studio-ml mloperator "mloperator@EPICS.ORG"
-    _tls_krb_cert cs-studio-ml mlsystem  "mlsystem@EPICS.ORG"
-
-    # -----------------------------------------------------------------------
-    echo "=== Step 3: Standard client certs (internet zone) — need approval ==="
-    # -----------------------------------------------------------------------
-    _tls_std_cert cs-studio-internet operator "-u client"
-    _tls_std_cert cs-studio-internet guest    "-u client"
+    _tls_ensure_krb_cert cs-studio-ml mloperator "mloperator@EPICS.ORG"
+    _tls_ensure_krb_cert cs-studio-ml mlsystem  "mlsystem@EPICS.ORG"
     _tls_approve_all
 
     # -----------------------------------------------------------------------
-    echo "=== Step 4: IOC server certs — need approval + restart ==="
+    echo "=== Step 3: Standard client certs (internet zone) ==="
     # -----------------------------------------------------------------------
-    _tls_std_cert testioc testioc "-u server"
-    _tls_std_cert tstioc  tstioc  "-u server"
-    _tls_std_cert ml-ioc  mlioc   "-u server"
-    local ioc_new=${#CERT_IDS_TO_APPROVE[@]}
+    _tls_ensure_std_cert cs-studio-internet operator "-u client"
+    _tls_ensure_std_cert cs-studio-internet guest    "-u client"
     _tls_approve_all
 
-    if (( ioc_new > 0 )); then
+    # -----------------------------------------------------------------------
+    echo "=== Step 4: IOC server certs ==="
+    # -----------------------------------------------------------------------
+    local pre_ioc=$CHANGES
+    _tls_ensure_std_cert testioc testioc "-u server"
+    _tls_ensure_std_cert tstioc  tstioc  "-u server"
+    _tls_ensure_std_cert ml-ioc  mlioc   "-u server"
+    _tls_approve_all
+
+    if (( CHANGES > pre_ioc )); then
         echo "  [restart] testioc, tstioc, ml-ioc"
         kubectl -n $NS exec deploy/pvxs-lab-testioc -- supervisorctl restart testioc
         kubectl -n $NS exec deploy/pvxs-lab-tstioc  -- supervisorctl restart tstioc
         kubectl -n $NS exec deploy/pvxs-lab-ml-ioc  -- supervisorctl restart mlioc
     else
-        echo "  [skip restart] IOCs (no new certs)"
+        echo "  [skip restart] IOCs (all certs already valid)"
     fi
 
     # -----------------------------------------------------------------------
-    echo "=== Step 5: Gateway ioc certs — need approval + restart ==="
+    echo "=== Step 5: Gateway certs (create ALL, approve ALL via lab admin, wait for sync, restart ALL) ==="
     # -----------------------------------------------------------------------
-    _tls_std_cert gateway    gateway "-u ioc"
-    _tls_std_cert ml-gateway gateway "-u ioc -n ml-gateway"
-    local gw_new=${#CERT_IDS_TO_APPROVE[@]}
+    local pre_gw=$CHANGES
+    _tls_ensure_std_cert gateway    gateway "-u ioc"
+    _tls_ensure_std_cert ml-gateway gateway "-u ioc -n ml-gateway"
     _tls_approve_all
 
-    if (( gw_new > 0 )); then
+    if (( CHANGES > pre_gw )); then
+        local ml_gw_id
+        ml_gw_id=$(_tls_exec ml-gateway gateway "pvxcert -f \\\${EPICS_PVAS_TLS_KEYCHAIN:-~/.config/pva/1.5/server.p12} 2>&1" | awk '/^Certificate ID/ {sub(/^Certificate ID *: */, ""); print; exit}')
+        if [[ -n "$ml_gw_id" ]]; then
+            echo "  [verify] checking ml-gateway cert ($ml_gw_id) synced to ml PVACMS..."
+            local -i attempts=0
+            while (( attempts < 10 )); do
+                local ml_status
+                ml_status=$(kubectl -n $NS exec deploy/pvxs-lab-ml -c ml -- bash -c \
+                    "su - admin -c 'source ~/.admin_bashrc 2>/dev/null; export EPICS_PVA_NAME_SERVERS=localhost:5075; pvxcert $ml_gw_id 2>&1'" 2>&1 \
+                    | awk '/^Status/ {sub(/^Status *: */, ""); print; exit}')
+                if [[ "$ml_status" == "VALID" ]]; then
+                    echo "  [synced] ml-gateway cert VALID on ml PVACMS"
+                    break
+                fi
+                (( attempts += 1 ))
+                sleep 1
+            done
+            if (( attempts >= 10 )); then
+                echo "  [ERROR] ml-gateway cert not VALID on ml PVACMS after 10s — cluster sync may be broken"
+                echo "  ml PVACMS reports: ${ml_status:-no response}"
+                return 1
+            fi
+        fi
+
         echo "  [restart] gateway, ml-gateway"
         kubectl -n $NS exec deploy/pvxs-lab-gateway    -c gateway    -- supervisorctl restart gateway
         kubectl -n $NS exec deploy/pvxs-lab-ml-gateway -c ml-gateway -- supervisorctl restart gateway
     else
-        echo "  [skip restart] gateways (no new certs)"
+        echo "  [skip restart] gateways (all certs already valid)"
     fi
 
     # -----------------------------------------------------------------------
     echo ""
-    echo "=== TLS setup complete ==="
-    echo "All certs provisioned and approved. Gateways and IOCs restarted."
+    echo "=== TLS setup complete ($CHANGES changes) ==="
+    if (( CHANGES == 0 )); then
+        echo "All certs already valid. No changes made."
+    else
+        echo "Certs provisioned/approved. Services restarted."
+    fi
     echo "Verify: login_to_cs_studio_in_lab operator → pvxinfo -v test:spec"
 }
