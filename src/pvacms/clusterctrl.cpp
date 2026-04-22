@@ -28,11 +28,11 @@ namespace server = ::pvxs::server;
 
 using ::pvxs::shared_array;
 using ::pvxs::Value;
-using ::pvxs::certs::clusterSign;
-using ::pvxs::certs::clusterVerify;
-using ::pvxs::certs::makeClusterCtrlValue;
-using ::pvxs::certs::makeJoinResponseValue;
-using ::pvxs::certs::setTimeStamp;
+using ::cms::clusterSign;
+using ::cms::clusterVerify;
+using ::cms::makeClusterCtrlValue;
+using ::cms::makeJoinResponseValue;
+using ::cms::setTimeStamp;
 
 void BidiFailedCache::record(const std::string &node_id) {
     Guard G(mutex_);

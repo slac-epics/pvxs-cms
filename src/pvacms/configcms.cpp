@@ -32,8 +32,11 @@ void splitKeychainSetting(const std::string &value, std::string &file, std::stri
 }
 }  // namespace
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+    using pvxs::Value;
+    using pvxs::TypeDef;
+    using pvxs::TypeCode;
+    using pvxs::Member;
     using cms::auth::AuthRegistry;
     using cms::cert::CertDate;
     using cms::cert::CertStatusSubscription;
@@ -351,5 +354,4 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     for (auto &authn_entry : AuthRegistry::getRegistry()) authn_entry.second->updateDefs(defs);
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cms
