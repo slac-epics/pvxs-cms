@@ -14,7 +14,7 @@
 
 namespace {
 
-using pvxs::certs::TokenBucket;
+using cms::cluster::TokenBucket;
 
 void testBurstCapacityAndExhaustion()
 {

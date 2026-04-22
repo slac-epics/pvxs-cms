@@ -21,8 +21,21 @@
 
 DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cluster {
+
+namespace members = ::pvxs::members;
+namespace server = ::pvxs::server;
+
+using ::pvxs::shared_array;
+using ::pvxs::TypeCode;
+using ::pvxs::TypeDef;
+using ::pvxs::Value;
+using ::pvxs::certs::SYNC_FULL_SNAPSHOT;
+using ::pvxs::certs::SYNC_INCREMENTAL;
+using ::pvxs::certs::clusterSign;
+using ::pvxs::certs::makeClusterSyncValue;
+using ::pvxs::certs::setTimeStamp;
 
 typedef epicsGuard<epicsMutex> Guard;
 
@@ -31,7 +44,7 @@ SyncSource::SyncSource(const std::string &pv_name, ClusterSyncPublisher &publish
     , publisher_(publisher)
 {}
 
-void SyncSource::onSearch(Search &op) {
+void SyncSource::onSearch(SyncSource::Search &op) {
     for (auto &pv : op) {
         if (names_->count(pv.name()))
             pv.claim();
@@ -124,7 +137,7 @@ void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
     });
 }
 
-SyncSource::List SyncSource::onList() {
+server::Source::List SyncSource::onList() {
     return List{names_, false};
 }
 
@@ -210,7 +223,7 @@ ClusterSyncPublisher::ClusterSyncPublisher(const std::string &node_id,
                                            const std::string &issuer_id,
                                            const std::string &pv_prefix,
                                            sqlite3 *certs_db,
-                                           const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
+                                           const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                            epicsMutex &status_update_lock)
     : node_id_(node_id)
     , issuer_id_(issuer_id)
@@ -541,5 +554,5 @@ std::map<std::string, std::string> ClusterSyncPublisher::getForwardingRelationsh
     return forwarding_;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cluster
+}  // namespace cms

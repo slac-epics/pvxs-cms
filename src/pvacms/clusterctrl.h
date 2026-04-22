@@ -26,8 +26,11 @@
 #include "clustersync.h"
 #include "ownedptr.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cluster {
+
+namespace server = ::pvxs::server;
+using ::pvxs::Value;
 
 class ClusterSyncPublisher;
 
@@ -50,7 +53,7 @@ struct ClusterCtrlSource : public server::Source {
 
     void onSearch(Search &op) override;
     void onCreate(std::unique_ptr<server::ChannelControl> &&op) override;
-    List onList() override;
+    server::Source::List onList() override;
 
     std::string ctrl_pv_base_name_;
     std::string own_node_id_;
@@ -80,8 +83,8 @@ public:
     ClusterController(const std::string &issuer_id,
                       const std::string &node_id,
                       const std::string &pv_prefix,
-                      const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
-                      const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
+                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
+                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                       ClusterSyncPublisher &sync_publisher,
                       ASMEMBERPVT as_cluster_mem,
                       uint32_t bidi_timeout_secs = 5);
@@ -164,8 +167,8 @@ private:
     std::string issuer_id_;
     std::string node_id_;
     std::string ctrl_pv_name_;
-    const ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
-    const ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
+    const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
+    const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
     ClusterSyncPublisher &sync_publisher_;
     ASMEMBERPVT as_cluster_mem_;
     uint32_t bidi_timeout_secs_;
@@ -181,7 +184,7 @@ private:
     void setupRpcHandler();
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cluster
+}  // namespace cms
 
 #endif  // PVXS_CLUSTERCTRL_H_

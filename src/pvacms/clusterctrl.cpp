@@ -20,8 +20,19 @@
 
 DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cluster {
+
+namespace ioc = ::pvxs::ioc;
+namespace server = ::pvxs::server;
+
+using ::pvxs::shared_array;
+using ::pvxs::Value;
+using ::pvxs::certs::clusterSign;
+using ::pvxs::certs::clusterVerify;
+using ::pvxs::certs::makeClusterCtrlValue;
+using ::pvxs::certs::makeJoinResponseValue;
+using ::pvxs::certs::setTimeStamp;
 
 void BidiFailedCache::record(const std::string &node_id) {
     Guard G(mutex_);
@@ -51,7 +62,7 @@ ClusterCtrlSource::ClusterCtrlSource(const std::string &ctrl_pv_base_name,
     , bidi_failed_(std::move(bidi_failed))
 {}
 
-void ClusterCtrlSource::onSearch(Search &op) {
+void ClusterCtrlSource::onSearch(ClusterCtrlSource::Search &op) {
     const std::string ctrl_pv_prefix = ctrl_pv_base_name_ + ":";
     const auto min_discovery_name_size = ctrl_pv_prefix.size() + 1u;
 
@@ -93,8 +104,8 @@ server::Source::List ClusterCtrlSource::onList() {
 ClusterController::ClusterController(const std::string &issuer_id,
                                      const std::string &node_id,
                                      const std::string &pv_prefix,
-                                     const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
-                                     const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
+                                     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
+                                     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                                      ClusterSyncPublisher &sync_publisher,
                                      ASMEMBERPVT as_cluster_mem,
                                      uint32_t bidi_timeout_secs)
@@ -358,5 +369,5 @@ bool ClusterController::isCmsNode(const std::string &skid) const {
     return cms_node_skids_.count(skid.substr(0, 8)) > 0;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cluster
+}  // namespace cms

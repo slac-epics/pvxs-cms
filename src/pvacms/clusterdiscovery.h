@@ -25,8 +25,11 @@
 
 struct sqlite3;
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cluster {
+
+namespace client = ::pvxs::client;
+using ::pvxs::Value;
 
 /** @brief Manages discovery of and synchronization with peer PVACMS cluster nodes. */
 class ClusterDiscovery {
@@ -59,8 +62,8 @@ public:
                      uint32_t discovery_timeout_secs,
                      bool skip_peer_identity_check,
                      sqlite3 *certs_db,
-                     const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
-                     const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
+                     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
+                     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                      epicsMutex &status_update_lock,
                      ClusterSyncPublisher &sync_publisher,
                      ClusterController &controller,
@@ -116,8 +119,8 @@ private:
     uint32_t discovery_timeout_secs_;
     bool skip_peer_identity_check_;
     sqlite3 *certs_db_;
-    const ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
-    const ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
+    const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
+    const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
     epicsMutex &status_update_lock_;
     ClusterSyncPublisher &sync_publisher_;
     ClusterController &controller_;
@@ -169,7 +172,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                                   const Value &snapshot,
                                   const std::string &peer_node_id);
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cluster
+}  // namespace cms
 
 #endif  // PVXS_CLUSTERDISCOVERY_H_
