@@ -33,11 +33,7 @@ spec:
     - name: inet-tls
       protocol: TCP
       port: 5276
-<<<<<<< HEAD
       targetPort: inet-tls
-=======
-      targetPort: xgw-tls
->>>>>>> 76c0cf0 (Refactor PVACMS configurations and improve cluster synchronization)
 
 ---
 apiVersion: v1
