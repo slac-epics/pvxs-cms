@@ -340,8 +340,16 @@
 
 namespace pvxs {
 namespace certs {
-
-struct SanEntry;
+    using cms::cert::DbCert;
+    using cms::cert::KeyPair;
+    using cms::cert::SanEntry;
+    using cms::cert::CertFactory;
+    using cms::cert::CertData;
+    using cms::cert::PVACertificateStatus;
+    using cms::cert::certstatus_t;
+    using cms::cert::VALID;
+    using cms::cert::PENDING;
+    using cms::cert::PENDING_APPROVAL;
 
 std::string sanToJson(const std::vector<SanEntry> &entries);
 std::vector<SanEntry> sanFromJson(const std::string &json);

@@ -18,6 +18,11 @@ DEFINE_LOGGER(cert_cfg, "pvxs.certs.cfg");
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::CertDate;
+    using cms::cert::CertStatusSubscription;
+    using cms::cert::DEFAULT;
+    using cms::cert::YES;
+    using cms::cert::NO;
 
 /**
  * @brief Create a Config object with default values suitable for use with a Mock CMS

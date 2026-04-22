@@ -30,6 +30,9 @@
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::AuthnCredentials;
+    using cms::cert::CertCreationRequest;
+    using cms::cert::KeyPair;
 
 // Declarations
 extern gss_OID_desc krb5_oid_desc;

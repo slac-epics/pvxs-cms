@@ -18,6 +18,9 @@ DEFINE_LOGGER(auth_log, "pvxs.auth.ccr");
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::CertCreationRequest;
+    using cms::cert::CertDate;
+    using cms::cert::getCertCreatePv;
 
 using namespace members;
 

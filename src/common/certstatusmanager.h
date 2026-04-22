@@ -34,8 +34,15 @@ class Context;
 
 struct Subscription;
 }  // namespace client
+}  // namespace pvxs
 
-namespace certs {
+namespace cms {
+namespace cert {
+
+namespace client = pvxs::client;
+using pvxs::ossl_ptr;
+using pvxs::ossl_shared_ptr;
+using pvxs::shared_array;
 
 template <typename T>
 struct cert_status_delete;
@@ -229,7 +236,7 @@ struct cert_status_delete<CmsStatusManager> {
         }
     }
 };
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERTSTATUSMANAGER_H_

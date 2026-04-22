@@ -15,6 +15,10 @@
 
 namespace pvxs {
 namespace certs {
+    using cms::cert::CertStatusSubscription;
+    using cms::cert::DEFAULT;
+    using cms::cert::YES;
+    using cms::cert::NO;
 
 class ConfigCms final : public Config {
    public:

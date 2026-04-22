@@ -22,8 +22,11 @@
 #include "ownedptr.h"
 #include "security.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+using pvxs::ossl_ptr;
+using pvxs::ossl_shared_ptr;
 
 #define PVXS_DEFAULT_AUTH_TYPE "std"
 
@@ -247,7 +250,7 @@ class CertFactory {
     void set_skid(const ossl_ptr<X509> &certificate);
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERT_FACTORY_H
