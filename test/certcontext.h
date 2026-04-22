@@ -100,14 +100,17 @@ struct client2 {};
 }  // namespace tag
 
 namespace certs {
-using cms::cert::CertDate;
-using cms::cert::CertStatus;
+    using cms::cert::CertDate;
+    using cms::cert::CertStatus;
 using cms::cert::CertStatusFactory;
 using cms::cert::CertStatusNoExtensionException;
 using cms::cert::certstatus_t;
 using cms::cert::CmsStatusManager;
-using cms::cert::PVACertificateStatus;
-using cms::cert::REVOKED;
+    using cms::cert::PVACertificateStatus;
+    using cms::cert::REVOKED;
+    using cms::detail::SB;
+    using cms::detail::ossl_ptr;
+    using cms::detail::ossl_shared_ptr;
 
 /**
  * @brief define the traits to be used in the template class CertCtx below that will describe the individual certs

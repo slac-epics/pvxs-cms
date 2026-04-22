@@ -17,6 +17,8 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
+#include <epicsMutex.h>
+
 #ifdef PVXS_ENABLE_PVACMS
 #include "sqlite3.h"
 #endif
@@ -268,4 +270,27 @@ ossl_shared_ptr<T> make_ossl_shared_ptr(const T *ptr) {
 }
 
 }  // namespace pvxs
+
+namespace cms {
+namespace detail {
+
+using ::pvxs::ssl_delete;
+using ::pvxs::ssl_delete_all;
+using ::pvxs::sqlite_delete;
+using ::pvxs::file_delete;
+using ::pvxs::regular_delete;
+using ::pvxs::OwnedPtr;
+using ::pvxs::file_ptr;
+using ::pvxs::epicsMutex_ptr;
+using ::pvxs::ossl_ptr;
+using ::pvxs::ossl_ptr_all;
+#ifdef PVXS_ENABLE_PVACMS
+using ::pvxs::sql_ptr;
+#endif
+using ::pvxs::ossl_shared_ptr;
+using ::pvxs::make_ossl_shared_ptr;
+
+} // namespace detail
+} // namespace cms
+
 #endif  // PVXS_OWNED_PTR_H_

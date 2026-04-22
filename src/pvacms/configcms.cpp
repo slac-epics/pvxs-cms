@@ -13,6 +13,7 @@
 
 #include "authregistry.h"
 #include "configcerts.h"
+#include "utilpvt.h"
 
 DEFINE_LOGGER(cert_cfg, "pvxs.certs.cfg");
 
@@ -24,6 +25,13 @@ namespace certs {
     using cms::cert::DEFAULT;
     using cms::cert::YES;
     using cms::cert::NO;
+    using cms::detail::SB;
+    using cms::detail::PickOne;
+    using cms::detail::ensureDirectoryExists;
+    using cms::detail::getFileContents;
+    using cms::detail::getXdgPvaConfigHome;
+    using cms::detail::getXdgPvaDataHome;
+    using cms::detail::parseTo;
 
 /**
  * @brief Create a Config object with default values suitable for use with a Mock CMS

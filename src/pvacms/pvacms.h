@@ -249,6 +249,10 @@ namespace certs {
     using cms::cert::VALID;
     using cms::cert::PENDING;
     using cms::cert::PENDING_APPROVAL;
+    using cms::detail::ossl_ptr;
+    using cms::detail::ossl_shared_ptr;
+    using cms::detail::sql_ptr;
+    using cms::detail::ServerEv;
 
 std::string sanToJson(const std::vector<SanEntry> &entries);
 std::vector<SanEntry> sanFromJson(const std::string &json);

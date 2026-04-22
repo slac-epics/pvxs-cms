@@ -9,7 +9,7 @@
 
 namespace cms {
 namespace auth {
-    using ::pvxs::PickOne;
+    using ::cms::detail::PickOne;
 
 void ConfigKrb::fromKrbEnv(const std::map<std::string, std::string>& defs) {
     PickOne pickone{defs, true};

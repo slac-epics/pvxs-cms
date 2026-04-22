@@ -31,6 +31,8 @@ DEFINE_LOGGER(status_cms, "pvxs.st.cms");
 namespace pvxs {
 namespace server {
 
+using cms::detail::SB;
+
 template <typename T>
 using ptr_set = std::set<T, std::owner_less<T>>;
 
