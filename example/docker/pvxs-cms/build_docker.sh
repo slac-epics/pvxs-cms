@@ -12,9 +12,9 @@ pushd "${PROJECTS}/pvxs-cms"
 trap "popd" EXIT
 
 BASE_IMAGE_NAME="pvxs"
-BASE_IMAGE_TAG="latest"
+BASE_IMAGE_TAG="dev"
 TARGET_IMAGE_NAME="pvxs-cms"
-TARGET_IMAGE_TAG="latest"
+TARGET_IMAGE_TAG="dev"
 
 echo "--- Building ${TARGET_IMAGE_NAME} Docker image ---"
 
