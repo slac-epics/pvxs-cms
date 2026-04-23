@@ -1244,7 +1244,9 @@ void onGetStatus(const ConfigCms &config,
         }
 
         const auto now = std::time(nullptr);
-        const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, status, now, status_date);
+        const auto db_cert = getCertificateValidity(certs_db, serial);
+        const auto cert_status = cert_status_creator.createPVACertificateStatus(
+            serial, status, now, status_date, CertDate(db_cert.renew_by), false);
         postCertificateStatus(status_pv, pv_name, serial, cert_status);
     } catch (std::exception &e) {
         log_err_printf(pvacms, "PVACMS: %s\n", e.what());
@@ -1289,8 +1291,8 @@ void onRevoke(const ConfigCms &config,
         updateCertificateStatus(certs_db, serial, REVOKED, 0);
 
         const auto revocation_date = std::time(nullptr);
-        const auto ocsp_status =
-            cert_status_creator.createPVACertificateStatus(serial, REVOKED, revocation_date, revocation_date);
+        const auto ocsp_status = cert_status_creator.createPVACertificateStatus(
+            serial, REVOKED, revocation_date, revocation_date, CertDate{}, false);
         postCertificateStatus(status_pv, pv_name, serial, ocsp_status);
         log_info_printf(pvacms, "%s ==> REVOKED\n", getCertId(our_issuer_id, serial).c_str());
         op->reply();
@@ -1340,7 +1342,9 @@ void onApprove(const ConfigCms &config,
         const certstatus_t new_state = status_date < db_cert.not_before ? PENDING : status_date >= db_cert.not_after ? EXPIRED : status_date >= db_cert.renew_by ? PENDING_RENEWAL : VALID;
         updateCertificateStatus(certs_db, serial, new_state, 1, {PENDING_APPROVAL});
 
-        const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, new_state, status_date);
+        const auto cert_status = cert_status_creator.createPVACertificateStatus(
+            serial, new_state, status_date, CertDate(std::time(nullptr)),
+            CertDate(db_cert.renew_by), false);
         postCertificateStatus(status_pv, pv_name, serial, cert_status);
         switch (new_state) {
             case VALID:
@@ -1397,8 +1401,8 @@ void onDeny(const ConfigCms &config,
         updateCertificateStatus(certs_db, serial, REVOKED, 0, {PENDING_APPROVAL});
 
         const auto revocation_date = std::time(nullptr);
-        const auto cert_status =
-            cert_status_creator.createPVACertificateStatus(serial, REVOKED, revocation_date, revocation_date);
+        const auto cert_status = cert_status_creator.createPVACertificateStatus(
+            serial, REVOKED, revocation_date, revocation_date, CertDate{}, false);
         postCertificateStatus(status_pv, pv_name, serial, cert_status);
         log_info_printf(pvacms, "%s ==> REVOKED (Approval Request Denied)\n", getCertId(our_issuer_id, serial).c_str());
         op->reply();
@@ -2356,7 +2360,8 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
     setValue<uint32_t>(status_value, "value.index", cert_status.status.i);
     setValue<time_t>(status_value, "timeStamp.secondsPastEpoch", now - POSIX_TIME_AT_EPICS_EPOCH);
     setValue<std::string>(status_value, "state", cert_status.status.s);
-    setValue<time_t>(status_value, "renew_by", cert_status.renew_by.t - POSIX_TIME_AT_EPICS_EPOCH);
+    setValue<time_t>(status_value, "renew_by",
+                     cert_status.renew_by.t > 0 ? cert_status.renew_by.t - POSIX_TIME_AT_EPICS_EPOCH : 0);
     setValue<bool>(status_value, "renewal_due", cert_status.renewal_due);
     setValue<time_t>(status_value, "ocsp_status.timeStamp.secondsPastEpoch", now - POSIX_TIME_AT_EPICS_EPOCH);
     setValue<uint32_t>(status_value, "ocsp_status.value.index", cert_status.ocsp_status.i);
@@ -2416,7 +2421,10 @@ bool postUpdateToNextCertBecomingValid(const CertStatusFactory &cert_status_crea
                                                            serial));
                 updateCertificateStatus(status_monitor_params.certs_db_, serial, VALID, 1, {PENDING});
                 const auto status_date = std::time(nullptr);
-                const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, VALID, status_date);
+                const auto db_cert = getCertificateValidity(status_monitor_params.certs_db_, serial);
+                const auto cert_status = cert_status_creator.createPVACertificateStatus(
+                    serial, VALID, status_date, CertDate(std::time(nullptr)),
+                    CertDate(db_cert.renew_by), false);
                 postCertificateStatus(status_monitor_params.status_pv_, pv_name, serial, cert_status);
                 log_info_printf(pvacmsmonitor,
                                 "%s ==> VALID\n",
@@ -2478,7 +2486,10 @@ bool postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_factory,
                 const std::string pv_name(getCertStatusURI(cert_pv_prefix, issuer_id, serial));
                 updateCertificateStatus(certs_db, serial, EXPIRED, -1, {VALID, PENDING_APPROVAL, PENDING_RENEWAL, PENDING});
                 const auto status_date = std::time(nullptr);
-                const auto cert_status = cert_status_factory.createPVACertificateStatus(serial, EXPIRED, status_date);
+                const auto db_cert = getCertificateValidity(certs_db, serial);
+                const auto cert_status = cert_status_factory.createPVACertificateStatus(
+                    serial, EXPIRED, status_date, CertDate(std::time(nullptr)),
+                    CertDate(db_cert.renew_by), false);
                 postCertificateStatus(status_pv, pv_name, serial, cert_status);
                 log_info_printf(pvacmsmonitor, "%s ==> EXPIRED\n", getCertId(issuer_id, serial).c_str());
             } catch (const std::runtime_error &e) {
@@ -2632,7 +2643,10 @@ bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
                 const std::string pv_name(getCertStatusURI(cert_pv_prefix, issuer_id, serial));
                 updateCertificateStatus(certs_db, serial, PENDING_RENEWAL, -1, {VALID, PENDING_APPROVAL, PENDING});
                 const auto status_date = std::time(nullptr);
-                const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, PENDING_RENEWAL, status_date);
+                const auto db_cert = getCertificateValidity(certs_db, serial);
+                const auto cert_status = cert_status_creator.createPVACertificateStatus(
+                    serial, PENDING_RENEWAL, status_date, CertDate(std::time(nullptr)),
+                    CertDate(db_cert.renew_by), false);
                 postCertificateStatus(status_pv, pv_name, serial, cert_status);
                 log_info_printf(pvacmsmonitor, "%s ==> PENDING_RENEWAL\n", getCertId(issuer_id, serial).c_str());
             } catch (const std::runtime_error &e) {
@@ -2681,7 +2695,10 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
                 const std::string pv_name(getCertStatusURI(cert_pv_prefix, issuer_id, serial));
                 touchCertificateStatus(certs_db, serial);
                 const auto status_date = std::time(nullptr);
-                const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, status, status_date);
+                const auto db_cert = getCertificateValidity(certs_db, serial);
+                const auto cert_status = cert_status_creator.createPVACertificateStatus(
+                    serial, status, status_date, CertDate(std::time(nullptr)),
+                    CertDate(db_cert.renew_by), false);
                 postCertificateStatus(status_pv, pv_name, serial, cert_status);
                 log_info_printf(pvacmsmonitor, "%s Certificate Status Keep Alive\n", getCertId(issuer_id, serial).c_str());
             } catch (const std::runtime_error &e) {
@@ -2813,9 +2830,10 @@ bool postUpdatesToExpiredStatuses(const CertStatusFactory &cert_status_creator,
                                                            status_monitor_params.issuer_id_,
                                                            serial));
                 auto status_date = std::time(nullptr);
-                auto cert_status = cert_status_creator.createPVACertificateStatus(serial,
-                                                                                  static_cast<certstatus_t>(status),
-                                                                                  status_date);
+                const auto db_cert = getCertificateValidity(status_monitor_params.certs_db_, serial);
+                auto cert_status = cert_status_creator.createPVACertificateStatus(
+                    serial, static_cast<certstatus_t>(status), status_date,
+                    CertDate(std::time(nullptr)), CertDate(db_cert.renew_by), false);
                 postCertificateStatus(status_monitor_params.status_pv_, pv_name, serial, cert_status);
                 status_monitor_params.setValidity(serial, cert_status.status_valid_until_date.t);
                 log_debug_printf(pvacmsmonitor,
