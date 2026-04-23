@@ -479,10 +479,10 @@ void ServerHandle::Pvt::configureHandlers()
                                                          cert_auth_chain_copy,
                                                          config_copy.cert_status_validity_mins));
                             const auto now = std::time(nullptr);
-                            const auto cert_status = cert_status_creator.createPVACertificateStatus(serial,
-                                                                                                     target,
-                                                                                                     now,
-                                                                                                     {});
+                            const auto db_cert = ::cms::getCertificateValidity(certs_db, serial);
+                            const auto cert_status = cert_status_creator.createPVACertificateStatus(
+                                serial, target, now, ::cms::cert::CertDate(std::time(nullptr)),
+                                ::cms::cert::CertDate(db_cert.renew_by), false);
                             auto cert_id = ::cms::cert::getCertId(our_issuer_id, serial);
                             auto status_pv_name = ::cms::cert::getCertStatusURI(config_copy.getCertPvPrefix(),
                                                                           cert_id);
