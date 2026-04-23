@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <iomanip>
@@ -398,7 +399,15 @@ static void dumpOcspSection(const Value& result) {
  std::string iso8601ToCertUtc(const std::string& iso) {
     if (iso.empty()) return "(never)";
     struct tm tm_buf{};
-    if (!strptime(iso.c_str(), "%Y-%m-%dT%H:%M:%SZ", &tm_buf)) return iso;
+    int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0;
+    if (std::sscanf(iso.c_str(), "%4d-%2d-%2dT%2d:%2d:%2dZ",
+                    &y, &mo, &d, &h, &mi, &s) != 6) return iso;
+    tm_buf.tm_year = y - 1900;
+    tm_buf.tm_mon  = mo - 1;
+    tm_buf.tm_mday = d;
+    tm_buf.tm_hour = h;
+    tm_buf.tm_min  = mi;
+    tm_buf.tm_sec  = s;
     char buf[64];
     if (std::strftime(buf, sizeof(buf), CERT_TIME_FORMAT, &tm_buf)) return buf;
     return iso;
