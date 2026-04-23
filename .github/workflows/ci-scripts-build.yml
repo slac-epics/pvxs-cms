@@ -190,8 +190,8 @@ jobs:
       run: |
         # Add DLL directories to PATH so test executables can find shared libraries
         echo "${CACHEDIR}/base-7.0-secure-pvaccess/bin/windows-x64-debug" >> $GITHUB_PATH
-        echo "${CACHEDIR}/pvxs-tls/bin/windows-x64-debug" >> $GITHUB_PATH
-        echo "${CACHEDIR}/pvxs-tls/lib/windows-x64-debug" >> $GITHUB_PATH
+        echo "${CACHEDIR}/pvxs-${PVXS}/bin/windows-x64-debug" >> $GITHUB_PATH
+        echo "${CACHEDIR}/pvxs-${PVXS}/lib/windows-x64-debug" >> $GITHUB_PATH
         echo "C:/vcpkg/installed/x64-windows/bin" >> $GITHUB_PATH
 
     - name: Prepare and compile dependencies
@@ -203,7 +203,7 @@ jobs:
 
     - name: "Build pvxs-tls (non-Windows)"
       if: runner.os != 'Windows'
-      run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-tls
+      run: python .ci/cue.py exec make -C ${CACHEDIR}/pvxs-${PVXS}
 
     - name: Build main module
       run: python .ci/cue.py build
@@ -216,7 +216,7 @@ jobs:
 
     - name: Run main module tests
       if: runner.os != 'Windows'
-      run: python -m ci_core_dumper exec python .ci/cue.py -T 10M --add-path "${CACHEDIR}/pvxs-tls/bundle/usr/{EPICS_HOST_ARCH}/lib" test
+      run: python -m ci_core_dumper exec python .ci/cue.py -T 10M --add-path "${CACHEDIR}/pvxs-${PVXS}/bundle/usr/{EPICS_HOST_ARCH}/lib" test
 
     - name: Collect and show test results
       if: ${{ always() && runner.os != 'Windows' }}
