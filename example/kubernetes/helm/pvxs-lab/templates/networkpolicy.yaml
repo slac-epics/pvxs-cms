@@ -52,7 +52,7 @@ spec:
 
 ---
 # 1-b) ML PVACMS ingress:
-#          Allow EVRYTHING from ml, ml-ioc, and ml-gateway
+#          Allow EVERYTHING from ml, ml-ioc, and ml-gateway
 #          Allow cross-zone PVACMS replication (5175/TCP) from gateway.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
