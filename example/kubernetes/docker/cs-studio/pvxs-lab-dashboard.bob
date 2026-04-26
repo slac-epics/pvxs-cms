@@ -901,32 +901,21 @@
             <height>22</height>
           </widget>
 
-          <!-- ok — overall health boolean -->
+          <!-- value — NTEnum top-level value: "OK" / "Not OK" -->
           <widget type="label" version="2.0.0">
             <name>lbl_health_ok</name>
-            <text>Overall OK:</text>
+            <text>Overall:</text>
             <x>30</x>
             <y>70</y>
             <width>160</width>
           </widget>
-          <widget type="bool_button" version="2.0.0">
+          <widget type="textupdate" version="2.0.0">
             <name>val_health_ok</name>
-            <pv_name>pva://CERT:HEALTH/ok</pv_name>
+            <pv_name>pva://CERT:HEALTH</pv_name>
             <x>200</x>
             <y>67</y>
-            <width>80</width>
+            <width>120</width>
             <height>26</height>
-            <on_label>OK</on_label>
-            <off_label>FAULT</off_label>
-            <on_color>
-              <color name="OK" red="0" green="200" blue="0">
-              </color>
-            </on_color>
-            <off_color>
-              <color name="FAULT" red="220" green="0" blue="0">
-              </color>
-            </off_color>
-            <enabled>false</enabled>
           </widget>
 
           <!-- db_ok -->
@@ -1131,7 +1120,7 @@
             <width>140</width>
           </widget>
 
-          <!-- certs_active -->
+          <!-- value — NTScalar top-level value: certs_active -->
           <widget type="label" version="2.0.0">
             <name>lbl_metrics_active</name>
             <text>Certs Active:</text>
@@ -1141,7 +1130,7 @@
           </widget>
           <widget type="textupdate" version="2.0.0">
             <name>val_metrics_active</name>
-            <pv_name>pva://CERT:METRICS/certs_active</pv_name>
+            <pv_name>pva://CERT:METRICS</pv_name>
             <x>200</x>
             <y>380</y>
             <width>140</width>
