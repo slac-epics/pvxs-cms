@@ -391,19 +391,24 @@ DbCert getCertificateValidity(const sql_ptr &certs_db, serial_number_t serial) {
     DbCert certificate;
 
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
-    sqlite3_stmt *sql_statement;
-    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_VALIDITY, -1, &sql_statement, nullptr) == SQLITE_OK) {
-        sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":serial"), db_serial);
-
-        if (sqlite3_step(sql_statement) == SQLITE_ROW) {
-            certificate.not_before = sqlite3_column_int64(sql_statement, 0);
-            certificate.not_after = sqlite3_column_int64(sql_statement, 1);
-            certificate.renew_by = sqlite3_column_int64(sql_statement, 2);
-        }
-    } else {
-        sqlite3_finalize(sql_statement);
+    sqlite3_stmt *sql_statement = nullptr;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_VALIDITY, -1, &sql_statement, nullptr) != SQLITE_OK) {
+        // On prepare failure SQLite leaves sql_statement undefined - do NOT finalize.
         throw std::logic_error(SB() << "failed to prepare sqlite statement: " << sqlite3_errmsg(certs_db.get()));
     }
+
+    sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":serial"), db_serial);
+
+    if (sqlite3_step(sql_statement) == SQLITE_ROW) {
+        certificate.not_before = sqlite3_column_int64(sql_statement, 0);
+        certificate.not_after = sqlite3_column_int64(sql_statement, 1);
+        certificate.renew_by = sqlite3_column_int64(sql_statement, 2);
+    }
+
+    // Pair every successful prepare_v2 with finalize: in WAL mode an unfinalized
+    // SELECT holds an open read transaction, blocking checkpoints and serialising
+    // writers behind busy_timeout. Critical in cluster-mode (10 call sites).
+    sqlite3_finalize(sql_statement);
 
     return {certificate};
 }
