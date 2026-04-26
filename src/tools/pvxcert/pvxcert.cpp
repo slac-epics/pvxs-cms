@@ -15,6 +15,8 @@
 #include <list>
 #include <string>
 
+#include <sys/stat.h>
+
 #include <epicsGetopt.h>
 #include <epicsThread.h>
 #include <epicsTime.h>
@@ -635,15 +637,43 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        // Track whether cert_file was auto-derived from the configured TLS keychain
+        // (vs explicitly supplied via -f). Used below to downgrade "no certificate
+        // present" from an error to an informational message.
+        bool cert_file_auto = false;
+
         if (revoke && issuer_serial_string.empty()) {
             if (cert_file.empty() && !conf.tls_keychain_file.empty()) {
                 cert_file = conf.tls_keychain_file;
+                cert_file_auto = true;
             }
         }
 
         if (cert_file.empty() && issuer_serial_string.empty() && !approve && !revoke && !deny && schedule_values.empty()) {
             if (!conf.tls_keychain_file.empty()) {
                 cert_file = conf.tls_keychain_file;
+                cert_file_auto = true;
+            }
+        }
+
+        // No cert_id given and no keychain configured: nothing to look up. Treat as
+        // informational rather than emitting a misleading "malformed cert_id ''" error.
+        if (cert_file.empty() && issuer_serial_string.empty() && !health && !metrics &&
+            !approve && !revoke && !deny && schedule_values.empty()) {
+            std::cout << "No certificate to check: no cert_id given and no TLS keychain configured "
+                         "(set EPICS_PVA_TLS_KEYCHAIN or pass -f <file> or <issuer>:<serial>)."
+                      << std::endl;
+            return 0;
+        }
+
+        // Auto-derived keychain path that doesn't exist on disk: also informational.
+        // If the user explicitly passed -f, fall through so the open error still surfaces.
+        if (cert_file_auto && issuer_serial_string.empty()) {
+            struct stat st{};
+            if (::stat(cert_file.c_str(), &st) != 0) {
+                std::cout << "No certificate to check: TLS keychain '" << cert_file
+                          << "' does not exist." << std::endl;
+                return 0;
             }
         }
 
