@@ -700,31 +700,64 @@ Value getRootValue(const std::string &issuer_id, const ossl_ptr<X509> &root_cert
     return createCertificateValue(issuer_id, root_cert, nullptr);
 }
 
+/**
+ * @brief Build the prototype Value for the CERT:HEALTH PV.
+ *
+ * Published as Normative Type ``epics:nt/NTEnum:1.0`` so generic PVA clients
+ * (Phoebus, archiver, alarm server, ...) get standard ``value`` (enum_t with
+ * choices "Not OK"/"OK"), ``alarm`` (severity/status/message) and
+ * ``timeStamp`` substructures.  The ancillary health fields previously
+ * exposed as a flat struct (``db_ok``, ``ca_valid``, ``uptime_secs``,
+ * ``cert_count``, ``cluster_members``, ``last_check``) are appended as
+ * sibling fields so they remain individually subscribable.
+ *
+ * @return  Prototype Value with NTEnum + ancillary fields, choices populated.
+ */
 Value makeHealthValue() {
     using namespace pvxs::members;
 
-    return TypeDef(TypeCode::Struct, {
-        Bool("ok"),
+    auto def = nt::NTEnum{}.build();
+    def += {
         Bool("db_ok"),
         Bool("ca_valid"),
         UInt64("uptime_secs"),
         UInt64("cert_count"),
         UInt32("cluster_members"),
         String("last_check"),
-    }).create();
+    };
+    auto value = def.create();
+    shared_array<const std::string> choices({"Not OK", "OK"});
+    value["value.choices"] = choices.freeze();
+    return value;
 }
 
+/**
+ * @brief Build the prototype Value for the CERT:METRICS PV.
+ *
+ * Published as Normative Type ``epics:nt/NTScalar:1.0`` whose top-level
+ * ``value`` (``uint64_t``) carries the operationally most-meaningful metric:
+ * the number of currently active (VALID) certificates.  The remaining
+ * counters/timings are appended as sibling fields so each can still be
+ * subscribed individually.  Standard ``alarm``, ``timeStamp`` and
+ * ``display`` substructures are provided by the NTScalar builder.
+ *
+ * @return  Prototype Value with NTScalar + ancillary fields, display populated.
+ */
 Value makeMetricsValue() {
     using namespace pvxs::members;
 
-    return TypeDef(TypeCode::Struct, {
+    auto def = nt::NTScalar{TypeCode::UInt64, /*display*/ true}.build();
+    def += {
         UInt64("certs_created"),
         UInt64("certs_revoked"),
-        UInt64("certs_active"),
         Member(TypeCode::Float64, "avg_ccr_time_ms"),
         UInt64("db_size_bytes"),
         UInt64("uptime_secs"),
-    }).create();
+    };
+    auto value = def.create();
+    value["display.description"] = "Number of active (VALID) certificates";
+    value["display.units"] = "certs";
+    return value;
 }
 
 /**
@@ -3969,14 +4002,26 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
             gmtime_r(&now_time, &tm_buf);
             strftime(time_buf, sizeof(time_buf), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
 
+            const bool overall_ok = db_ok && ca_valid;
             auto value = status_monitor_params.cloneHealthValue();
-            value["ok"] = db_ok && ca_valid;
+            value["value.index"] = static_cast<int32_t>(overall_ok ? 1 : 0);
             value["db_ok"] = db_ok;
             value["ca_valid"] = ca_valid;
             value["uptime_secs"] = static_cast<uint64_t>(now_time - status_monitor_params.getStartTime());
             value["cert_count"] = cert_count;
             value["cluster_members"] = status_monitor_params.getClusterMemberCount();
             value["last_check"] = std::string(time_buf);
+
+            value["alarm.severity"] = static_cast<int32_t>(overall_ok ? 0 : 2);
+            value["alarm.status"] = static_cast<int32_t>(overall_ok ? 0 : 1);
+            value["alarm.message"] = overall_ok ? std::string()
+                                    : !db_ok    ? std::string("DB integrity check failed")
+                                    : !ca_valid ? std::string("CA certificate invalid or expired")
+                                                : std::string("Health check failed");
+
+            value["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(now_time - POSIX_TIME_AT_EPICS_EPOCH);
+            value["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
+            value["timeStamp.userTag"] = static_cast<int32_t>(0);
 
             health_pv->post(value);
         } catch (const std::exception &e) {
@@ -3999,7 +4044,7 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
                 }
             }
             if (active_stmt) sqlite3_finalize(active_stmt);
-            value["certs_active"] = active_count;
+            value["value"] = active_count;
 
             value["avg_ccr_time_ms"] = getCcrTimingTracker().averageMs();
 
@@ -4014,7 +4059,16 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
                 }
             }
             value["db_size_bytes"] = db_size;
-            value["uptime_secs"] = static_cast<uint64_t>(time(nullptr) - status_monitor_params.getStartTime());
+            const time_t metrics_now = time(nullptr);
+            value["uptime_secs"] = static_cast<uint64_t>(metrics_now - status_monitor_params.getStartTime());
+
+            value["alarm.severity"] = static_cast<int32_t>(0);
+            value["alarm.status"] = static_cast<int32_t>(0);
+            value["alarm.message"] = std::string();
+
+            value["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(metrics_now - POSIX_TIME_AT_EPICS_EPOCH);
+            value["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
+            value["timeStamp.userTag"] = static_cast<int32_t>(0);
 
             metrics_pv->post(value);
         } catch (const std::exception &e) {
@@ -5065,21 +5119,33 @@ using cms::cluster::TokenBucket;
             .addPV(config.metrics_pv_prefix + ":" + our_issuer_id, metrics_pv);
 
         auto health_value = makeHealthValue();
-        health_value["ok"] = true;
+        health_value["value.index"] = static_cast<int32_t>(1);
         health_value["db_ok"] = true;
         health_value["ca_valid"] = true;
         health_value["uptime_secs"] = static_cast<uint64_t>(0u);
         health_value["cert_count"] = static_cast<uint64_t>(0u);
         health_value["cluster_members"] = config.cluster_mode ? static_cast<uint32_t>(0u) : static_cast<uint32_t>(1u);
         health_value["last_check"] = std::string();
+        health_value["alarm.severity"] = static_cast<int32_t>(0);
+        health_value["alarm.status"] = static_cast<int32_t>(0);
+        health_value["alarm.message"] = std::string();
+        health_value["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(time(nullptr) - POSIX_TIME_AT_EPICS_EPOCH);
+        health_value["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
+        health_value["timeStamp.userTag"] = static_cast<int32_t>(0);
 
         auto metrics_value = makeMetricsValue();
+        metrics_value["value"] = static_cast<uint64_t>(0u);
         metrics_value["certs_created"] = static_cast<uint64_t>(0u);
         metrics_value["certs_revoked"] = static_cast<uint64_t>(0u);
-        metrics_value["certs_active"] = static_cast<uint64_t>(0u);
         metrics_value["avg_ccr_time_ms"] = 0.0;
         metrics_value["db_size_bytes"] = static_cast<uint64_t>(0u);
         metrics_value["uptime_secs"] = static_cast<uint64_t>(0u);
+        metrics_value["alarm.severity"] = static_cast<int32_t>(0);
+        metrics_value["alarm.status"] = static_cast<int32_t>(0);
+        metrics_value["alarm.message"] = std::string();
+        metrics_value["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(time(nullptr) - POSIX_TIME_AT_EPICS_EPOCH);
+        metrics_value["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
+        metrics_value["timeStamp.userTag"] = static_cast<int32_t>(0);
 
         auto schedule_rpc_proto = pvxs::TypeDef(pvxs::TypeCode::Struct, {
             pvxs::members::Struct("query", {
