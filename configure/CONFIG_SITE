@@ -38,11 +38,24 @@ CHECK_RELEASE = YES
 # set to NO to disable handling of $SSLKEYLOGFILE
 PVXS_ENABLE_SSLKEYLOGFILE ?= YES
 
-# Uncomment the appropriate line or include in your private $(TOP)/../CONFIG_SITE.local
-# PVXS_ENABLE_PVACMS = YES
-# PVXS_CMS_BUILD_TEST_HARNESS = YES   # subordinate to PVXS_ENABLE_PVACMS=YES; no-op when PVACMS=NO
-# PVXS_ENABLE_KRB_AUTH = YES
-# PVXS_ENABLE_LDAP_AUTH = YES
+# PVXS_ENABLE_PVACMS gates the CMS server, all auth tools, and the test suite
+# that exercises them. Default YES on host builds (sqlite/openssl/krb/ldap
+# normally available), NO on cross builds (where these dependencies often
+# aren't). Defining this in CONFIG_SITE (rather than only in src/Makefile)
+# means every sub-Makefile - including test/Makefile - sees a consistent
+# value, so `make tapfiles` correctly registers the CMS test suite even when
+# CI invokes the test step without re-passing the flag on the command line.
+ifeq ($(BUILD_CLASS),CROSS)
+PVXS_ENABLE_PVACMS ?= NO
+else
+PVXS_ENABLE_PVACMS ?= YES
+endif
+
+# Companion flags: krb/ldap auth tools and the in-process test harness library.
+# All three are subordinate to PVXS_ENABLE_PVACMS=YES.
+PVXS_ENABLE_KRB_AUTH ?= $(PVXS_ENABLE_PVACMS)
+PVXS_ENABLE_LDAP_AUTH ?= $(PVXS_ENABLE_PVACMS)
+PVXS_CMS_BUILD_TEST_HARNESS ?= $(PVXS_ENABLE_PVACMS)
 
 # These allow developers to override the CONFIG_SITE variable
 # settings without having to modify the configure/CONFIG_SITE
