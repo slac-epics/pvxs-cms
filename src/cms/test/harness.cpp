@@ -17,12 +17,14 @@
 #include <thread>
 
 #include <epicsThread.h>
+#include <asLib.h>
 
 #include <pvxs/client.h>
 #include <pvxs/log.h>
 #include <pvxs/server.h>
 
 #include "configcms.h"
+#include "pvacms.h"
 
 namespace pvxs {
 namespace cms {
@@ -39,11 +41,25 @@ bool inLoopbackV6(const std::string &addr) {
     return addr == "::1";
 }
 bool isLoopback(const std::string &addr) {
+    if (addr.empty()) return false;
+    if (addr.front() == '[') {
+        auto end = addr.find(']');
+        if (end == std::string::npos) return false;
+        return inLoopbackV6(addr.substr(1, end - 1));
+    }
+    if (addr.find("::") != std::string::npos) {
+        auto last_colon = addr.rfind(':');
+        auto port_pos = addr.find_first_of("0123456789", last_colon);
+        if (last_colon != std::string::npos && port_pos != std::string::npos &&
+            port_pos > last_colon) {
+            return inLoopbackV6(addr.substr(0, last_colon));
+        }
+        return inLoopbackV6(addr);
+    }
     auto slash = addr.find('/');
     auto colon = addr.find(':');
     auto bare = addr.substr(0, std::min(slash, colon));
-    if (bare.empty()) return false;
-    return inLoopbackV4(bare) || inLoopbackV6(bare);
+    return inLoopbackV4(bare);
 }
 
 std::string formatLoopback(const std::string &iface, uint16_t port) {
@@ -299,10 +315,11 @@ PVACMSHarness::Builder &PVACMSHarness::Builder::allowExternalBind() & {
     log_warn_printf(harness_log,
                     "PVACMSHarness::Builder::allowExternalBind() called - test will bind on non-loopback interfaces!%s",
                     "\n");
-    if (std::getenv("_PVXS_CMS_TEST_REJECT_EXTERNAL")) {
+    const char *ci = std::getenv("CI");
+    if (ci && ci[0] != '\0') {
         throw std::runtime_error(
             "PVACMSHarness::Builder::allowExternalBind() rejected: "
-            "_PVXS_CMS_TEST_REJECT_EXTERNAL is set in the environment (CI mode)");
+            "$CI is set in the environment");
     }
     return *this;
 }
@@ -324,7 +341,18 @@ PVACMSHarness PVACMSHarness::Builder::build() {
 
     auto cfg = makeIsolatedConfigCms(*impl.pki, pvt_->ipv6, pvt_->apply_env);
 
-    impl.handle.reset(new pvxs::cms::ServerHandle(pvxs::cms::prepareServer(cfg)));
+    auto state = ::cms::prepareCmsState(cfg);
+
+    if (!cfg.pvacms_acf_filename.empty()) {
+        if (auto err = asInitFile(cfg.pvacms_acf_filename.c_str(), "")) {
+            DEFINE_LOGGER(harness_log, "pvxs.cms.test.harness");
+            log_err_printf(harness_log, "asInitFile failed: %d\n", err);
+            throw std::runtime_error("asInitFile failed in PVACMSHarness::Builder::build()");
+        }
+    }
+
+    impl.handle.reset(new pvxs::cms::ServerHandle(
+        pvxs::cms::detail::prepareServerFromState(cfg, std::move(state))));
 
     {
         const auto &eff = impl.handle->pvaServer().config();
