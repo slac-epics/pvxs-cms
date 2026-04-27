@@ -1,0 +1,53 @@
+#ifndef PVXS_CMS_TEST_HARNESS_IMPL_H
+#define PVXS_CMS_TEST_HARNESS_IMPL_H
+
+#include "pvxs/cms/testHarness.h"
+
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include <pvxs/cms/pvacms.h>
+#include <pvxs/server.h>
+
+namespace pvxs {
+namespace cms {
+namespace test {
+namespace internal {
+
+void startWithEaddrRetry(pvxs::server::Server &srv, int max_retries = 8);
+
+}  // namespace internal
+
+struct PVACMSHarness::Impl {
+    PkiFixture *pki{nullptr};
+    std::unique_ptr<PkiFixture> owned_pki;
+
+    std::unique_ptr<pvxs::cms::ServerHandle> handle;
+    std::thread worker;
+    std::atomic<bool> running{false};
+
+    std::string interface_addr;
+    std::string pvacms_listener_addr;
+    uint16_t pvacms_tcp_port{0};
+    uint16_t pvacms_tls_port{0};
+
+    mutable std::mutex tables_mutex;
+    std::vector<std::shared_ptr<pvxs::server::Server>> owned_servers;
+    std::vector<RegisteredServer> snapshot_table;
+
+    PkiFixture &fixture() {
+        if (!pki) throw std::logic_error("PVACMSHarness::Impl: no PKI fixture bound");
+        return *pki;
+    }
+};
+
+}  // namespace test
+}  // namespace cms
+}  // namespace pvxs
+
+#endif

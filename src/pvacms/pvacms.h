@@ -584,6 +584,23 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data);
 void createAdminClientCert(const ConfigCms &config, sql_ptr &certs_db, const ossl_ptr<EVP_PKEY> &cert_auth_pkey, const ossl_ptr<X509> &cert_auth_cert,
                            const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_cert_chain, const std::string &admin_name = "admin");
 
+void addUserToAdminACF(const ConfigCms &config, const std::string &admin_name);
+
+void getOrCreateCertAuthCertificate(const ConfigCms &config,
+                                    sql_ptr &certs_db,
+                                    ossl_ptr<X509> &cert_auth_cert,
+                                    ossl_ptr<EVP_PKEY> &cert_auth_pkey,
+                                    ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+                                    ossl_ptr<X509> &cert_auth_root_cert,
+                                    bool &is_initialising);
+
+std::map<const std::string, std::unique_ptr<pvxs::client::Config>> getAuthNConfigMap();
+
+int readParameters(int argc, char *argv[], const char *program_name,
+                   ConfigCms &config,
+                   std::map<const std::string, std::unique_ptr<pvxs::client::Config>> &authn_config_map,
+                   bool &verbose, std::string &admin_name, std::string &admin_name_ensure);
+
 void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file);
 
 bool performBackup(sqlite3 *src_db, const std::string &dest_path);

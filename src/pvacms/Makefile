@@ -25,6 +25,7 @@ PROD += pvacms
 ### Sources
 
 # Entry points and pvacms-specific config
+pvacms_SRCS += pvacmsMain.cpp
 pvacms_SRCS += pvacms.cpp
 pvacms_SRCS += serverHandle.cpp
 pvacms_SRCS += configcms.cpp
