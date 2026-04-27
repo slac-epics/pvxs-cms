@@ -139,6 +139,12 @@ TESTPROD_HOST += testpkifixture
 testpkifixture_SRCS += testpkifixture.cpp
 testpkifixture_LIBS += pvxsCmsTestHarness
 testpkifixture_SYS_LIBS += sqlite3
+
+TESTS += testharness
+TESTPROD_HOST += testharness
+testharness_SRCS += testharness.cpp
+testharness_LIBS += pvxsCmsTestHarness pvxsIoc
+testharness_SYS_LIBS += sqlite3
 endif # PVXS_CMS_BUILD_TEST_HARNESS
 
 endif # PVXS_ENABLE_PVACMS
