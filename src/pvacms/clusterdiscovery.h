@@ -60,7 +60,6 @@ public:
                      std::string issuer_id,
                      std::string pv_prefix,
                      uint32_t discovery_timeout_secs,
-                     bool skip_peer_identity_check,
                      sqlite3 *certs_db,
                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
@@ -117,7 +116,6 @@ private:
     std::string issuer_id_;
     std::string pv_prefix_;
     uint32_t discovery_timeout_secs_;
-    bool skip_peer_identity_check_;
     sqlite3 *certs_db_;
     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
@@ -127,7 +125,6 @@ private:
     client::Context client_ctx_;
 
     std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
-    std::map<std::string, std::string> peer_cert_ids_;
 
     std::atomic<bool> rejoin_in_progress_{false};
     std::set<std::string> acknowledged_by_;

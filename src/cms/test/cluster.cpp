@@ -132,7 +132,6 @@ void writeClusterAcf(const std::string &path, size_t n_members) {
     cfg.pvacms_name = std::string("PVACMS-NODE-") + std::to_string(member_index);
     cfg.cluster_discovery_timeout_secs = discovery_secs;
     cfg.cluster_bidi_timeout_secs = bidi_secs;
-    cfg.cluster_skip_peer_identity_check = true;
 
     return cfg;
 }
@@ -144,8 +143,8 @@ struct PVACMSCluster::Impl {
     std::unique_ptr<PkiFixture> owned_pki;
 
     bool ipv6{false};
-    uint32_t discovery_secs{1};
-    uint32_t bidi_secs{1};
+    uint32_t discovery_secs{5};
+    uint32_t bidi_secs{5};
     std::string interface_addr{"127.0.0.1"};
 
     ClusterTopology topology{ClusterTopology::empty(0)};
@@ -182,8 +181,8 @@ struct PVACMSCluster::Builder::Pvt {
     ClusterTopology topology{ClusterTopology::empty(0)};
     bool ipv6{false};
     PkiFixture *external_pki{nullptr};
-    uint32_t discovery_secs{1};
-    uint32_t bidi_secs{1};
+    uint32_t discovery_secs{5};
+    uint32_t bidi_secs{5};
 };
 
 PVACMSCluster::Builder::Builder() : pvt_(new Pvt{}) {}

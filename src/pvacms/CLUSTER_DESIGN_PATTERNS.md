@@ -869,18 +869,21 @@ could join a cluster that cannot subscribe to its data.  The test subscription
 join time.  In gateway-chained topologies (e.g. lab-gw ↔ ml-gw), increase this
 timeout to accommodate the extra latency of multi-hop PV resolution.
 
-**Gateway-mediated clusters and peer identity**: When nodes communicate through
-PVA gateways, TLS is terminated at each gateway hop.  The receiving node sees
-the gateway's TCP, or TLS, credentials, not the originating peer's x509 certificate.
-This affects two mechanisms: (1) the sync snapshot identity pre-check, which
-normally caches the peer's TLS cert before accepting data, and (2) the
-forwarding RPC handler, which normally requires x509 authentication.  The
-`--cluster-skip-peer-identity-check` flag relaxes both checks for nodes that
-participate in gateway-mediated communication.  Security is maintained by the
-CA-key signature on every sync snapshot — a node without the CA private key
-cannot forge sync data regardless of the transport identity.  The cluster client
-reads `EPICS_PVACMS_CLUSTER_NAME_SERVERS` to add TCP name servers for PV
-discovery through gateways where UDP broadcast is not available.
+**Gateway-mediated clusters and authentication**: When nodes communicate
+through PVA gateways, TLS is terminated at each gateway hop.  The receiving
+node therefore sees the gateway's credentials on incoming connections, not
+the originating peer's x509 certificate.  This is a non-issue for the
+cluster's trust model because **authentication is by CA-signed payload
+verification, not by inspecting the connecting client's TLS certificate**:
+every join request and every sync snapshot carries a signature produced
+with the cluster CA's private key, verified on the receiving side against
+the same CA's public key (`clusterVerify` in `clusterdiscovery.cpp` and
+`clusterctrl.cpp`).  Possession of the CA-chained private key — i.e. being
+a legitimate cluster member — is the trust boundary; the transport-level
+identity of whoever last touched the connection is irrelevant.  No
+per-node flag is required for gateway-mediated topologies.  The cluster
+client reads `EPICS_PVACMS_CLUSTER_NAME_SERVERS` to add TCP name servers
+for PV discovery through gateways where UDP broadcast is not available.
 
 In a partial-mesh cluster, any node may answer the join RPC — including one
 that cannot reach the joiner.  To handle this, a node that fails the bidi check
