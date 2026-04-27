@@ -129,6 +129,18 @@ TESTPROD_HOST += testsanccr
 testsanccr_SRCS += testsanccr.cpp
 testsanccr_SYS_LIBS += sqlite3
 
+# CMS test-harness unit tests. The gate mirrors the subordinate-gate logic
+# in src/Makefile: only build when PVXS_ENABLE_PVACMS=YES (verified above by
+# the enclosing ifeq) and PVXS_CMS_BUILD_TEST_HARNESS resolves to YES.
+PVXS_CMS_BUILD_TEST_HARNESS ?= YES
+ifeq ($(PVXS_CMS_BUILD_TEST_HARNESS),YES)
+TESTS += testpkifixture
+TESTPROD_HOST += testpkifixture
+testpkifixture_SRCS += testpkifixture.cpp
+testpkifixture_LIBS += pvxsCmsTestHarness
+testpkifixture_SYS_LIBS += sqlite3
+endif # PVXS_CMS_BUILD_TEST_HARNESS
+
 endif # PVXS_ENABLE_PVACMS
 endif # BASE_3_15
 

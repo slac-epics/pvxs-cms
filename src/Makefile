@@ -76,6 +76,23 @@ PVXS_ENABLE_PVACMS_YES = -DPVXS_ENABLE_PVACMS
 USR_CPPFLAGS += $(PVXS_ENABLE_PVACMS_$(PVXS_ENABLE_PVACMS))
 USR_CPPFLAGS += -DPVXS_ENABLE_EXPERT_API
 
+# PVXS_CMS_BUILD_TEST_HARNESS: gate libpvxsCmsTestHarness.a build, subordinate to
+# PVXS_ENABLE_PVACMS. When PVXS_ENABLE_PVACMS=NO the harness depends on CMS types
+# that aren't compiled, so we forcibly disable it (with := not ?=) and emit a
+# one-line notice only when the user explicitly asked for =YES.
+ifeq ($(PVXS_ENABLE_PVACMS),YES)
+PVXS_CMS_BUILD_TEST_HARNESS ?= YES
+else
+ifeq ($(PVXS_CMS_BUILD_TEST_HARNESS),YES)
+$(info note: PVXS_CMS_BUILD_TEST_HARNESS forced to NO because PVXS_ENABLE_PVACMS=NO)
+endif
+override PVXS_CMS_BUILD_TEST_HARNESS := NO
+endif
+PVXS_CMS_BUILD_TEST_HARNESS_YES = -DPVXS_CMS_BUILD_TEST_HARNESS
+USR_CPPFLAGS += $(PVXS_CMS_BUILD_TEST_HARNESS_$(PVXS_CMS_BUILD_TEST_HARNESS))
+
+CMS_TEST_DIR   = $(TOP)/src/cms/test
+
 INC += pvxs/cms/pvacms.h
 
 # SSL key log file support (debugging aid)
@@ -102,6 +119,11 @@ include $(PVACMS_DIR)/Makefile
 
 # Authenticators (Makefile fragment)
 include $(AUTHN_DIR)/Makefile
+endif
+
+# CMS test harness static library (subordinate to PVXS_ENABLE_PVACMS, gated above)
+ifeq ($(PVXS_CMS_BUILD_TEST_HARNESS),YES)
+include $(CMS_TEST_DIR)/Makefile
 endif
 
 # Host tools (Makefile fragments)
