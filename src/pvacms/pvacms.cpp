@@ -84,6 +84,7 @@
 #include "pvacmsVersion.h"
 #include "openssl.h"
 #include "ownedptr.h"
+#include "pvacmsRuntime.h"
 #include "security.h"
 #include "serverev.h"
 #include "sqlite3.h"
@@ -177,31 +178,33 @@ bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
                                   const std::string &cert_pv_prefix,
                                   const std::string &issuer_id);
 
-epicsMutex status_pv_lock;
-epicsMutex status_update_lock;
+PvacmsRuntime &defaultRuntime()
+{
+    static PvacmsRuntime runtime;
+    return runtime;
+}
+
+epicsMutex &getStatusPvLock()       { return defaultRuntime().status_pv_lock; }
+epicsMutex &getStatusUpdateLock()   { return defaultRuntime().status_update_lock; }
 
 TokenBucket &getCreateCertificateRateLimiter()
 {
-    static TokenBucket limiter;
-    return limiter;
+    return defaultRuntime().create_certificate_rate_limiter;
 }
 
 std::atomic<uint32_t> &getCreateCertificateInflightCount()
 {
-    static std::atomic<uint32_t> inflight{0u};
-    return inflight;
+    return defaultRuntime().create_certificate_inflight_count;
 }
 
 std::atomic<uint64_t> &getCertsCreatedCounter()
 {
-    static std::atomic<uint64_t> counter{0u};
-    return counter;
+    return defaultRuntime().certs_created_counter;
 }
 
 std::atomic<uint64_t> &getCertsRevokedCounter()
 {
-    static std::atomic<uint64_t> counter{0u};
-    return counter;
+    return defaultRuntime().certs_revoked_counter;
 }
 
 void pruneOldBackups(const std::string &dir, uint32_t max_count)
@@ -279,27 +282,9 @@ bool performBackup(sqlite3 *src_db, const std::string &dest_path)
     return true;
 }
 
-struct CcrTimingTracker {
-    mutable std::mutex mtx_;
-    double total_ms_{0.0};
-    uint64_t count_{0u};
-
-    void record(double ms) {
-        std::lock_guard<std::mutex> lk(mtx_);
-        total_ms_ += ms;
-        ++count_;
-    }
-
-    double averageMs() const {
-        std::lock_guard<std::mutex> lk(mtx_);
-        return count_ > 0 ? total_ms_ / static_cast<double>(count_) : 0.0;
-    }
-};
-
 CcrTimingTracker &getCcrTimingTracker()
 {
-    static CcrTimingTracker tracker;
-    return tracker;
+    return defaultRuntime().ccr_timing_tracker;
 }
 
 namespace {
@@ -1215,7 +1200,7 @@ void insertAuditRecord(sqlite3 *db, const std::string &action,
 }
 
 void updateCertificateRenewalStatus(const sql_ptr &certs_db, serial_number_t serial, const certstatus_t cert_status, const time_t renew_by) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
     sqlite3_stmt *sql_statement;
     int sql_status;
@@ -1246,7 +1231,7 @@ void updateCertificateRenewalStatus(const sql_ptr &certs_db, serial_number_t ser
 
 
 void touchCertificateStatus(const sql_ptr &certs_db, serial_number_t serial) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
     sqlite3_stmt *sql_statement;
     int sql_status;
@@ -2116,7 +2101,7 @@ void onRevoke(const ConfigCms &config,
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
-        Guard G(status_update_lock);
+        Guard G(getStatusUpdateLock());
         serial_number_t serial = getParameters(parameters);
         log_debug_printf(pvacms, "REVOKE: Certificate %s\n", getCertId(our_issuer_id, serial).c_str());
 
@@ -2168,7 +2153,7 @@ void onApprove(const ConfigCms &config,
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
-        Guard G(status_update_lock);
+        Guard G(getStatusUpdateLock());
         std::string issuer_id;
         serial_number_t serial = getParameters(parameters);
         log_debug_printf(pvacms, "APPROVE: Certificate %s\n", getCertId(our_issuer_id, serial).c_str());
@@ -2230,7 +2215,7 @@ void onDeny(const ConfigCms &config,
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
-        Guard G(status_update_lock);
+        Guard G(getStatusUpdateLock());
         std::string issuer_id;
         serial_number_t serial = getParameters(parameters);
         log_debug_printf(pvacms, "DENY: Certificate %s\n", getCertId(our_issuer_id, serial).c_str());
@@ -3301,7 +3286,7 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
                             const PVACertificateStatus &cert_status,
                             const sql_ptr *certs_db,
                             const std::string &node_id) {
-    Guard G(status_pv_lock);
+    Guard G(getStatusPvLock());
     Value status_value;
     const auto was_open = status_pv.isOpen(pv_name);
     if (was_open) {
@@ -3370,7 +3355,7 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
 bool postUpdateToNextCertBecomingValid(const CertStatusFactory &cert_status_creator,
                                        const StatusMonitor &status_monitor_params) {
     bool changed = false;
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     sqlite3_stmt *stmt;
     std::string valid_sql(SQL_CERT_TO_VALID);
     const std::vector<certstatus_t> valid_status{PENDING};
@@ -3431,7 +3416,7 @@ bool postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_factory,
                                   const std::string &cert_pv_prefix,
                                   const std::string &issuer_id,
                                   const std::string &full_skid) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     bool updated{false};
     sqlite3_stmt *stmt;
     std::string expired_sql(full_skid.empty() ? SQL_CERT_TO_EXPIRED : SQL_CERT_TO_EXPIRED_WITH_FULL_SKID);
@@ -3472,7 +3457,7 @@ bool postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_factory,
  * @param issuer_id the issuer of the certificates
  */
 DbCert getOriginalCert(CertFactory &cert_factory, const sql_ptr &certs_db, const std::string &issuer_id) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     const std::vector<certstatus_t> valid_statuses{VALID, PENDING_APPROVAL, PENDING_RENEWAL, PENDING};
     const int64_t db_serial = *reinterpret_cast<int64_t*>(&cert_factory.serial_);
 
@@ -3528,7 +3513,7 @@ bool postUpdateToNextCertNearingRenewal(const CertStatusFactory &cert_status_cre
                                   const sql_ptr &certs_db,
                                   const std::string &cert_pv_prefix,
                                   const std::string &issuer_id) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     bool updated{false};
     sqlite3_stmt *stmt;
     std::string nearing_renewal_sql(SQL_CERT_NEARING_RENEWAL);
@@ -3587,7 +3572,7 @@ bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
                                   const sql_ptr &certs_db,
                                   const std::string &cert_pv_prefix,
                                   const std::string &issuer_id) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     bool updated{false};
     sqlite3_stmt *stmt;
     std::string pending_renewal_sql(SQL_CERT_TO_PENDING_RENEWAL);
@@ -3636,7 +3621,7 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
                                   const sql_ptr &certs_db,
                                   const std::string &cert_pv_prefix,
                                   const std::string &issuer_id) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     bool updated{false};
     sqlite3_stmt *stmt;
     std::string cert_status_nearly_invalid_sql(SQL_CERT_STATUS_NEARLY_INVALID);
@@ -3858,7 +3843,7 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
                 }
 
                 if (new_status != current_status) {
-                    Guard G(status_update_lock);
+                    Guard G(getStatusUpdateLock());
                     updateCertificateStatus(status_monitor_params.certs_db_, serial, new_status, 0);
                     const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, new_status, now_utc, {});
                     auto cert_id = getCertId(status_monitor_params.issuer_id_, serial);
@@ -4747,7 +4732,7 @@ using cms::cluster::TokenBucket;
                                            config.cluster_pv_prefix,
                                            certs_db.get(),
                                            cert_auth_pkey,
-                                           status_update_lock);
+                                           getStatusUpdateLock());
         cluster_sync.skip_peer_identity_check = config.cluster_skip_peer_identity_check;
 
         ClusterController cluster_ctrl(our_issuer_id,
@@ -4845,7 +4830,7 @@ using cms::cluster::TokenBucket;
                     }
 
                     {
-                        Guard G(status_update_lock);
+                        Guard G(getStatusUpdateLock());
                         sqlite3_stmt *del_stmt = nullptr;
                         if (sqlite3_prepare_v2(certs_db.get(), SQL_DELETE_SCHEDULES_BY_SERIAL, -1, &del_stmt, nullptr) == SQLITE_OK) {
                             sqlite3_bind_int64(del_stmt, sqlite3_bind_parameter_index(del_stmt, ":serial"), static_cast<sqlite3_int64>(serial));
@@ -5204,10 +5189,10 @@ using cms::cluster::TokenBucket;
                                                 config.cluster_discovery_timeout_secs,
                                                 config.cluster_skip_peer_identity_check,
                                                 certs_db.get(),
-                                               cert_auth_pkey,
-                                               cert_auth_pub_key,
-                                               status_update_lock,
-                                               cluster_sync,
+                                                cert_auth_pkey,
+                                                cert_auth_pub_key,
+                                                getStatusUpdateLock(),
+                                                cluster_sync,
                                                cluster_ctrl,
                                                std::move(cluster_client)));
 
