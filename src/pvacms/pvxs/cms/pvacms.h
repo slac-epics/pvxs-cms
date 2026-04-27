@@ -54,6 +54,25 @@ public:
      */
     const server::Server& pvaServer() const;
 
+    /** Whether the PVACMS server's accept loop is running.
+     *
+     * Returns true after `startCluster()` has called `pvaServer().start()`
+     * and the sole-node cluster snapshot has been published (so the SYNC PV's
+     * `prototype_` is populated and the listener is accepting connections).
+     * Returns false before `startCluster()` and after `stopServer()`.
+     *
+     * Useful for in-process multi-PVACMS harnesses that need to ensure
+     * member i is fully ready to respond to peer subscriptions before
+     * spawning member i+1's worker — without this synchronisation, two
+     * members brought up simultaneously can deadlock each other's bidi-check
+     * RPC handlers waiting for the other side to be ready.
+     *
+     * Thread-safe.
+     *
+     * @since UNRELEASED
+     */
+    bool isStarted() const;
+
     /** Register a P12-borne EE certificate in the running PVACMS DB so its
      * `CERT:STATUS:<issuer>:<serial>` PV resolves with status VALID.
      *

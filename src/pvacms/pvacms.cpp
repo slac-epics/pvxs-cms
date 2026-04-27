@@ -981,18 +981,25 @@ std::tuple<certstatus_t, time_t> getCertificateStatus(const sql_ptr &certs_db, s
     time_t status_date = std::time(nullptr);
 
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
-    sqlite3_stmt *sql_statement;
-    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_STATUS, -1, &sql_statement, nullptr) == SQLITE_OK) {
-        sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":serial"), db_serial);
-
-        if (sqlite3_step(sql_statement) == SQLITE_ROW) {
-            cert_status = sqlite3_column_int(sql_statement, 0);
-            status_date = sqlite3_column_int64(sql_statement, 1);
-        }
-    } else {
-        sqlite3_finalize(sql_statement);
+    sqlite3_stmt *sql_statement = nullptr;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_STATUS, -1, &sql_statement, nullptr) != SQLITE_OK) {
+        // On prepare failure SQLite leaves sql_statement undefined - do NOT finalize.
         throw std::logic_error(SB() << "failed to prepare sqlite statement: " << sqlite3_errmsg(certs_db.get()));
     }
+
+    sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":serial"), db_serial);
+
+    if (sqlite3_step(sql_statement) == SQLITE_ROW) {
+        cert_status = sqlite3_column_int(sql_statement, 0);
+        status_date = sqlite3_column_int64(sql_statement, 1);
+    }
+
+    // Pair every successful prepare_v2 with finalize: in WAL mode an unfinalized
+    // SELECT holds an open read transaction, blocking checkpoints and serialising
+    // writers behind busy_timeout. Critical in cluster-mode (5 call sites including
+    // hot status-monitor and cluster-bring-up paths). Same anti-pattern as the
+    // getCertificateValidity bug fixed in 66a0982.
+    sqlite3_finalize(sql_statement);
 
     return std::make_tuple(static_cast<certstatus_t>(cert_status), status_date);
 }
