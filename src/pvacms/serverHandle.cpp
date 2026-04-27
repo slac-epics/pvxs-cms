@@ -6,12 +6,14 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <ctime>
 #include <future>
 #include <functional>
 #include <iostream>
 #include <list>
+#include <mutex>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -266,6 +268,9 @@ struct ServerHandle::Pvt {
     std::string cluster_status;
     bool started_{false};
     bool stopped_{false};
+    std::mutex run_mutex;
+    std::condition_variable run_cv;
+    bool run_should_exit{false};
 };
 
 ServerHandle::Pvt::Pvt(const ConfigCms &config,
@@ -919,10 +924,18 @@ void ServerHandle::Pvt::runUntilShutdown()
         std::cout << "+=======================================+======================================="
                   << std::endl;
 
-        // Intentionally keep the blocking run() here so the standalone pvacms
-        // binary preserves the exact run-until-shutdown behavior it had before
-        // this refactor.
-        pva_server.run();
+        // Use start() + condition-variable wait instead of pva_server.run() so
+        // multiple PVACMSes can coexist in the same process (run() installs a
+        // process-global SIGINT handler that throws "Only one SigInt may exist
+        // in a process" on the second instantiation).  The standalone pvacms
+        // binary preserves SIGINT-driven shutdown by installing its own SIGINT
+        // handler in pvacmsMain.cpp that calls stopServer() on the handle.
+        pva_server.start();
+        {
+            std::unique_lock<std::mutex> lk(run_mutex);
+            run_cv.wait(lk, [this]() { return run_should_exit; });
+        }
+        pva_server.stop();
 
         std::cout << "\n+=======================================+======================================="
                   << std::endl;
@@ -954,7 +967,11 @@ void ServerHandle::Pvt::stop()
 
     if (started_) {
         pva_server.interrupt();
-        pva_server.stop();
+        {
+            std::lock_guard<std::mutex> lk(run_mutex);
+            run_should_exit = true;
+        }
+        run_cv.notify_all();
         started_ = false;
     }
 }

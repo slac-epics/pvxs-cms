@@ -151,6 +151,12 @@ TESTPROD_HOST += testtlswithcmsharness
 testtlswithcmsharness_SRCS += testtlswithcmsharness.cpp
 testtlswithcmsharness_LIBS += pvxsCmsTestHarness pvxsIoc
 testtlswithcmsharness_SYS_LIBS += sqlite3
+
+TESTS += testclusterharness
+TESTPROD_HOST += testclusterharness
+testclusterharness_SRCS += testclusterharness.cpp
+testclusterharness_LIBS += pvxsCmsTestHarness pvxsIoc
+testclusterharness_SYS_LIBS += sqlite3
 endif # PVXS_CMS_BUILD_TEST_HARNESS
 
 endif # PVXS_ENABLE_PVACMS
