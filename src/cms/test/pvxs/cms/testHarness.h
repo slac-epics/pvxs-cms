@@ -266,10 +266,112 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// PVACMSCluster - multi-instance fixture (Section 6, forward-decl only)
+// ClusterTopology - directed-edge graph describing a cluster's intra-cluster
+// peer visibility.  Indexes are zero-based.  Edges are directed: A having B
+// in nameServers lets A's join requests reach B but not vice-versa.  The
+// symmetric factories (fullMesh / linearChain / star) construct pairs of
+// directed edges as a convenience.
 // ---------------------------------------------------------------------------
 
-class PVACMSCluster;
+class PVXS_CMS_TEST_API ClusterTopology {
+   public:
+    static ClusterTopology fullMesh(size_t n);
+    static ClusterTopology linearChain(size_t n);
+    static ClusterTopology star(size_t n, size_t hub);
+    static ClusterTopology empty(size_t n);
+    static ClusterTopology custom(size_t n, std::vector<std::pair<size_t, size_t>> edges);
+
+    ClusterTopology &addEdge(size_t from, size_t to);
+    ClusterTopology &addBidirectional(size_t a, size_t b);
+    ClusterTopology &removeEdge(size_t from, size_t to);
+    ClusterTopology &removeBidirectional(size_t a, size_t b);
+
+    bool sees(size_t from, size_t to) const;
+    std::vector<size_t> peersSeenBy(size_t i) const;
+    size_t size() const noexcept;
+
+   private:
+    explicit ClusterTopology(size_t n);
+    size_t n_{0};
+    std::vector<std::vector<bool>> adj_;
+};
+
+// ---------------------------------------------------------------------------
+// PVACMSCluster - multi-instance fixture (Section 6)
+// ---------------------------------------------------------------------------
+
+class PVXS_CMS_TEST_API PVACMSCluster {
+   public:
+    class Builder;
+    struct Impl;
+
+    PVACMSCluster(const PVACMSCluster &) = delete;
+    PVACMSCluster &operator=(const PVACMSCluster &) = delete;
+    PVACMSCluster(PVACMSCluster &&) noexcept;
+    PVACMSCluster &operator=(PVACMSCluster &&) noexcept;
+    ~PVACMSCluster();
+
+    size_t size() const noexcept;
+    const ClusterTopology &topology() const noexcept;
+    const std::vector<std::string> &memberAddrs() const noexcept;
+    const PkiFixture &pkiFixture() const noexcept;
+    PkiFixture &pkiFixture() noexcept;
+
+    /// Restart member i.  Preserves EE cert + DB; recomputes nameServers
+    /// from the current topology and any foreign-cluster bridge entries.
+    void restartMember(size_t i);
+
+    /// Bidirectional partition / restoration within this cluster.  Updates
+    /// stored topology and restarts the affected pair (i, j).
+    void setUnreachable(size_t i, size_t j);
+    void setReachable(size_t i, size_t j);
+
+    /// Aggregated client config: addressList lists every member's PVACMS
+    /// PVA TCP listener; admin EE cert from the shared PKI fixture.
+    client::Config cmsAdminClientConfig() const;
+
+   private:
+    PVACMSCluster();
+    std::unique_ptr<Impl> impl_;
+    friend class Builder;
+    friend PVXS_CMS_TEST_API void bridge(PVACMSCluster &, size_t,
+                                          PVACMSCluster &, size_t);
+    friend PVXS_CMS_TEST_API void unbridge(PVACMSCluster &, size_t,
+                                            PVACMSCluster &, size_t);
+};
+
+class PVXS_CMS_TEST_API PVACMSCluster::Builder {
+   public:
+    Builder();
+    Builder(const Builder &) = delete;
+    Builder &operator=(const Builder &) = delete;
+    Builder(Builder &&) noexcept;
+    Builder &operator=(Builder &&) noexcept;
+    ~Builder();
+
+    Builder &size(size_t n) &;
+    Builder &topology(ClusterTopology t) &;
+    Builder &ipv6(bool yes) &;
+    Builder &pki(PkiFixture &fixture) &;
+    Builder &clusterDiscoveryTimeoutSecs(uint32_t s) &;
+    Builder &clusterBidiTimeoutSecs(uint32_t s) &;
+
+    PVACMSCluster build();
+
+   private:
+    struct Pvt;
+    std::unique_ptr<Pvt> pvt_;
+};
+
+/// Establish a bidirectional bridge between two existing clusters.  Both
+/// clusters must already be built.  Throws std::logic_error otherwise.
+PVXS_CMS_TEST_API void bridge(PVACMSCluster &a, size_t a_node,
+                              PVACMSCluster &b, size_t b_node);
+
+/// Remove a previously-established bridge.  Throws std::logic_error if no
+/// bridge between (a_node, b_node) currently exists.
+PVXS_CMS_TEST_API void unbridge(PVACMSCluster &a, size_t a_node,
+                                PVACMSCluster &b, size_t b_node);
 
 }  // namespace test
 }  // namespace cms
