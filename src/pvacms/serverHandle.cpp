@@ -5,6 +5,7 @@
  */
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
@@ -265,7 +266,7 @@ struct ServerHandle::Pvt {
         wrap_wildcard_source;
     ::cms::detail::ServerEv pva_server;
     std::string cluster_status;
-    bool started_{false};
+    std::atomic<bool> started_{false};
     bool stopped_{false};
     std::mutex run_mutex;
     std::condition_variable run_cv;
@@ -985,6 +986,14 @@ const server::Server& ServerHandle::pvaServer() const
         throw std::logic_error("NULL ServerHandle");
     }
     return pvt_->pva_server.server();
+}
+
+bool ServerHandle::isStarted() const
+{
+    if (!pvt_) {
+        throw std::logic_error("NULL ServerHandle");
+    }
+    return pvt_->started_;
 }
 
 void ServerHandle::registerCertFromP12(const std::string &p12_path)
