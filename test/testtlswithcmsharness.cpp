@@ -4,10 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include <atomic>
 #include <chrono>
-#include <map>
-#include <mutex>
 #include <string>
 #include <thread>
 
@@ -30,51 +27,12 @@ using pvxs::cms::test::TestServerOpts;
 
 const char *TEST_PV = "TEST:HARNESS:PV";
 
-struct SubCounter {
-    std::mutex mu;
-    std::map<std::string, uint32_t> counts;
-
-    void operator()(const std::string &pv) {
-        std::lock_guard<std::mutex> lk(mu);
-        ++counts[pv];
-        testDiag("CERT:STATUS subscription observed: %s (count now %u)",
-                 pv.c_str(), counts[pv]);
-    }
-
-    uint32_t get(const std::string &pv) {
-        std::lock_guard<std::mutex> lk(mu);
-        auto it = counts.find(pv);
-        return it == counts.end() ? 0u : it->second;
-    }
-
-    uint32_t total() {
-        std::lock_guard<std::mutex> lk(mu);
-        uint32_t sum = 0;
-        for (auto &kv : counts) sum += kv.second;
-        return sum;
-    }
-
-    size_t uniquePvs() {
-        std::lock_guard<std::mutex> lk(mu);
-        return counts.size();
-    }
-};
-
-void testDiagnoseSubscriptionCount() {
-    testDiag("Diagnose how many CERT:STATUS subscriptions reach the harness PVACMS");
-    testDiag("Mirrors testtlswithcms::testServerOnly (server with EE cert,");
-    testDiag("client with CA only) and counts subscriptions reaching PVACMS.");
-
-    auto counter = std::make_shared<SubCounter>();
+void testServerOnlyMigrated() {
+    testDiag("Migrated testServerOnly: server with EE cert, client with admin cert");
+    testDiag("Counts cert-status subscribes/deliveries via pvxs.certs.mon.event");
 
     PVACMSHarness::Builder b;
-    b.observeStatusSubscriptions([counter](const std::string &pv) {
-        (*counter)(pv);
-    });
     auto harness = b.build();
-
-    testOk(!harness.pvacmsIssuerId().empty(),
-           "harness PVACMS issuer id: %s", harness.pvacmsIssuerId().c_str());
 
     auto mbox = pvxs::server::SharedPV::buildReadonly();
     mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
@@ -82,16 +40,17 @@ void testDiagnoseSubscriptionCount() {
 
     TestServerOpts opts;
     opts.subject = "harness-server-1";
-    auto &srv = harness.testServerBuilder().opts(opts).withPV(TEST_PV, mbox).start();
+    auto &srv = harness.testServerBuilder()
+                    .opts(opts)
+                    .withPV(TEST_PV, mbox)
+                    .start();
     (void)srv;
 
     auto cli_cfg = harness.testClientConfig();
-
     auto cli = cli_cfg.build();
 
-    testDiag("Issuing GET on TEST:HARNESS:PV...");
-    bool got_value = false;
     int32_t value = -1;
+    bool got_value = false;
     try {
         auto reply = cli.get(TEST_PV).exec()->wait(10.0);
         value = reply["value"].as<int32_t>();
@@ -100,51 +59,92 @@ void testDiagnoseSubscriptionCount() {
         testDiag("GET failed: %s", e.what());
     }
 
-    testOk(got_value, "GET returned a value");
-    if (got_value) {
-        testEq(value, 42);
-    } else {
-        testFail("GET timed out / failed");
+    testOk(got_value, "GET returned a value through full TLS+PVACMS flow");
+    if (got_value) testEq(value, 42);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    const auto &issuer = harness.pvacmsIssuerId();
+    testDiag("Issuer ID: %s", issuer.c_str());
+
+    uint32_t total_subs = 0;
+    uint32_t total_dels = 0;
+    int unique_pvs = 0;
+    for (const auto &reg : harness.startedTestServers()) {
+        (void)reg;
     }
 
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-
-    auto total = counter->total();
-    auto unique = counter->uniquePvs();
-
-    testDiag("Total CERT:STATUS subscription events observed: %u", total);
-    testDiag("Unique CERT:STATUS PV names observed:           %zu", unique);
     {
-        std::lock_guard<std::mutex> lk(counter->mu);
-        for (auto &kv : counter->counts) {
-            testDiag("    %s = %u", kv.first.c_str(), kv.second);
-        }
+        const auto &snap = harness.startedTestServers();
+        testDiag("startedTestServers().size() = %zu", snap.size());
     }
 
-    testDiag("Subscription count under harness (informational):");
-    testDiag("  Original mock-CMS testtlswithcms::testServerOnly asserted 'wanted 2'");
-    testDiag("  Under the real harness PVACMS, observed total=%u unique=%zu",
-             total, unique);
-    testDiag("  PkiFixture currently mints EE certs with cert_status_subscription");
-    testDiag("  flag = NO, so the X.509 status-PV extension is NOT embedded.");
-    testDiag("  Without the extension, pvxs's TLS code path skips cert-status");
-    testDiag("  monitoring entirely - hence 0 subscriptions, GET still succeeds.");
-    testDiag("  Setting flag = YES requires PkiFixture-issued certs to be");
-    testDiag("  registered in the harness PVACMS DB (preload_cert_files or");
-    testDiag("  CERT:CREATE RPC); without that, status lookup fails and TLS");
-    testDiag("  handshake deadlocks. See Section 5 follow-up in tasks.md.");
+    const auto observed = harness.observedStatusPvs();
+    for (const auto &pv : observed) {
+        testDiag("  observed pv=%s  subscribes=%u  deliveries=%u",
+                 pv.c_str(),
+                 harness.subscribesFor(pv),
+                 harness.deliveriesFor(pv));
+        total_subs += harness.subscribesFor(pv);
+        total_dels += harness.deliveriesFor(pv);
+        ++unique_pvs;
+    }
+    testEq(total_subs, harness.totalSubscribes());
+    testEq(total_dels, harness.totalDeliveries());
 
-    testOk(total == 0,
-           "diagnostic-mode harness produces 0 CERT:STATUS subs (NO extension on EEs)");
-    testOk(unique == 0,
-           "no unique cert-status PVs observed (matches NO-extension diagnostic)");
+    testOk(total_subs >= 2,
+           "Total cert-status subscribes >= 2 (got %u)", total_subs);
+    testOk(total_dels >= 1,
+           "Total cert-status deliveries >= 1 (got %u)", total_dels);
+    testOk(unique_pvs >= 1,
+           "At least one unique cert-status PV had activity (got %d)", unique_pvs);
+}
+
+void testCounterAPIBasics() {
+    testDiag("Harness counter API basics: subscribesFor / deliveriesFor / waitX / reset");
+
+    PVACMSHarness::Builder b;
+    auto harness = b.build();
+
+    auto mbox = pvxs::server::SharedPV::buildReadonly();
+    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+                  .update("value", int32_t{1}));
+
+    TestServerOpts opts;
+    opts.subject = "counter-api-server";
+    auto &srv = harness.testServerBuilder()
+                    .opts(opts)
+                    .withPV(TEST_PV, mbox)
+                    .start();
+    (void)srv;
+
+    auto cli = harness.testClientConfig().build();
+    try {
+        cli.get(TEST_PV).exec()->wait(10.0);
+    } catch (const std::exception &) {
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    const auto bogus_pv = std::string("CERT:STATUS:nonexistent:9999");
+    testEq(harness.subscribesFor(bogus_pv), 0u);
+    testEq(harness.deliveriesFor(bogus_pv), 0u);
+
+    testOk(!harness.waitSubscribesAtLeast(bogus_pv, 1, 0.05),
+           "waitSubscribesAtLeast returns false on timeout for unknown PV");
+    testOk(!harness.waitDeliveriesAtLeast(bogus_pv, 1, 0.05),
+           "waitDeliveriesAtLeast returns false on timeout for unknown PV");
+
+    harness.resetStatusEventCounters();
+    testEq(harness.subscribesFor(bogus_pv), 0u);
 }
 
 }  // namespace
 
 MAIN(testtlswithcmsharness) {
-    testPlan(5);
+    testPlan(11);
     pvxs::logger_config_env();
-    testDiagnoseSubscriptionCount();
+    testServerOnlyMigrated();
+    testCounterAPIBasics();
     return testDone();
 }

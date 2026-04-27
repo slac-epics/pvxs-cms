@@ -2,6 +2,7 @@
 #define PVXS_CMS_TEST_HARNESS_IMPL_H
 
 #include "pvxs/cms/testHarness.h"
+#include "statusEventCapture.h"
 
 #include <atomic>
 #include <memory>
@@ -45,6 +46,8 @@ struct PVACMSHarness::Impl {
     mutable std::mutex tables_mutex;
     std::vector<std::shared_ptr<pvxs::server::Server>> owned_servers;
     std::vector<RegisteredServer> snapshot_table;
+
+    std::unique_ptr<internal::StatusEventCapture> status_event_capture;
 
     PkiFixture &fixture() {
         if (!pki) throw std::logic_error("PVACMSHarness::Impl: no PKI fixture bound");

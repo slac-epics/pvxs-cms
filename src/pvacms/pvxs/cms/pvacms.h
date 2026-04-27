@@ -54,6 +54,18 @@ public:
      */
     const server::Server& pvaServer() const;
 
+    /** Register a P12-borne EE certificate in the running PVACMS DB so its
+     * `CERT:STATUS:<issuer>:<serial>` PV resolves with status VALID.
+     *
+     * Intended for in-process test harnesses that mint EE certs after
+     * PVACMS startup (when `cfg.preload_cert_files` cannot be used).
+     * Idempotent: re-registering an already-known cert is a no-op.
+     * Thread-safe: serialised on the same lock production status updates use.
+     *
+     * @since UNRELEASED
+     */
+    void registerCertFromP12(const std::string &p12_path);
+
 private:
     friend ServerHandle prepareServer(const ::cms::ConfigCms &config);
     friend void startCluster(ServerHandle& handle);
