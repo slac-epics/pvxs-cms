@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -46,8 +47,53 @@ std::string formatLoopbackAddr(const std::string &iface, uint16_t port) {
     return oss.str();
 }
 
+void writeClusterAcf(const std::string &path, size_t n_members) {
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("PVACMSCluster: failed to open ACF for write: " + path);
+    }
+    out << "AUTHORITY(CMS_AUTH, \"PVXS CMS Test CA\")\n"
+        << "\n"
+        << "UAG(CMS_ADMIN) {admin}\n"
+        << "\n"
+        << "UAG(CMS_CLUSTER) {";
+    for (size_t i = 0; i < n_members; ++i) {
+        if (i > 0) out << ", ";
+        out << "\"PVACMS-NODE-" << i << "\"";
+    }
+    out << "}\n"
+        << "\n"
+        << "ASG(DEFAULT) {\n"
+        << "    RULE(0,READ)\n"
+        << "    RULE(1,WRITE) {\n"
+        << "        UAG(CMS_ADMIN)\n"
+        << "        METHOD(\"x509\")\n"
+        << "        AUTHORITY(CMS_AUTH)\n"
+        << "    }\n"
+        << "}\n"
+        << "\n"
+        << "ASG(CLUSTER) {\n"
+        << "    RULE(0,READ) {\n"
+        << "        UAG(CMS_CLUSTER)\n"
+        << "        METHOD(\"x509\")\n"
+        << "        AUTHORITY(CMS_AUTH)\n"
+        << "        PROTOCOL(TLS)\n"
+        << "    }\n"
+        << "    RULE(1,WRITE) {\n"
+        << "        UAG(CMS_CLUSTER)\n"
+        << "        METHOD(\"x509\")\n"
+        << "        AUTHORITY(CMS_AUTH)\n"
+        << "        PROTOCOL(TLS)\n"
+        << "    }\n"
+        << "}\n";
+    if (!out) {
+        throw std::runtime_error("PVACMSCluster: failed to write ACF: " + path);
+    }
+}
+
 ::cms::ConfigCms makeClusterMemberConfig(const PkiFixture &pki,
                                          size_t member_index,
+                                         const std::string &member_p12_path,
                                          bool ipv6,
                                          uint32_t discovery_secs,
                                          uint32_t bidi_secs) {
@@ -67,12 +113,17 @@ std::string formatLoopbackAddr(const std::string &iface, uint16_t port) {
         cfg.beaconDestinations.emplace_back("127.0.0.1");
     }
 
-    cfg.tls_keychain_file = pki.serverP12Path();
+    cfg.tls_keychain_file = member_p12_path;
     cfg.cert_auth_keychain_file = pki.caP12Path();
     cfg.admin_keychain_file = pki.adminP12Path();
 
     cfg.certs_db_filename = pki.dir() + "/certs-node-" + std::to_string(member_index) + ".db";
     cfg.pvacms_acf_filename = pki.dir() + "/pvacms.acf";
+
+    cfg.preload_cert_files.push_back(pki.adminP12Path());
+    cfg.preload_cert_files.push_back(member_p12_path);
+
+    cfg.tls_status_cache_dir = pki.dir() + "/cache/pvacms-node-" + std::to_string(member_index);
 
     cfg.disableStatusCheck();
     cfg.disableStapling();
@@ -104,13 +155,15 @@ struct PVACMSCluster::Impl {
     std::vector<std::unique_ptr<std::atomic<bool>>> running;
     std::vector<std::string> member_addrs;
     std::vector<std::vector<std::string>> bridge_entries;
+    std::vector<std::string> member_p12_paths;
 
     mutable std::mutex coord_mutex;
 
     explicit Impl(size_t n)
         : topology(ClusterTopology::empty(n)),
           member_addrs(n),
-          bridge_entries(n) {
+          bridge_entries(n),
+          member_p12_paths(n) {
         running.reserve(n);
         for (size_t i = 0; i < n; ++i) {
             running.emplace_back(new std::atomic<bool>(false));
@@ -282,8 +335,15 @@ PVACMSCluster PVACMSCluster::Builder::build() {
     impl.handles.resize(pvt_->n);
     impl.workers = std::vector<std::thread>(pvt_->n);
 
+    writeClusterAcf(impl.pki->dir() + "/pvacms.acf", pvt_->n);
+
     for (size_t i = 0; i < pvt_->n; ++i) {
-        auto cfg = makeClusterMemberConfig(*impl.pki, i, impl.ipv6,
+        SubjectSpec member_subject;
+        member_subject.common_name = std::string("PVACMS-NODE-") + std::to_string(i);
+        impl.member_p12_paths[i] = impl.pki->issueServerEE(member_subject);
+
+        auto cfg = makeClusterMemberConfig(*impl.pki, i, impl.member_p12_paths[i],
+                                            impl.ipv6,
                                             impl.discovery_secs, impl.bidi_secs);
         auto state = ::cms::prepareCmsState(cfg);
 
@@ -339,7 +399,8 @@ void PVACMSCluster::restartMember(size_t i) {
     if (impl_->workers[i].joinable()) impl_->workers[i].join();
     impl_->handles[i].reset();
 
-    auto cfg = makeClusterMemberConfig(*impl_->pki, i, impl_->ipv6,
+    auto cfg = makeClusterMemberConfig(*impl_->pki, i, impl_->member_p12_paths[i],
+                                       impl_->ipv6,
                                        impl_->discovery_secs, impl_->bidi_secs);
     auto peers = computePeers(*impl_, i);
     buildAndStartMember(*impl_, i, cfg, peers);
