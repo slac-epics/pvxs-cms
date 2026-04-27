@@ -174,9 +174,32 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             }
 
             if (local_status == remote_status) {
-                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%lld — same status %d\n",
-                                 static_cast<long long>(serial), static_cast<int>(local_status));
-                continue;
+                sqlite3_stmt *date_stmt;
+                int64_t local_status_date = 0;
+                if (sqlite3_prepare_v2(certs_db,
+                                       "SELECT status_date FROM certs WHERE serial = :serial",
+                                       -1, &date_stmt, nullptr) == SQLITE_OK) {
+                    sqlite3_bind_int64(date_stmt,
+                                       sqlite3_bind_parameter_index(date_stmt, ":serial"),
+                                       serial);
+                    if (sqlite3_step(date_stmt) == SQLITE_ROW)
+                        local_status_date = sqlite3_column_int64(date_stmt, 0);
+                    sqlite3_finalize(date_stmt);
+                }
+                const auto remote_status_date = row["status_date"].as<int64_t>();
+                if (remote_status_date <= local_status_date) {
+                    log_debug_printf(pvacmscluster,
+                                     "Sync merge: skipping serial=%lld — same status %d, remote not newer (local=%lld remote=%lld)\n",
+                                     static_cast<long long>(serial), static_cast<int>(local_status),
+                                     static_cast<long long>(local_status_date),
+                                     static_cast<long long>(remote_status_date));
+                    continue;
+                }
+                log_debug_printf(pvacmscluster,
+                                 "Sync merge: applying same-status renewal serial=%lld status=%d (local_date=%lld -> remote_date=%lld)\n",
+                                 static_cast<long long>(serial), static_cast<int>(local_status),
+                                 static_cast<long long>(local_status_date),
+                                 static_cast<long long>(remote_status_date));
             }
 
             if (remote_status == cms::cert::REVOKED && local_status != cms::cert::REVOKED) {
