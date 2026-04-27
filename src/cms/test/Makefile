@@ -24,6 +24,7 @@ pvxsCmsTestHarness_SRCS += pkiFixture.cpp
 pvxsCmsTestHarness_SRCS += initOnce.cpp
 pvxsCmsTestHarness_SRCS += harness.cpp
 pvxsCmsTestHarness_SRCS += testServerBuilder.cpp
+pvxsCmsTestHarness_SRCS += observingSource.cpp
 
 # Shared CMS sources the harness needs (mirror pvacms_SRCS minus pvacmsMain.cpp).
 # Sources without explicit path are looked up via SRC_DIRS (set in TOP/src/Makefile),

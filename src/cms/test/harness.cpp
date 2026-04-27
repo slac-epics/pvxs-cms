@@ -22,6 +22,8 @@
 #include <pvxs/client.h>
 #include <pvxs/log.h>
 #include <pvxs/server.h>
+#include <pvxs/source.h>
+#include <pvxs/srvcommon.h>
 
 #include "configcms.h"
 #include "pvacms.h"
@@ -76,6 +78,8 @@ std::atomic<uint64_t> g_unique_subject_counter{0};
 std::string makeUniqueSubject(const std::string &prefix) {
     return prefix + "-" + std::to_string(g_unique_subject_counter.fetch_add(1));
 }
+
+
 
 ::cms::ConfigCms makeIsolatedConfigCms(const PkiFixture &pki, bool ipv6, bool apply_env) {
     ::cms::ConfigCms cfg{};
@@ -208,6 +212,10 @@ const std::string &PVACMSHarness::pvacmsListenerAddr() const noexcept {
 uint16_t PVACMSHarness::pvacmsTcpPort() const noexcept { return impl_->pvacms_tcp_port; }
 uint16_t PVACMSHarness::pvacmsTlsPort() const noexcept { return impl_->pvacms_tls_port; }
 
+const std::string &PVACMSHarness::pvacmsIssuerId() const noexcept {
+    return impl_->pvacms_issuer_id;
+}
+
 const std::string &PVACMSHarness::caChainPemPath() const noexcept {
     return impl_->fixture().caChainPemPath();
 }
@@ -290,6 +298,7 @@ struct PVACMSHarness::Builder::Pvt {
     bool apply_env{false};
     bool allow_external{false};
     PkiFixture *external_pki{nullptr};
+    std::function<void(const std::string &)> status_subscription_observer;
 };
 
 PVACMSHarness::Builder::Builder() : pvt_(new Pvt{}) {}
@@ -309,6 +318,12 @@ PVACMSHarness::Builder &PVACMSHarness::Builder::applyEnv(bool yes) & {
     pvt_->apply_env = yes;
     return *this;
 }
+PVACMSHarness::Builder &PVACMSHarness::Builder::observeStatusSubscriptions(
+    std::function<void(const std::string &)> cb) & {
+    pvt_->status_subscription_observer = std::move(cb);
+    return *this;
+}
+
 PVACMSHarness::Builder &PVACMSHarness::Builder::allowExternalBind() & {
     pvt_->allow_external = true;
     DEFINE_LOGGER(harness_log, "pvxs.cms.test.harness");
@@ -342,6 +357,17 @@ PVACMSHarness PVACMSHarness::Builder::build() {
     auto cfg = makeIsolatedConfigCms(*impl.pki, pvt_->ipv6, pvt_->apply_env);
 
     auto state = ::cms::prepareCmsState(cfg);
+    impl.pvacms_issuer_id = state.our_issuer_id;
+    impl.status_subscription_observer = pvt_->status_subscription_observer;
+
+    if (impl.status_subscription_observer) {
+        auto observer = impl.status_subscription_observer;
+        state.wrap_wildcard_source =
+            [observer](std::shared_ptr<pvxs::server::Source> inner)
+            -> std::shared_ptr<pvxs::server::Source> {
+            return internal::makeObservingSource(std::move(inner), observer);
+        };
+    }
 
     if (!cfg.pvacms_acf_filename.empty()) {
         if (auto err = asInitFile(cfg.pvacms_acf_filename.c_str(), "")) {

@@ -21,6 +21,10 @@ namespace internal {
 
 void startWithEaddrRetry(pvxs::server::Server &srv, int max_retries = 8);
 
+std::shared_ptr<pvxs::server::Source> makeObservingSource(
+    std::shared_ptr<pvxs::server::Source> inner,
+    std::function<void(const std::string &)> on_subscribe);
+
 }  // namespace internal
 
 struct PVACMSHarness::Impl {
@@ -35,6 +39,8 @@ struct PVACMSHarness::Impl {
     std::string pvacms_listener_addr;
     uint16_t pvacms_tcp_port{0};
     uint16_t pvacms_tls_port{0};
+    std::string pvacms_issuer_id;
+    std::function<void(const std::string &)> status_subscription_observer;
 
     mutable std::mutex tables_mutex;
     std::vector<std::shared_ptr<pvxs::server::Server>> owned_servers;
