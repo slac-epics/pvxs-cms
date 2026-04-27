@@ -154,11 +154,32 @@ public:
     /// this harness has been active.
     uint32_t subscribesFor(const std::string &pv_name) const;
 
-    /// Cumulative count of `cert-status: delivery  pv=<name> ...` events.
+    /// Cumulative count of `cert-status: delivery pv=<name> ...` events.
+    /// Fires for both live publishes AND cache-hit listener invocations
+    /// (the same listener is invoked in both cases).  Use cacheHitsFor()
+    /// to disambiguate.
     uint32_t deliveriesFor(const std::string &pv_name) const;
 
+    /// Cumulative count of `cert-status: cache-hit pv=<name> ...` events
+    /// emitted when subscribe() satisfies a cert-status request from the
+    /// disk OCSP cache instead of waiting for a live publish.
+    /// Invariant: deliveriesFor(pv) == live_publishes + cacheHitsFor(pv).
+    uint32_t cacheHitsFor(const std::string &pv_name) const;
+
+    /// Cumulative count of times a cert-status response was *received* by
+    /// the listener for `pv_name` -- regardless of whether it came from
+    /// the live PVACMS publish or from the disk cache.  Synonym for
+    /// `deliveriesFor(pv_name)` provided so test code reads naturally
+    /// at call sites that care about gating ("status was received,
+    /// validation gate cleared") rather than the underlying source.
+    uint32_t statusReceivedFor(const std::string &pv_name) const;
+
+    /// Sum of statusReceivedFor() across every observed PV.
+    /// Equal to `totalDeliveries()`.
+    uint32_t totalStatusReceived() const;
+
     /// Snapshot of every CERT:STATUS PV name that has had at least one
-    /// observed event (subscribe or delivery).
+    /// observed event (subscribe, delivery, or cache-hit).
     std::vector<std::string> observedStatusPvs() const;
 
     /// Sum of subscribesFor() across every observed PV.
@@ -166,6 +187,9 @@ public:
 
     /// Sum of deliveriesFor() across every observed PV.
     uint32_t totalDeliveries() const;
+
+    /// Sum of cacheHitsFor() across every observed PV.
+    uint32_t totalCacheHits() const;
 
     /// Reset both counters to zero.
     void resetStatusEventCounters();
@@ -178,6 +202,16 @@ public:
     /// Block until `deliveriesFor(pv_name) >= n` or timeout (seconds) elapses.
     bool waitDeliveriesAtLeast(const std::string &pv_name, uint32_t n,
                                double timeout_secs = 5.0) const;
+
+    /// Block until `cacheHitsFor(pv_name) >= n` or timeout (seconds) elapses.
+    bool waitCacheHitsAtLeast(const std::string &pv_name, uint32_t n,
+                              double timeout_secs = 5.0) const;
+
+    /// Block until the cert-status listener for `pv_name` has received
+    /// at least `n` status responses (cache-hit + live publish combined)
+    /// or the timeout elapses.  Synonym for `waitDeliveriesAtLeast()`.
+    bool waitStatusReceivedAtLeast(const std::string &pv_name, uint32_t n,
+                                   double timeout_secs = 5.0) const;
 
     /// Bound CA + admin cert paths (delegated to the harness's PkiFixture).
     const std::string &caChainPemPath() const noexcept;
