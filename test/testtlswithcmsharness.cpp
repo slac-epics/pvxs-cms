@@ -80,17 +80,24 @@ void testServerOnlyMigrated() {
     }
 
     const auto observed = harness.observedStatusPvs();
+    uint32_t total_hits = 0;
     for (const auto &pv : observed) {
-        testDiag("  observed pv=%s  subscribes=%u  deliveries=%u",
-                 pv.c_str(),
-                 harness.subscribesFor(pv),
-                 harness.deliveriesFor(pv));
-        total_subs += harness.subscribesFor(pv);
-        total_dels += harness.deliveriesFor(pv);
+        const auto subs = harness.subscribesFor(pv);
+        const auto dels = harness.deliveriesFor(pv);
+        const auto hits = harness.cacheHitsFor(pv);
+        testDiag("  observed pv=%s  subscribes=%u  deliveries=%u  cache-hits=%u",
+                 pv.c_str(), subs, dels, hits);
+        total_subs += subs;
+        total_dels += dels;
+        total_hits += hits;
         ++unique_pvs;
     }
     testEq(total_subs, harness.totalSubscribes());
     testEq(total_dels, harness.totalDeliveries());
+    testEq(total_hits, harness.totalCacheHits());
+    testTrue(total_dels >= total_hits);
+    testDiag("Invariant: deliveries (%u) = live (%u) + cache-hits (%u)",
+             total_dels, total_dels - total_hits, total_hits);
 
     testOk(total_subs >= 2,
            "Total cert-status subscribes >= 2 (got %u)", total_subs);
@@ -134,15 +141,20 @@ void testCounterAPIBasics() {
            "waitSubscribesAtLeast returns false on timeout for unknown PV");
     testOk(!harness.waitDeliveriesAtLeast(bogus_pv, 1, 0.05),
            "waitDeliveriesAtLeast returns false on timeout for unknown PV");
+    testOk(!harness.waitCacheHitsAtLeast(bogus_pv, 1, 0.05),
+           "waitCacheHitsAtLeast returns false on timeout for unknown PV");
+
+    testEq(harness.cacheHitsFor(bogus_pv), 0u);
 
     harness.resetStatusEventCounters();
     testEq(harness.subscribesFor(bogus_pv), 0u);
+    testEq(harness.cacheHitsFor(bogus_pv), 0u);
 }
 
 }  // namespace
 
 MAIN(testtlswithcmsharness) {
-    testPlan(11);
+    testPlan(17);
     pvxs::logger_config_env();
     testServerOnlyMigrated();
     testCounterAPIBasics();

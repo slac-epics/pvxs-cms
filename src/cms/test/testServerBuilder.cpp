@@ -93,6 +93,8 @@ pvxs::server::Server &TestServerBuilder::start() && {
         cfg.beaconDestinations.emplace_back("127.0.0.1");
     }
     cfg.tls_keychain_file = ee_p12;
+    cfg.tls_status_cache_dir = impl.fixture().dir() + "/cache/test-server-" +
+                               std::to_string(impl.test_server_counter.fetch_add(1));
 
     if (pvt_->customize_fn) {
         pvt_->customize_fn(cfg);

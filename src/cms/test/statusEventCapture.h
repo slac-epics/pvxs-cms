@@ -20,18 +20,24 @@ public:
     StatusEventCapture &operator=(const StatusEventCapture &) = delete;
     ~StatusEventCapture();
 
-    void record(const std::string &pv_name, bool is_subscribe) noexcept;
+    enum EventKind { Subscribe, Delivery, CacheHit };
+
+    void record(const std::string &pv_name, EventKind kind) noexcept;
 
     uint32_t subscribesFor(const std::string &pv_name) const;
     uint32_t deliveriesFor(const std::string &pv_name) const;
+    uint32_t cacheHitsFor(const std::string &pv_name) const;
     std::vector<std::string> observedPvs() const;
     uint32_t totalSubscribes() const;
     uint32_t totalDeliveries() const;
+    uint32_t totalCacheHits() const;
     void reset();
     bool waitSubscribesAtLeast(const std::string &pv_name, uint32_t n,
                                double timeout_secs) const;
     bool waitDeliveriesAtLeast(const std::string &pv_name, uint32_t n,
                                double timeout_secs) const;
+    bool waitCacheHitsAtLeast(const std::string &pv_name, uint32_t n,
+                              double timeout_secs) const;
 
 private:
     struct Pvt;

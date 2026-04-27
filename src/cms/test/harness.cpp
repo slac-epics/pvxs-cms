@@ -111,6 +111,8 @@ std::string makeUniqueSubject(const std::string &prefix) {
 
     cfg.preload_cert_files.push_back(pki.adminP12Path());
 
+    cfg.tls_status_cache_dir = pki.dir() + "/cache/pvacms";
+
     cfg.disableStatusCheck();
     cfg.disableStapling();
 
@@ -230,6 +232,20 @@ uint32_t PVACMSHarness::deliveriesFor(const std::string &pv_name) const {
         : 0u;
 }
 
+uint32_t PVACMSHarness::cacheHitsFor(const std::string &pv_name) const {
+    return impl_->status_event_capture
+        ? impl_->status_event_capture->cacheHitsFor(pv_name)
+        : 0u;
+}
+
+uint32_t PVACMSHarness::statusReceivedFor(const std::string &pv_name) const {
+    return deliveriesFor(pv_name);
+}
+
+uint32_t PVACMSHarness::totalStatusReceived() const {
+    return totalDeliveries();
+}
+
 std::vector<std::string> PVACMSHarness::observedStatusPvs() const {
     return impl_->status_event_capture
         ? impl_->status_event_capture->observedPvs()
@@ -245,6 +261,12 @@ uint32_t PVACMSHarness::totalSubscribes() const {
 uint32_t PVACMSHarness::totalDeliveries() const {
     return impl_->status_event_capture
         ? impl_->status_event_capture->totalDeliveries()
+        : 0u;
+}
+
+uint32_t PVACMSHarness::totalCacheHits() const {
+    return impl_->status_event_capture
+        ? impl_->status_event_capture->totalCacheHits()
         : 0u;
 }
 
@@ -266,6 +288,20 @@ bool PVACMSHarness::waitDeliveriesAtLeast(const std::string &pv_name,
     return impl_->status_event_capture
         ? impl_->status_event_capture->waitDeliveriesAtLeast(pv_name, n, timeout_secs)
         : false;
+}
+
+bool PVACMSHarness::waitCacheHitsAtLeast(const std::string &pv_name,
+                                         uint32_t n,
+                                         double timeout_secs) const {
+    return impl_->status_event_capture
+        ? impl_->status_event_capture->waitCacheHitsAtLeast(pv_name, n, timeout_secs)
+        : false;
+}
+
+bool PVACMSHarness::waitStatusReceivedAtLeast(const std::string &pv_name,
+                                              uint32_t n,
+                                              double timeout_secs) const {
+    return waitDeliveriesAtLeast(pv_name, n, timeout_secs);
 }
 
 const std::string &PVACMSHarness::caChainPemPath() const noexcept {
@@ -308,6 +344,7 @@ pvxs::client::Config PVACMSHarness::cmsAdminClientConfig() const {
     cfg.nameServers.clear();
     cfg.nameServers.push_back(impl_->pvacms_listener_addr);
     cfg.tls_keychain_file = impl_->fixture().adminP12Path();
+    cfg.tls_status_cache_dir = impl_->fixture().dir() + "/cache/admin";
     return cfg;
 }
 
@@ -319,6 +356,8 @@ pvxs::client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts)
     if (impl_->handle) {
         impl_->handle->registerCertFromP12(client_p12);
     }
+
+    const auto client_id = impl_->test_client_counter.fetch_add(1);
 
     pvxs::client::Config cfg;
     cfg.addressList.clear();
@@ -334,6 +373,8 @@ pvxs::client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts)
     cfg.addressList.push_back(impl_->pvacms_listener_addr);
     cfg.nameServers.push_back(impl_->pvacms_listener_addr);
     cfg.tls_keychain_file = client_p12;
+    cfg.tls_status_cache_dir = impl_->fixture().dir() + "/cache/test-client-" +
+                               std::to_string(client_id);
     return cfg;
 }
 

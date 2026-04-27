@@ -47,6 +47,9 @@ struct PVACMSHarness::Impl {
     std::vector<std::shared_ptr<pvxs::server::Server>> owned_servers;
     std::vector<RegisteredServer> snapshot_table;
 
+    mutable std::atomic<uint64_t> test_client_counter{0};
+    std::atomic<uint64_t> test_server_counter{0};
+
     std::unique_ptr<internal::StatusEventCapture> status_event_capture;
 
     PkiFixture &fixture() {
