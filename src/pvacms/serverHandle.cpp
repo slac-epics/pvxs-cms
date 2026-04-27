@@ -260,6 +260,8 @@ struct ServerHandle::Pvt {
     std::unique_ptr<::cms::cluster::ClusterDiscovery> cluster_discovery;
     ::cms::StatusMonitor status_monitor;
     std::shared_ptr<server::Source> wildcard_source;
+    std::function<std::shared_ptr<server::Source>(std::shared_ptr<server::Source>)>
+        wrap_wildcard_source;
     ::cms::detail::ServerEv pva_server;
     std::string cluster_status;
     bool started_{false};
@@ -279,6 +281,7 @@ ServerHandle::Pvt::Pvt(const ConfigCms &config,
     , our_node_id(std::move(state.our_node_id))
     , our_serial(state.our_serial)
     , is_initialising(state.is_initialising)
+    , wrap_wildcard_source(std::move(state.wrap_wildcard_source))
     , as_cluster_member("CLUSTER")
     , cluster_sync(our_node_id,
                    our_issuer_id,
@@ -661,7 +664,11 @@ void ServerHandle::Pvt::openPreparedPvs()
     auto wildcard = server::WildcardSource::build();
     wildcard->add(::cms::cert::getCertStatusPv(config_copy.getCertPvPrefix(), our_issuer_id), status_pv);
     wildcard_source = wildcard;
-    pva_server.addSource("__wildcard", wildcard_source);
+    auto registered_source = wildcard_source;
+    if (wrap_wildcard_source) {
+        registered_source = wrap_wildcard_source(wildcard_source);
+    }
+    pva_server.addSource("__wildcard", registered_source);
 
     if (config_copy.cluster_mode) {
         cluster_sync.setEnabled(true);

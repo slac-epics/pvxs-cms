@@ -146,6 +146,9 @@ public:
     uint16_t pvacmsTcpPort() const noexcept;
     uint16_t pvacmsTlsPort() const noexcept;
 
+    /// Issuer SKID hex of the harness's CA, as embedded in CERT:STATUS:<issuer>:<serial>.
+    const std::string &pvacmsIssuerId() const noexcept;
+
     /// Bound CA + admin cert paths (delegated to the harness's PkiFixture).
     const std::string &caChainPemPath() const noexcept;
     const std::string &adminP12Path() const noexcept;
@@ -214,6 +217,13 @@ public:
     /// `pvxs.cms.test` WARN log line and, if `_PVXS_CMS_TEST_REJECT_EXTERNAL`
     /// is set in the environment (CI), throws `std::runtime_error`.
     Builder &allowExternalBind() &;
+
+    /// Install an observer invoked once per CERT:STATUS:* subscription that
+    /// reaches the harness's PVACMS.  The callback receives the full PV name
+    /// (e.g. `CERT:STATUS:<issuer>:<serial>`).  Tests use this to verify that
+    /// peer-cert validation paths are actually subscribing to cert-status.
+    Builder &observeStatusSubscriptions(
+        std::function<void(const std::string &pv_name)> cb) &;
 
     /// Construct a ConfigCms with all isolation knobs applied, prepare the
     /// PVACMS server (binds listeners, runs self-tests), then start the

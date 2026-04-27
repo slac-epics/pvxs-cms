@@ -516,6 +516,13 @@ struct PreparedCmsState {
     std::string our_node_id;
     serial_number_t our_serial{0u};
     bool is_initialising{false};
+
+    // Test-harness hook: when set, prepareServerFromState passes the constructed
+    // WildcardSource through this callback before installing it on the PVA Server.
+    // The returned shared_ptr is what gets registered as `__wildcard`. Production
+    // pvacms leaves this null and registers the source verbatim.
+    std::function<std::shared_ptr<pvxs::server::Source>(std::shared_ptr<pvxs::server::Source>)>
+        wrap_wildcard_source;
 };
 }  // namespace detail
 }  // namespace cms
