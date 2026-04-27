@@ -149,6 +149,36 @@ public:
     /// Issuer SKID hex of the harness's CA, as embedded in CERT:STATUS:<issuer>:<serial>.
     const std::string &pvacmsIssuerId() const noexcept;
 
+    /// Cumulative count of `cert-status: subscribe pv=<name> kind=...` events
+    /// emitted by pvxs's TLS plumbing (logger `pvxs.certs.mon.event`) while
+    /// this harness has been active.
+    uint32_t subscribesFor(const std::string &pv_name) const;
+
+    /// Cumulative count of `cert-status: delivery  pv=<name> ...` events.
+    uint32_t deliveriesFor(const std::string &pv_name) const;
+
+    /// Snapshot of every CERT:STATUS PV name that has had at least one
+    /// observed event (subscribe or delivery).
+    std::vector<std::string> observedStatusPvs() const;
+
+    /// Sum of subscribesFor() across every observed PV.
+    uint32_t totalSubscribes() const;
+
+    /// Sum of deliveriesFor() across every observed PV.
+    uint32_t totalDeliveries() const;
+
+    /// Reset both counters to zero.
+    void resetStatusEventCounters();
+
+    /// Block until `subscribesFor(pv_name) >= n` or timeout (seconds) elapses.
+    /// Returns true on success, false on timeout.
+    bool waitSubscribesAtLeast(const std::string &pv_name, uint32_t n,
+                               double timeout_secs = 5.0) const;
+
+    /// Block until `deliveriesFor(pv_name) >= n` or timeout (seconds) elapses.
+    bool waitDeliveriesAtLeast(const std::string &pv_name, uint32_t n,
+                               double timeout_secs = 5.0) const;
+
     /// Bound CA + admin cert paths (delegated to the harness's PkiFixture).
     const std::string &caChainPemPath() const noexcept;
     const std::string &adminP12Path() const noexcept;

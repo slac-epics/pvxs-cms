@@ -74,6 +74,10 @@ pvxs::server::Server &TestServerBuilder::start() && {
         : pvt_->opts.subject;
     auto ee_p12 = impl.fixture().issueServerEE(subj);
 
+    if (impl.handle) {
+        impl.handle->registerCertFromP12(ee_p12);
+    }
+
     pvxs::server::Config cfg;
     cfg.tcp_port = 0;
     cfg.udp_port = 0;

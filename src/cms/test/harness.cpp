@@ -109,6 +109,8 @@ std::string makeUniqueSubject(const std::string &prefix) {
     cfg.certs_db_filename = pki.dir() + "/certs.db";
     cfg.pvacms_acf_filename = pki.dir() + "/pvacms.acf";
 
+    cfg.preload_cert_files.push_back(pki.adminP12Path());
+
     cfg.disableStatusCheck();
     cfg.disableStapling();
 
@@ -216,6 +218,56 @@ const std::string &PVACMSHarness::pvacmsIssuerId() const noexcept {
     return impl_->pvacms_issuer_id;
 }
 
+uint32_t PVACMSHarness::subscribesFor(const std::string &pv_name) const {
+    return impl_->status_event_capture
+        ? impl_->status_event_capture->subscribesFor(pv_name)
+        : 0u;
+}
+
+uint32_t PVACMSHarness::deliveriesFor(const std::string &pv_name) const {
+    return impl_->status_event_capture
+        ? impl_->status_event_capture->deliveriesFor(pv_name)
+        : 0u;
+}
+
+std::vector<std::string> PVACMSHarness::observedStatusPvs() const {
+    return impl_->status_event_capture
+        ? impl_->status_event_capture->observedPvs()
+        : std::vector<std::string>{};
+}
+
+uint32_t PVACMSHarness::totalSubscribes() const {
+    return impl_->status_event_capture
+        ? impl_->status_event_capture->totalSubscribes()
+        : 0u;
+}
+
+uint32_t PVACMSHarness::totalDeliveries() const {
+    return impl_->status_event_capture
+        ? impl_->status_event_capture->totalDeliveries()
+        : 0u;
+}
+
+void PVACMSHarness::resetStatusEventCounters() {
+    if (impl_->status_event_capture) impl_->status_event_capture->reset();
+}
+
+bool PVACMSHarness::waitSubscribesAtLeast(const std::string &pv_name,
+                                          uint32_t n,
+                                          double timeout_secs) const {
+    return impl_->status_event_capture
+        ? impl_->status_event_capture->waitSubscribesAtLeast(pv_name, n, timeout_secs)
+        : false;
+}
+
+bool PVACMSHarness::waitDeliveriesAtLeast(const std::string &pv_name,
+                                          uint32_t n,
+                                          double timeout_secs) const {
+    return impl_->status_event_capture
+        ? impl_->status_event_capture->waitDeliveriesAtLeast(pv_name, n, timeout_secs)
+        : false;
+}
+
 const std::string &PVACMSHarness::caChainPemPath() const noexcept {
     return impl_->fixture().caChainPemPath();
 }
@@ -263,6 +315,10 @@ pvxs::client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts)
     SubjectSpec subj;
     subj.common_name = opts.subject.empty() ? makeUniqueSubject("test-client") : opts.subject;
     auto client_p12 = const_cast<PkiFixture &>(impl_->fixture()).issueClientEE(subj);
+
+    if (impl_->handle) {
+        impl_->handle->registerCertFromP12(client_p12);
+    }
 
     pvxs::client::Config cfg;
     cfg.addressList.clear();
@@ -351,6 +407,8 @@ PVACMSHarness PVACMSHarness::Builder::build() {
         impl.owned_pki.reset(new PkiFixture{});
         impl.pki = impl.owned_pki.get();
     }
+
+    impl.status_event_capture.reset(new internal::StatusEventCapture{});
 
     impl.interface_addr = pvt_->ipv6 ? "::1" : "127.0.0.1";
 

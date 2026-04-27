@@ -27,6 +27,7 @@ pvxsCmsTestHarness_SRCS += testServerBuilder.cpp
 pvxsCmsTestHarness_SRCS += observingSource.cpp
 pvxsCmsTestHarness_SRCS += clusterTopology.cpp
 pvxsCmsTestHarness_SRCS += cluster.cpp
+pvxsCmsTestHarness_SRCS += statusEventCapture.cpp
 
 # Shared CMS sources the harness needs (mirror pvacms_SRCS minus pvacmsMain.cpp).
 # Sources without explicit path are looked up via SRC_DIRS (set in TOP/src/Makefile),

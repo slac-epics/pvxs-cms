@@ -991,6 +991,27 @@ const server::Server& ServerHandle::pvaServer() const
     return pvt_->pva_server.server();
 }
 
+void ServerHandle::registerCertFromP12(const std::string &p12_path)
+{
+    if (!pvt_) {
+        throw std::logic_error("NULL ServerHandle");
+    }
+    auto cert_data = ::cms::cert::IdFileFactory::create(p12_path,
+                                                        pvt_->config_copy.getKeychainPassword())
+                         ->getCertDataFromFile();
+    if (!cert_data.cert) {
+        throw std::runtime_error(
+            "ServerHandle::registerCertFromP12: failed to load cert from " + p12_path);
+    }
+    epicsGuard<epicsMutex> G(::cms::getStatusUpdateLock());
+    ::cms::insertLoadedCertIfMissing(pvt_->config_copy,
+                                     pvt_->certs_db,
+                                     cert_data.cert,
+                                     cert_data.cert_auth_chain,
+                                     pvt_->our_issuer_id,
+                                     false);
+}
+
 namespace detail {
 
 ServerHandle prepareServerFromState(const ConfigCms &config,
