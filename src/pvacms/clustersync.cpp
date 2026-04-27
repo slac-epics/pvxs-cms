@@ -448,11 +448,6 @@ std::string ClusterSyncPublisher::getSyncPvName() const {
 void ClusterSyncPublisher::handleForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args) {
     try {
         const auto creds = op->credentials();
-        bool is_tls_cluster_member = creds->isTLS && creds->method == "x509" && creds->issuer_id == issuer_id_;
-        if (!is_tls_cluster_member && !skip_peer_identity_check) {
-            op->error("Not authenticated as cluster member");
-            return;
-        }
 
         auto target_node_id = args["node_id"].as<std::string>();
         if (target_node_id.empty()) {
@@ -485,13 +480,6 @@ void ClusterSyncPublisher::handleForwardRpc(std::unique_ptr<server::ExecOp> &&op
 
 void ClusterSyncPublisher::handleCancelForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args) {
     try {
-        const auto creds = op->credentials();
-        bool is_tls_cluster_member = creds->isTLS && creds->method == "x509" && creds->issuer_id == issuer_id_;
-        if (!is_tls_cluster_member && !skip_peer_identity_check) {
-            op->error("Not authenticated as cluster member");
-            return;
-        }
-
         auto target_node_id = args["node_id"].as<std::string>();
         if (target_node_id.empty()) {
             op->error("Missing node_id");

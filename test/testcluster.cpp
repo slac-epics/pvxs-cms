@@ -1176,7 +1176,7 @@ void testIsCmsNode() {
     epicsMutex lock;
     TestDb db;
     ClusterSyncPublisher sync("node1", "issuer1", "CERT:CLUSTER", db.get(), key, lock);
-    ClusterController ctrl("issuer1", "node1", "CERT:CLUSTER", key, key, sync, nullptr);
+    ClusterController ctrl("issuer1", "node1", "CERT:CLUSTER", key, key, sync);
 
     ctrl.initAsSoleNode("aabbccdd", "CERT:CLUSTER:SYNC:issuer1:aabbccdd");
     ctrl.addMember({"deadbeef", "CERT:CLUSTER:SYNC:issuer1:deadbeef", 1, 0, 0});

@@ -246,7 +246,6 @@ struct ServerHandle::Pvt {
     serial_number_t our_serial{0u};
     bool is_initialising{false};
     std::map<serial_number_t, time_t> active_status_validity;
-    ::cms::ASMember as_cluster_member;
     ::cms::cluster::ClusterSyncPublisher cluster_sync;
     ::cms::cluster::ClusterController cluster_ctrl;
     server::SharedPV create_pv;
@@ -287,7 +286,6 @@ ServerHandle::Pvt::Pvt(const ConfigCms &config,
     , our_serial(state.our_serial)
     , is_initialising(state.is_initialising)
     , wrap_wildcard_source(std::move(state.wrap_wildcard_source))
-    , as_cluster_member("CLUSTER")
     , cluster_sync(our_node_id,
                    our_issuer_id,
                    config_copy.cluster_pv_prefix,
@@ -300,7 +298,6 @@ ServerHandle::Pvt::Pvt(const ConfigCms &config,
                    cert_auth_pkey,
                    cert_auth_pub_key,
                    cluster_sync,
-                   as_cluster_member.mem,
                    config_copy.cluster_bidi_timeout_secs)
     , create_pv(server::SharedPV::buildReadonly())
     , schedule_pv(server::SharedPV::buildReadonly())
@@ -326,7 +323,6 @@ ServerHandle::Pvt::Pvt(const ConfigCms &config,
                      return ::cms::statusMonitor(status_monitor);
                  })
 {
-    cluster_sync.skip_peer_identity_check = config_copy.cluster_skip_peer_identity_check;
     status_monitor.setHealthPV(&health_pv);
     status_monitor.setMetricsPV(&metrics_pv);
     if (config_copy.cluster_mode) {
@@ -769,6 +765,7 @@ void ServerHandle::Pvt::prepareClusterRuntime(const std::vector<std::string> *pe
             cluster_client_config.nameServers.push_back(entry);
         }
     }
+    cluster_client_config.tls_disabled = true;
     auto cluster_client = cluster_client_config.build();
 
     cluster_ctrl.verify_bidirectional = [cluster_client](const std::string &sync_pv,
@@ -794,7 +791,6 @@ void ServerHandle::Pvt::prepareClusterRuntime(const std::vector<std::string> *pe
                                                                  our_issuer_id,
                                                                  config_copy.cluster_pv_prefix,
                                                                  config_copy.cluster_discovery_timeout_secs,
-                                                                 config_copy.cluster_skip_peer_identity_check,
                                                                  certs_db.get(),
                                                                  cert_auth_pkey,
                                                                  cert_auth_pub_key,

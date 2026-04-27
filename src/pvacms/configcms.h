@@ -314,8 +314,6 @@ class ConfigCms final : public Config {
 
     uint32_t cluster_bidi_timeout_secs = 5;
 
-    bool cluster_skip_peer_identity_check = false;
-
     /**
      * @brief Interval in seconds between SQLite integrity checks and WAL checkpoints.
      *

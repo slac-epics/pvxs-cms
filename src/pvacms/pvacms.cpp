@@ -2597,9 +2597,6 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data) {
                                                              "  - name: CMS_ADMIN\n"
                                                              "    users:\n"
                                                              "      - admin\n"
-                                                             "  - name: CMS_CLUSTER\n"
-                                                             "    users:\n"
-                                                             "      - \"" << config.pvacms_name << "\"\n"
                                                              "\n"
                                                              "# Access security group definitions\n"
                                                              "asgs:\n"
@@ -2614,36 +2611,12 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data) {
                                                              "        methods:\n"
                                                              "          - x509\n"
                                                              "        authorities:\n"
-                                                             "          - CMS_AUTH\n"
-                                                             "  - name: CLUSTER\n"
-                                                             "    rules:\n"
-                                                             "      - level: 0\n"
-                                                             "        access: READ\n"
-                                                             "        uags:\n"
-                                                             "          - CMS_CLUSTER\n"
-                                                             "        methods:\n"
-                                                             "          - x509\n"
-                                                             "        authorities:\n"
-                                                             "          - CMS_AUTH\n"
-                                                             "        protocols:\n"
-                                                             "          - TLS\n"
-                                                             "      - level: 1\n"
-                                                             "        access: WRITE\n"
-                                                             "        uags:\n"
-                                                             "          - CMS_CLUSTER\n"
-                                                             "        methods:\n"
-                                                             "          - x509\n"
-                                                             "        authorities:\n"
-                                                             "          - CMS_AUTH\n"
-                                                             "        protocols:\n"
-                                                             "          - TLS"
+                                                             "          - CMS_AUTH"
                                                          << std::endl
                                               : out_file << toACFAuth("CMS_AUTH", cert_data)
                                                           << "\n"
                                                              "\n"
                                                              "UAG(CMS_ADMIN) {admin}\n"
-                                                             "\n"
-                                                             "UAG(CMS_CLUSTER) {\"" << config.pvacms_name << "\"}\n"
                                                              "\n"
                                                              "ASG(DEFAULT) {\n"
                                                              "    RULE(0,READ)\n"
@@ -2651,21 +2624,6 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data) {
                                                              "        UAG(CMS_ADMIN)\n"
                                                              "        METHOD(\"x509\")\n"
                                                              "        AUTHORITY(CMS_AUTH)\n"
-                                                             "    }\n"
-                                                             "}\n"
-                                                             "\n"
-                                                             "ASG(CLUSTER) {\n"
-                                                             "    RULE(0,READ) {\n"
-                                                             "        UAG(CMS_CLUSTER)\n"
-                                                             "        METHOD(\"x509\")\n"
-                                                             "        AUTHORITY(CMS_AUTH)\n"
-                                                             "        PROTOCOL(TLS)\n"
-                                                             "    }\n"
-                                                             "    RULE(1,WRITE) {\n"
-                                                             "        UAG(CMS_CLUSTER)\n"
-                                                             "        METHOD(\"x509\")\n"
-                                                             "        AUTHORITY(CMS_AUTH)\n"
-                                                             "        PROTOCOL(TLS)\n"
                                                              "    }\n"
                                                              "}"
                                                          << std::endl;
@@ -4344,9 +4302,6 @@ int readParameters(int argc,
     app.add_option("--cluster-bidi-timeout",
                    config.cluster_bidi_timeout_secs,
                    "Seconds to wait for bidirectional connectivity check during join.  Default 5");
-    app.add_flag("--cluster-skip-peer-identity-check",
-                 config.cluster_skip_peer_identity_check,
-                 "Skip TLS peer identity verification for cluster sync (for gateway-mediated topologies)");
     app.add_option("--integrity-check-interval",
                    config.integrity_check_interval_secs,
                    "Seconds between SQLite integrity checks and WAL checkpoints.  0 to disable.  Default 86400");
@@ -4469,7 +4424,6 @@ int readParameters(int argc,
             << "        --cluster-pv-prefix <prefix>         Prefix for cluster PV names. Default `CERT:CLUSTER`\n"
             << "        --cluster-discovery-timeout <secs>   Seconds to wait for cluster discovery. Default 10\n"
             << "        --cluster-bidi-timeout <secs>        Seconds to wait for bidirectional connectivity check during join. Default 5\n"
-            << "        --cluster-skip-peer-identity-check   Skip TLS peer identity verification for cluster sync\n"
             << "        --integrity-check-interval <secs>    Seconds between SQLite integrity checks. 0=disabled. Default 86400\n"
             << "        --audit-retention-days <days>        Days to retain audit log records. 0=disabled. Default 365\n"
             << "        --rate-limit <reqs/sec>              Sustained certificate creation rate limit. 0=disabled. Default 10\n"

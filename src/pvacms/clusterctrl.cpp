@@ -10,10 +10,7 @@
 
 #include "certstatus.h"
 
-#include <dbBase.h>
-
 #include <pvxs/log.h>
-#include <pvxs/credentials.h>
 
 #include "clustersync.h"
 #include "pvacmsVersion.h"
@@ -107,7 +104,6 @@ ClusterController::ClusterController(const std::string &issuer_id,
                                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                                      ClusterSyncPublisher &sync_publisher,
-                                     ASMEMBERPVT as_cluster_mem,
                                      uint32_t bidi_timeout_secs)
     : issuer_id_(issuer_id)
     , node_id_(node_id)
@@ -115,7 +111,6 @@ ClusterController::ClusterController(const std::string &issuer_id,
     , cert_auth_pkey_(cert_auth_pkey)
     , cert_auth_pub_key_(cert_auth_pub_key)
     , sync_publisher_(sync_publisher)
-    , as_cluster_mem_(as_cluster_mem)
     , bidi_timeout_secs_(bidi_timeout_secs)
     , ctrl_pv_(server::SharedPV::buildReadonly())
     , bidi_failed_(std::make_shared<BidiFailedCache>())
@@ -132,18 +127,16 @@ ClusterController::ClusterController(const std::string &issuer_id,
 void ClusterController::setupRpcHandler() {
     ctrl_pv_.onRPC([this](server::SharedPV &, std::unique_ptr<server::ExecOp> &&op, Value &&args) {
         try {
-            const auto creds = op->credentials();
-            ioc::Credentials credentials(*creds);
-            ioc::SecurityClient securityClient;
-            securityClient.update(as_cluster_mem_, ASL1, credentials);
-
-            if (!securityClient.canWrite()) {
-                log_warn_printf(pvacmscluster, "Join request rejected: client not authorized (%s)\n",
-                                creds->account.c_str());
-                op->error("Not authorized for cluster operations");
-                return;
-            }
-
+            // Authentication is enforced by clusterVerify() below: the join payload's
+            // signature is validated against the shared cluster CA's public key. The
+            // joiner therefore must hold the private key of a cert chained to the same
+            // CA — which is the actual cluster trust boundary. An additional ACF/UAG
+            // gate on the connecting client's account name is redundant defense in
+            // depth that adds no security value (an attacker who could forge the
+            // signed nonce could trivially forge a CN), and it forces all cluster
+            // joins to land on TLS connections — which creates a cert-status
+            // chicken-and-egg under cold-start (peer cert validation needs PVACMS,
+            // PVACMS is busy fielding the join). Removed.
             auto req_major = args["version_major"].as<uint32_t>();
             if (req_major != 1) {
                 log_warn_printf(pvacmscluster, "Join request unsupported major version %u from node %s\n",

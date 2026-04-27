@@ -145,7 +145,6 @@ Duration format: `1y 2M 3w 4d 5h 6m 7s` (components are optional).
 | `--cluster-pv-prefix` | `EPICS_PVACMS_CLUSTER_PV_PREFIX` | `CERT:CLUSTER` | PV prefix for cluster channels |
 | `--cluster-discovery-timeout` | `EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT` | `10` | Join RPC timeout in seconds |
 | `--cluster-bidi-timeout` | `EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT` | `5` | Bidirectional connectivity check timeout in seconds |
-| `--cluster-skip-peer-identity-check` | — | off | Skip TLS peer identity verification (for gateway-mediated topologies) |
 
 The cluster client also reads `EPICS_PVACMS_CLUSTER_NAME_SERVERS` from the
 environment to add TCP name servers for PV discovery through gateways (where
