@@ -163,6 +163,12 @@ TESTPROD_HOST += testtlsstaplingharness
 testtlsstaplingharness_SRCS += testtlsstaplingharness.cpp
 testtlsstaplingharness_LIBS += pvxsCmsTestHarness pvxsIoc
 testtlsstaplingharness_SYS_LIBS += sqlite3
+
+TESTS += testtlswithcmsmigrated
+TESTPROD_HOST += testtlswithcmsmigrated
+testtlswithcmsmigrated_SRCS += testtlswithcmsmigrated.cpp
+testtlswithcmsmigrated_LIBS += pvxsCmsTestHarness pvxsIoc
+testtlswithcmsmigrated_SYS_LIBS += sqlite3
 endif # PVXS_CMS_BUILD_TEST_HARNESS
 
 endif # PVXS_ENABLE_PVACMS
