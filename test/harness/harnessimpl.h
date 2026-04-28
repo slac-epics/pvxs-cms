@@ -1,7 +1,7 @@
 #ifndef PVXS_CMS_TEST_HARNESS_IMPL_H
 #define PVXS_CMS_TEST_HARNESS_IMPL_H
 
-#include "cms/testharness.h"
+#include "testharness.h"
 #include "statuseventcapture.h"
 
 #include <atomic>

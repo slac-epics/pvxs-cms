@@ -13,7 +13,7 @@
 #include <testMain.h>
 
 #include <pvxs/client.h>
-#include <cms/testharness.h>
+#include "testharness.h"
 #include <pvxs/log.h>
 #include <pvxs/unittest.h>
 

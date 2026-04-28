@@ -10,6 +10,7 @@ AUTHN_DIR      = $(TOP)/src/authn
 PVACMS_DIR     = $(TOP)/src/pvacms
 AUTHN_STD_DIR  = $(AUTHN_DIR)/std
 CLI11_BUNDLE   = $(TOP)/bundle/CLI11
+HARNESS_DIR    = $(TOP)/test/harness
 
 PROD_LIBS = pvxs Com
 
@@ -25,6 +26,7 @@ USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
 
 USR_CPPFLAGS += -I$(TOP)/certs -I$(TOP)/bundle/CLI11/include
 USR_CPPFLAGS += -DPVXS_ENABLE_EXPERT_API
+USR_CPPFLAGS += -DPVXS_ENABLE_PVACMS
 
 SRC_DIRS += $(COMMON_DIR)
 SRC_DIRS += $(AUTHN_DIR)
@@ -129,46 +131,61 @@ TESTPROD_HOST += testsanccr
 testsanccr_SRCS += testsanccr.cpp
 testsanccr_SYS_LIBS += sqlite3
 
-# CMS test-harness unit tests. The gate mirrors the subordinate-gate logic
-# in src/Makefile: only build when PVXS_ENABLE_PVACMS=YES (verified above by
-# the enclosing ifeq) and PVXS_CMS_BUILD_TEST_HARNESS resolves to YES.
+# CMS test harness sources — embedded directly into each harness-using
+# test executable, no separate library produced. Mirrors how testcluster
+# already lists clustertypes/clustersync/clusterctrl/clusterdiscovery/
+# certfactory/p12filefactory/certfilefactory/openssl directly in its
+# target SRCS — the harness uses the same approach with a larger source
+# set hoisted into $(HARNESS_SRCS) for reuse across the six harness tests.
+#
+# test/harness/Makefile is included for its variable definitions ONLY —
+# it declares no build target. testharness.h is local-only (-I via the
+# HARNESS_DIR path it adds), never installed.
 PVXS_CMS_BUILD_TEST_HARNESS ?= YES
 ifeq ($(PVXS_CMS_BUILD_TEST_HARNESS),YES)
+include $(HARNESS_DIR)/Makefile
+
 TESTS += testpkifixture
 TESTPROD_HOST += testpkifixture
 testpkifixture_SRCS += testpkifixture.cpp
-testpkifixture_LIBS += pvxsCmsTestHarness
-testpkifixture_SYS_LIBS += sqlite3
+testpkifixture_SRCS += $(HARNESS_SRCS)
+testpkifixture_LIBS += pvxsIoc
+testpkifixture_SYS_LIBS += $(HARNESS_SYS_LIBS)
 
 TESTS += testharness
 TESTPROD_HOST += testharness
 testharness_SRCS += testharness.cpp
-testharness_LIBS += pvxsCmsTestHarness pvxsIoc
-testharness_SYS_LIBS += sqlite3
+testharness_SRCS += $(HARNESS_SRCS)
+testharness_LIBS += pvxsIoc
+testharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
 
 TESTS += testtlswithcmsharness
 TESTPROD_HOST += testtlswithcmsharness
 testtlswithcmsharness_SRCS += testtlswithcmsharness.cpp
-testtlswithcmsharness_LIBS += pvxsCmsTestHarness pvxsIoc
-testtlswithcmsharness_SYS_LIBS += sqlite3
+testtlswithcmsharness_SRCS += $(HARNESS_SRCS)
+testtlswithcmsharness_LIBS += pvxsIoc
+testtlswithcmsharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
 
 TESTS += testclusterharness
 TESTPROD_HOST += testclusterharness
 testclusterharness_SRCS += testclusterharness.cpp
-testclusterharness_LIBS += pvxsCmsTestHarness pvxsIoc
-testclusterharness_SYS_LIBS += sqlite3
+testclusterharness_SRCS += $(HARNESS_SRCS)
+testclusterharness_LIBS += pvxsIoc
+testclusterharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
 
 TESTS += testtlsstaplingharness
 TESTPROD_HOST += testtlsstaplingharness
 testtlsstaplingharness_SRCS += testtlsstaplingharness.cpp
-testtlsstaplingharness_LIBS += pvxsCmsTestHarness pvxsIoc
-testtlsstaplingharness_SYS_LIBS += sqlite3
+testtlsstaplingharness_SRCS += $(HARNESS_SRCS)
+testtlsstaplingharness_LIBS += pvxsIoc
+testtlsstaplingharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
 
 TESTS += testtlswithcmsmigrated
 TESTPROD_HOST += testtlswithcmsmigrated
 testtlswithcmsmigrated_SRCS += testtlswithcmsmigrated.cpp
-testtlswithcmsmigrated_LIBS += pvxsCmsTestHarness pvxsIoc
-testtlswithcmsmigrated_SYS_LIBS += sqlite3
+testtlswithcmsmigrated_SRCS += $(HARNESS_SRCS)
+testtlswithcmsmigrated_LIBS += pvxsIoc
+testtlswithcmsmigrated_SYS_LIBS += $(HARNESS_SYS_LIBS)
 endif # PVXS_CMS_BUILD_TEST_HARNESS
 
 endif # PVXS_ENABLE_PVACMS
