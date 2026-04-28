@@ -136,6 +136,11 @@ PVXS_CMS_BUILD_TEST_HARNESS ?= YES
 ifeq ($(PVXS_CMS_BUILD_TEST_HARNESS),YES)
 include $(HARNESS_DIR)/Makefile
 
+TESTS += testclustertopology
+TESTPROD_HOST += testclustertopology
+testclustertopology_SRCS += testclustertopology.cpp
+testclustertopology_SRCS += clustertopology.cpp
+
 TESTS += testpkifixture
 TESTPROD_HOST += testpkifixture
 testpkifixture_SRCS += testpkifixture.cpp
