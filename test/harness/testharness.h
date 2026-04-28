@@ -370,13 +370,23 @@ class PVXS_CMS_TEST_API PVACMSCluster {
     /// PVA TCP listener; admin Entity Cert from the shared PKI fixture.
     client::Config cmsAdminClientConfig() const;
 
+    /// Filesystem path to member i's P12 keychain.  Stable across
+    /// restartMember(i): the harness reuses the same Entity Cert on
+    /// restart rather than minting a fresh one.
+    const std::string &memberP12Path(size_t i) const;
+
     /// Block until every member's cluster controller reports a membership
     /// count matching the topology's expected reachable-set size, or
     /// throw std::runtime_error after `2 * clusterDiscoveryTimeoutSecs`.
     void awaitConvergence();
 
-   private:
+    /// Construct an empty (un-built) cluster handle.  The only valid
+    /// operations on an empty handle are destruction and move-assignment
+    /// from a built cluster; passing it to bridge()/unbridge() throws
+    /// std::logic_error.
     PVACMSCluster();
+
+   private:
     std::unique_ptr<Impl> impl_;
     friend class Builder;
     friend PVXS_CMS_TEST_API void bridge(PVACMSCluster &, size_t,
