@@ -116,6 +116,9 @@ void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
         sub_ptr->onStart([this, sub_id](bool start) {
             if (!start)
                 return;
+            // sendToSubscriber reads certs_db, which requires status_update_lock_.
+            // Acquire it BEFORE lock_ to match the order taken by doPublish.
+            Guard SG(publisher_.status_update_lock_);
             Guard G(lock_);
             auto it = subscribers_.find(sub_id);
             if (it == subscribers_.end())
@@ -424,6 +427,11 @@ void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, 
         return;
 
     Guard G(status_update_lock_);
+
+    // Recheck after acquiring lock: setEnabled(false) may have been called
+    // while we were blocked, in which case we must NOT publish a snapshot.
+    if (!enabled_)
+        return;
 
     if (!sync_source_->prototype_) {
         sync_source_->prototype_ = makeClusterSyncValue();

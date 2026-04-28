@@ -10,8 +10,10 @@
 #include <atomic>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <epicsMutex.h>
@@ -126,6 +128,15 @@ private:
     ClusterController &controller_;
     client::Context client_ctx_;
 
+    // Serializes all mutating access to the peer-tracking maps below.
+    // Never held across blocking RPC; long async paths check shutting_down_.
+    // Order: status_update_lock_ -> state_lock_ -> dead_subscriptions_lock_.
+    mutable epicsMutex state_lock_;
+
+    // Set true at the start of ~ClusterDiscovery.  Async paths bail without
+    // touching state once it is observed true.
+    std::atomic<bool> shutting_down_{false};
+
     std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
 
     // Deferred-destruction list for Subscriptions whose handleDisconnect
@@ -142,7 +153,12 @@ private:
     std::atomic<bool> rejoin_in_progress_{false};
     std::set<std::string> acknowledged_by_;
     void doRejoin();
-    friend void rejoinThreadEntry(void *arg);
+    // Tracked rejoin thread.  Joined in ~ClusterDiscovery so a slow
+    // joinCluster() RPC inside a rejoin cannot leak past destruction
+    // and dereference a destroyed `this`.
+    std::thread rejoin_thread_;
+    std::vector<std::thread> old_rejoin_threads_;
+    std::mutex rejoin_thread_mutex_;
 
     std::map<std::string, std::shared_ptr<PeerConnectivity>> peer_connectivity_;
     void onConnectivityTimeout(const std::string &node_id);
