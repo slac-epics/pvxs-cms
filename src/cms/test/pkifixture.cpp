@@ -4,7 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include "pvxs/cms/testHarness.h"
+#include "pvxs/cms/testharness.h"
 
 #include <atomic>
 #include <cerrno>

@@ -926,7 +926,7 @@ void ServerHandle::Pvt::runUntilShutdown()
         // process-global SIGINT handler that throws "Only one SigInt may exist
         // in a process" on the second instantiation).  The standalone pvacms
         // binary preserves SIGINT-driven shutdown by installing its own SIGINT
-        // handler in pvacmsMain.cpp that calls stopServer() on the handle.
+        // handler in pvacmsmain.cpp that calls stopServer() on the handle.
         pva_server.start();
         {
             std::unique_lock<std::mutex> lk(run_mutex);

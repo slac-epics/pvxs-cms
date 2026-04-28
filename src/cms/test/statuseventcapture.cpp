@@ -4,7 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include "statusEventCapture.h"
+#include "statuseventcapture.h"
 
 #include <atomic>
 #include <chrono>

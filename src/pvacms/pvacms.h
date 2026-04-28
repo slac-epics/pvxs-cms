@@ -30,7 +30,7 @@
 #include "configcms.h"
 #include "openssl.h"
 #include "ownedptr.h"
-#include "pvacmsRuntime.h"
+#include "pvacmsruntime.h"
 #include "wildcardpv.h"
 
 namespace cms {

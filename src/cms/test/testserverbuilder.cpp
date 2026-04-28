@@ -4,7 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include "harnessImpl.h"
+#include "harnessimpl.h"
 
 #include <atomic>
 #include <stdexcept>

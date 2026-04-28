@@ -86,7 +86,7 @@
 #include "pvacmsVersion.h"
 #include "openssl.h"
 #include "ownedptr.h"
-#include "pvacmsRuntime.h"
+#include "pvacmsruntime.h"
 #include "security.h"
 #include "serverev.h"
 #include "sqlite3.h"
@@ -151,7 +151,7 @@ using cms::cert::KeyPair;
     using cms::cluster::ClusterSyncPublisher;
     using cms::cluster::TokenBucket;
 
-// fwd decl (declared with external linkage in pvacms.h so serverHandle.cpp can call it)
+// fwd decl (declared with external linkage in pvacms.h so serverhandle.cpp can call it)
 void insertLoadedCertIfMissing(const ConfigCms &config,
                                sql_ptr &certs_db,
                                const ossl_ptr<X509> &cert,
@@ -2854,7 +2854,7 @@ void createAdminClientCert(const ConfigCms &config,
 }
 
 // Helper: ensure a loaded certificate is present in the DB, validating status extension and issuer
-// External linkage required: serverHandle.cpp's prepareCmsState calls this via the pvacms.h declaration.
+// External linkage required: serverhandle.cpp's prepareCmsState calls this via the pvacms.h declaration.
 void insertLoadedCertIfMissing(const ConfigCms &config,
                                sql_ptr &certs_db,
                                const ossl_ptr<X509> &cert,
