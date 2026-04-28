@@ -994,11 +994,8 @@ std::tuple<certstatus_t, time_t> getCertificateStatus(const sql_ptr &certs_db, s
         status_date = sqlite3_column_int64(sql_statement, 1);
     }
 
-    // Pair every successful prepare_v2 with finalize: in WAL mode an unfinalized
-    // SELECT holds an open read transaction, blocking checkpoints and serialising
-    // writers behind busy_timeout. Critical in cluster-mode (5 call sites including
-    // hot status-monitor and cluster-bring-up paths). Same anti-pattern as the
-    // getCertificateValidity bug fixed in 66a0982.
+    // Finalize after a successful prepare_v2: an unfinalized SELECT holds a
+    // WAL read transaction.
     sqlite3_finalize(sql_statement);
 
     return std::make_tuple(static_cast<certstatus_t>(cert_status), status_date);
@@ -1058,9 +1055,8 @@ DbCert getCertificateValidity(const sql_ptr &certs_db, serial_number_t serial) {
         certificate.renew_by = sqlite3_column_int64(sql_statement, 2);
     }
 
-    // Pair every successful prepare_v2 with finalize: in WAL mode an unfinalized
-    // SELECT holds an open read transaction, blocking checkpoints and serialising
-    // writers behind busy_timeout. Critical in cluster-mode (10 call sites).
+    // Finalize after a successful prepare_v2: an unfinalized SELECT holds a
+    // WAL read transaction.
     sqlite3_finalize(sql_statement);
 
     return {certificate};

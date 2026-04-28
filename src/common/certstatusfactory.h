@@ -93,18 +93,21 @@ class CertStatusFactory {
      * revocation date if applicable.
      * The PVA status is also included for completeness
      *
+     * Renew_by and renewal_due are REQUIRED to prevent silent zero-fill regressions
+     * where the status PV publishes a Unix-epoch-zero renew_by because a caller
+     * forgot to thread the database value through. See fix/renew-by-on-status-publish.
+     * Pass CertDate{} explicitly only when the cert genuinely has no renewal
+     * (e.g. a REVOKED cert).
+     *
      * @param cert Certificate to create OCSP response for
      * @param status the PVA certificate status to create an OCSP response with
      * @param status_date the status date to set in the OCSP response
      * @param predicated_revocation_time the revocation date to set in the OCSP response if applicable
+     * @param renew_by the renew by date
+     * @param renewal_due is the renewal due?
      *
      * @return the Certificate Status containing the signed OCSP response and other OCSP response data.
      */
-    /// Renew_by and renewal_due are REQUIRED to prevent silent zero-fill regressions
-    /// where the status PV publishes a Unix-epoch-zero renew_by because a caller
-    /// forgot to thread the database value through. See fix/renew-by-on-status-publish.
-    /// Pass CertDate{} explicitly only when the cert genuinely has no renewal
-    /// (e.g. a REVOKED cert).
     PVACertificateStatus createPVACertificateStatus(const ossl_ptr<X509>& cert, certstatus_t status,
                                                     const CertDate& status_date,
                                                     const CertDate& predicated_revocation_time,
@@ -125,6 +128,8 @@ class CertStatusFactory {
      * @param status the PVA certificate status to create an OCSP response with
      * @param status_date the status date to set in the OCSP response
      * @param predicated_revocation_time the revocation date to set in the OCSP response if applicable
+     * @param renew_by the renew by date
+     * @param renewal_due is the renewal due?
      *
      * @return the Certificate Status containing the signed OCSP response and other OCSP response data.
      */

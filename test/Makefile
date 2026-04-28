@@ -131,16 +131,7 @@ TESTPROD_HOST += testsanccr
 testsanccr_SRCS += testsanccr.cpp
 testsanccr_SYS_LIBS += sqlite3
 
-# CMS test harness sources — embedded directly into each harness-using
-# test executable, no separate library produced. Mirrors how testcluster
-# already lists clustertypes/clustersync/clusterctrl/clusterdiscovery/
-# certfactory/p12filefactory/certfilefactory/openssl directly in its
-# target SRCS — the harness uses the same approach with a larger source
-# set hoisted into $(HARNESS_SRCS) for reuse across the six harness tests.
-#
-# test/harness/Makefile is included for its variable definitions ONLY —
-# it declares no build target. testharness.h is local-only (-I via the
-# HARNESS_DIR path it adds), never installed.
+# CMS test harness sources. See test/harness/Makefile.
 PVXS_CMS_BUILD_TEST_HARNESS ?= YES
 ifeq ($(PVXS_CMS_BUILD_TEST_HARNESS),YES)
 include $(HARNESS_DIR)/Makefile

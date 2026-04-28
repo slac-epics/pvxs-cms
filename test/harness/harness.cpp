@@ -350,7 +350,7 @@ pvxs::client::Config PVACMSHarness::cmsAdminClientConfig() const {
 pvxs::client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts) const {
     SubjectSpec subj;
     subj.common_name = opts.subject.empty() ? makeUniqueSubject("test-client") : opts.subject;
-    auto client_p12 = const_cast<PkiFixture &>(impl_->fixture()).issueClientEE(subj);
+    auto client_p12 = const_cast<PkiFixture &>(impl_->fixture()).issueClientCert(subj);
 
     if (impl_->handle) {
         impl_->handle->registerCertFromP12(client_p12);

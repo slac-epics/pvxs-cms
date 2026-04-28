@@ -869,21 +869,11 @@ could join a cluster that cannot subscribe to its data.  The test subscription
 join time.  In gateway-chained topologies (e.g. lab-gw ↔ ml-gw), increase this
 timeout to accommodate the extra latency of multi-hop PV resolution.
 
-**Gateway-mediated clusters and authentication**: When nodes communicate
-through PVA gateways, TLS is terminated at each gateway hop.  The receiving
-node therefore sees the gateway's credentials on incoming connections, not
-the originating peer's x509 certificate.  This is a non-issue for the
-cluster's trust model because **authentication is by CA-signed payload
-verification, not by inspecting the connecting client's TLS certificate**:
-every join request and every sync snapshot carries a signature produced
-with the cluster CA's private key, verified on the receiving side against
-the same CA's public key (`clusterVerify` in `clusterdiscovery.cpp` and
-`clusterctrl.cpp`).  Possession of the CA-chained private key — i.e. being
-a legitimate cluster member — is the trust boundary; the transport-level
-identity of whoever last touched the connection is irrelevant.  No
-per-node flag is required for gateway-mediated topologies.  The cluster
-client reads `EPICS_PVACMS_CLUSTER_NAME_SERVERS` to add TCP name servers
-for PV discovery through gateways where UDP broadcast is not available.
+**Gateway-mediated clusters**: gateway-chained topologies behave identically
+to direct topologies; only timeouts may need to be longer to accommodate the
+extra latency of multi-hop PV resolution.  The cluster client reads
+`EPICS_PVACMS_CLUSTER_NAME_SERVERS` to add TCP name servers for PV discovery
+through gateways where UDP broadcast is not available.
 
 In a partial-mesh cluster, any node may answer the join RPC — including one
 that cannot reach the joiner.  To handle this, a node that fails the bidi check
