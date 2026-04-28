@@ -3,8 +3,8 @@
  * pvxs is distributed subject to a Software License Agreement found
  * in file LICENSE that is included with this distribution.
  */
-#ifndef PVXS_CMS_PVACMS_H
-#define PVXS_CMS_PVACMS_H
+#ifndef PVXS_CMS_CMS_H
+#define PVXS_CMS_CMS_H
 
 #include <memory>
 #include <string>
@@ -69,6 +69,9 @@ public:
      * Idempotent: re-registering an already-known cert is a no-op.
      * Thread-safe: serialised on the same lock production status updates use.
      *
+     * @param p12_path Filesystem path to a PKCS#12 file containing the
+     *                 Entity Certificate to register, plus its issuing chain.
+     *
      * @since UNRELEASED
      */
     void registerCertFromP12(const std::string &p12_path);
@@ -132,4 +135,4 @@ void stopServer(ServerHandle& handle);
 
 } // namespace cms
 
-#endif // PVXS_CMS_PVACMS_H
+#endif // PVXS_CMS_CMS_H

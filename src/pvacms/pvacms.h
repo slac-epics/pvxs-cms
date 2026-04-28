@@ -496,9 +496,6 @@ class StatusMonitor {
     time_t getStartTime() const { return start_time_; }
 };
 
-}  // namespace cms (close to define PreparedCmsState at its real namespace site)
-
-namespace cms {
 namespace detail {
 struct PreparedCmsState {
     pvxs::sql_ptr certs_db;
@@ -519,9 +516,6 @@ struct PreparedCmsState {
         wrap_wildcard_source;
 };
 }  // namespace detail
-}  // namespace cms
-
-namespace cms {
 
 detail::PreparedCmsState prepareCmsState(const ConfigCms &config);
 
@@ -552,7 +546,7 @@ uint64_t generateSerial();
 
 std::tuple<certstatus_t, time_t> getCertificateStatus(const sql_ptr &certs_db, uint64_t serial);
 void getWorstCertificateStatus(const sql_ptr &certs_db, uint64_t serial, certstatus_t &worst_status_so_far, time_t &worst_status_time_so_far);
-DbCert getCertificateValidity(const sql_ptr &certs_db, uint64_t serial);
+DbCert getDbCert(const sql_ptr &certs_db, uint64_t serial);
 std::string getCertificateSkid(const sql_ptr &certs_db, uint64_t serial);
 bool isNodeCertRevoked(const sql_ptr &certs_db, const std::string &node_id);
 

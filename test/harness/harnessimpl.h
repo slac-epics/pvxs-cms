@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-#include <cms/pvacms.h>
+#include <cms/cms.h>
 #include <pvxs/server.h>
 
 namespace cms {
