@@ -1037,6 +1037,14 @@ size_t ServerHandle::clusterMemberCount() const
     return pvt_->cluster_ctrl.getMembers().size();
 }
 
+const std::string &ServerHandle::issuerId() const
+{
+    if (!pvt_) {
+        throw std::logic_error("NULL ServerHandle");
+    }
+    return pvt_->our_issuer_id;
+}
+
 namespace detail {
 
 ServerHandle prepareServerFromState(const ConfigCms &config,
