@@ -76,6 +76,14 @@ public:
      */
     void registerCertFromP12(const std::string &p12_path);
 
+    /** Current count of cluster members visible to this PVACMS, including
+     * self.  Returns 1 for a sole node, 0 when cluster_mode is false.
+     * Thread-safe.
+     *
+     * @since UNRELEASED
+     */
+    size_t clusterMemberCount() const;
+
 private:
     friend ServerHandle prepareServer(const ConfigCms &config);
     friend void startCluster(ServerHandle& handle);

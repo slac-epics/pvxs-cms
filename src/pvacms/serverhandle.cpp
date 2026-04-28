@@ -1028,6 +1028,15 @@ void ServerHandle::registerCertFromP12(const std::string &p12_path)
                                      false);
 }
 
+size_t ServerHandle::clusterMemberCount() const
+{
+    if (!pvt_) {
+        throw std::logic_error("NULL ServerHandle");
+    }
+    if (!pvt_->config_copy.cluster_mode) return 0u;
+    return pvt_->cluster_ctrl.getMembers().size();
+}
+
 namespace detail {
 
 ServerHandle prepareServerFromState(const ConfigCms &config,

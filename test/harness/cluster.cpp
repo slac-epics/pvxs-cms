@@ -95,8 +95,12 @@ void writeClusterAcf(const std::string &path, size_t n_members) {
                                          const std::string &member_p12_path,
                                          bool ipv6,
                                          uint32_t discovery_secs,
-                                         uint32_t bidi_secs) {
+                                         uint32_t bidi_secs,
+                                         const std::string &cluster_pv_prefix) {
     ::cms::ConfigCms cfg{};
+    if (!cluster_pv_prefix.empty()) {
+        cfg.cluster_pv_prefix = cluster_pv_prefix;
+    }
 
     cfg.udp_port = 0u;
     cfg.tcp_port = 0u;
@@ -141,6 +145,7 @@ struct PVACMSCluster::Impl {
     PkiFixture *pki{nullptr};
     std::unique_ptr<PkiFixture> owned_pki;
 
+    std::string cluster_name;
     bool ipv6{false};
     uint32_t discovery_secs{5};
     uint32_t bidi_secs{5};
@@ -180,6 +185,7 @@ struct PVACMSCluster::Builder::Pvt {
     ClusterTopology topology{ClusterTopology::empty(0)};
     bool ipv6{false};
     PkiFixture *external_pki{nullptr};
+    std::string cluster_name;
     uint32_t discovery_secs{5};
     uint32_t bidi_secs{5};
 };
@@ -205,6 +211,10 @@ PVACMSCluster::Builder &PVACMSCluster::Builder::ipv6(bool yes) & {
 }
 PVACMSCluster::Builder &PVACMSCluster::Builder::pki(PkiFixture &fixture) & {
     pvt_->external_pki = &fixture;
+    return *this;
+}
+PVACMSCluster::Builder &PVACMSCluster::Builder::clusterName(std::string name) & {
+    pvt_->cluster_name = std::move(name);
     return *this;
 }
 PVACMSCluster::Builder &PVACMSCluster::Builder::clusterDiscoveryTimeoutSecs(uint32_t s) & {
@@ -316,6 +326,7 @@ PVACMSCluster PVACMSCluster::Builder::build() {
     cluster.impl_.reset(new Impl(pvt_->n));
     auto &impl = *cluster.impl_;
 
+    impl.cluster_name = pvt_->cluster_name;
     impl.ipv6 = pvt_->ipv6;
     impl.discovery_secs = pvt_->discovery_secs;
     impl.bidi_secs = pvt_->bidi_secs;
@@ -342,7 +353,8 @@ PVACMSCluster PVACMSCluster::Builder::build() {
 
         auto cfg = makeClusterMemberConfig(*impl.pki, i, impl.member_p12_paths[i],
                                             impl.ipv6,
-                                            impl.discovery_secs, impl.bidi_secs);
+                                            impl.discovery_secs, impl.bidi_secs,
+                                            impl.cluster_name);
         auto state = ::cms::prepareCmsState(cfg);
 
         if (!cfg.pvacms_acf_filename.empty()) {
@@ -379,7 +391,7 @@ PVACMSCluster PVACMSCluster::Builder::build() {
         }
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    cluster.awaitConvergence();
 
     return cluster;
 }
@@ -403,7 +415,8 @@ void PVACMSCluster::restartMember(size_t i) {
 
     auto cfg = makeClusterMemberConfig(*impl_->pki, i, impl_->member_p12_paths[i],
                                        impl_->ipv6,
-                                       impl_->discovery_secs, impl_->bidi_secs);
+                                       impl_->discovery_secs, impl_->bidi_secs,
+                                       impl_->cluster_name);
     auto peers = computePeers(*impl_, i);
     buildAndStartMember(*impl_, i, cfg, peers);
 }
@@ -436,6 +449,82 @@ pvxs::client::Config PVACMSCluster::cmsAdminClientConfig() const {
     }
     cfg.tls_keychain_file = impl_->fixture().adminP12Path();
     return cfg;
+}
+
+namespace {
+
+// Expected post-convergence membership count for member i: 1 (self) plus
+// every node reachable from i over the directed topology graph.  SPVA cluster
+// discovery propagates membership via SYNC, so a node eventually learns about
+// every node in its forward-reachable set, not only direct nameServers peers.
+size_t expectedMemberCount(const ClusterTopology &topology, size_t i) {
+    const size_t n = topology.size();
+    if (i >= n) return 1u;
+    std::vector<bool> seen(n, false);
+    seen[i] = true;
+    std::vector<size_t> queue;
+    queue.push_back(i);
+    while (!queue.empty()) {
+        size_t cur = queue.back();
+        queue.pop_back();
+        for (size_t j : topology.peersSeenBy(cur)) {
+            if (!seen[j]) {
+                seen[j] = true;
+                queue.push_back(j);
+            }
+        }
+    }
+    size_t count = 0u;
+    for (bool b : seen) if (b) ++count;
+    return count;
+}
+
+}  // namespace
+
+void PVACMSCluster::awaitConvergence() {
+    if (!impl_ || impl_->handles.empty()) return;
+
+    const size_t n = impl_->topology.size();
+    std::vector<size_t> expected(n);
+    for (size_t i = 0; i < n; ++i) {
+        expected[i] = expectedMemberCount(impl_->topology, i);
+    }
+
+    const auto deadline = std::chrono::steady_clock::now()
+                          + std::chrono::seconds(2 * impl_->discovery_secs);
+
+    while (true) {
+        bool all_converged = true;
+        size_t laggard = 0;
+        size_t laggard_actual = 0;
+        size_t laggard_expected = 0;
+        for (size_t i = 0; i < n; ++i) {
+            if (!impl_->handles[i]) continue;
+            size_t actual = 0;
+            try {
+                actual = impl_->handles[i]->clusterMemberCount();
+            } catch (...) {
+                actual = 0;
+            }
+            if (actual < expected[i]) {
+                all_converged = false;
+                laggard = i;
+                laggard_actual = actual;
+                laggard_expected = expected[i];
+                break;
+            }
+        }
+        if (all_converged) return;
+        if (std::chrono::steady_clock::now() >= deadline) {
+            std::ostringstream os;
+            os << "PVACMSCluster::awaitConvergence: member " << laggard
+               << " did not converge within " << (2 * impl_->discovery_secs)
+               << "s (expected " << laggard_expected
+               << " members, observed " << laggard_actual << ")";
+            throw std::runtime_error(os.str());
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
 }
 
 void bridge(PVACMSCluster &a, size_t a_node, PVACMSCluster &b, size_t b_node) {

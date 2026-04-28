@@ -370,6 +370,11 @@ class PVXS_CMS_TEST_API PVACMSCluster {
     /// PVA TCP listener; admin Entity Cert from the shared PKI fixture.
     client::Config cmsAdminClientConfig() const;
 
+    /// Block until every member's cluster controller reports a membership
+    /// count matching the topology's expected reachable-set size, or
+    /// throw std::runtime_error after `2 * clusterDiscoveryTimeoutSecs`.
+    void awaitConvergence();
+
    private:
     PVACMSCluster();
     std::unique_ptr<Impl> impl_;
@@ -393,6 +398,7 @@ class PVXS_CMS_TEST_API PVACMSCluster::Builder {
     Builder &topology(ClusterTopology t) &;
     Builder &ipv6(bool yes) &;
     Builder &pki(PkiFixture &fixture) &;
+    Builder &clusterName(std::string name) &;
     Builder &clusterDiscoveryTimeoutSecs(uint32_t s) &;
     Builder &clusterBidiTimeoutSecs(uint32_t s) &;
 
