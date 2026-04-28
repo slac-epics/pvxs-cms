@@ -47,7 +47,7 @@ struct SubjectSpec {
 };
 
 // ---------------------------------------------------------------------------
-// PkiFixture - already implemented in pkiFixture.cpp (Section 3)
+// PkiFixture - already implemented in pkifixture.cpp (Section 3)
 // ---------------------------------------------------------------------------
 
 class PVXS_CMS_TEST_API PkiFixture {

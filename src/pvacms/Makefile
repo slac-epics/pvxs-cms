@@ -25,9 +25,9 @@ PROD += pvacms
 ### Sources
 
 # Entry points and pvacms-specific config
-pvacms_SRCS += pvacmsMain.cpp
+pvacms_SRCS += pvacmsmain.cpp
 pvacms_SRCS += pvacms.cpp
-pvacms_SRCS += serverHandle.cpp
+pvacms_SRCS += serverhandle.cpp
 pvacms_SRCS += configcms.cpp
 pvacms_SRCS += clustertypes.cpp
 pvacms_SRCS += clustersync.cpp

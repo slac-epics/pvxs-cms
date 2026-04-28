@@ -15,25 +15,25 @@
 SRC_DIRS += $(CMS_TEST_DIR)
 
 # Public headers installed only when the gate is YES
-INC += pvxs/cms/testHarness.h
+INC += pvxs/cms/testharness.h
 
 # Build a host-only static library
 LIBRARY_HOST += pvxsCmsTestHarness
 
-pvxsCmsTestHarness_SRCS += pkiFixture.cpp
-pvxsCmsTestHarness_SRCS += initOnce.cpp
+pvxsCmsTestHarness_SRCS += pkifixture.cpp
+pvxsCmsTestHarness_SRCS += initonce.cpp
 pvxsCmsTestHarness_SRCS += harness.cpp
-pvxsCmsTestHarness_SRCS += testServerBuilder.cpp
-pvxsCmsTestHarness_SRCS += observingSource.cpp
-pvxsCmsTestHarness_SRCS += clusterTopology.cpp
+pvxsCmsTestHarness_SRCS += testserverbuilder.cpp
+pvxsCmsTestHarness_SRCS += observingsource.cpp
+pvxsCmsTestHarness_SRCS += clustertopology.cpp
 pvxsCmsTestHarness_SRCS += cluster.cpp
-pvxsCmsTestHarness_SRCS += statusEventCapture.cpp
+pvxsCmsTestHarness_SRCS += statuseventcapture.cpp
 
-# Shared CMS sources the harness needs (mirror pvacms_SRCS minus pvacmsMain.cpp).
+# Shared CMS sources the harness needs (mirror pvacms_SRCS minus pvacmsmain.cpp).
 # Sources without explicit path are looked up via SRC_DIRS (set in TOP/src/Makefile),
 # which already includes COMMON_DIR, AUTHN_DIR, PVACMS_DIR, and CMS_TEST_DIR.
 pvxsCmsTestHarness_SRCS += pvacms.cpp
-pvxsCmsTestHarness_SRCS += serverHandle.cpp
+pvxsCmsTestHarness_SRCS += serverhandle.cpp
 pvxsCmsTestHarness_SRCS += configcms.cpp
 pvxsCmsTestHarness_SRCS += clustertypes.cpp
 pvxsCmsTestHarness_SRCS += clustersync.cpp
