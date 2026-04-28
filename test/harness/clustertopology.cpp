@@ -4,7 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include "testharness.h"
+#include "clustertopology.h"
 
 #include <stdexcept>
 
