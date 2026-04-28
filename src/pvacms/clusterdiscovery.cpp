@@ -13,8 +13,10 @@
 
 #include <epicsMutex.h>
 #include <epicsGuard.h>
+
 #include <epicsThread.h>
 #include <epicsTime.h>
+#include <iostream>
 
 #include <pvxs/log.h>
 
@@ -141,6 +143,17 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
     };
 }
 
+ClusterDiscovery::~ClusterDiscovery() {
+    subscriptions_.clear();
+    acknowledged_by_.clear();
+    for (auto &kv : peer_connectivity_) kv.second->cancelled.store(true);
+    peer_connectivity_.clear();
+    active_forwarding_.clear();
+    peer_sync_members_.clear();
+    peer_last_sequence_.clear();
+    drainDeadSubscriptions();
+}
+
 SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                                   epicsMutex &status_update_lock,
                                   const Value &snapshot,
@@ -263,12 +276,11 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                 }
             }
             sqlite3_step(ins_stmt);
-            insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
-                                  static_cast<uint64_t>(serial), SB() << "status=" << remote_status);
+            insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id, serial, SB() << "status=" << remote_status);
             sqlite3_finalize(ins_stmt);
             result.had_changes = true;
 
-            if (remote_status == cms::cert::REVOKED) {
+            if (remote_status == REVOKED) {
                 result.revoked_skids.push_back(row["skid"].as<std::string>());
             }
         }
@@ -437,6 +449,7 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
  * @param sync_pv PVAccess name of the peer's sync PV.
  */
 void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::string &sync_pv) {
+    drainDeadSubscriptions();
     if (node_id == node_id_) return;
     if (subscriptions_.count(node_id)) return;
 
@@ -492,9 +505,24 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
  * @brief Removes all state for a peer node after its sync subscription disconnects.
  * @param peer_node_id Unique identifier of the node that disconnected.
  */
+void ClusterDiscovery::drainDeadSubscriptions() {
+    std::vector<std::shared_ptr<client::Subscription>> to_destroy;
+    {
+        Guard G(dead_subscriptions_lock_);
+        to_destroy.swap(dead_subscriptions_);
+    }
+}
+
 void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
     peer_last_sequence_.erase(peer_node_id);
-    subscriptions_.erase(peer_node_id);
+    {
+        auto it = subscriptions_.find(peer_node_id);
+        if (it != subscriptions_.end()) {
+            Guard G(dead_subscriptions_lock_);
+            dead_subscriptions_.push_back(std::move(it->second));
+            subscriptions_.erase(it);
+        }
+    }
 
     auto conn_it = peer_connectivity_.find(peer_node_id);
     if (conn_it != peer_connectivity_.end()) {
@@ -609,6 +637,7 @@ void ClusterDiscovery::doRejoin() {
  * @return true if the join handshake succeeded and the cluster was joined; false otherwise.
  */
 ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
+    drainDeadSubscriptions();
     static constexpr int kMaxBidiRetries = 3;
     auto ctrl_pv_name = pv_prefix_ + ":CTRL:" + issuer_id_ + ":" + node_id_;
     auto sync_pv_name = sync_publisher_.getSyncPvName();

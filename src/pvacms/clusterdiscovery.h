@@ -68,6 +68,8 @@ public:
                      ClusterController &controller,
                      const client::Context& client_ctx);
 
+    ~ClusterDiscovery();
+
     enum class JoinResult { Joined, NotFound, Revoked };
 
     /**
@@ -125,6 +127,17 @@ private:
     client::Context client_ctx_;
 
     std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
+
+    // Deferred-destruction list for Subscriptions whose handleDisconnect
+    // fires from inside the tcp_loop event callback for that same Subscription.
+    // Synchronously destroying ~Subscription on the tcp_loop self-deadlocks
+    // (cancel() dispatches to tcp_loop and waits). We move the shared_ptr here
+    // instead, leaving subscriptions_[node_id] free for immediate reconnection,
+    // and drain this list from non-tcp_loop contexts (subscribeToMember entry,
+    // joinCluster entry, ~ClusterDiscovery).
+    std::vector<std::shared_ptr<client::Subscription>> dead_subscriptions_;
+    epicsMutex dead_subscriptions_lock_;
+    void drainDeadSubscriptions();
 
     std::atomic<bool> rejoin_in_progress_{false};
     std::set<std::string> acknowledged_by_;
