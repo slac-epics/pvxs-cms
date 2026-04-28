@@ -261,6 +261,12 @@ const std::vector<std::string> &PVACMSCluster::memberAddrs() const noexcept {
 }
 const PkiFixture &PVACMSCluster::pkiFixture() const noexcept { return impl_->fixture(); }
 PkiFixture &PVACMSCluster::pkiFixture() noexcept { return impl_->fixture(); }
+const std::string &PVACMSCluster::memberP12Path(size_t i) const {
+    if (!impl_ || i >= impl_->member_p12_paths.size()) {
+        throw std::out_of_range("PVACMSCluster::memberP12Path: index out of range");
+    }
+    return impl_->member_p12_paths[i];
+}
 
 namespace {
 
@@ -397,28 +403,56 @@ PVACMSCluster PVACMSCluster::Builder::build() {
 }
 
 void PVACMSCluster::restartMember(size_t i) {
-    std::lock_guard<std::mutex> lk(impl_->coord_mutex);
-    if (i >= impl_->topology.size()) {
-        throw std::out_of_range("PVACMSCluster::restartMember: index out of range");
-    }
-
-    if (impl_->handles[i] && impl_->running[i]->load()) {
-        try {
-            cms::stopServer(*impl_->handles[i]);
-        } catch (const std::exception &e) {
-            log_warn_printf(cluster_log, "stopServer(%zu) during restart: %s\n",
-                            i, e.what());
+    {
+        std::lock_guard<std::mutex> lk(impl_->coord_mutex);
+        if (i >= impl_->topology.size()) {
+            throw std::out_of_range("PVACMSCluster::restartMember: index out of range");
         }
-    }
-    if (impl_->workers[i].joinable()) impl_->workers[i].join();
-    impl_->handles[i].reset();
 
-    auto cfg = makeClusterMemberConfig(*impl_->pki, i, impl_->member_p12_paths[i],
-                                       impl_->ipv6,
-                                       impl_->discovery_secs, impl_->bidi_secs,
-                                       impl_->cluster_name);
-    auto peers = computePeers(*impl_, i);
-    buildAndStartMember(*impl_, i, cfg, peers);
+        // Capture the old listener port BEFORE stopping so the rebuilt
+        // server can bind to the same port - keeps peer nameServers
+        // entries valid (the spec's "uniform single-pair restart, no
+        // cascade" property only holds when peers can keep using their
+        // original addresses).
+        uint16_t reuse_port = 0;
+        {
+            const std::string &addr = impl_->member_addrs[i];
+            auto colon = addr.rfind(':');
+            if (colon != std::string::npos) {
+                try {
+                    reuse_port = static_cast<uint16_t>(std::stoul(addr.substr(colon + 1)));
+                } catch (...) {
+                    reuse_port = 0;
+                }
+            }
+        }
+
+        if (impl_->handles[i] && impl_->running[i]->load()) {
+            try {
+                cms::stopServer(*impl_->handles[i]);
+            } catch (const std::exception &e) {
+                log_warn_printf(cluster_log, "stopServer(%zu) during restart: %s\n",
+                                i, e.what());
+            }
+        }
+        if (impl_->workers[i].joinable()) impl_->workers[i].join();
+        impl_->handles[i].reset();
+
+        auto cfg = makeClusterMemberConfig(*impl_->pki, i, impl_->member_p12_paths[i],
+                                           impl_->ipv6,
+                                           impl_->discovery_secs, impl_->bidi_secs,
+                                           impl_->cluster_name);
+        if (reuse_port != 0) {
+            cfg.tcp_port = reuse_port;
+        }
+        auto peers = computePeers(*impl_, i);
+        buildAndStartMember(*impl_, i, cfg, peers);
+    }
+    // Post-restart re-convergence is not awaited: after a member restarts
+    // (even on the same port), peer cluster_clients carry stale
+    // pvxs::client::Channel state that defers reconnection long enough
+    // that bidi-checks during the rejoin RPC time out on macOS loopback.
+    // Restart-related tests must assert API-level properties only.
 }
 
 void PVACMSCluster::setUnreachable(size_t i, size_t j) {

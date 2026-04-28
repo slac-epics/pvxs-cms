@@ -685,6 +685,13 @@ void ClusterDiscovery::doRejoin() {
         return;
     }
 
+    // Detach subscriptions under the lock, destroy them OUTSIDE.  Same
+    // deadlock-avoidance pattern as ~ClusterDiscovery: ~Subscription cancel()
+    // dispatches to the tcp_loop and waits, but the tcp_loop is concurrently
+    // running our event callback which (on Disconnect) tries to acquire
+    // state_lock_ via handleDisconnect.  Holding state_lock_ across the
+    // clear() deadlocks against that.
+    std::map<std::string, std::shared_ptr<client::Subscription>> subs_to_destroy;
     {
         Guard G(state_lock_);
         if (shutting_down_.load()) {
@@ -693,7 +700,7 @@ void ClusterDiscovery::doRejoin() {
         }
         acknowledged_by_.clear();
         peer_last_sequence_.clear();
-        subscriptions_.clear();
+        subs_to_destroy.swap(subscriptions_);
 
         for (auto &kv : peer_connectivity_)
             kv.second->cancelled.store(true);
@@ -701,6 +708,7 @@ void ClusterDiscovery::doRejoin() {
         active_forwarding_.clear();
         peer_sync_members_.clear();
     }
+    subs_to_destroy.clear();
 
     if (shutting_down_.load()) {
         rejoin_in_progress_.store(false);
