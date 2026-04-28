@@ -353,7 +353,7 @@ void ClusterSyncPublisher::sendToSubscriber(SubscriberState &sub) {
     }
 }
 
-void ClusterSyncPublisher::publishCertChange(int64_t serial) {
+void ClusterSyncPublisher::publishCertChange(uint64_t serial) {
     if (!enabled_ || sync_ingestion_in_progress.load())
         return;
 
@@ -365,16 +365,17 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
 
     sqlite3_stmt *stmt;
     if (sqlite3_prepare_v2(certs_db_, SQL_SYNC_SELECT_CERT_BY_SERIAL, -1, &stmt, nullptr) != SQLITE_OK) {
-        log_err_printf(pvacmscluster, "Failed to query cert %lld: %s\n",
-                       static_cast<long long>(serial), sqlite3_errmsg(certs_db_));
+        log_err_printf(pvacmscluster, "Failed to query cert %llu: %s\n",
+                       static_cast<unsigned long long>(serial), sqlite3_errmsg(certs_db_));
         return;
     }
-    sqlite3_bind_int64(stmt, 1, serial);
+    const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
+    sqlite3_bind_int64(stmt, 1, db_serial);
 
     if (sqlite3_step(stmt) != SQLITE_ROW) {
         sqlite3_finalize(stmt);
-        log_warn_printf(pvacmscluster, "Cert %lld not found for incremental publish\n",
-                        static_cast<long long>(serial));
+        log_warn_printf(pvacmscluster, "Cert %llu not found for incremental publish\n",
+                        static_cast<unsigned long long>(serial));
         return;
     }
 
@@ -384,7 +385,7 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
     };
 
     CertUpdate update;
-    update.serial      = sqlite3_column_int64(stmt, 0);
+    update.serial      = static_cast<uint64_t>(sqlite3_column_int64(stmt, 0));
     update.skid        = col_text(1);
     update.cn          = col_text(2);
     update.o           = col_text(3);
@@ -402,8 +403,8 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
 
     appendToLog(std::move(update));
 
-    log_debug_printf(pvacmscluster, "Published incremental cert change (serial=%lld, seq=%lld) to %zu subscribers\n",
-                     static_cast<long long>(serial),
+    log_debug_printf(pvacmscluster, "Published incremental cert change (serial=%llu, seq=%lld) to %zu subscribers\n",
+                     static_cast<unsigned long long>(serial),
                      static_cast<long long>(next_sequence_ - 1),
                      sync_source_->subscribers_.size());
 }

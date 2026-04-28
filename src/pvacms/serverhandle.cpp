@@ -46,7 +46,7 @@
 
 #include <dbBase.h>
 
-#include <cms/pvacms.h>
+#include <cms/cms.h>
 
 DEFINE_LOGGER(pvacmsserver, "cms.certs.cms");
 
@@ -106,44 +106,43 @@ bool isWithinSchedule(time_t now_utc, const std::vector<ScheduleWindow> &windows
         return true;
     }
 
-    struct tm tm_buf;
-    gmtime_r(&now_utc, &tm_buf);
-    int current_day = tm_buf.tm_wday;
-    int current_mins = tm_buf.tm_hour * 60 + tm_buf.tm_min;
-
-    for (const auto &w : windows) {
-        if (w.day_of_week != "*") {
-            int day = w.day_of_week[0] - '0';
-            if (day != current_day) {
-                continue;
-            }
-        }
-        int start_h = std::stoi(w.start_time.substr(0u, 2u));
-        int start_m = std::stoi(w.start_time.substr(3u, 2u));
-        int end_h = std::stoi(w.end_time.substr(0u, 2u));
-        int end_m = std::stoi(w.end_time.substr(3u, 2u));
-        int start_mins = start_h * 60 + start_m;
-        int end_mins = end_h * 60 + end_m;
-
-        if (end_mins > start_mins) {
-            if (current_mins >= start_mins && current_mins < end_mins) {
-                return true;
-            }
-        } else if (current_mins >= start_mins || current_mins < end_mins) {
-            return true;
-        }
+    tm tm_buf{};
+    if (!gmtime_r(&now_utc, &tm_buf)) {
+        return false;
     }
-    return false;
+    const int current_day = tm_buf.tm_wday;
+    const int current_mins = tm_buf.tm_hour * 60 + tm_buf.tm_min;
+
+    return std::any_of(windows.begin(), windows.end(),
+        [current_day, current_mins](const ScheduleWindow &w) -> bool {
+            if (w.day_of_week != "*") {
+                const int day = w.day_of_week[0] - '0';
+                if (day != current_day) {
+                    return false;
+                }
+            }
+            const int start_h = std::stoi(w.start_time.substr(0u, 2u));
+            const int start_m = std::stoi(w.start_time.substr(3u, 2u));
+            const int end_h = std::stoi(w.end_time.substr(0u, 2u));
+            const int end_m = std::stoi(w.end_time.substr(3u, 2u));
+            const int start_mins = start_h * 60 + start_m;
+            const int end_mins = end_h * 60 + end_m;
+
+            if (end_mins > start_mins) {
+                return current_mins >= start_mins && current_mins < end_mins;
+            }
+            return current_mins >= start_mins || current_mins < end_mins;
+        });
 }
 
 } // namespace
 
 namespace cms {
 using pvxs::Value;
-using cms::detail::SB;
-using cms::cert::CertStatus;
-using cms::cert::CertStatusFactory;
-using cms::cert::IdFileFactory;
+using detail::SB;
+using cert::CertStatus;
+using cert::CertStatusFactory;
+using cert::IdFileFactory;
 
 struct ASMember {
     std::string name{};
@@ -167,9 +166,9 @@ struct ASMember {
     }
 };
 
-cms::detail::PreparedCmsState prepareCmsState(const ConfigCms &config)
+detail::PreparedCmsState prepareCmsState(const ConfigCms &config)
 {
-    cms::detail::PreparedCmsState state;
+    detail::PreparedCmsState state;
 
     initCertsDatabase(state.certs_db, config.certs_db_filename);
 
@@ -245,8 +244,8 @@ struct ServerHandle::Pvt {
     serial_number_t our_serial{0u};
     bool is_initialising{false};
     std::map<serial_number_t, time_t> active_status_validity;
-    ::cms::cluster::ClusterSyncPublisher cluster_sync;
-    ::cms::cluster::ClusterController cluster_ctrl;
+    cluster::ClusterSyncPublisher cluster_sync;
+    cluster::ClusterController cluster_ctrl;
     server::SharedPV create_pv;
     server::SharedPV schedule_pv;
     server::SharedPV health_pv;
@@ -257,12 +256,12 @@ struct ServerHandle::Pvt {
     Value root_pv_value;
     Value issuer_pv_value;
     std::function<void(const std::string& skid)> check_cms_node_revocation;
-    std::unique_ptr<::cms::cluster::ClusterDiscovery> cluster_discovery;
-    ::cms::StatusMonitor status_monitor;
+    std::unique_ptr<cluster::ClusterDiscovery> cluster_discovery;
+    StatusMonitor status_monitor;
     std::shared_ptr<server::Source> wildcard_source;
     std::function<std::shared_ptr<server::Source>(std::shared_ptr<server::Source>)>
         wrap_wildcard_source;
-    ::cms::detail::ServerEv pva_server;
+    detail::ServerEv pva_server;
     std::string cluster_status;
     std::atomic<bool> started_{false};
     bool stopped_{false};
@@ -284,13 +283,12 @@ ServerHandle::Pvt::Pvt(const ConfigCms &config,
     , our_node_id(std::move(state.our_node_id))
     , our_serial(state.our_serial)
     , is_initialising(state.is_initialising)
-    , wrap_wildcard_source(std::move(state.wrap_wildcard_source))
     , cluster_sync(our_node_id,
                    our_issuer_id,
                    config_copy.cluster_pv_prefix,
                    certs_db.get(),
                    cert_auth_pkey,
-                   ::cms::getStatusUpdateLock())
+                   getStatusUpdateLock())
     , cluster_ctrl(our_issuer_id,
                    our_node_id,
                    config_copy.cluster_pv_prefix,
@@ -305,8 +303,8 @@ ServerHandle::Pvt::Pvt(const ConfigCms &config,
     , root_pv(server::SharedPV::buildReadonly())
     , issuer_pv(server::SharedPV::buildReadonly())
     , status_pv(server::WildcardPV::buildMailbox())
-    , root_pv_value(::cms::getRootValue(our_issuer_id, cert_auth_root_cert))
-    , issuer_pv_value(::cms::getIssuerValue(our_issuer_id,
+    , root_pv_value(getRootValue(our_issuer_id, cert_auth_root_cert))
+    , issuer_pv_value(getIssuerValue(our_issuer_id,
                                             cert_auth_cert,
                                             cert_auth_chain))
     , status_monitor(config_copy,
@@ -317,9 +315,10 @@ ServerHandle::Pvt::Pvt(const ConfigCms &config,
                      cert_auth_pkey,
                      cert_auth_chain,
                      active_status_validity)
+    , wrap_wildcard_source(std::move(state.wrap_wildcard_source))
     , pva_server(config_copy,
                  [this](short) {
-                     return ::cms::statusMonitor(status_monitor);
+                     return statusMonitor(status_monitor);
                  })
 {
     status_monitor.setHealthPV(&health_pv);
@@ -338,7 +337,7 @@ void ServerHandle::Pvt::configureHandlers()
     create_pv.onRPC([this, cert_auth_chain_copy](const server::SharedPV &,
                                                  std::unique_ptr<server::ExecOp> &&op,
                                                  Value &&args) {
-        auto created_serial = ::cms::onCreateCertificate(config_copy,
+        auto created_serial = onCreateCertificate(config_copy,
                                                          certs_db,
                                                          status_pv,
                                                          std::move(op),
@@ -361,7 +360,7 @@ void ServerHandle::Pvt::configureHandlers()
             const auto creds = op->credentials();
             pvxs::ioc::Credentials credentials(*creds);
             pvxs::ioc::SecurityClient securityClient;
-            static ::cms::ASMember as_member;
+            static ASMember as_member;
             securityClient.update(as_member.mem, ASL1, credentials);
             const std::string operator_str = pvxs::SB() << *creds;
 
@@ -408,7 +407,7 @@ void ServerHandle::Pvt::configureHandlers()
                 }
 
                 {
-                    Guard G(::cms::getStatusUpdateLock());
+                    Guard G(getStatusUpdateLock());
                     sqlite3_stmt *del_stmt = nullptr;
 
                     if (sqlite3_prepare_v2(certs_db.get(),
@@ -452,36 +451,36 @@ void ServerHandle::Pvt::configureHandlers()
                         }
                     }
 
-                    ::cms::cert::certstatus_t current_status;
+                    cert::certstatus_t current_status;
                     time_t status_date;
-                    std::tie(current_status, status_date) = ::cms::getCertificateStatus(certs_db, serial);
-                    if (current_status == ::cms::cert::VALID || current_status == ::cms::cert::SCHEDULED_OFFLINE) {
+                    std::tie(current_status, status_date) = getCertificateStatus(certs_db, serial);
+                    if (current_status == cert::VALID || current_status == cert::SCHEDULED_OFFLINE) {
                         const bool in_window = isWithinSchedule(time(nullptr), new_windows);
-                        ::cms::cert::certstatus_t target = in_window
-                                                               ? ::cms::cert::VALID
+                        cert::certstatus_t target = in_window
+                                                               ? cert::VALID
                                                                : (new_windows.empty()
-                                                                      ? ::cms::cert::VALID
-                                                                      : ::cms::cert::SCHEDULED_OFFLINE);
+                                                                      ? cert::VALID
+                                                                      : cert::SCHEDULED_OFFLINE);
                         if (target != current_status) {
-                            ::cms::updateCertificateStatus(certs_db,
+                            updateCertificateStatus(certs_db,
                                                            serial,
                                                            target,
                                                            -1,
-                                                           {::cms::cert::VALID, ::cms::cert::SCHEDULED_OFFLINE});
+                                                           {cert::VALID, cert::SCHEDULED_OFFLINE});
                             const auto cert_status_creator(
-                                ::cms::cert::CertStatusFactory(cert_auth_cert,
+                                cert::CertStatusFactory(cert_auth_cert,
                                                          cert_auth_pkey,
                                                          cert_auth_chain_copy,
                                                          config_copy.cert_status_validity_mins));
                             const auto now = std::time(nullptr);
-                            const auto db_cert = ::cms::getCertificateValidity(certs_db, serial);
+                            const auto db_cert = getDbCert(certs_db, serial);
                             const auto cert_status = cert_status_creator.createPVACertificateStatus(
-                                serial, target, now, ::cms::cert::CertDate(std::time(nullptr)),
-                                ::cms::cert::CertDate(db_cert.renew_by), false);
-                            auto cert_id = ::cms::cert::getCertId(our_issuer_id, serial);
-                            auto status_pv_name = ::cms::cert::getCertStatusURI(config_copy.getCertPvPrefix(),
+                                serial, target, now, cert::CertDate(std::time(nullptr)),
+                                cert::CertDate(db_cert.renew_by), false);
+                            auto cert_id = cert::getCertId(our_issuer_id, serial);
+                            auto status_pv_name = cert::getCertStatusURI(config_copy.getCertPvPrefix(),
                                                                           cert_id);
-                            ::cms::postCertificateStatus(status_pv,
+                            postCertificateStatus(status_pv,
                                                          status_pv_name,
                                                          serial,
                                                          cert_status,
@@ -496,14 +495,14 @@ void ServerHandle::Pvt::configureHandlers()
                     std::string detail = new_windows.empty()
                                              ? "removed"
                                              : std::to_string(new_windows.size()) + " windows";
-                    ::cms::insertAuditRecord(certs_db.get(),
+                    insertAuditRecord(certs_db.get(),
                                              AUDIT_ACTION_SCHEDULE,
                                              operator_str,
                                              serial,
                                              detail);
                 }
 
-                cluster_sync.publishCertChange(static_cast<int64_t>(serial));
+                cluster_sync.publishCertChange(serial);
             }
 
             const auto current_windows = loadScheduleWindows(certs_db.get(), serial);
@@ -535,8 +534,8 @@ void ServerHandle::Pvt::configureHandlers()
     status_pv.onFirstConnect([this](server::WildcardPV &pv,
                                     const std::string &pv_name,
                                     const std::list<std::string> &parameters) {
-        auto serial = ::cms::getParameters(parameters);
-        ::cms::onGetStatus(config_copy,
+        auto serial = getParameters(parameters);
+        onGetStatus(config_copy,
                            certs_db,
                            our_issuer_id,
                            pv,
@@ -554,7 +553,7 @@ void ServerHandle::Pvt::configureHandlers()
                                       const std::string &pv_name,
                                       const std::list<std::string> &parameters) {
         pv.close(pv_name);
-        active_status_validity.erase(::cms::getParameters(parameters));
+        active_status_validity.erase(getParameters(parameters));
     });
 
     status_pv.onPut([this](server::WildcardPV &pv,
@@ -563,10 +562,10 @@ void ServerHandle::Pvt::configureHandlers()
                            const std::list<std::string> &parameters,
                            Value &&value) {
         if (!pv.isOpen(pv_name)) {
-            pv.open(pv_name, ::cms::CertStatus::getStatusPrototype());
+            pv.open(pv_name, CertStatus::getStatusPrototype());
         }
 
-        const auto serial = ::cms::getParameters(parameters);
+        const auto serial = getParameters(parameters);
         auto state = value["state"].as<std::string>();
         std::transform(state.begin(), state.end(), state.begin(), toupper);
 
@@ -575,7 +574,7 @@ void ServerHandle::Pvt::configureHandlers()
 
         pvxs::ioc::Credentials credentials(*creds);
         pvxs::ioc::SecurityClient securityClient;
-        static ::cms::ASMember as_member;
+        static ASMember as_member;
         securityClient.update(as_member.mem, ASL1, credentials);
 
         const auto is_admin = securityClient.canWrite();
@@ -603,7 +602,7 @@ void ServerHandle::Pvt::configureHandlers()
         }
 
         if (is_revoke) {
-            ::cms::onRevoke(config_copy,
+            onRevoke(config_copy,
                             certs_db,
                             our_issuer_id,
                             pv,
@@ -616,13 +615,13 @@ void ServerHandle::Pvt::configureHandlers()
                             operator_str);
             cluster_sync.publishCertChange(serial);
             if (check_cms_node_revocation) {
-                auto skid = ::cms::getCertificateSkid(certs_db, serial);
+                auto skid = getCertificateSkid(certs_db, serial);
                 if (!skid.empty()) {
                     check_cms_node_revocation(skid);
                 }
             }
         } else if (state == "APPROVED") {
-            ::cms::onApprove(config_copy,
+            onApprove(config_copy,
                              certs_db,
                              our_issuer_id,
                              pv,
@@ -635,7 +634,7 @@ void ServerHandle::Pvt::configureHandlers()
                              operator_str);
             cluster_sync.publishCertChange(serial);
         } else if (state == "DENIED") {
-            ::cms::onDeny(config_copy,
+            onDeny(config_copy,
                           certs_db,
                           our_issuer_id,
                           pv,
@@ -648,7 +647,7 @@ void ServerHandle::Pvt::configureHandlers()
                           operator_str);
             cluster_sync.publishCertChange(serial);
             if (check_cms_node_revocation) {
-                auto skid = ::cms::getCertificateSkid(certs_db, serial);
+                auto skid = getCertificateSkid(certs_db, serial);
                 if (!skid.empty()) {
                     check_cms_node_revocation(skid);
                 }
@@ -662,7 +661,7 @@ void ServerHandle::Pvt::configureHandlers()
 void ServerHandle::Pvt::openPreparedPvs()
 {
     auto wildcard = server::WildcardSource::build();
-    wildcard->add(::cms::cert::getCertStatusPv(config_copy.getCertPvPrefix(), our_issuer_id), status_pv);
+    wildcard->add(cert::getCertStatusPv(config_copy.getCertPvPrefix(), our_issuer_id), status_pv);
     wildcard_source = wildcard;
     auto registered_source = wildcard_source;
     if (wrap_wildcard_source) {
@@ -676,20 +675,20 @@ void ServerHandle::Pvt::openPreparedPvs()
         pva_server.addSource("ctrlsrc", cluster_ctrl.getSource());
     }
 
-    pva_server.addPV(::cms::cert::getCertCreatePv(config_copy.getCertPvPrefix()), create_pv)
-        .addPV(::cms::cert::getCertCreatePv(config_copy.getCertPvPrefix(), our_issuer_id), create_pv)
+    pva_server.addPV(cert::getCertCreatePv(config_copy.getCertPvPrefix()), create_pv)
+        .addPV(cert::getCertCreatePv(config_copy.getCertPvPrefix(), our_issuer_id), create_pv)
         .addPV(config_copy.getCertPvPrefix() + ":SCHEDULE", schedule_pv)
         .addPV(config_copy.getCertPvPrefix() + ":SCHEDULE:" + our_issuer_id, schedule_pv)
-        .addPV(::cms::cert::getCertAuthRootPv(config_copy.getCertPvPrefix()), root_pv)
-        .addPV(::cms::cert::getCertAuthRootPv(config_copy.getCertPvPrefix(), our_issuer_id), root_pv)
-        .addPV(::cms::cert::getCertIssuerPv(config_copy.getCertPvPrefix()), issuer_pv)
-        .addPV(::cms::cert::getCertIssuerPv(config_copy.getCertPvPrefix(), our_issuer_id), issuer_pv)
+        .addPV(cert::getCertAuthRootPv(config_copy.getCertPvPrefix()), root_pv)
+        .addPV(cert::getCertAuthRootPv(config_copy.getCertPvPrefix(), our_issuer_id), root_pv)
+        .addPV(cert::getCertIssuerPv(config_copy.getCertPvPrefix()), issuer_pv)
+        .addPV(cert::getCertIssuerPv(config_copy.getCertPvPrefix(), our_issuer_id), issuer_pv)
         .addPV(config_copy.health_pv_prefix, health_pv)
         .addPV(config_copy.health_pv_prefix + ":" + our_issuer_id, health_pv)
         .addPV(config_copy.metrics_pv_prefix, metrics_pv)
         .addPV(config_copy.metrics_pv_prefix + ":" + our_issuer_id, metrics_pv);
 
-    auto health_value = ::cms::makeHealthValue();
+    auto health_value = makeHealthValue();
     health_value["value.index"] = static_cast<int32_t>(1);
     health_value["db_ok"] = true;
     health_value["ca_valid"] = true;
@@ -707,7 +706,7 @@ void ServerHandle::Pvt::openPreparedPvs()
     health_value["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
     health_value["timeStamp.userTag"] = static_cast<int32_t>(0);
 
-    auto metrics_value = ::cms::makeMetricsValue();
+    auto metrics_value = makeMetricsValue();
     metrics_value["value"] = static_cast<uint64_t>(0u);
     metrics_value["certs_created"] = static_cast<uint64_t>(0u);
     metrics_value["certs_revoked"] = static_cast<uint64_t>(0u);
@@ -786,14 +785,14 @@ void ServerHandle::Pvt::prepareClusterRuntime(const std::vector<std::string> *pe
         return future.wait_for(std::chrono::seconds(timeout_secs)) == std::future_status::ready;
     };
 
-    cluster_discovery.reset(new ::cms::cluster::ClusterDiscovery(our_node_id,
+    cluster_discovery.reset(new cluster::ClusterDiscovery(our_node_id,
                                                                  our_issuer_id,
                                                                  config_copy.cluster_pv_prefix,
                                                                  config_copy.cluster_discovery_timeout_secs,
                                                                  certs_db.get(),
                                                                  cert_auth_pkey,
                                                                  cert_auth_pub_key,
-                                                                 ::cms::getStatusUpdateLock(),
+                                                                 getStatusUpdateLock(),
                                                                  cluster_sync,
                                                                  cluster_ctrl,
                                                                  std::move(cluster_client)));
@@ -834,19 +833,19 @@ void ServerHandle::Pvt::prepareClusterRuntime(const std::vector<std::string> *pe
     };
     cluster_discovery->on_node_cert_revoked = check_cms_node_revocation;
     cluster_ctrl.is_node_revoked = [this](const std::string &node_id) {
-        return ::cms::isNodeCertRevoked(certs_db, node_id);
+        return isNodeCertRevoked(certs_db, node_id);
     };
 }
 
 void ServerHandle::Pvt::runUntilShutdown()
 {
     if (!is_initialising) {
-        auto status_tuple = ::cms::getCertificateStatus(certs_db, our_serial);
-        if (std::get<0>(status_tuple) == ::cms::REVOKED) {
+        auto status_tuple = getCertificateStatus(certs_db, our_serial);
+        if (std::get<0>(status_tuple) == REVOKED) {
             log_err_printf(pvacmsserver,
                            "****EXITING****: Cannot start PVACMS with revoked certificate, SKID: %s\n",
                            our_node_id.c_str());
-            throw ::cms::StartupAbort("revoked local PVACMS certificate");
+            throw StartupAbort("revoked local PVACMS certificate");
         }
     }
 
@@ -868,12 +867,12 @@ void ServerHandle::Pvt::runUntilShutdown()
                             "Attempting to join existing cluster...%s",
                             "\n");
             auto join_result = cluster_discovery->joinCluster();
-            if (join_result == ::cms::cluster::ClusterDiscovery::JoinResult::Revoked) {
+            if (join_result == cluster::ClusterDiscovery::JoinResult::Revoked) {
                 log_err_printf(pvacmsserver,
                                "****EXITING****: This node's PVACMS certificate has been revoked by the cluster\n%s",
                                "");
-                throw ::cms::StartupAbort("cluster revoked this PVACMS certificate");
-            } else if (join_result == ::cms::cluster::ClusterDiscovery::JoinResult::Joined) {
+                throw StartupAbort("cluster revoked this PVACMS certificate");
+            } else if (join_result == cluster::ClusterDiscovery::JoinResult::Joined) {
                 cluster_sync.publishSnapshot();
                 cluster_status = "Joined existing cluster";
             } else {
@@ -999,15 +998,15 @@ void ServerHandle::registerCertFromP12(const std::string &p12_path)
     if (!pvt_) {
         throw std::logic_error("NULL ServerHandle");
     }
-    auto cert_data = ::cms::cert::IdFileFactory::create(p12_path,
+    auto cert_data = cert::IdFileFactory::create(p12_path,
                                                         pvt_->config_copy.getKeychainPassword())
                          ->getCertDataFromFile();
     if (!cert_data.cert) {
         throw std::runtime_error(
             "ServerHandle::registerCertFromP12: failed to load cert from " + p12_path);
     }
-    epicsGuard<epicsMutex> G(::cms::getStatusUpdateLock());
-    ::cms::insertLoadedCertIfMissing(pvt_->config_copy,
+    epicsGuard<epicsMutex> G(getStatusUpdateLock());
+    insertLoadedCertIfMissing(pvt_->config_copy,
                                      pvt_->certs_db,
                                      cert_data.cert,
                                      cert_data.cert_auth_chain,
@@ -1023,19 +1022,19 @@ ServerHandle prepareServerFromState(const ConfigCms &config,
     ServerHandle handle;
     handle.pvt_.reset(new ServerHandle::Pvt(config, std::move(state)));
 
-    ::cms::getCreateCertificateRateLimiter().configure(config.rate_limit,
+    getCreateCertificateRateLimiter().configure(config.rate_limit,
                                                        config.rate_limit_burst);
-    ::cms::getCreateCertificateInflightCount().store(0u);
+    getCreateCertificateInflightCount().store(0u);
 
     handle.pvt_->configureHandlers();
-    if (!::cms::runSelfTests(handle.pvt_->certs_db,
+    if (!runSelfTests(handle.pvt_->certs_db,
                              handle.pvt_->cert_auth_cert,
                              handle.pvt_->cert_auth_pkey,
                              handle.pvt_->cert_auth_chain)) {
         log_err_printf(pvacmsserver,
                        "****EXITING****: Startup self-tests failed%s\n",
                        "");
-        throw ::cms::StartupAbort("startup self-tests failed");
+        throw StartupAbort("startup self-tests failed");
     }
     handle.pvt_->openPreparedPvs();
 
@@ -1046,7 +1045,7 @@ ServerHandle prepareServerFromState(const ConfigCms &config,
 
 ServerHandle prepareServer(const ConfigCms &config)
 {
-    return detail::prepareServerFromState(config, ::cms::prepareCmsState(config));
+    return detail::prepareServerFromState(config, prepareCmsState(config));
 }
 
 void startCluster(ServerHandle &handle)

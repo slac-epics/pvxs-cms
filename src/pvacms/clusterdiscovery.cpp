@@ -150,30 +150,31 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
 
     const auto certs_arr = snapshot["certs"].as<shared_array<const Value>>();
     for (const auto & row : certs_arr) {
-        const auto serial = row["serial"].as<int64_t>();
+        auto serial = row["serial"].as<uint64_t>();
+        const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
         const auto remote_status = static_cast<cms::cert::certstatus_t>(row["status"].as<int32_t>());
 
         sqlite3_stmt *check_stmt;
         if (sqlite3_prepare_v2(certs_db, SQL_SYNC_CHECK_CERT_STATUS, -1, &check_stmt, nullptr) != SQLITE_OK)
             continue;
-        sqlite3_bind_int64(check_stmt, sqlite3_bind_parameter_index(check_stmt, ":serial"), serial);
+        sqlite3_bind_int64(check_stmt, sqlite3_bind_parameter_index(check_stmt, ":serial"), db_serial);
 
         if (sqlite3_step(check_stmt) == SQLITE_ROW) {
             const auto local_status = static_cast<cms::cert::certstatus_t>(sqlite3_column_int(check_stmt, 0));
             sqlite3_finalize(check_stmt);
 
-            log_debug_printf(pvacmscluster, "Sync merge: serial=%lld local_status=%d remote_status=%d\n",
-                             static_cast<long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
+            log_debug_printf(pvacmscluster, "Sync merge: serial=%llu local_status=%d remote_status=%d\n",
+                             static_cast<unsigned long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
 
             if (!isValidStatusTransition(local_status, remote_status)) {
-                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%lld — invalid transition %d -> %d\n",
-                                 static_cast<long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
+                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%llu — invalid transition %d -> %d\n",
+                                 static_cast<unsigned long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
                 continue;
             }
 
             if (local_status == remote_status) {
-                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%lld — same status %d\n",
-                                 static_cast<long long>(serial), static_cast<int>(local_status));
+                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%llu — same status %d\n",
+                                 static_cast<unsigned long long>(serial), static_cast<int>(local_status));
                 continue;
             }
 
@@ -183,8 +184,8 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
 
             sqlite3_stmt *upd_stmt;
             if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, &upd_stmt, nullptr) != SQLITE_OK) {
-                log_debug_printf(pvacmscluster, "Sync merge: SQL_SYNC_UPDATE_CERT prepare failed for serial=%lld: %s\n",
-                                 static_cast<long long>(serial), sqlite3_errmsg(certs_db));
+                log_debug_printf(pvacmscluster, "Sync merge: SQL_SYNC_UPDATE_CERT prepare failed for serial=%llu: %s\n",
+                                 static_cast<unsigned long long>(serial), sqlite3_errmsg(certs_db));
                 continue;
             }
 
@@ -217,10 +218,10 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                     sqlite3_bind_null(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":san"));
                 }
             }
-            sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), serial);
+            sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), db_serial);
             auto rc = sqlite3_step(upd_stmt);
-            log_debug_printf(pvacmscluster, "Sync merge: UPDATE serial=%lld rc=%d changes=%d\n",
-                             static_cast<long long>(serial), rc, sqlite3_changes(certs_db));
+            log_debug_printf(pvacmscluster, "Sync merge: UPDATE serial=%llu rc=%d changes=%d\n",
+                             static_cast<unsigned long long>(serial), rc, sqlite3_changes(certs_db));
             insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
                                   static_cast<uint64_t>(serial), SB() << "status=" << remote_status);
             sqlite3_finalize(upd_stmt);
@@ -231,7 +232,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             if (sqlite3_prepare_v2(certs_db, SQL_SYNC_INSERT_CERT, -1, &ins_stmt, nullptr) != SQLITE_OK)
                 continue;
 
-            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), serial);
+            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), db_serial);
             auto bind_text = [&](const char *param, const char *field) {
                 const auto s = row[field].as<std::string>();
                 sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, param), s.c_str(), -1, SQLITE_TRANSIENT);
@@ -276,27 +277,29 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
     auto sched_field = snapshot["cert_schedules"];
     if (sched_field) {
         auto sched_arr = sched_field.as<shared_array<const Value>>();
-        std::set<int64_t> synced_serials;
+        std::set<uint64_t> synced_serials;
         for (const auto &row : sched_arr) {
-            synced_serials.insert(row["serial"].as<int64_t>());
+            synced_serials.insert(row["serial"].as<uint64_t>());
         }
         for (auto serial : synced_serials) {
+            const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
             sqlite3_stmt *del_stmt = nullptr;
             if (sqlite3_prepare_v2(certs_db, "DELETE FROM cert_schedules WHERE serial = ?", -1, &del_stmt, nullptr) == SQLITE_OK) {
-                sqlite3_bind_int64(del_stmt, 1, serial);
+                sqlite3_bind_int64(del_stmt, 1, db_serial);
                 sqlite3_step(del_stmt);
                 sqlite3_finalize(del_stmt);
             }
         }
         for (const auto &row : sched_arr) {
-            const auto serial = row["serial"].as<int64_t>();
+            auto serial = row["serial"].as<uint64_t>();
+            const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
             sqlite3_stmt *ins_stmt = nullptr;
             if (sqlite3_prepare_v2(certs_db,
                                    "INSERT INTO cert_schedules(serial, day_of_week, start_time, end_time) VALUES(?, ?, ?, ?)",
                                    -1,
                                    &ins_stmt,
                                    nullptr) == SQLITE_OK) {
-                sqlite3_bind_int64(ins_stmt, 1, serial);
+                sqlite3_bind_int64(ins_stmt, 1, db_serial);
                 auto txt = [&](const char *field) { return row[field].as<std::string>(); };
                 const auto day_of_week = txt("day_of_week");
                 const auto start_time = txt("start_time");

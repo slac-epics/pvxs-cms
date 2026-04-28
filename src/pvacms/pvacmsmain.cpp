@@ -15,7 +15,7 @@
 #include <sqlite3.h>
 
 #include <pvxs/client.h>
-#include <cms/pvacms.h>
+#include <cms/cms.h>
 #include <pvxs/log.h>
 
 #include "certstatus.h"
@@ -117,8 +117,7 @@ int main(int argc, char *argv[]) {
         auto state = cms::prepareCmsState(config);
 
         if (!config.pvacms_acf_filename.empty()) {
-            log_debug_printf(pvacms, "Setting server access security from ACF: %s\n",
-                             config.pvacms_acf_filename.c_str());
+            log_debug_printf(pvacms, "Setting server access security from ACF: %s\n", config.pvacms_acf_filename.c_str());
             if (auto err = asInitFile(config.pvacms_acf_filename.c_str(), ""))
                 throw std::runtime_error(pvxs::SB() << "Failed to load "
                                                     << config.pvacms_acf_filename
