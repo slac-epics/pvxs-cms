@@ -34,7 +34,7 @@ namespace test {
 
 namespace {
 
-DEFINE_LOGGER(cluster_log, "pvxs.cms.test.cluster");
+DEFINE_LOGGER(cluster_log, "cms.test.cluster");
 
 std::string formatLoopbackAddr(const std::string &iface, uint16_t port) {
     std::ostringstream oss;

@@ -283,7 +283,7 @@ public:
     Builder &applyEnv(bool yes) &;
 
     /// Bind on non-loopback interfaces.  Strongly discouraged: emits a
-    /// `pvxs.cms.test` WARN log line and, if `_PVXS_CMS_TEST_REJECT_EXTERNAL`
+    /// `cms.test` WARN log line and, if `_PVXS_CMS_TEST_REJECT_EXTERNAL`
     /// is set in the environment (CI), throws `std::runtime_error`.
     Builder &allowExternalBind() &;
 

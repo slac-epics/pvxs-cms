@@ -25,7 +25,7 @@ namespace internal {
 
 namespace {
 
-DEFINE_LOGGER(capture_log, "pvxs.cms.test.capture");
+DEFINE_LOGGER(capture_log, "cms.test.capture");
 
 constexpr const char kEventLogPrefixSubscribe[] = " cert-status: subscribe pv=";
 constexpr const char kEventLogPrefixDelivery[]  = " cert-status: delivery  pv=";

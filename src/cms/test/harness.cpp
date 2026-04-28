@@ -33,7 +33,7 @@ namespace test {
 
 namespace {
 
-DEFINE_LOGGER(harness_log, "pvxs.cms.test.harness");
+DEFINE_LOGGER(harness_log, "cms.test.harness");
 
 bool inLoopbackV4(const std::string &addr) {
     return addr.size() >= 4 && std::strncmp(addr.c_str(), "127.", 4) == 0;
@@ -420,7 +420,7 @@ PVACMSHarness::Builder &PVACMSHarness::Builder::observeStatusSubscriptions(
 
 PVACMSHarness::Builder &PVACMSHarness::Builder::allowExternalBind() & {
     pvt_->allow_external = true;
-    DEFINE_LOGGER(harness_log, "pvxs.cms.test.harness");
+    DEFINE_LOGGER(harness_log, "cms.test.harness");
     log_warn_printf(harness_log,
                     "PVACMSHarness::Builder::allowExternalBind() called - test will bind on non-loopback interfaces!%s",
                     "\n");
@@ -467,7 +467,7 @@ PVACMSHarness PVACMSHarness::Builder::build() {
 
     if (!cfg.pvacms_acf_filename.empty()) {
         if (auto err = asInitFile(cfg.pvacms_acf_filename.c_str(), "")) {
-            DEFINE_LOGGER(harness_log, "pvxs.cms.test.harness");
+            DEFINE_LOGGER(harness_log, "cms.test.harness");
             log_err_printf(harness_log, "asInitFile failed: %d\n", err);
             throw std::runtime_error("asInitFile failed in PVACMSHarness::Builder::build()");
         }
@@ -490,7 +490,7 @@ PVACMSHarness PVACMSHarness::Builder::build() {
         try {
             cms::startCluster(*handle_ptr);
         } catch (const std::exception &e) {
-            DEFINE_LOGGER(harness_log, "pvxs.cms.test.harness");
+            DEFINE_LOGGER(harness_log, "cms.test.harness");
             log_err_printf(harness_log, "PVACMS run loop failed: %s\n", e.what());
         }
         running_ptr->store(false);
