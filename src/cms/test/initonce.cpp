@@ -19,7 +19,7 @@ namespace test {
 
 namespace {
 
-DEFINE_LOGGER(harness_init, "pvxs.cms.test.init");
+DEFINE_LOGGER(harness_init, "cms.test.init");
 
 std::once_flag g_init_once;
 
