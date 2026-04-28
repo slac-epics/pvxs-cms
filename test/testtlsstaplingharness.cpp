@@ -4,6 +4,15 @@
  * in file LICENSE that is included with this distribution.
  */
 
+// OCSP stapling logic is a single-server-to-single-PVACMS interaction.
+// Per OpenSpec task 7.1 we evaluated whether a 2-node cluster variant
+// would add coverage; the answer is no.  Cluster replication of
+// stapling state (PVACMS pre-computing OCSP responses, syncing across
+// members) is verified by testclusterharness's convergence assertions.
+// Server-side failover between cluster members is not currently
+// testable in-process per the post-restart limitation documented in
+// test/harness/cluster.cpp.
+
 #include <atomic>
 #include <chrono>
 #include <map>
