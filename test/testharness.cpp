@@ -14,7 +14,7 @@
 #include <epicsUnitTest.h>
 #include <testMain.h>
 
-#include <cms/testharness.h>
+#include "testharness.h"
 #include <pvxs/client.h>
 #include <pvxs/server.h>
 #include <pvxs/sharedpv.h>

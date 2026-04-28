@@ -4,7 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include "cms/testharness.h"
+#include "testharness.h"
 
 #include <atomic>
 #include <cerrno>
