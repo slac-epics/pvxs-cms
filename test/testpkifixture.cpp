@@ -54,42 +54,42 @@ void testCaArtifacts() {
 }
 
 void testIssueDistinctEEs() {
-    testDiag("issueServerEE and issueClientEE produce distinct files per call");
+    testDiag("issueServerCert and issueClientCert produce distinct files per call");
     PkiFixture pki;
 
     SubjectSpec sub_a{"server-a", {}, {}, {}};
     SubjectSpec sub_b{"server-b", {}, {}, {}};
     SubjectSpec sub_c{"client-c", {}, {}, {}};
 
-    auto a1 = pki.issueServerEE(sub_a);
-    auto a2 = pki.issueServerEE(sub_b);
-    auto c1 = pki.issueClientEE(sub_c);
+    auto a1 = pki.issueServerCert(sub_a);
+    auto a2 = pki.issueServerCert(sub_b);
+    auto c1 = pki.issueClientCert(sub_c);
 
     std::set<std::string> seen{a1, a2, c1};
-    testOk(seen.size() == 3, "three issued EE paths are distinct");
-    testOk(fileExists(a1), "issued server EE 1 exists: %s", a1.c_str());
-    testOk(fileExists(a2), "issued server EE 2 exists: %s", a2.c_str());
-    testOk(fileExists(c1), "issued client EE exists: %s", c1.c_str());
+    testOk(seen.size() == 3, "three issued Entity Cert paths are distinct");
+    testOk(fileExists(a1), "issued server Entity Cert 1 exists: %s", a1.c_str());
+    testOk(fileExists(a2), "issued server Entity Cert 2 exists: %s", a2.c_str());
+    testOk(fileExists(c1), "issued client Entity Cert exists: %s", c1.c_str());
 }
 
 void testTempDirCleanup() {
     testDiag("Destructor removes temp directory and all files within");
     std::string captured_dir;
     std::string captured_ca;
-    std::string captured_ee;
+    std::string captured_entity;
     {
         PkiFixture pki;
         captured_dir = pki.dir();
         captured_ca = pki.caP12Path();
-        captured_ee = pki.issueServerEE({"throwaway", {}, {}, {}});
+        captured_entity = pki.issueServerCert({"throwaway", {}, {}, {}});
 
         testOk(dirExists(captured_dir), "temp dir present during fixture lifetime");
         testOk(fileExists(captured_ca), "CA file present during fixture lifetime");
-        testOk(fileExists(captured_ee), "issued EE file present during fixture lifetime");
+        testOk(fileExists(captured_entity), "issued Entity Cert file present during fixture lifetime");
     }
     testOk(!dirExists(captured_dir), "temp dir removed after fixture destruction");
     testOk(!fileExists(captured_ca), "CA file removed after fixture destruction");
-    testOk(!fileExists(captured_ee), "issued EE removed after fixture destruction");
+    testOk(!fileExists(captured_entity), "issued Entity Cert removed after fixture destruction");
 }
 
 void testBorrowedFixtureSharing() {
@@ -97,11 +97,11 @@ void testBorrowedFixtureSharing() {
     PkiFixture pki;
     const auto base_fp = pki.caFingerprintSha256();
 
-    auto ee1 = pki.issueServerEE({"shared-srv-1", {}, {}, {}});
-    auto ee2 = pki.issueClientEE({"shared-cli-1", {}, {}, {}});
+    auto entity1 = pki.issueServerCert({"shared-srv-1", {}, {}, {}});
+    auto entity2 = pki.issueClientCert({"shared-cli-1", {}, {}, {}});
 
-    testOk(fileExists(ee1), "first EE issued under shared fixture");
-    testOk(fileExists(ee2), "second EE issued under shared fixture");
+    testOk(fileExists(entity1), "first Entity Cert issued under shared fixture");
+    testOk(fileExists(entity2), "second Entity Cert issued under shared fixture");
     testOk(pki.caFingerprintSha256() == base_fp, "CA fingerprint stable across multiple issuances");
 }
 

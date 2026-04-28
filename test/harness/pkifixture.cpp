@@ -141,7 +141,7 @@ void issueEE(const std::string &p12_path,
         subject.common_name,
         subject.country.empty() ? "US" : subject.country,
         subject.organization.empty() ? "pvxs-cms-test" : subject.organization,
-        subject.organizational_unit.empty() ? "PkiFixture EE" : subject.organizational_unit,
+        subject.organizational_unit.empty() ? "PkiFixture Entity" : subject.organizational_unit,
         not_before,
         not_after,
         0,
@@ -188,7 +188,7 @@ struct PkiFixture::Impl {
     std::string server_p12;
     std::string admin_p12;
     ::cms::cert::CertData ca;
-    std::atomic<uint64_t> ee_counter{0};
+    std::atomic<uint64_t> entity_counter{0};
 };
 
 PkiFixture::PkiFixture() : impl_(new Impl{}) {
@@ -226,14 +226,14 @@ std::string PkiFixture::caFingerprintSha256() const {
     return sha256HexOfPubkey(impl_->ca.cert.get());
 }
 
-std::string PkiFixture::issueServerEE(const SubjectSpec &subject) {
-    auto path = impl_->dir + "/server-ee-" + std::to_string(impl_->ee_counter.fetch_add(1)) + ".p12";
+std::string PkiFixture::issueServerCert(const SubjectSpec &subject) {
+    auto path = impl_->dir + "/server-cert-" + std::to_string(impl_->entity_counter.fetch_add(1)) + ".p12";
     issueEE(path, impl_->ca, subject, ::cms::ssl::kForServer);
     return path;
 }
 
-std::string PkiFixture::issueClientEE(const SubjectSpec &subject) {
-    auto path = impl_->dir + "/client-ee-" + std::to_string(impl_->ee_counter.fetch_add(1)) + ".p12";
+std::string PkiFixture::issueClientCert(const SubjectSpec &subject) {
+    auto path = impl_->dir + "/client-cert-" + std::to_string(impl_->entity_counter.fetch_add(1)) + ".p12";
     issueEE(path, impl_->ca, subject, ::cms::ssl::kForClient);
     return path;
 }

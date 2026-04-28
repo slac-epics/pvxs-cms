@@ -228,9 +228,9 @@ void testTestClientConfigSnapshotSemantics() {
     testOk(cfg_before.addressList.size() == addrs_before,
            "snapshot semantic: cfg_before still has its original addressList size");
 
-    testOk(!cfg_3.tls_keychain_file.empty(), "client EE cert path is set");
+    testOk(!cfg_3.tls_keychain_file.empty(), "client Entity Cert path is set");
     testOk(cfg_3.tls_keychain_file != cfg_before.tls_keychain_file,
-           "two testClientConfig() calls produce distinct client EE cert paths");
+           "two testClientConfig() calls produce distinct client Entity Cert paths");
 }
 
 void testTestClientConfigIsLoopback() {

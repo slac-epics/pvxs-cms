@@ -127,16 +127,6 @@ ClusterController::ClusterController(const std::string &issuer_id,
 void ClusterController::setupRpcHandler() {
     ctrl_pv_.onRPC([this](server::SharedPV &, std::unique_ptr<server::ExecOp> &&op, Value &&args) {
         try {
-            // Authentication is enforced by clusterVerify() below: the join payload's
-            // signature is validated against the shared cluster CA's public key. The
-            // joiner therefore must hold the private key of a cert chained to the same
-            // CA — which is the actual cluster trust boundary. An additional ACF/UAG
-            // gate on the connecting client's account name is redundant defense in
-            // depth that adds no security value (an attacker who could forge the
-            // signed nonce could trivially forge a CN), and it forces all cluster
-            // joins to land on TLS connections — which creates a cert-status
-            // chicken-and-egg under cold-start (peer cert validation needs PVACMS,
-            // PVACMS is busy fielding the join). Removed.
             auto req_major = args["version_major"].as<uint32_t>();
             if (req_major != 1) {
                 log_warn_printf(pvacmscluster, "Join request unsupported major version %u from node %s\n",

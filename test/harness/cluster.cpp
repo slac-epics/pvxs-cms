@@ -338,7 +338,7 @@ PVACMSCluster PVACMSCluster::Builder::build() {
     for (size_t i = 0; i < pvt_->n; ++i) {
         SubjectSpec member_subject;
         member_subject.common_name = std::string("PVACMS-NODE-") + std::to_string(i);
-        impl.member_p12_paths[i] = impl.pki->issueServerEE(member_subject);
+        impl.member_p12_paths[i] = impl.pki->issueServerCert(member_subject);
 
         auto cfg = makeClusterMemberConfig(*impl.pki, i, impl.member_p12_paths[i],
                                             impl.ipv6,

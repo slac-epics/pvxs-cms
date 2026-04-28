@@ -76,6 +76,7 @@ public:
      * @param cert_auth_pkey    CA private key used to sign cluster messages.
      * @param cert_auth_pub_key CA public key used to verify incoming join-request signatures.
      * @param sync_publisher    Publisher used to propagate membership snapshots to peers.
+     * @param bidi_timeout_secs bi-di timeout seconds
      */
     ClusterController(const std::string &issuer_id,
                       const std::string &node_id,

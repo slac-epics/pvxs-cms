@@ -456,23 +456,13 @@ initial join.
 ### Authentication
 
 Cluster join requests and sync snapshots are authenticated by **CA-signed
-payload verification**, not by inspecting the connecting client's account
-or TLS-presented certificate.  Every join request and every sync snapshot
+payload verification**.  Every join request and every sync snapshot
 carries a signature produced with the cluster CA's private key; the
 receiving node verifies that signature against the same CA's public key
 (`clusterVerify` in `clusterdiscovery.cpp` and `clusterctrl.cpp`).
 
-Possession of the CA private key — i.e. being a legitimate cluster member
-with an EE cert chained to the cluster CA — is the trust boundary.
-There is no separate ACF/UAG check on the connecting account name and no
-TLS-peer-identity comparison on incoming SYNC connections; both would be
-redundant defense-in-depth that adds no security value (an attacker who
-could forge the signed payload could trivially spoof a CN as well) and
-forces all cluster connections onto TLS, which creates a cert-status
-chicken-and-egg under cold-start (peer cert validation needs PVACMS,
-PVACMS is busy fielding the join).  Cluster control and sync RPCs
-therefore work over plaintext PVA, and the harness's in-process loopback
-clusters converge with no special configuration.
+Possession of the CA private key is the trust boundary.
+Cluster control and sync RPCs therefore work over plaintext PVA.
 
 ### Sync Loop Prevention
 
@@ -585,9 +575,7 @@ subscribers that fall behind the bounded update log.
 ### Gateway-Mediated Topologies
 
 Cluster traffic works transparently through PVA gateways and over plaintext
-TCP because authentication is by **CA-signed payload**, not by inspecting the
-TLS-presented client certificate (see "Authentication" above).  No special
-flag or per-node configuration is required for gateway-mediated topologies.
+TCP because authentication is by **CA-signed payload**.
 
 ## Source Files
 

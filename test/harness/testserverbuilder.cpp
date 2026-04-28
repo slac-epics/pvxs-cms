@@ -71,10 +71,10 @@ pvxs::server::Server &TestServerBuilder::start() && {
     subj.common_name = pvt_->opts.subject.empty()
         ? std::string("test-server-") + std::to_string(g_server_counter.fetch_add(1))
         : pvt_->opts.subject;
-    auto ee_p12 = impl.fixture().issueServerEE(subj);
+    auto entity_p12 = impl.fixture().issueServerCert(subj);
 
     if (impl.handle) {
-        impl.handle->registerCertFromP12(ee_p12);
+        impl.handle->registerCertFromP12(entity_p12);
     }
 
     pvxs::server::Config cfg;
@@ -91,7 +91,7 @@ pvxs::server::Server &TestServerBuilder::start() && {
         cfg.interfaces.emplace_back("127.0.0.1");
         cfg.beaconDestinations.emplace_back("127.0.0.1");
     }
-    cfg.tls_keychain_file = ee_p12;
+    cfg.tls_keychain_file = entity_p12;
     cfg.tls_status_cache_dir = impl.fixture().dir() + "/cache/test-server-" +
                                std::to_string(impl.test_server_counter.fetch_add(1));
 
@@ -119,7 +119,7 @@ pvxs::server::Server &TestServerBuilder::start() && {
         reg.tcp_port = eff.tcp_port;
         reg.udp_port = eff.udp_port;
         reg.tls_port = eff.tls_port;
-        reg.ee_subject = subj.common_name;
+        reg.entity_subject = subj.common_name;
         reg.server = srv.get();
         impl.snapshot_table.push_back(reg);
     }

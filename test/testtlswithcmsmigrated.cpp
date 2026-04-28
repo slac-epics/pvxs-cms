@@ -29,7 +29,7 @@ using cms::test::TestServerOpts;
 const char *TEST_PV = "TEST:HARNESS:PV";
 
 void testServerOnly() {
-    testDiag("=== testServerOnly: server with EE cert, client with admin cert only ===");
+    testDiag("=== testServerOnly: server with Entity Cert, client with admin cert only ===");
 
     auto harness = PVACMSHarness::Builder{}.build();
     harness.resetStatusEventCounters();
@@ -67,7 +67,7 @@ void testServerOnly() {
 }
 
 void testGetIntermediate() {
-    testDiag("=== testGetIntermediate: mutual TLS, both server and client have EE certs ===");
+    testDiag("=== testGetIntermediate: mutual TLS, both server and client have Entity Certs ===");
 
     auto harness = PVACMSHarness::Builder{}.build();
     harness.resetStatusEventCounters();
@@ -107,7 +107,7 @@ void testGetIntermediate() {
              harness.totalStatusReceived());
     testDiag("Some subscribes don't deliver in the brief test window.  Per-cert");
     testDiag("breakdown follows for diagnostics.");
-    testDiag("Observed %zu unique CERT:STATUS PVs (>=2 expected: server EE + client EE)",
+    testDiag("Observed %zu unique CERT:STATUS PVs (>=2 expected: server Entity Cert + client Entity Cert)",
              pvs.size());
 
     for (const auto &pv : pvs) {

@@ -73,8 +73,8 @@ public:
 
     std::string caFingerprintSha256() const;
 
-    std::string issueServerEE(const SubjectSpec &subject);
-    std::string issueClientEE(const SubjectSpec &subject);
+    std::string issueServerCert(const SubjectSpec &subject);
+    std::string issueClientCert(const SubjectSpec &subject);
 
 private:
     struct Impl;
@@ -86,7 +86,7 @@ private:
 // ---------------------------------------------------------------------------
 
 struct TestServerOpts {
-    /// Common-name override for the issued EE cert.  When empty the harness
+    /// Common-name override for the issued Entity Cert.  When empty the harness
     /// auto-generates a unique CN.
     std::string subject;
     /// Use IPv6 loopback (`::1`) instead of `127.0.0.1`.
@@ -96,7 +96,7 @@ struct TestServerOpts {
 };
 
 struct TestClientOpts {
-    /// CN override for the issued client EE cert.
+    /// CN override for the issued client Entity Cert.
     std::string subject;
     /// Use IPv6 loopback (`::1`) instead of `127.0.0.1`.
     bool ipv6{false};
@@ -111,7 +111,7 @@ struct PVXS_CMS_TEST_API RegisteredServer {
     uint16_t tcp_port{0};
     uint16_t udp_port{0};
     uint16_t tls_port{0};
-    std::string ee_subject;    ///< CN of the EE cert this server presents
+    std::string entity_subject;    ///< CN of the Entity Cert this server presents
     server::Server *server{nullptr};  ///< Non-owning pointer; owned by harness
 };
 
@@ -386,7 +386,7 @@ class PVXS_CMS_TEST_API PVACMSCluster {
     const PkiFixture &pkiFixture() const noexcept;
     PkiFixture &pkiFixture() noexcept;
 
-    /// Restart member i.  Preserves EE cert + DB; recomputes nameServers
+    /// Restart member i.  Preserves Entity Cert + DB; recomputes nameServers
     /// from the current topology and any foreign-cluster bridge entries.
     void restartMember(size_t i);
 
@@ -396,7 +396,7 @@ class PVXS_CMS_TEST_API PVACMSCluster {
     void setReachable(size_t i, size_t j);
 
     /// Aggregated client config: addressList lists every member's PVACMS
-    /// PVA TCP listener; admin EE cert from the shared PKI fixture.
+    /// PVA TCP listener; admin Entity Cert from the shared PKI fixture.
     client::Config cmsAdminClientConfig() const;
 
    private:

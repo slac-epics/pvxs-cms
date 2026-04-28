@@ -28,7 +28,7 @@ using cms::test::TestServerOpts;
 const char *TEST_PV = "TEST:HARNESS:PV";
 
 void testServerOnlyMigrated() {
-    testDiag("Migrated testServerOnly: server with EE cert, client with admin cert");
+    testDiag("Migrated testServerOnly: server with Entity Cert, client with admin cert");
     testDiag("Counts cert-status subscribes/deliveries via pvxs.certs.mon.event");
 
     PVACMSHarness::Builder b;
