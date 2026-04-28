@@ -1,7 +1,7 @@
 #ifndef PVXS_CMS_TEST_HARNESS_IMPL_H
 #define PVXS_CMS_TEST_HARNESS_IMPL_H
 
-#include "pvxs/cms/testharness.h"
+#include "cms/testharness.h"
 #include "statuseventcapture.h"
 
 #include <atomic>
@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-#include <pvxs/cms/pvacms.h>
+#include <cms/pvacms.h>
 #include <pvxs/server.h>
 
 namespace cms {

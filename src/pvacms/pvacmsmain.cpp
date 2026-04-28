@@ -15,7 +15,7 @@
 #include <sqlite3.h>
 
 #include <pvxs/client.h>
-#include <pvxs/cms/pvacms.h>
+#include <cms/pvacms.h>
 #include <pvxs/log.h>
 
 #include "certstatus.h"

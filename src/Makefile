@@ -89,7 +89,7 @@ USR_CPPFLAGS += $(PVXS_CMS_BUILD_TEST_HARNESS_$(PVXS_CMS_BUILD_TEST_HARNESS))
 
 CMS_TEST_DIR   = $(TOP)/src/cms/test
 
-INC += pvxs/cms/pvacms.h
+INC += cms/pvacms.h
 
 # SSL key log file support (debugging aid)
 PVXS_ENABLE_SSLKEYLOGFILE ?= YES

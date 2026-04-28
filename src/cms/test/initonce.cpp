@@ -4,7 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include "pvxs/cms/testharness.h"
+#include "cms/testharness.h"
 
 #include <mutex>
 

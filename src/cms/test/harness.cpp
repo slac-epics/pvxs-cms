@@ -382,7 +382,7 @@ pvxs::client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts)
 
 // ---------- Builder definition ----------
 
-#include <pvxs/cms/pvacms.h>
+#include <cms/pvacms.h>
 
 namespace cms {
 namespace test {

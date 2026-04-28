@@ -46,7 +46,7 @@
 
 #include <dbBase.h>
 
-#include <pvxs/cms/pvacms.h>
+#include <cms/pvacms.h>
 
 DEFINE_LOGGER(pvacmsserver, "cms.certs.cms");
 

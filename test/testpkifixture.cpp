@@ -12,7 +12,7 @@
 #include <epicsUnitTest.h>
 #include <testMain.h>
 
-#include <pvxs/cms/testharness.h>
+#include <cms/testharness.h>
 
 namespace {
 
