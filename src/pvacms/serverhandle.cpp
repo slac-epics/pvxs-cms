@@ -849,15 +849,24 @@ void ServerHandle::Pvt::runUntilShutdown()
         }
     }
 
-    if (config_copy.cluster_mode) {
+    auto shutdown_requested = [this]() {
+        std::lock_guard<std::mutex> lk(run_mutex);
+        return run_should_exit;
+    };
+
+    if (config_copy.cluster_mode && !shutdown_requested()) {
         cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
-        cluster_sync.publishSnapshot();
+        if (!shutdown_requested()) {
+            cluster_sync.publishSnapshot();
+        }
     }
     pva_server.start();
     started_ = true;
 
     if (config_copy.cluster_mode) {
-        if (is_initialising) {
+        if (shutdown_requested()) {
+            cluster_status = "Shutdown requested before join";
+        } else if (is_initialising) {
             log_info_printf(pvacmsserver,
                             "Fresh CA init - bootstrapping as sole cluster node%s",
                             "\n");
@@ -873,7 +882,9 @@ void ServerHandle::Pvt::runUntilShutdown()
                                "");
                 throw StartupAbort("cluster revoked this PVACMS certificate");
             } else if (join_result == cluster::ClusterDiscovery::JoinResult::Joined) {
-                cluster_sync.publishSnapshot();
+                if (!shutdown_requested()) {
+                    cluster_sync.publishSnapshot();
+                }
                 cluster_status = "Joined existing cluster";
             } else {
                 log_info_printf(pvacmsserver,
@@ -953,19 +964,22 @@ void ServerHandle::Pvt::stop()
     cluster_ctrl.verify_bidirectional = std::function<bool(const std::string&, uint32_t)>{};
     cluster_ctrl.is_node_revoked = std::function<bool(const std::string&)>{};
     cluster_sync.setEnabled(false);
-
     if (cluster_discovery) {
         cluster_discovery->on_node_cert_revoked = std::function<void(const std::string&)>{};
-        cluster_discovery.reset();
     }
+
+    // Wake the worker.  cluster_discovery is NOT reset here: ~ClusterDiscovery
+    // joins its rejoin thread, and the rejoin thread may need the worker /
+    // tcp_loop to be still draining via pva_server.stop() to make progress.
+    // cluster_discovery is destroyed naturally in ~Pvt after worker join.
+    {
+        std::lock_guard<std::mutex> lk(run_mutex);
+        run_should_exit = true;
+    }
+    run_cv.notify_all();
 
     if (started_) {
         pva_server.interrupt();
-        {
-            std::lock_guard<std::mutex> lk(run_mutex);
-            run_should_exit = true;
-        }
-        run_cv.notify_all();
         started_ = false;
     }
 }

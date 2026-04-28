@@ -92,12 +92,12 @@ struct ConnTimerCtx {
 void connTimerEntry(void *arg) {
     auto ctx = std::unique_ptr<ConnTimerCtx>(static_cast<ConnTimerCtx *>(arg));
     epicsThreadSleep(static_cast<double>(ctx->timeout_secs));
-    if (!ctx->state->cancelled.load()) {
-        int expected = ClusterDiscovery::CONN_PENDING;
-        if (ctx->state->state.compare_exchange_strong(expected, ClusterDiscovery::CONN_UNREACHABLE)) {
-            ctx->discovery->onConnectivityTimeout(ctx->node_id);
-        }
-    }
+    if (ctx->state->cancelled.load()) return;
+    int expected = ClusterDiscovery::CONN_PENDING;
+    if (!ctx->state->state.compare_exchange_strong(expected, ClusterDiscovery::CONN_UNREACHABLE))
+        return;
+    if (ctx->state->cancelled.load()) return;
+    ctx->discovery->onConnectivityTimeout(ctx->node_id);
 }
 
 /**
@@ -144,13 +144,42 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
 }
 
 ClusterDiscovery::~ClusterDiscovery() {
-    subscriptions_.clear();
-    acknowledged_by_.clear();
-    for (auto &kv : peer_connectivity_) kv.second->cancelled.store(true);
-    peer_connectivity_.clear();
-    active_forwarding_.clear();
-    peer_sync_members_.clear();
-    peer_last_sequence_.clear();
+    shutting_down_.store(true);
+
+    // Join rejoin threads first.  A rejoin thread may be in
+    // joinCluster()->client_ctx_.rpc().wait(timeout) and only sees
+    // shutting_down_ when that wait returns; we cannot bail it out earlier.
+    {
+        std::vector<std::thread> threads_to_join;
+        {
+            std::lock_guard<std::mutex> lk(rejoin_thread_mutex_);
+            threads_to_join.swap(old_rejoin_threads_);
+            if (rejoin_thread_.joinable()) {
+                threads_to_join.push_back(std::move(rejoin_thread_));
+            }
+        }
+        for (auto &t : threads_to_join) {
+            if (t.joinable()) t.join();
+        }
+    }
+
+    // Detach the maps under the lock, then destroy the shared_ptr<Subscription>
+    // entries OUTSIDE the lock.  ~Subscription dispatches cancel() to the
+    // tcp_loop and waits; if the tcp_loop is concurrently running our event
+    // callback, that callback will try to acquire state_lock_ on its own
+    // shutting_down_-check path, which would deadlock if we still held it.
+    std::map<std::string, std::shared_ptr<client::Subscription>> subs_to_destroy;
+    {
+        Guard G(state_lock_);
+        subs_to_destroy.swap(subscriptions_);
+        acknowledged_by_.clear();
+        for (auto &kv : peer_connectivity_) kv.second->cancelled.store(true);
+        peer_connectivity_.clear();
+        active_forwarding_.clear();
+        peer_sync_members_.clear();
+        peer_last_sequence_.clear();
+    }
+    subs_to_destroy.clear();
     drainDeadSubscriptions();
 }
 
@@ -450,23 +479,34 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
  */
 void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::string &sync_pv) {
     drainDeadSubscriptions();
+    if (shutting_down_.load()) return;
     if (node_id == node_id_) return;
-    if (subscriptions_.count(node_id)) return;
 
-    auto conn_state = std::make_shared<PeerConnectivity>();
-    peer_connectivity_[node_id] = conn_state;
+    std::shared_ptr<PeerConnectivity> conn_state;
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+        if (subscriptions_.count(node_id)) return;
+        conn_state = std::make_shared<PeerConnectivity>();
+        peer_connectivity_[node_id] = conn_state;
+    }
 
     auto sub = client_ctx_.monitor(sync_pv)
         .maskConnected(false)
         .maskDisconnected(false)
         .event([this, node_id, sync_pv](client::Subscription &sub) {
+            if (shutting_down_.load()) return;
             while (true) {
                 try {
                     while (auto val = sub.pop()) {
+                        if (shutting_down_.load()) return;
                         handleSyncUpdate(node_id, std::move(val));
                     }
                     break;
                 } catch (client::Connected &) {
+                    if (shutting_down_.load()) return;
+                    Guard G(state_lock_);
+                    if (shutting_down_.load()) return;
                     auto it = peer_connectivity_.find(node_id);
                     if (it != peer_connectivity_.end()) {
                         int prev = it->second->state.exchange(CONN_CONNECTED);
@@ -479,6 +519,7 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
                     }
                     // continue loop to drain any data queued after Connected
                 } catch (client::Disconnect &) {
+                    if (shutting_down_.load()) return;
                     handleDisconnect(node_id);
                     break;
                 } catch (const std::exception &e) {
@@ -489,10 +530,15 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
         })
         .exec();
 
-    subscriptions_[node_id] = std::move(sub);
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+        subscriptions_[node_id] = std::move(sub);
+    }
     log_debug_printf(pvacmscluster, "Subscribed to sync PV %s (node %s)\n",
                      sync_pv.c_str(), node_id.c_str());
 
+    if (shutting_down_.load()) return;
     auto *timer_ctx = new ConnTimerCtx{this, node_id, conn_state, discovery_timeout_secs_};
     epicsThreadCreate("pvacms-conn",
         epicsThreadPriorityLow,
@@ -514,29 +560,38 @@ void ClusterDiscovery::drainDeadSubscriptions() {
 }
 
 void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
-    peer_last_sequence_.erase(peer_node_id);
+    if (shutting_down_.load()) return;
+
+    bool was_forwarding = false;
     {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+
+        peer_last_sequence_.erase(peer_node_id);
         auto it = subscriptions_.find(peer_node_id);
         if (it != subscriptions_.end()) {
-            Guard G(dead_subscriptions_lock_);
+            Guard DG(dead_subscriptions_lock_);
             dead_subscriptions_.push_back(std::move(it->second));
             subscriptions_.erase(it);
         }
+
+        auto conn_it = peer_connectivity_.find(peer_node_id);
+        if (conn_it != peer_connectivity_.end()) {
+            conn_it->second->cancelled.store(true);
+            peer_connectivity_.erase(conn_it);
+        }
+
+        was_forwarding = sync_publisher_.isForwarding(peer_node_id);
     }
 
-    auto conn_it = peer_connectivity_.find(peer_node_id);
-    if (conn_it != peer_connectivity_.end()) {
-        conn_it->second->cancelled.store(true);
-        peer_connectivity_.erase(conn_it);
-    }
-
-    if (sync_publisher_.isForwarding(peer_node_id)) {
+    if (was_forwarding) {
         log_info_printf(pvacmscluster, "Forwardee %s disconnected, stopping forwarding\n",
                         peer_node_id.c_str());
         sync_publisher_.removeForwardingRelationship(peer_node_id);
         publishMemberConnectivity();
     }
 
+    if (shutting_down_.load()) return;
     controller_.removeMember(peer_node_id);
     log_info_printf(pvacmscluster, "Removed disconnected member %s\n", peer_node_id.c_str());
 
@@ -549,6 +604,8 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
  */
 void ClusterDiscovery::reconcileMembers(const std::string &sender_node_id,
                                         const std::vector<ClusterMember> &remote_members) {
+    if (shutting_down_.load()) return;
+
     // Detect self-eviction per peer: only trigger if THIS specific peer
     // previously included us in its membership and now does not.  Stale
     // snapshots from peers that haven't processed our join yet are ignored.
@@ -573,49 +630,90 @@ void ClusterDiscovery::reconcileMembers(const std::string &sender_node_id,
     }
 
     for (const auto &m : remote_members) {
+        if (shutting_down_.load()) return;
         if (m.node_id == node_id_) continue;
-        if (subscriptions_.count(m.node_id) == 0) {
+        bool already_subscribed;
+        {
+            Guard G(state_lock_);
+            already_subscribed = subscriptions_.count(m.node_id) > 0;
+        }
+        if (!already_subscribed) {
             log_info_printf(pvacmscluster, "Discovered new member %s via peer sync\n", m.node_id.c_str());
             subscribeToMember(m.node_id, m.sync_pv);
-            controller_.addMember(m);
+            // Only add to membership if subscribe actually succeeded -
+            // otherwise we'd recurse via on_membership_changed forever
+            // (subscriptions_.count(m.node_id) stays 0, addMember fires
+            // on_membership_changed, which calls back into us).
+            bool subscribed_now;
+            {
+                Guard G(state_lock_);
+                subscribed_now = subscriptions_.count(m.node_id) > 0;
+            }
+            if (subscribed_now) {
+                controller_.addMember(m);
+            }
         }
     }
 }
 
-void rejoinThreadEntry(void *arg) {
-    auto *self = static_cast<ClusterDiscovery *>(arg);
-    self->doRejoin();
-}
-
 void ClusterDiscovery::rejoinCluster() {
+    if (shutting_down_.load()) return;
     if (rejoin_in_progress_.exchange(true)) {
         return;
     }
 
     log_info_printf(pvacmscluster, "Membership changed — re-establishing cluster for node %s\n", node_id_.c_str());
 
-    // Run on a background thread — joinCluster() blocks for up to
-    // discovery_timeout_secs_ and must not stall the server worker thread.
-    epicsThreadCreate("pvacms-rejoin",
-        epicsThreadPriorityMedium,
-        epicsThreadGetStackSize(epicsThreadStackMedium),
-        rejoinThreadEntry,
-        this);
+    // Hand the previous (now-finished, since rejoin_in_progress_ was false)
+    // thread off to a side-vector so we never block the caller (which may
+    // be running on the client tcp_loop) on join().  The destructor joins
+    // both the side-vector entries and the live thread.
+    std::lock_guard<std::mutex> lk(rejoin_thread_mutex_);
+    if (shutting_down_.load()) {
+        rejoin_in_progress_.store(false);
+        return;
+    }
+    if (rejoin_thread_.joinable()) {
+        old_rejoin_threads_.push_back(std::move(rejoin_thread_));
+    }
+    rejoin_thread_ = std::thread([this]() { doRejoin(); });
 }
 
 void ClusterDiscovery::doRejoin() {
-    acknowledged_by_.clear();
-    peer_last_sequence_.clear();
-    subscriptions_.clear();
+    if (shutting_down_.load()) {
+        rejoin_in_progress_.store(false);
+        return;
+    }
 
-    for (auto &kv : peer_connectivity_)
-        kv.second->cancelled.store(true);
-    peer_connectivity_.clear();
-    active_forwarding_.clear();
-    peer_sync_members_.clear();
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) {
+            rejoin_in_progress_.store(false);
+            return;
+        }
+        acknowledged_by_.clear();
+        peer_last_sequence_.clear();
+        subscriptions_.clear();
+
+        for (auto &kv : peer_connectivity_)
+            kv.second->cancelled.store(true);
+        peer_connectivity_.clear();
+        active_forwarding_.clear();
+        peer_sync_members_.clear();
+    }
+
+    if (shutting_down_.load()) {
+        rejoin_in_progress_.store(false);
+        return;
+    }
 
     controller_.initAsSoleNode(node_id_, sync_publisher_.getSyncPvName());
     sync_publisher_.publishSnapshot();
+
+    if (shutting_down_.load()) {
+        rejoin_in_progress_.store(false);
+        return;
+    }
 
     auto result = joinCluster();
     if (result == JoinResult::Joined) {
@@ -637,12 +735,14 @@ void ClusterDiscovery::doRejoin() {
  * @return true if the join handshake succeeded and the cluster was joined; false otherwise.
  */
 ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
+    if (shutting_down_.load()) return JoinResult::NotFound;
     drainDeadSubscriptions();
     static constexpr int kMaxBidiRetries = 3;
     auto ctrl_pv_name = pv_prefix_ + ":CTRL:" + issuer_id_ + ":" + node_id_;
     auto sync_pv_name = sync_publisher_.getSyncPvName();
 
     for (int bidi_attempt = 0; bidi_attempt <= kMaxBidiRetries; bidi_attempt++) {
+    if (shutting_down_.load()) return JoinResult::NotFound;
     shared_array<uint8_t> nonce(16);
     if (RAND_bytes(nonce.data(), 16) != 1)
         throw std::runtime_error("Failed to generate nonce");
@@ -659,9 +759,11 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
     clusterSign(cert_auth_pkey_, req);
 
     try {
+        // Short-circuit RPC on shutdown so destructor join can complete fast.
+        double rpc_timeout = shutting_down_.load() ? 0.5 : double(discovery_timeout_secs_);
         auto resp = client_ctx_.rpc(ctrl_pv_name, req)
             .exec()
-            ->wait(discovery_timeout_secs_);
+            ->wait(rpc_timeout);
 
         if (!clusterVerify(cert_auth_pub_key_, resp)) {
             log_warn_printf(pvacmscluster, "Join response signature verification failed%s\n", "");
@@ -739,9 +841,11 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
 }
 
 void ClusterDiscovery::onConnectivityTimeout(const std::string &node_id) {
+    if (shutting_down_.load()) return;
     log_warn_printf(pvacmscluster, "Peer %s unreachable after %u second timeout\n",
                     node_id.c_str(), discovery_timeout_secs_);
     publishMemberConnectivity();
+    if (shutting_down_.load()) return;
     seekForwarder(node_id);
 }
 
