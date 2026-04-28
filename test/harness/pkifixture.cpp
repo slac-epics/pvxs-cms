@@ -127,7 +127,7 @@ void writePemChain(const std::string &path, const ::cms::cert::CertData &caData)
     return writer->getCertData(key_pair);
 }
 
-void issueEE(const std::string &p12_path,
+void issueEntityCert(const std::string &p12_path,
              const ::cms::cert::CertData &ca,
              const SubjectSpec &subject,
              uint16_t usage_mask) {
@@ -201,8 +201,8 @@ PkiFixture::PkiFixture() : impl_(new Impl{}) {
     try {
         impl_->ca = makeCa(impl_->ca_p12);
         writePemChain(impl_->ca_chain_pem, impl_->ca);
-        issueEE(impl_->server_p12, impl_->ca, {"PVACMS Test Server", {}, {}, {}}, ::cms::ssl::kForCMS);
-        issueEE(impl_->admin_p12, impl_->ca, {"PVACMS Test Admin", {}, {}, {}}, ::cms::ssl::kForClient);
+        issueEntityCert(impl_->server_p12, impl_->ca, {"PVACMS Test Server", {}, {}, {}}, ::cms::ssl::kForCMS);
+        issueEntityCert(impl_->admin_p12, impl_->ca, {"PVACMS Test Admin", {}, {}, {}}, ::cms::ssl::kForClient);
     } catch (...) {
         removeTree(impl_->dir);
         throw;
@@ -228,13 +228,13 @@ std::string PkiFixture::caFingerprintSha256() const {
 
 std::string PkiFixture::issueServerCert(const SubjectSpec &subject) {
     auto path = impl_->dir + "/server-cert-" + std::to_string(impl_->entity_counter.fetch_add(1)) + ".p12";
-    issueEE(path, impl_->ca, subject, ::cms::ssl::kForServer);
+    issueEntityCert(path, impl_->ca, subject, ::cms::ssl::kForServer);
     return path;
 }
 
 std::string PkiFixture::issueClientCert(const SubjectSpec &subject) {
     auto path = impl_->dir + "/client-cert-" + std::to_string(impl_->entity_counter.fetch_add(1)) + ".p12";
-    issueEE(path, impl_->ca, subject, ::cms::ssl::kForClient);
+    issueEntityCert(path, impl_->ca, subject, ::cms::ssl::kForClient);
     return path;
 }
 

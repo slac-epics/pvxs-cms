@@ -65,8 +65,7 @@ SRC_DIRS += $(AUTHN_DIR)
 SRC_DIRS += $(PVACMS_DIR)
 
 # PVXS_ENABLE_PVACMS: gate CMS-server build + sqlite3 dependency.
-# Default is set in $(TOP)/configure/CONFIG_SITE so test/Makefile sees the
-# same value (CI invokes `make tapfiles` without re-passing build-time flags).
+# Default is set in $(TOP)/configure/CONFIG_SITE so test/Makefile sees the same value.
 # Override in EXTRA, CONFIG_SITE.local, or via the command line.
 PVXS_ENABLE_PVACMS_YES = -DPVXS_ENABLE_PVACMS
 USR_CPPFLAGS += $(PVXS_ENABLE_PVACMS_$(PVXS_ENABLE_PVACMS))

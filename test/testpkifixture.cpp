@@ -53,7 +53,7 @@ void testCaArtifacts() {
     testOk(fileExists(pki.adminP12Path()), "admin.p12 exists: %s", pki.adminP12Path().c_str());
 }
 
-void testIssueDistinctEEs() {
+void testIssueDistinctCerts() {
     testDiag("issueServerCert and issueClientCert produce distinct files per call");
     PkiFixture pki;
 
@@ -93,7 +93,7 @@ void testTempDirCleanup() {
 }
 
 void testBorrowedFixtureSharing() {
-    testDiag("A single PkiFixture issues multiple EEs; both share the same CA fingerprint");
+    testDiag("A single PkiFixture issues multiple Entity Certs; both share the same CA fingerprint");
     PkiFixture pki;
     const auto base_fp = pki.caFingerprintSha256();
 
@@ -111,7 +111,7 @@ MAIN(testpkifixture) {
     testPlan(22);
     testFreshPerConstruction();
     testCaArtifacts();
-    testIssueDistinctEEs();
+    testIssueDistinctCerts();
     testTempDirCleanup();
     testBorrowedFixtureSharing();
     return testDone();
