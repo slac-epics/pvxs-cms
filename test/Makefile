@@ -108,8 +108,14 @@ testsanccr_SRCS += testsanccr.cpp
 testsanccr_SYS_LIBS += sqlite3
 
 # CMS test harness sources. See test/harness/Makefile.
+# Harness ACF uses SPVA-extended access security keywords (AUTHORITY,
+# METHOD, PROTOCOL) that are only present in the secure-pvaccess EPICS
+# Base.  EVENT2_HAS_OPENSSL is the SPVA marker.  On vanilla Base, the
+# ACF parser rejects these keywords and asInitFile() returns
+# S_asLib_badConfig - skip harness builds entirely on those platforms.
 PVXS_CMS_BUILD_TEST_HARNESS ?= YES
 ifeq ($(PVXS_CMS_BUILD_TEST_HARNESS),YES)
+ifeq ($(EVENT2_HAS_OPENSSL),YES)
 include $(HARNESS_DIR)/Makefile
 
 TESTS += testclustertopology
@@ -165,6 +171,7 @@ testtlswithcmsmigrated_SRCS += testtlswithcmsmigrated.cpp
 testtlswithcmsmigrated_SRCS += $(HARNESS_SRCS)
 testtlswithcmsmigrated_LIBS += pvxsIoc
 testtlswithcmsmigrated_SYS_LIBS += $(HARNESS_SYS_LIBS)
+endif # EVENT2_HAS_OPENSSL
 endif # PVXS_CMS_BUILD_TEST_HARNESS
 
 endif # PVXS_ENABLE_PVACMS
