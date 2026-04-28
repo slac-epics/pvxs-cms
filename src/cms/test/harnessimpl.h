@@ -15,15 +15,17 @@
 #include <pvxs/cms/pvacms.h>
 #include <pvxs/server.h>
 
-namespace pvxs {
 namespace cms {
 namespace test {
+
+namespace server = ::pvxs::server;
+
 namespace internal {
 
-void startWithEaddrRetry(pvxs::server::Server &srv, int max_retries = 8);
+void startWithEaddrRetry(server::Server &srv, int max_retries = 8);
 
-std::shared_ptr<pvxs::server::Source> makeObservingSource(
-    std::shared_ptr<pvxs::server::Source> inner,
+std::shared_ptr<server::Source> makeObservingSource(
+    std::shared_ptr<server::Source> inner,
     std::function<void(const std::string &)> on_subscribe);
 
 }  // namespace internal
@@ -32,7 +34,7 @@ struct PVACMSHarness::Impl {
     PkiFixture *pki{nullptr};
     std::unique_ptr<PkiFixture> owned_pki;
 
-    std::unique_ptr<pvxs::cms::ServerHandle> handle;
+    std::unique_ptr<::cms::ServerHandle> handle;
     std::thread worker;
     std::atomic<bool> running{false};
 
@@ -44,7 +46,7 @@ struct PVACMSHarness::Impl {
     std::function<void(const std::string &)> status_subscription_observer;
 
     mutable std::mutex tables_mutex;
-    std::vector<std::shared_ptr<pvxs::server::Server>> owned_servers;
+    std::vector<std::shared_ptr<server::Server>> owned_servers;
     std::vector<RegisteredServer> snapshot_table;
 
     mutable std::atomic<uint64_t> test_client_counter{0};
@@ -60,6 +62,5 @@ struct PVACMSHarness::Impl {
 
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs
 
 #endif

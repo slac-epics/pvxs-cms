@@ -24,11 +24,11 @@
 
 namespace {
 
-using pvxs::cms::test::PkiFixture;
-using pvxs::cms::test::PVACMSHarness;
-using pvxs::cms::test::TestClientOpts;
-using pvxs::cms::test::TestServerOpts;
-using pvxs::cms::test::sanityCheckLoopback;
+using cms::test::PkiFixture;
+using cms::test::PVACMSHarness;
+using cms::test::TestClientOpts;
+using cms::test::TestServerOpts;
+using cms::test::sanityCheckLoopback;
 
 bool dirExists(const std::string &p) {
     struct stat st;
@@ -37,8 +37,8 @@ bool dirExists(const std::string &p) {
 
 void testInitOnce() {
     testDiag("initOnce() is idempotent");
-    pvxs::cms::test::initOnce();
-    pvxs::cms::test::initOnce();
+    cms::test::initOnce();
+    cms::test::initOnce();
     testPass("initOnce() called twice without error");
 }
 

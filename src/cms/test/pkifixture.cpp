@@ -34,7 +34,6 @@
 #include "openssl.h"
 #include "ownedptr.h"
 
-namespace pvxs {
 namespace cms {
 namespace test {
 
@@ -241,4 +240,3 @@ std::string PkiFixture::issueClientEE(const SubjectSpec &subject) {
 
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs

@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 
-namespace pvxs {
 namespace cms {
 namespace test {
 namespace internal {
@@ -47,6 +46,5 @@ private:
 }  // namespace internal
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs
 
 #endif

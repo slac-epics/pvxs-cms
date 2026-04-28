@@ -16,7 +16,6 @@
 
 #include "configcms.h"
 
-namespace pvxs {
 namespace cms {
 namespace test {
 
@@ -134,4 +133,3 @@ TestServerBuilder PVACMSHarness::testServerBuilder() {
 
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs

@@ -8,7 +8,6 @@
 
 #include <stdexcept>
 
-namespace pvxs {
 namespace cms {
 namespace test {
 
@@ -101,4 +100,3 @@ size_t ClusterTopology::size() const noexcept { return n_; }
 
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs

@@ -28,7 +28,6 @@
 #include "configcms.h"
 #include "pvacms.h"
 
-namespace pvxs {
 namespace cms {
 namespace test {
 
@@ -198,7 +197,7 @@ PVACMSHarness::~PVACMSHarness() {
     }
     if (impl_->handle && impl_->running.load()) {
         try {
-            pvxs::cms::stopServer(*impl_->handle);
+            cms::stopServer(*impl_->handle);
         } catch (const std::exception &e) {
             log_warn_printf(harness_log, "stopServer in dtor: %s\n", e.what());
         }
@@ -380,13 +379,11 @@ pvxs::client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts)
 
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs
 
 // ---------- Builder definition ----------
 
 #include <pvxs/cms/pvacms.h>
 
-namespace pvxs {
 namespace cms {
 namespace test {
 
@@ -476,8 +473,8 @@ PVACMSHarness PVACMSHarness::Builder::build() {
         }
     }
 
-    impl.handle.reset(new pvxs::cms::ServerHandle(
-        pvxs::cms::detail::prepareServerFromState(cfg, std::move(state))));
+    impl.handle.reset(new cms::ServerHandle(
+        cms::detail::prepareServerFromState(cfg, std::move(state))));
 
     {
         const auto &eff = impl.handle->pvaServer().config();
@@ -491,7 +488,7 @@ PVACMSHarness PVACMSHarness::Builder::build() {
     auto *running_ptr = &impl.running;
     impl.worker = std::thread([handle_ptr, running_ptr]() {
         try {
-            pvxs::cms::startCluster(*handle_ptr);
+            cms::startCluster(*handle_ptr);
         } catch (const std::exception &e) {
             DEFINE_LOGGER(harness_log, "pvxs.cms.test.harness");
             log_err_printf(harness_log, "PVACMS run loop failed: %s\n", e.what());
@@ -506,4 +503,3 @@ PVACMSHarness PVACMSHarness::Builder::build() {
 
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs

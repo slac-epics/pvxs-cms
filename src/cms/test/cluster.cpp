@@ -29,7 +29,6 @@
 #include "configcms.h"
 #include "pvacms.h"
 
-namespace pvxs {
 namespace cms {
 namespace test {
 
@@ -149,7 +148,7 @@ struct PVACMSCluster::Impl {
 
     ClusterTopology topology{ClusterTopology::empty(0)};
 
-    std::vector<std::unique_ptr<pvxs::cms::ServerHandle>> handles;
+    std::vector<std::unique_ptr<cms::ServerHandle>> handles;
     std::vector<std::thread> workers;
     std::vector<std::unique_ptr<std::atomic<bool>>> running;
     std::vector<std::string> member_addrs;
@@ -227,7 +226,7 @@ PVACMSCluster::~PVACMSCluster() {
         size_t idx = i - 1;
         if (impl_->handles[idx] && impl_->running[idx]->load()) {
             try {
-                pvxs::cms::stopServer(*impl_->handles[idx]);
+                cms::stopServer(*impl_->handles[idx]);
             } catch (const std::exception &e) {
                 log_warn_printf(cluster_log,
                                 "stopServer(%zu) in dtor: %s\n",
@@ -281,8 +280,8 @@ void buildAndStartMember(PVACMSCluster::Impl &impl, size_t i,
         }
     }
 
-    impl.handles[i].reset(new pvxs::cms::ServerHandle(
-        pvxs::cms::detail::prepareServerFromState(cfg, std::move(state))));
+    impl.handles[i].reset(new cms::ServerHandle(
+        cms::detail::prepareServerFromState(cfg, std::move(state))));
 
     const auto &eff = impl.handles[i]->pvaServer().config();
     impl.member_addrs[i] = formatLoopbackAddr(impl.interface_addr, eff.tcp_port);
@@ -293,7 +292,7 @@ void buildAndStartMember(PVACMSCluster::Impl &impl, size_t i,
     auto peers_copy = peers;
     impl.workers[i] = std::thread([handle_ptr, running_ptr, peers_copy]() {
         try {
-            pvxs::cms::startCluster(*handle_ptr, peers_copy);
+            cms::startCluster(*handle_ptr, peers_copy);
         } catch (const std::exception &e) {
             log_err_printf(cluster_log, "startCluster failed: %s\n", e.what());
         }
@@ -353,8 +352,8 @@ PVACMSCluster PVACMSCluster::Builder::build() {
             }
         }
 
-        impl.handles[i].reset(new pvxs::cms::ServerHandle(
-            pvxs::cms::detail::prepareServerFromState(cfg, std::move(state))));
+        impl.handles[i].reset(new cms::ServerHandle(
+            cms::detail::prepareServerFromState(cfg, std::move(state))));
 
         const auto &eff = impl.handles[i]->pvaServer().config();
         impl.member_addrs[i] = formatLoopbackAddr(impl.interface_addr, eff.tcp_port);
@@ -368,7 +367,7 @@ PVACMSCluster PVACMSCluster::Builder::build() {
         auto *running_ptr = impl.running[i].get();
         impl.workers[i] = std::thread([handle_ptr, running_ptr, peers]() {
             try {
-                pvxs::cms::startCluster(*handle_ptr, peers);
+                cms::startCluster(*handle_ptr, peers);
             } catch (const std::exception &e) {
                 log_err_printf(cluster_log, "startCluster failed: %s\n", e.what());
             }
@@ -393,7 +392,7 @@ void PVACMSCluster::restartMember(size_t i) {
 
     if (impl_->handles[i] && impl_->running[i]->load()) {
         try {
-            pvxs::cms::stopServer(*impl_->handles[i]);
+            cms::stopServer(*impl_->handles[i]);
         } catch (const std::exception &e) {
             log_warn_printf(cluster_log, "stopServer(%zu) during restart: %s\n",
                             i, e.what());
@@ -505,4 +504,3 @@ void unbridge(PVACMSCluster &a, size_t a_node, PVACMSCluster &b, size_t b_node) 
 
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs

@@ -19,7 +19,6 @@
 
 #include <pvxs/log.h>
 
-namespace pvxs {
 namespace cms {
 namespace test {
 namespace internal {
@@ -246,4 +245,3 @@ bool StatusEventCapture::waitCacheHitsAtLeast(const std::string &pv_name,
 }  // namespace internal
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs

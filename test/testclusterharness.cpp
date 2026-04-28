@@ -19,11 +19,11 @@
 
 namespace {
 
-using pvxs::cms::test::ClusterTopology;
-using pvxs::cms::test::PVACMSCluster;
-using pvxs::cms::test::PkiFixture;
-using pvxs::cms::test::bridge;
-using pvxs::cms::test::unbridge;
+using cms::test::ClusterTopology;
+using cms::test::PVACMSCluster;
+using cms::test::PkiFixture;
+using cms::test::bridge;
+using cms::test::unbridge;
 
 void testTopologyValueType() {
     testDiag("ClusterTopology factories produce expected adjacency");
