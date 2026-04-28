@@ -35,16 +35,11 @@
 
 namespace cms {
 struct StartupAbort;
-}
-
-namespace pvxs {
-namespace cms {
 class ServerHandle;
 namespace detail {
 struct PreparedCmsState;
-ServerHandle prepareServerFromState(const ::cms::ConfigCms &config,
+ServerHandle prepareServerFromState(const ConfigCms &config,
                                     PreparedCmsState &&state);
-}
 }
 }
 
@@ -503,7 +498,6 @@ class StatusMonitor {
 
 }  // namespace cms (close to define PreparedCmsState at its real namespace site)
 
-namespace pvxs {
 namespace cms {
 namespace detail {
 struct PreparedCmsState {
@@ -526,11 +520,10 @@ struct PreparedCmsState {
 };
 }  // namespace detail
 }  // namespace cms
-}  // namespace pvxs
 
 namespace cms {
 
-::pvxs::cms::detail::PreparedCmsState prepareCmsState(const ConfigCms &config);
+detail::PreparedCmsState prepareCmsState(const ConfigCms &config);
 
 void checkForDuplicates(const sql_ptr &certs_db, const CertFactory &cert_factory);
 

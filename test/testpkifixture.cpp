@@ -16,8 +16,8 @@
 
 namespace {
 
-using pvxs::cms::test::PkiFixture;
-using pvxs::cms::test::SubjectSpec;
+using cms::test::PkiFixture;
+using cms::test::SubjectSpec;
 
 bool fileExists(const std::string &p) {
     struct stat st;

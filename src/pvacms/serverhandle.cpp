@@ -167,9 +167,9 @@ struct ASMember {
     }
 };
 
-pvxs::cms::detail::PreparedCmsState prepareCmsState(const ConfigCms &config)
+cms::detail::PreparedCmsState prepareCmsState(const ConfigCms &config)
 {
-    pvxs::cms::detail::PreparedCmsState state;
+    cms::detail::PreparedCmsState state;
 
     initCertsDatabase(state.certs_db, config.certs_db_filename);
 
@@ -219,10 +219,8 @@ pvxs::cms::detail::PreparedCmsState prepareCmsState(const ConfigCms &config)
 
 } // namespace cms
 
-namespace pvxs {
 namespace cms {
 
-using ::cms::ConfigCms;
 namespace server = ::pvxs::server;
 namespace client = ::pvxs::client;
 
@@ -1093,4 +1091,3 @@ void stopServer(ServerHandle &handle)
 }
 
 } // namespace cms
-} // namespace pvxs

@@ -13,17 +13,15 @@
 #include <pvxs/server.h>
 
 namespace cms {
+
 class ConfigCms;
-}
-
-namespace pvxs {
-namespace cms {
-
 class ServerHandle;
+
+namespace server = pvxs::server;
 
 namespace detail {
 struct PreparedCmsState;
-ServerHandle prepareServerFromState(const ::cms::ConfigCms &config,
+ServerHandle prepareServerFromState(const ConfigCms &config,
                                     PreparedCmsState &&state);
 }
 
@@ -86,13 +84,13 @@ public:
     void registerCertFromP12(const std::string &p12_path);
 
 private:
-    friend ServerHandle prepareServer(const ::cms::ConfigCms &config);
+    friend ServerHandle prepareServer(const ConfigCms &config);
     friend void startCluster(ServerHandle& handle);
     friend void startCluster(ServerHandle& handle,
                              const std::vector<std::string>& peers);
     friend void stopServer(ServerHandle& handle);
     friend ServerHandle detail::prepareServerFromState(
-        const ::cms::ConfigCms &config,
+        const ConfigCms &config,
         detail::PreparedCmsState &&state);
 
     struct Pvt;
@@ -113,7 +111,7 @@ private:
  *
  * @since UNRELEASED
  */
-ServerHandle prepareServer(const ::cms::ConfigCms &config);
+ServerHandle prepareServer(const ConfigCms &config);
 
 /** Start the cluster runtime using environment-provided peers.
  *
@@ -146,6 +144,5 @@ void startCluster(ServerHandle& handle,
 void stopServer(ServerHandle& handle);
 
 } // namespace cms
-} // namespace pvxs
 
 #endif // PVXS_CMS_PVACMS_H

@@ -128,14 +128,14 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
-        auto handle = pvxs::cms::detail::prepareServerFromState(config, std::move(state));
+        auto handle = cms::detail::prepareServerFromState(config, std::move(state));
 
         if (verbose) {
             std::cout << "Effective config\n" << config << std::endl;
         }
 
-        pvxs::cms::startCluster(handle);
-        pvxs::cms::stopServer(handle);
+        cms::startCluster(handle);
+        cms::stopServer(handle);
         return 0;
     } catch (const cms::StartupAbort &) {
         return 1;

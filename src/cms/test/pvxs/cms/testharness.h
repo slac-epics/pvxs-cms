@@ -32,8 +32,13 @@ namespace client {
 struct Config;
 }  // namespace client
 
+}  // namespace pvxs
+
 namespace cms {
 namespace test {
+
+namespace server = ::pvxs::server;
+namespace client = ::pvxs::client;
 
 // ---------------------------------------------------------------------------
 // Subject + per-call cert issuance options
@@ -439,6 +444,5 @@ PVXS_CMS_TEST_API void unbridge(PVACMSCluster &a, size_t a_node,
 
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs
 
 #endif  // PVXS_CMS_TESTHARNESS_H

@@ -14,7 +14,6 @@
 
 #include <pvxs/log.h>
 
-namespace pvxs {
 namespace cms {
 namespace test {
 
@@ -34,7 +33,7 @@ void doInitOnce() noexcept {
     evthread_use_windows_threads();
 #endif
 
-    log_debug_printf(harness_init, "pvxs::cms::test::initOnce() complete%s", "\n");
+    log_debug_printf(harness_init, "cms::test::initOnce() complete%s", "\n");
 }
 
 }  // namespace
@@ -45,4 +44,3 @@ void initOnce() {
 
 }  // namespace test
 }  // namespace cms
-}  // namespace pvxs

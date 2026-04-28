@@ -22,8 +22,8 @@
 
 namespace {
 
-using pvxs::cms::test::PVACMSHarness;
-using pvxs::cms::test::TestServerOpts;
+using cms::test::PVACMSHarness;
+using cms::test::TestServerOpts;
 
 const char *TEST_PV = "TEST:HARNESS:PV";
 
