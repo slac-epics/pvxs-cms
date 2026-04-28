@@ -268,6 +268,16 @@ const std::string &PVACMSCluster::memberP12Path(size_t i) const {
     return impl_->member_p12_paths[i];
 }
 
+::cms::ServerHandle &PVACMSCluster::memberHandle(size_t i) {
+    if (!impl_ || i >= impl_->handles.size()) {
+        throw std::out_of_range("PVACMSCluster::memberHandle: index out of range");
+    }
+    if (!impl_->handles[i]) {
+        throw std::logic_error("PVACMSCluster::memberHandle: member is not running");
+    }
+    return *impl_->handles[i];
+}
+
 namespace {
 
 std::vector<std::string> computePeers(const PVACMSCluster::Impl &impl, size_t i) {
@@ -481,6 +491,19 @@ pvxs::client::Config PVACMSCluster::cmsAdminClientConfig() const {
         cfg.addressList.push_back(addr);
         cfg.nameServers.push_back(addr);
     }
+    cfg.tls_keychain_file = impl_->fixture().adminP12Path();
+    return cfg;
+}
+
+pvxs::client::Config PVACMSCluster::memberClientConfig(size_t i) const {
+    if (!impl_ || i >= impl_->member_addrs.size()) {
+        throw std::out_of_range("PVACMSCluster::memberClientConfig: index out of range");
+    }
+    pvxs::client::Config cfg;
+    cfg.addressList.clear();
+    cfg.nameServers.clear();
+    cfg.addressList.push_back(impl_->member_addrs[i]);
+    cfg.nameServers.push_back(impl_->member_addrs[i]);
     cfg.tls_keychain_file = impl_->fixture().adminP12Path();
     return cfg;
 }

@@ -55,36 +55,12 @@ TESTFILES += superserver1.p12
 TESTPROD_HOST += gen_test_certs
 gen_test_certs_SRCS += gen_test_certs.cpp
 
-# Test TLS with Mock CMS
-TESTS += testtlswithcms
-TESTPROD_HOST += testtlswithcms
-testtlswithcms_SRCS += testtlswithcms.cpp
-
-
-# Test TLS with Mock CMS and stapling
-TESTS += testtlswithcmsandstapling
-TESTPROD_HOST += testtlswithcmsandstapling
-testtlswithcmsandstapling_SRCS += testtlswithcmsandstapling.cpp
-
 # Test TLS status operations
 TESTS += testtlsstatus
 TESTPROD_HOST += testtlsstatus
 testtlsstatus_SRCS += testtlsstatus.cpp
 
-# Test cluster functionality
-TESTS += testcluster
-TESTPROD_HOST += testcluster
-testcluster_SRCS += testcluster.cpp
-testcluster_SRCS += clustertypes.cpp
-testcluster_SRCS += clustersync.cpp
-testcluster_SRCS += clusterctrl.cpp
-testcluster_SRCS += clusterdiscovery.cpp
-testcluster_SRCS += certfactory.cpp
-testcluster_SRCS += p12filefactory.cpp
-testcluster_SRCS += certfilefactory.cpp
-testcluster_SRCS += openssl.cpp
-testcluster_LIBS += pvxsIoc dbRecStd dbCore ca
-testcluster_SYS_LIBS += sqlite3
+
 
 # Test SQLite hardening (WAL, busy_timeout, foreign_keys, schema_version)
 TESTS += testsqlitehardening
@@ -169,6 +145,13 @@ testclusterharness_SRCS += $(HARNESS_SRCS)
 testclusterharness_LIBS += pvxsIoc
 testclusterharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
 
+TESTS += testclusterbehaviour
+TESTPROD_HOST += testclusterbehaviour
+testclusterbehaviour_SRCS += testclusterbehaviour.cpp
+testclusterbehaviour_SRCS += $(HARNESS_SRCS)
+testclusterbehaviour_LIBS += pvxsIoc
+testclusterbehaviour_SYS_LIBS += $(HARNESS_SYS_LIBS)
+
 TESTS += testtlsstaplingharness
 TESTPROD_HOST += testtlsstaplingharness
 testtlsstaplingharness_SRCS += testtlsstaplingharness.cpp
@@ -204,7 +187,7 @@ include $(TOP)/configure/RULES
 
 ifdef BASE_3_15
 ifeq ($(EVENT2_HAS_OPENSSL),YES)
-testtlswithcms$(EXE): | cert_auth.p12
+testtlsstatus$(EXE): | cert_auth.p12
 
 # generate test certs only with EPICS_HOST_ARCH
 ifdef T_A

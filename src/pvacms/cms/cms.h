@@ -84,6 +84,15 @@ public:
      */
     size_t clusterMemberCount() const;
 
+    /** Issuer ID of the Certificate Authority this PVACMS serves.  This is
+     * the leading 8-hex-character form of the CA certificate's subject key
+     * identifier as used in the `CERT:STATUS:<issuer>:<serial>` PV name.
+     * Stable across the lifetime of the ServerHandle.
+     *
+     * @since UNRELEASED
+     */
+    const std::string &issuerId() const;
+
 private:
     friend ServerHandle prepareServer(const ConfigCms &config);
     friend void startCluster(ServerHandle& handle);

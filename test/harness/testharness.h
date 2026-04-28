@@ -37,6 +37,7 @@ struct Config;
 }  // namespace pvxs
 
 namespace cms {
+class ServerHandle;
 namespace test {
 
 namespace server = ::pvxs::server;
@@ -370,6 +371,13 @@ class PVXS_CMS_TEST_API PVACMSCluster {
     /// PVA TCP listener; admin Entity Cert from the shared PKI fixture.
     client::Config cmsAdminClientConfig() const;
 
+    /// Per-member client config targeting ONLY member i: both addressList
+    /// and nameServers contain just memberAddrs()[i].  Use this in tests
+    /// that need to assert what a specific node serves (e.g. "did this
+    /// node receive the cluster-sync update yet?") without depending on
+    /// PVA fall-through search resolving to a different responder.
+    client::Config memberClientConfig(size_t i) const;
+
     /// Filesystem path to member i's P12 keychain.  Stable across
     /// restartMember(i): the harness reuses the same Entity Cert on
     /// restart rather than minting a fresh one.
@@ -379,6 +387,13 @@ class PVXS_CMS_TEST_API PVACMSCluster {
     /// count matching the topology's expected reachable-set size, or
     /// throw std::runtime_error after `2 * clusterDiscoveryTimeoutSecs`.
     void awaitConvergence();
+
+    /// Direct access to member i's running ServerHandle.  Lifetime is tied
+    /// to this PVACMSCluster: the reference is invalidated by
+    /// restartMember(i) and by ~PVACMSCluster.  Throws std::out_of_range
+    /// if i >= size() or std::logic_error if member i is not currently
+    /// running.
+    ::cms::ServerHandle &memberHandle(size_t i);
 
     /// Construct an empty (un-built) cluster handle.  The only valid
     /// operations on an empty handle are destruction and move-assignment
