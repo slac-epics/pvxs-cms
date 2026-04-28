@@ -15,7 +15,7 @@
 SRC_DIRS += $(CMS_TEST_DIR)
 
 # Public headers installed only when the gate is YES
-INC += pvxs/cms/testharness.h
+INC += cms/testharness.h
 
 # Build a host-only static library
 LIBRARY_HOST += pvxsCmsTestHarness
