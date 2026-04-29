@@ -138,6 +138,8 @@ void writeClusterAcf(const std::string &path, size_t n_members) {
     cfg.cluster_discovery_timeout_secs = discovery_secs;
     cfg.cluster_bidi_timeout_secs = bidi_secs;
 
+    cfg.quiet = (getenv("PVXS_CMS_TEST_VERBOSE") == nullptr);
+
     return cfg;
 }
 

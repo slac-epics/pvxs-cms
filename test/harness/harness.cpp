@@ -122,6 +122,8 @@ std::string makeUniqueSubject(const std::string &prefix) {
     cfg.cluster_discovery_timeout_secs = 1;
     cfg.cluster_bidi_timeout_secs = 0;
 
+    cfg.quiet = (getenv("PVXS_CMS_TEST_VERBOSE") == nullptr);
+
     return cfg;
 }
 

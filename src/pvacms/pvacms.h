@@ -595,7 +595,7 @@ int readParameters(int argc, char *argv[], const char *program_name,
                    std::map<const std::string, std::unique_ptr<pvxs::client::Config>> &authn_config_map,
                    bool &verbose, std::string &admin_name, std::string &admin_name_ensure);
 
-void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file);
+void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file, bool quiet = false);
 
 bool performBackup(sqlite3 *src_db, const std::string &dest_path);
 

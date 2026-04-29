@@ -6,6 +6,7 @@
 
 #include "testharness.h"
 
+#include <cstdlib>
 #include <mutex>
 
 #include <event2/thread.h>
@@ -32,6 +33,11 @@ void doInitOnce() noexcept {
 #elif defined(EVTHREAD_USE_WINDOWS_THREADS_IMPLEMENTED)
     evthread_use_windows_threads();
 #endif
+
+    if (std::getenv("PVXS_CMS_TEST_VERBOSE") == nullptr) {
+        pvxs::logger_level_set("cms.*", pvxs::Level::Warn);
+        pvxs::logger_level_set("pvxs.*", pvxs::Level::Warn);
+    }
 
     log_debug_printf(harness_init, "cms::test::initOnce() complete%s", "\n");
 }
