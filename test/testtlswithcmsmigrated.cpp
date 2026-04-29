@@ -281,7 +281,7 @@ MAIN(testtlswithcmsmigrated) {
 #ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
     testPlan(20);
 #else
-    testPlan(16);
+    testPlan(9);
 #endif
     pvxs::logger_config_env();
     testServerOnly();
