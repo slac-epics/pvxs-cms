@@ -549,8 +549,12 @@ void PVACMSCluster::awaitConvergence() {
         expected[i] = expectedMemberCount(impl_->topology, i);
     }
 
+    // Generous bound: we converge in ~1s on a fast loopback but CI macOS
+    // runners under load can take noticeably longer for the full join +
+    // bidi-check + sync cycle.  4x discovery_secs gives 20s headroom at
+    // the default 5s knob without making local runs feel slow.
     const auto deadline = std::chrono::steady_clock::now()
-                          + std::chrono::seconds(2 * impl_->discovery_secs);
+                          + std::chrono::seconds(4 * impl_->discovery_secs);
 
     while (true) {
         bool all_converged = true;
@@ -577,7 +581,7 @@ void PVACMSCluster::awaitConvergence() {
         if (std::chrono::steady_clock::now() >= deadline) {
             std::ostringstream os;
             os << "PVACMSCluster::awaitConvergence: member " << laggard
-               << " did not converge within " << (2 * impl_->discovery_secs)
+               << " did not converge within " << (4 * impl_->discovery_secs)
                << "s (expected " << laggard_expected
                << " members, observed " << laggard_actual << ")";
             throw std::runtime_error(os.str());
