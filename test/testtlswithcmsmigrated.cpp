@@ -61,19 +61,11 @@ void testServerOnly() {
 #ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
     testTrue(harness.totalSubscribes() >= 2);
     testTrue(harness.totalStatusReceived() >= 2);
+#endif
     testDiag("subscribes=%u, deliveries=%u, cache-hits=%u",
              harness.totalSubscribes(),
              harness.totalDeliveries(),
              harness.totalCacheHits());
-#else
-    // Cache-dir override not in this pvxs - shared cache makes counters
-    // unreliable.  Skip the precise-count assertions but still log.
-    testSkip(2, "tls_status_cache_dir not in this pvxs");
-    testDiag("subscribes=%u, deliveries=%u, cache-hits=%u (skipped assertion)",
-             harness.totalSubscribes(),
-             harness.totalDeliveries(),
-             harness.totalCacheHits());
-#endif
 }
 
 void testGetIntermediate() {
@@ -112,24 +104,15 @@ void testGetIntermediate() {
     testTrue(harness.totalSubscribes() >= 4);
     testTrue(harness.totalStatusReceived() >= 2);
     testTrue(pvs.size() >= 2);
-#else
-    testSkip(3, "tls_status_cache_dir not in this pvxs - cross-role cache hits skew counts");
-#endif
-
-    testDiag("Mutual-TLS observation: 4 subscribes (server-entity, server-peer-of-client,");
-    testDiag("client-entity, client-peer-of-server) but only %u status receipts.",
-             harness.totalStatusReceived());
-    testDiag("Observed %zu unique CERT:STATUS PVs", pvs.size());
-
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
     for (const auto &pv : pvs) {
         testTrue(harness.subscribesFor(pv) >= 2);
     }
-#else
-    if (!pvs.empty()) {
-        testSkip(static_cast<unsigned>(pvs.size()), "subscribesFor counts not reliable without tls_status_cache_dir");
-    }
 #endif
+
+    testDiag("Mutual-TLS observation: subscribes=%u status_received=%u unique_pvs=%zu",
+             harness.totalSubscribes(),
+             harness.totalStatusReceived(),
+             pvs.size());
 }
 
 void testCertStatusGating() {
@@ -168,8 +151,6 @@ void testCertStatusGating() {
         testDiag("  %s status_received=%u (gating contract: GET-time -> received >= 1)",
                  pv.c_str(), received);
     }
-#else
-    testSkip(1, "tls_status_cache_dir not in this pvxs - status PV observation may be cache-shadowed");
 #endif
 }
 
@@ -257,8 +238,6 @@ void testCacheHitOnRepeatedSubscribe() {
 
 #ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
     testTrue(hits_after_second > hits_after_first);
-#else
-    testSkip(1, "tls_status_cache_dir not in this pvxs - cache-hit instrumentation absent");
 #endif
     testDiag("cache hits: after 1st client = %u, after 2nd client = %u (delta = %u)",
              hits_after_first, hits_after_second, hits_after_second - hits_after_first);
@@ -299,7 +278,11 @@ void testNoCacheBleedAcrossRoles() {
 }  // namespace
 
 MAIN(testtlswithcmsmigrated) {
+#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
     testPlan(20);
+#else
+    testPlan(16);
+#endif
     pvxs::logger_config_env();
     testServerOnly();
     testGetIntermediate();
