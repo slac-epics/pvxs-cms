@@ -99,12 +99,23 @@ void testServerOnlyMigrated() {
     testDiag("Invariant: deliveries (%u) = live (%u) + cache-hits (%u)",
              total_dels, total_dels - total_hits, total_hits);
 
+#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+    // The cert-status subscribe/deliver counters depend on pvxs's cache-dir
+    // override (PR #11) to avoid cross-role cache hits silently swallowing
+    // subscribe events.  On older pvxs (no override), these counters can
+    // legitimately be 0 if the shared cache has prior entries.
     testOk(total_subs >= 2,
            "Total cert-status subscribes >= 2 (got %u)", total_subs);
     testOk(total_dels >= 1,
            "Total cert-status deliveries >= 1 (got %u)", total_dels);
     testOk(unique_pvs >= 1,
            "At least one unique cert-status PV had activity (got %d)", unique_pvs);
+#else
+    testDiag("Cert-status counter assertions skipped (pvxs lacks tls_status_cache_dir)");
+    testDiag("Observed: subs=%u dels=%u unique_pvs=%d",
+             total_subs, total_dels, unique_pvs);
+    testSkip(3, "tls_status_cache_dir not in this pvxs");
+#endif
 }
 
 void testCounterAPIBasics() {
