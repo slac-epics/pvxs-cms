@@ -106,11 +106,11 @@ void testGetIntermediate() {
     testOk(got, "testGetIntermediate: mutual-TLS GET succeeded");
     if (got) testEq(value, 42);
 
+    const auto pvs = harness.observedStatusPvs();
+
 #ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
     testTrue(harness.totalSubscribes() >= 4);
     testTrue(harness.totalStatusReceived() >= 2);
-
-    const auto pvs = harness.observedStatusPvs();
     testTrue(pvs.size() >= 2);
 #else
     testSkip(3, "tls_status_cache_dir not in this pvxs - cross-role cache hits skew counts");
@@ -119,14 +119,17 @@ void testGetIntermediate() {
     testDiag("Mutual-TLS observation: 4 subscribes (server-entity, server-peer-of-client,");
     testDiag("client-entity, client-peer-of-server) but only %u status receipts.",
              harness.totalStatusReceived());
-    testDiag("Some subscribes don't deliver in the brief test window.  Per-cert");
-    testDiag("breakdown follows for diagnostics.");
-    testDiag("Observed %zu unique CERT:STATUS PVs (>=2 expected: server Entity Cert + client Entity Cert)",
-             pvs.size());
+    testDiag("Observed %zu unique CERT:STATUS PVs", pvs.size());
 
+#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
     for (const auto &pv : pvs) {
         testTrue(harness.subscribesFor(pv) >= 2);
     }
+#else
+    if (!pvs.empty()) {
+        testSkip(static_cast<unsigned>(pvs.size()), "subscribesFor counts not reliable without tls_status_cache_dir");
+    }
+#endif
 }
 
 void testCertStatusGating() {
