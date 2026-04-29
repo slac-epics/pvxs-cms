@@ -335,6 +335,12 @@ class ConfigCms final : public Config {
     uint32_t max_concurrent_ccr = 100;
     uint32_t monitor_interval_min_secs = 5;
     uint32_t monitor_interval_max_secs = 60;
+
+    // Suppress startup banner, certificate-DB and preload-cert console output.
+    // Force cms.* and pvxs.* loggers to Warn (overriding PVXS_LOG env).  Only
+    // the "Service Running" / "Service Exiting" frame is still printed.
+    bool quiet{false};
+
     std::string backup_path;
     uint32_t backup_interval_secs = 0;
     std::string backup_dir;

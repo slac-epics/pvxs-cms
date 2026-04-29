@@ -170,7 +170,7 @@ detail::PreparedCmsState prepareCmsState(const ConfigCms &config)
 {
     detail::PreparedCmsState state;
 
-    initCertsDatabase(state.certs_db, config.certs_db_filename);
+    initCertsDatabase(state.certs_db, config.certs_db_filename, config.quiet);
 
     getOrCreateCertAuthCertificate(config,
                                    state.certs_db,
@@ -839,6 +839,10 @@ void ServerHandle::Pvt::prepareClusterRuntime(const std::vector<std::string> *pe
 
 void ServerHandle::Pvt::runUntilShutdown()
 {
+    if (config_copy.quiet) {
+        pvxs::logger_level_set("cms.*", pvxs::Level::Warn);
+        pvxs::logger_level_set("pvxs.*", pvxs::Level::Warn);
+    }
     if (!is_initialising) {
         auto status_tuple = getCertificateStatus(certs_db, our_serial);
         if (std::get<0>(status_tuple) == REVOKED) {
@@ -906,25 +910,27 @@ void ServerHandle::Pvt::runUntilShutdown()
     try {
         std::cout << "+=======================================+======================================="
                   << std::endl;
-        std::cout << "| EPICS Secure PVAccess Certificate Management Service v"
-                  << PVACMS_MAJOR_VERSION << "."
-                  << PVACMS_MINOR_VERSION << "."
-                  << PVACMS_MAINTENANCE_VERSION << std::endl;
-        std::cout << "+---------------------------------------+---------------------------------------"
-                  << std::endl;
-        std::cout << "| Certificate Database                  : " << config_copy.certs_db_filename << std::endl;
-        std::cout << "| Certificate Authority                 : " << subject_string << std::endl;
-        std::cout << "| Certificate Authority Keychain File   : " << config_copy.cert_auth_keychain_file << std::endl;
-        std::cout << "| PVACMS Keychain File                  : " << config_copy.tls_keychain_file << std::endl;
-        std::cout << "| PVACMS Access Control File            : " << config_copy.pvacms_acf_filename << std::endl;
-        std::cout << "+---------------------------------------+---------------------------------------"
-                  << std::endl;
-        std::cout << "| Cluster Node ID                       : " << our_node_id << std::endl;
-        std::cout << "| Cluster Sync PV                       : " << cluster_sync.getSyncPvName() << std::endl;
-        std::cout << "| Cluster Ctrl PV                       : " << cluster_ctrl.getCtrlPvName() << std::endl;
-        std::cout << "| Cluster Status                        : " << cluster_status << std::endl;
-        std::cout << "+---------------------------------------+---------------------------------------"
-                  << std::endl;
+        if (!config_copy.quiet) {
+            std::cout << "| EPICS Secure PVAccess Certificate Management Service v"
+                      << PVACMS_MAJOR_VERSION << "."
+                      << PVACMS_MINOR_VERSION << "."
+                      << PVACMS_MAINTENANCE_VERSION << std::endl;
+            std::cout << "+---------------------------------------+---------------------------------------"
+                      << std::endl;
+            std::cout << "| Certificate Database                  : " << config_copy.certs_db_filename << std::endl;
+            std::cout << "| Certificate Authority                 : " << subject_string << std::endl;
+            std::cout << "| Certificate Authority Keychain File   : " << config_copy.cert_auth_keychain_file << std::endl;
+            std::cout << "| PVACMS Keychain File                  : " << config_copy.tls_keychain_file << std::endl;
+            std::cout << "| PVACMS Access Control File            : " << config_copy.pvacms_acf_filename << std::endl;
+            std::cout << "+---------------------------------------+---------------------------------------"
+                      << std::endl;
+            std::cout << "| Cluster Node ID                       : " << our_node_id << std::endl;
+            std::cout << "| Cluster Sync PV                       : " << cluster_sync.getSyncPvName() << std::endl;
+            std::cout << "| Cluster Ctrl PV                       : " << cluster_ctrl.getCtrlPvName() << std::endl;
+            std::cout << "| Cluster Status                        : " << cluster_status << std::endl;
+            std::cout << "+---------------------------------------+---------------------------------------"
+                      << std::endl;
+        }
         std::cout << "| PVACMS [" << our_issuer_id << "] Service Running     |" << std::endl;
         std::cout << "+=======================================+======================================="
                   << std::endl;

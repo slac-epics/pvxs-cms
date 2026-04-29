@@ -748,7 +748,7 @@ Value makeMetricsValue() {
  *
  * @throws std::runtime_error if the database can't be opened or initialised
  */
-void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
+void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file, bool quiet) {
     log_debug_printf(pvacms, "Attempting to open certificate database file: %s\n", db_file.c_str());
     if (sqlite3_open(db_file.c_str(), certs_db.acquire()) != SQLITE_OK) {
         throw std::runtime_error(SB() << "Can't open certs db file for writing: " << sqlite3_errmsg(certs_db.get()));
@@ -782,7 +782,7 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
         if (sql_status != SQLITE_OK && sql_status != SQLITE_DONE) {
             throw std::runtime_error(SB() << "Can't initialize certs db file: " << sqlite3_errmsg(certs_db.get()));
         }
-        std::cout << "Certificate DB created  : " << db_file << std::endl;
+        if (!quiet) std::cout << "Certificate DB created  : " << db_file << std::endl;
     }
     log_debug_printf(pvacms, "Certs database exists: %s\n", "certs");
 
@@ -2629,7 +2629,7 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data) {
 
     out_file.close();
 
-    std::cout << "Created Default ACF file: " << config.pvacms_acf_filename << std::endl;
+    if (!config.quiet) std::cout << "Created Default ACF file: " << config.pvacms_acf_filename << std::endl;
 }
 
 /**
@@ -2956,7 +2956,7 @@ void insertLoadedCertIfMissing(const ConfigCms &config,
     if (rc != SQLITE_OK && rc != SQLITE_DONE) {
         throw std::runtime_error(SB() << "Failed to insert loaded certificate into DB: " << sqlite3_errmsg(certs_db.get()));
     }
-    std::cout << "Pre-loaded Certificate  : " << status_uri << " : " << cn  << std::endl;
+    if (!config.quiet) std::cout << "Pre-loaded Certificate  : " << status_uri << " : " << cn  << std::endl;
 }
 
 /**
@@ -4182,6 +4182,8 @@ int readParameters(int argc,
 
     app.add_flag("-h,--help", help);
     app.add_flag("-v,--verbose", verbose, "Make more noise");
+    app.add_flag("-q,--quiet", config.quiet,
+                 "Suppress banner and certificate-DB output; force cms.* and pvxs.* loggers to Warn.");
     app.add_flag("-V,--version", show_version, "Print version and exit.");
 
     app.add_option("-c,--cert-auth-keychain",
@@ -4433,6 +4435,8 @@ int readParameters(int argc,
             << "        --backup-dir <path>                  Directory for periodic backup files\n"
             << "        --backup-retention <count>           Maximum backup files to keep. Default 7\n"
             << "  (-v | --verbose)                           Verbose mode\n"
+            << "  (-q | --quiet)                             Quiet mode: suppress banner and certificate-DB output;\n"
+            << "                                             force cms.* and pvxs.* loggers to Warn (overrides PVXS_LOG)\n"
             << std::endl
             << "admin options:\n"
             << "        --acf <acf_file>                     Specify Admin Security Configuration File. Default "

@@ -48,6 +48,10 @@ int main(int argc, char *argv[]) {
         if (verbose)
             pvxs::logger_level_set("cms.*", pvxs::Level::Info);
         pvxs::logger_config_env();
+        if (config.quiet) {
+            pvxs::logger_level_set("cms.*", pvxs::Level::Warn);
+            pvxs::logger_level_set("pvxs.*", pvxs::Level::Warn);
+        }
 
         if (!config.backup_path.empty()) {
             std::string backup_dest = config.backup_path;
@@ -66,7 +70,7 @@ int main(int argc, char *argv[]) {
 
         if (!admin_name.empty() || !admin_name_ensure.empty()) {
             pvxs::sql_ptr certs_db;
-            cms::initCertsDatabase(certs_db, config.certs_db_filename);
+            cms::initCertsDatabase(certs_db, config.certs_db_filename, config.quiet);
 
             pvxs::ossl_ptr<EVP_PKEY> cert_auth_pkey;
             pvxs::ossl_ptr<X509> cert_auth_cert;
