@@ -110,12 +110,9 @@ void testServerOnlyMigrated() {
            "Total cert-status deliveries >= 1 (got %u)", total_dels);
     testOk(unique_pvs >= 1,
            "At least one unique cert-status PV had activity (got %d)", unique_pvs);
-#else
-    testDiag("Cert-status counter assertions skipped (pvxs lacks tls_status_cache_dir)");
+#endif
     testDiag("Observed: subs=%u dels=%u unique_pvs=%d",
              total_subs, total_dels, unique_pvs);
-    testSkip(3, "tls_status_cache_dir not in this pvxs");
-#endif
 }
 
 void testCounterAPIBasics() {
@@ -165,7 +162,11 @@ void testCounterAPIBasics() {
 }  // namespace
 
 MAIN(testtlswithcmsharness) {
+#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
     testPlan(17);
+#else
+    testPlan(14);
+#endif
     pvxs::logger_config_env();
     testServerOnlyMigrated();
     testCounterAPIBasics();
