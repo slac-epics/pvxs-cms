@@ -34,33 +34,39 @@ void testServerOnly() {
     auto harness = PVACMSHarness::Builder{}.build();
     harness.resetStatusEventCounters();
 
-    auto mbox = pvxs::server::SharedPV::buildReadonly();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{42}));
 
-    auto &srv = harness.testServerBuilder()
-                    .opts([]{ TestServerOpts o; o.subject = "migrated-server-only"; return o; }())
-                    .withPV(TEST_PV, mbox)
+    auto &test_server = harness.testServerBuilder()
+                    .opts([]{
+                        TestServerOpts server_opts;
+                        server_opts.subject = "migrated-server-only";
+                        return server_opts;
+                    }())
+                    .withPV(TEST_PV, mailbox_pv)
                     .start();
-    (void)srv;
+    (void)test_server;
 
-    auto cli = harness.testClientConfig().build();
+    auto client = harness.testClientConfig().build();
 
-    int32_t value = -1;
-    bool got = false;
+    int32_t reply_value = -1;
+    bool get_succeeded = false;
     try {
-        auto reply = cli.get(TEST_PV).exec()->wait(10.0);
-        value = reply["value"].as<int32_t>();
-        got = true;
+        auto reply = client.get(TEST_PV).exec()->wait(10.0);
+        reply_value = reply["value"].as<int32_t>();
+        get_succeeded = true;
     } catch (const std::exception &e) {
         testDiag("GET failed: %s", e.what());
     }
-    testOk(got, "testServerOnly: GET via TLS+PVACMS succeeded");
-    if (got) testEq(value, 42);
+    testOk(get_succeeded, "testServerOnly: GET via TLS+PVACMS succeeded");
+    if (get_succeeded) testEq(reply_value, 42);
 
 #ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
-    testTrue(harness.totalSubscribes() >= 2);
-    testTrue(harness.totalStatusReceived() >= 2);
+    testOk(harness.totalSubscribes() >= 2,
+           "totalSubscribes >= 2 (got %u)", harness.totalSubscribes());
+    testOk(harness.totalStatusReceived() >= 2,
+           "totalStatusReceived >= 2 (got %u)", harness.totalStatusReceived());
 #endif
     testDiag("subscribes=%u, deliveries=%u, cache-hits=%u",
              harness.totalSubscribes(),
@@ -74,45 +80,57 @@ void testGetIntermediate() {
     auto harness = PVACMSHarness::Builder{}.build();
     harness.resetStatusEventCounters();
 
-    auto mbox = pvxs::server::SharedPV::buildReadonly();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{42}));
 
-    auto &srv = harness.testServerBuilder()
-                    .opts([]{ TestServerOpts o; o.subject = "migrated-mutual-server"; o.clientCertRequired = true; return o; }())
-                    .withPV(TEST_PV, mbox)
+    auto &test_server = harness.testServerBuilder()
+                    .opts([]{
+                        TestServerOpts server_opts;
+                        server_opts.subject = "migrated-mutual-server";
+                        server_opts.clientCertRequired = true;
+                        return server_opts;
+                    }())
+                    .withPV(TEST_PV, mailbox_pv)
                     .start();
-    (void)srv;
+    (void)test_server;
 
-    auto cli = harness.testClientConfig().build();
+    auto client = harness.testClientConfig().build();
 
-    int32_t value = -1;
-    bool got = false;
+    int32_t reply_value = -1;
+    bool get_succeeded = false;
     try {
-        auto reply = cli.get(TEST_PV).exec()->wait(10.0);
-        value = reply["value"].as<int32_t>();
-        got = true;
+        auto reply = client.get(TEST_PV).exec()->wait(10.0);
+        reply_value = reply["value"].as<int32_t>();
+        get_succeeded = true;
     } catch (const std::exception &e) {
         testDiag("GET failed: %s", e.what());
     }
-    testOk(got, "testGetIntermediate: mutual-TLS GET succeeded");
-    if (got) testEq(value, 42);
+    testOk(get_succeeded, "testGetIntermediate: mutual-TLS GET succeeded");
+    if (get_succeeded) testEq(reply_value, 42);
 
-    const auto pvs = harness.observedStatusPvs();
+    const auto observed_status_pvs = harness.observedStatusPvs();
 
 #ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
-    testTrue(harness.totalSubscribes() >= 4);
-    testTrue(harness.totalStatusReceived() >= 2);
-    testTrue(pvs.size() >= 2);
-    for (const auto &pv : pvs) {
-        testTrue(harness.subscribesFor(pv) >= 2);
+    testOk(harness.totalSubscribes() >= 4,
+           "totalSubscribes >= 4 for mutual-TLS (got %u)", harness.totalSubscribes());
+    testOk(harness.totalStatusReceived() >= 2,
+           "totalStatusReceived >= 2 for mutual-TLS (got %u)",
+           harness.totalStatusReceived());
+    testOk(observed_status_pvs.size() >= 2,
+           "at least 2 unique CERT:STATUS PVs observed (got %zu)",
+           observed_status_pvs.size());
+    for (const auto &status_pv : observed_status_pvs) {
+        testOk(harness.subscribesFor(status_pv) >= 2,
+               "%s has >= 2 subscribes (got %u)",
+               status_pv.c_str(), harness.subscribesFor(status_pv));
     }
 #endif
 
     testDiag("Mutual-TLS observation: subscribes=%u status_received=%u unique_pvs=%zu",
              harness.totalSubscribes(),
              harness.totalStatusReceived(),
-             pvs.size());
+             observed_status_pvs.size());
 }
 
 void testCertStatusGating() {
@@ -121,35 +139,41 @@ void testCertStatusGating() {
     auto harness = PVACMSHarness::Builder{}.build();
     harness.resetStatusEventCounters();
 
-    auto mbox = pvxs::server::SharedPV::buildReadonly();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{99}));
 
-    auto &srv = harness.testServerBuilder()
-                    .opts([]{ TestServerOpts o; o.subject = "gating-server"; o.clientCertRequired = true; return o; }())
-                    .withPV(TEST_PV, mbox)
+    auto &test_server = harness.testServerBuilder()
+                    .opts([]{
+                        TestServerOpts server_opts;
+                        server_opts.subject = "gating-server";
+                        server_opts.clientCertRequired = true;
+                        return server_opts;
+                    }())
+                    .withPV(TEST_PV, mailbox_pv)
                     .start();
-    (void)srv;
+    (void)test_server;
 
-    auto cli = harness.testClientConfig().build();
+    auto client = harness.testClientConfig().build();
 
-    int32_t value = -1;
+    int32_t reply_value = -1;
     try {
-        auto reply = cli.get(TEST_PV).exec()->wait(10.0);
-        value = reply["value"].as<int32_t>();
+        auto reply = client.get(TEST_PV).exec()->wait(10.0);
+        reply_value = reply["value"].as<int32_t>();
     } catch (const std::exception &e) {
         testFail("Gating: GET failed: %s", e.what());
     }
-    testEq(value, 99);
+    testEq(reply_value, 99);
 
 #ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
-    const auto pvs = harness.observedStatusPvs();
-    testOk(!pvs.empty(), "at least one CERT:STATUS PV observed");
-    for (const auto &pv : pvs) {
-        const auto received = harness.statusReceivedFor(pv);
-        testTrue(received >= 1);
+    const auto observed_status_pvs = harness.observedStatusPvs();
+    testOk(!observed_status_pvs.empty(), "at least one CERT:STATUS PV observed");
+    for (const auto &status_pv : observed_status_pvs) {
+        const auto received_count = harness.statusReceivedFor(status_pv);
+        testOk(received_count >= 1,
+               "%s status_received >= 1 (got %u)", status_pv.c_str(), received_count);
         testDiag("  %s status_received=%u (gating contract: GET-time -> received >= 1)",
-                 pv.c_str(), received);
+                 status_pv.c_str(), received_count);
     }
 #endif
 }
@@ -160,42 +184,51 @@ void testTlsCredentialsOnConnect() {
     auto harness = PVACMSHarness::Builder{}.build();
     harness.resetStatusEventCounters();
 
-    auto mbox = pvxs::server::SharedPV::buildReadonly();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{77}));
 
-    auto &srv = harness.testServerBuilder()
-                    .opts([]{ TestServerOpts o; o.subject = "creds-server"; o.clientCertRequired = true; return o; }())
-                    .withPV(TEST_PV, mbox)
+    auto &test_server = harness.testServerBuilder()
+                    .opts([]{
+                        TestServerOpts server_opts;
+                        server_opts.subject = "creds-server";
+                        server_opts.clientCertRequired = true;
+                        return server_opts;
+                    }())
+                    .withPV(TEST_PV, mailbox_pv)
                     .start();
-    (void)srv;
+    (void)test_server;
 
-    auto cli = harness.testClientConfig().build();
+    auto client = harness.testClientConfig().build();
 
-    std::atomic<bool> saw_tls{false};
-    std::atomic<bool> saw_connect{false};
-    auto conn = cli.connect(TEST_PV)
-                    .onConnect([&](const pvxs::client::Connected &c) {
-                        saw_connect.store(true);
-                        if (c.cred && c.cred->isTLS) saw_tls.store(true);
+    std::atomic<bool> on_connect_saw_tls{false};
+    std::atomic<bool> on_connect_fired{false};
+    auto connect_handle = client.connect(TEST_PV)
+                    .onConnect([&](const pvxs::client::Connected &connected_event) {
+                        on_connect_fired.store(true);
+                        if (connected_event.cred && connected_event.cred->isTLS) {
+                            on_connect_saw_tls.store(true);
+                        }
                         testDiag("onConnect: isTLS=%d method=%s account=%s",
-                                 c.cred && c.cred->isTLS ? 1 : 0,
-                                 c.cred ? c.cred->method.c_str() : "<null>",
-                                 c.cred ? c.cred->account.c_str() : "<null>");
+                                 connected_event.cred && connected_event.cred->isTLS ? 1 : 0,
+                                 connected_event.cred
+                                     ? connected_event.cred->method.c_str() : "<null>",
+                                 connected_event.cred
+                                     ? connected_event.cred->account.c_str() : "<null>");
                     })
                     .exec();
 
-    int32_t value = -1;
+    int32_t reply_value = -1;
     try {
-        auto reply = cli.get(TEST_PV).exec()->wait(10.0);
-        value = reply["value"].as<int32_t>();
+        auto reply = client.get(TEST_PV).exec()->wait(10.0);
+        reply_value = reply["value"].as<int32_t>();
     } catch (const std::exception &e) {
         testDiag("GET failed: %s", e.what());
     }
-    testEq(value, 77);
-    testOk(saw_connect.load(), "client received onConnect callback");
-    testOk(saw_tls.load(), "onConnect credentials reported isTLS");
-    conn.reset();
+    testEq(reply_value, 77);
+    testOk(on_connect_fired.load(), "client received onConnect callback");
+    testOk(on_connect_saw_tls.load(), "onConnect credentials reported isTLS");
+    connect_handle.reset();
 }
 
 void testCacheHitOnRepeatedSubscribe() {
@@ -204,43 +237,52 @@ void testCacheHitOnRepeatedSubscribe() {
     auto harness = PVACMSHarness::Builder{}.build();
     harness.resetStatusEventCounters();
 
-    auto mbox = pvxs::server::SharedPV::buildReadonly();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{1}));
 
-    auto &srv = harness.testServerBuilder()
-                    .opts([]{ TestServerOpts o; o.subject = "cache-hit-server"; o.clientCertRequired = true; return o; }())
-                    .withPV(TEST_PV, mbox)
+    auto &test_server = harness.testServerBuilder()
+                    .opts([]{
+                        TestServerOpts server_opts;
+                        server_opts.subject = "cache-hit-server";
+                        server_opts.clientCertRequired = true;
+                        return server_opts;
+                    }())
+                    .withPV(TEST_PV, mailbox_pv)
                     .start();
-    (void)srv;
+    (void)test_server;
 
-    auto cli_cfg = harness.testClientConfig();
+    auto client_config = harness.testClientConfig();
 
-    auto cli1 = cli_cfg.build();
+    auto first_client = client_config.build();
     try {
-        cli1.get(TEST_PV).exec()->wait(10.0);
+        first_client.get(TEST_PV).exec()->wait(10.0);
     } catch (const std::exception &) {
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    const uint32_t hits_after_first = harness.totalCacheHits();
+    const uint32_t cache_hits_after_first_client = harness.totalCacheHits();
 
-    auto cli2 = cli_cfg.build();
+    auto second_client = client_config.build();
     try {
-        cli2.get(TEST_PV).exec()->wait(10.0);
+        second_client.get(TEST_PV).exec()->wait(10.0);
     } catch (const std::exception &) {
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    const uint32_t hits_after_second = harness.totalCacheHits();
+    const uint32_t cache_hits_after_second_client = harness.totalCacheHits();
 
 #ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
-    testTrue(hits_after_second > hits_after_first);
+    testOk(cache_hits_after_second_client > cache_hits_after_first_client,
+           "second client (same role, same cert) added cache hits: %u -> %u",
+           cache_hits_after_first_client, cache_hits_after_second_client);
 #endif
     testDiag("cache hits: after 1st client = %u, after 2nd client = %u (delta = %u)",
-             hits_after_first, hits_after_second, hits_after_second - hits_after_first);
+             cache_hits_after_first_client,
+             cache_hits_after_second_client,
+             cache_hits_after_second_client - cache_hits_after_first_client);
 }
 
 void testNoCacheBleedAcrossRoles() {
@@ -249,19 +291,24 @@ void testNoCacheBleedAcrossRoles() {
     auto harness = PVACMSHarness::Builder{}.build();
     harness.resetStatusEventCounters();
 
-    auto mbox = pvxs::server::SharedPV::buildReadonly();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{7}));
 
-    auto &srv = harness.testServerBuilder()
-                    .opts([]{ TestServerOpts o; o.subject = "isolation-server"; o.clientCertRequired = true; return o; }())
-                    .withPV(TEST_PV, mbox)
+    auto &test_server = harness.testServerBuilder()
+                    .opts([]{
+                        TestServerOpts server_opts;
+                        server_opts.subject = "isolation-server";
+                        server_opts.clientCertRequired = true;
+                        return server_opts;
+                    }())
+                    .withPV(TEST_PV, mailbox_pv)
                     .start();
-    (void)srv;
+    (void)test_server;
 
-    auto cli = harness.testClientConfig().build();
+    auto client = harness.testClientConfig().build();
     try {
-        cli.get(TEST_PV).exec()->wait(10.0);
+        client.get(TEST_PV).exec()->wait(10.0);
     } catch (const std::exception &) {
     }
 
@@ -272,7 +319,9 @@ void testNoCacheBleedAcrossRoles() {
              harness.totalDeliveries(),
              harness.totalCacheHits());
 
-    testTrue(harness.totalCacheHits() == 0);
+    testOk(harness.totalCacheHits() == 0,
+           "no cross-role cache bleed: server cache and client cache stay isolated (got %u hits)",
+           harness.totalCacheHits());
 }
 
 }  // namespace

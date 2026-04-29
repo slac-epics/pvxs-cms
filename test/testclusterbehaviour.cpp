@@ -43,8 +43,8 @@ using cms::test::PVACMSCluster;
 void testTwoNodeClusterMembershipConverges() {
     testDiag("2-node cluster: every member sees both members");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     testEq(cluster.size(), size_t{2});
     testEq(cluster.memberHandle(0).clusterMemberCount(), size_t{2});
@@ -58,8 +58,8 @@ void testTwoNodeClusterMembershipConverges() {
 void testLinearChainMembershipPropagates() {
     testDiag("3-node linearChain: outer nodes learn each other via middle");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(3)
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(3)
                        .topology(ClusterTopology::linearChain(3))
                        .build();
 
@@ -75,13 +75,13 @@ void testLinearChainMembershipPropagates() {
 void testAllMembersShareIssuer() {
     testDiag("All cluster members share one issuer ID");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
-    const auto &issuer0 = cluster.memberHandle(0).issuerId();
-    const auto &issuer1 = cluster.memberHandle(1).issuerId();
-    testTrue(!issuer0.empty());
-    testEq(issuer0, issuer1);
+    const auto &issuer_node_0 = cluster.memberHandle(0).issuerId();
+    const auto &issuer_node_1 = cluster.memberHandle(1).issuerId();
+    testOk(!issuer_node_0.empty(), "node 0 issuer ID is populated");
+    testEq(issuer_node_0, issuer_node_1);
 }
 
 // 6.16-B: the admin client can reach the cluster control PV via the
@@ -91,24 +91,24 @@ void testAllMembersShareIssuer() {
 void testAdminClientReachesClusterCtrlPv() {
     testDiag("Admin client reaches CERT:CLUSTER:CTRL:<issuer> PV");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     const auto issuer = cluster.memberHandle(0).issuerId();
     const auto ctrl_pv = std::string("CERT:CLUSTER:CTRL:") + issuer;
 
-    auto cfg = cluster.cmsAdminClientConfig();
-    auto cli = cfg.build();
+    auto admin_client_config = cluster.cmsAdminClientConfig();
+    auto admin_client = admin_client_config.build();
 
-    bool got_value = false;
+    bool get_succeeded = false;
     try {
-        auto reply = cli.get(ctrl_pv).exec()->wait(10.0);
-        got_value = reply.valid();
+        auto reply = admin_client.get(ctrl_pv).exec()->wait(10.0);
+        get_succeeded = reply.valid();
     } catch (const std::exception &e) {
         testDiag("GET failed: %s", e.what());
     }
 
-    testOk(got_value, "GET CERT:CLUSTER:CTRL succeeded through cluster client");
+    testOk(get_succeeded, "GET CERT:CLUSTER:CTRL succeeded through cluster client");
 }
 
 // 6.16-B: the CTRL PV reports the full member set.  If a user subscribes to
@@ -116,17 +116,17 @@ void testAdminClientReachesClusterCtrlPv() {
 void testCtrlPvReportsAllMembers() {
     testDiag("CTRL PV's members[] field lists every cluster member");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     const auto issuer = cluster.memberHandle(0).issuerId();
     const auto ctrl_pv = std::string("CERT:CLUSTER:CTRL:") + issuer;
 
-    auto cli = cluster.cmsAdminClientConfig().build();
+    auto admin_client = cluster.cmsAdminClientConfig().build();
 
     pvxs::Value reply;
     try {
-        reply = cli.get(ctrl_pv).exec()->wait(10.0);
+        reply = admin_client.get(ctrl_pv).exec()->wait(10.0);
     } catch (const std::exception &e) {
         testFail("GET %s failed: %s", ctrl_pv.c_str(), e.what());
         return;
@@ -148,8 +148,8 @@ void testCtrlPvReportsAllMembers() {
 void testPreloadedCertResolvesViaStatusPv() {
     testDiag("Preloaded admin Entity Cert is queryable via CERT:STATUS");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     // PkiFixture preloads admin.p12 into every member's DB.  A successful
     // mTLS handshake from the admin client is the user-level proof: pvxs
@@ -159,16 +159,16 @@ void testPreloadedCertResolvesViaStatusPv() {
     const auto issuer = cluster.memberHandle(0).issuerId();
     const auto ctrl_pv = std::string("CERT:CLUSTER:CTRL:") + issuer;
 
-    auto cli = cluster.cmsAdminClientConfig().build();
+    auto admin_client = cluster.cmsAdminClientConfig().build();
 
-    bool got = false;
+    bool get_succeeded = false;
     try {
-        auto reply = cli.get(ctrl_pv).exec()->wait(10.0);
-        got = reply.valid();
+        auto reply = admin_client.get(ctrl_pv).exec()->wait(10.0);
+        get_succeeded = reply.valid();
     } catch (const std::exception &e) {
         testDiag("GET failed: %s", e.what());
     }
-    testOk(got, "TLS handshake + GET succeeded - admin cert is preloaded");
+    testOk(get_succeeded, "TLS handshake + GET succeeded - admin cert is preloaded");
 }
 
 // 6.16-D: stopping a single cluster member must not break admin queries
@@ -177,36 +177,37 @@ void testPreloadedCertResolvesViaStatusPv() {
 void testAdminClientSurvivesMemberLoss() {
     testDiag("Admin queries survive after one member is stopped");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     const auto issuer = cluster.memberHandle(0).issuerId();
     const auto ctrl_pv = std::string("CERT:CLUSTER:CTRL:") + issuer;
-    auto cli = cluster.cmsAdminClientConfig().build();
+    auto admin_client = cluster.cmsAdminClientConfig().build();
 
-    bool before = false;
+    bool get_succeeded_before_restart = false;
     try {
-        cli.get(ctrl_pv).exec()->wait(10.0);
-        before = true;
+        admin_client.get(ctrl_pv).exec()->wait(10.0);
+        get_succeeded_before_restart = true;
     } catch (const std::exception &) {}
-    testOk(before, "GET succeeds before member loss");
+    testOk(get_succeeded_before_restart, "GET succeeds before member loss");
 
     cluster.restartMember(0);
 
-    bool after = false;
+    bool get_succeeded_after_restart = false;
     try {
         // Two retries with a brief sleep absorb pvxs's reconnect backoff
         // when the stale connection to the restarted member needs to recycle.
-        for (int attempt = 0; attempt < 2 && !after; ++attempt) {
+        for (int attempt = 0; attempt < 2 && !get_succeeded_after_restart; ++attempt) {
             try {
-                cli.get(ctrl_pv).exec()->wait(6.0);
-                after = true;
+                admin_client.get(ctrl_pv).exec()->wait(6.0);
+                get_succeeded_after_restart = true;
             } catch (const std::exception &) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
             }
         }
     } catch (const std::exception &) {}
-    testOk(after, "GET still succeeds after member 0 restart (routes to peer)");
+    testOk(get_succeeded_after_restart,
+           "GET still succeeds after member 0 restart (routes to peer)");
 }
 
 // 6.16-E: cluster CTRL/SYNC PV name shape.  These names form the contract
@@ -215,23 +216,23 @@ void testAdminClientSurvivesMemberLoss() {
 void testClusterPvNameShape() {
     testDiag("Cluster CTRL/SYNC PV names match the documented format");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     const auto issuer = cluster.memberHandle(0).issuerId();
-    testTrue(!issuer.empty());
+    testOk(!issuer.empty(), "issuer ID is populated");
     testEq(issuer.size(), size_t{8});  // SKID first 8 hex chars
 
-    auto cli = cluster.cmsAdminClientConfig().build();
+    auto admin_client = cluster.cmsAdminClientConfig().build();
 
     // CTRL PV - one per cluster, no node_id suffix.
     const auto ctrl_pv = std::string("CERT:CLUSTER:CTRL:") + issuer;
-    bool ctrl_ok = false;
+    bool ctrl_get_succeeded = false;
     try {
-        cli.get(ctrl_pv).exec()->wait(5.0);
-        ctrl_ok = true;
+        admin_client.get(ctrl_pv).exec()->wait(5.0);
+        ctrl_get_succeeded = true;
     } catch (const std::exception &) {}
-    testOk(ctrl_ok, "%s resolves", ctrl_pv.c_str());
+    testOk(ctrl_get_succeeded, "%s resolves", ctrl_pv.c_str());
 }
 
 // 6.16-F: an empty topology (every member is sole) means each member's
@@ -240,8 +241,8 @@ void testClusterPvNameShape() {
 void testEmptyTopologyEachMemberSole() {
     testDiag("Empty topology: each member is a sole-node cluster");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(3)
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(3)
                        .topology(ClusterTopology::empty(3))
                        .build();
 
@@ -256,8 +257,8 @@ void testEmptyTopologyEachMemberSole() {
 void testSoleNodeStartCount() {
     testDiag("size=1 cluster builds and reports 1 member");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(1).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(1).build();
 
     testEq(cluster.size(), size_t{1});
     testEq(cluster.memberHandle(0).clusterMemberCount(), size_t{1});
@@ -271,27 +272,27 @@ void testSoleNodeStartCount() {
 void testPerMemberCtrlPvReachable() {
     testDiag("Per-member CTRL PV: each node serves CTRL with full member list");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     const auto issuer = cluster.memberHandle(0).issuerId();
     const auto ctrl_pv = std::string("CERT:CLUSTER:CTRL:") + issuer;
 
     for (size_t i = 0; i < cluster.size(); ++i) {
-        auto cli = cluster.memberClientConfig(i).build();
-        bool got = false;
+        auto member_client = cluster.memberClientConfig(i).build();
+        bool get_succeeded = false;
         size_t members_seen = 0;
         try {
-            auto reply = cli.get(ctrl_pv).exec()->wait(10.0);
-            got = reply.valid();
-            if (got) {
-                auto m = reply["members"].as<pvxs::shared_array<const pvxs::Value>>();
-                members_seen = m.size();
+            auto reply = member_client.get(ctrl_pv).exec()->wait(10.0);
+            get_succeeded = reply.valid();
+            if (get_succeeded) {
+                auto members = reply["members"].as<pvxs::shared_array<const pvxs::Value>>();
+                members_seen = members.size();
             }
         } catch (const std::exception &e) {
             testDiag("member %zu GET %s failed: %s", i, ctrl_pv.c_str(), e.what());
         }
-        testOk(got, "member %zu serves CTRL PV", i);
+        testOk(get_succeeded, "member %zu serves CTRL PV", i);
         testEq(members_seen, cluster.size());
     }
 }
@@ -305,20 +306,20 @@ void testPerMemberCtrlPvReachable() {
 void testPerMemberSyncPvReachable() {
     testDiag("Per-member SYNC PV: each node serves its own SYNC PV (monitor)");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     const auto issuer = cluster.memberHandle(0).issuerId();
 
     for (size_t i = 0; i < cluster.size(); ++i) {
-        auto ctrl_cli = cluster.memberClientConfig(i).build();
+        auto ctrl_query_client = cluster.memberClientConfig(i).build();
         const auto ctrl_pv = std::string("CERT:CLUSTER:CTRL:") + issuer;
         std::vector<std::string> all_sync_pvs;
         try {
-            auto reply = ctrl_cli.get(ctrl_pv).exec()->wait(10.0);
+            auto reply = ctrl_query_client.get(ctrl_pv).exec()->wait(10.0);
             auto members = reply["members"].as<pvxs::shared_array<const pvxs::Value>>();
-            for (const auto &m : members) {
-                all_sync_pvs.push_back(m["sync_pv"].as<std::string>());
+            for (const auto &member_value : members) {
+                all_sync_pvs.push_back(member_value["sync_pv"].as<std::string>());
             }
         } catch (const std::exception &e) {
             testDiag("member %zu CTRL GET failed: %s", i, e.what());
@@ -330,27 +331,27 @@ void testPerMemberSyncPvReachable() {
         // contract: at least one of the cluster's SYNC PVs reaches a
         // Connected state on member i's listener.  If member i's listener
         // serves none of them, the test fails.
-        bool any_connected = false;
+        bool any_sync_pv_connected = false;
         for (const auto &sync_pv : all_sync_pvs) {
-            auto sub_cli = cluster.memberClientConfig(i).build();
-            auto promise = std::make_shared<std::promise<void>>();
-            auto fut = promise->get_future();
-            auto sub = sub_cli.monitor(sync_pv)
+            auto monitor_client = cluster.memberClientConfig(i).build();
+            auto connected_promise = std::make_shared<std::promise<void>>();
+            auto connected_future = connected_promise->get_future();
+            auto sync_subscription = monitor_client.monitor(sync_pv)
                 .maskConnected(false)
-                .event([promise](pvxs::client::Subscription &s) {
+                .event([connected_promise](pvxs::client::Subscription &s) {
                     try {
                         while (s.pop()) {}
                     } catch (pvxs::client::Connected &) {
-                        try { promise->set_value(); } catch (...) {}
+                        try { connected_promise->set_value(); } catch (...) {}
                     } catch (...) {}
                 })
                 .exec();
-            if (fut.wait_for(std::chrono::seconds(5)) == std::future_status::ready) {
-                any_connected = true;
+            if (connected_future.wait_for(std::chrono::seconds(5)) == std::future_status::ready) {
+                any_sync_pv_connected = true;
                 break;
             }
         }
-        testOk(any_connected, "member %zu serves a SYNC PV via its own listener", i);
+        testOk(any_sync_pv_connected, "member %zu serves a SYNC PV via its own listener", i);
     }
 }
 
@@ -365,32 +366,32 @@ void testPerMemberSyncPvReachable() {
 void testPerMemberHealthPvReportsConvergedCluster() {
     testDiag("Per-member HEALTH PV reports cluster healthy + correct member count");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     const auto issuer = cluster.memberHandle(0).issuerId();
     const auto health_pv = std::string("CERT:HEALTH:") + issuer;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
 
     for (size_t i = 0; i < cluster.size(); ++i) {
-        auto cli = cluster.memberClientConfig(i).build();
+        auto member_client = cluster.memberClientConfig(i).build();
         bool db_ok = false;
         bool ca_valid = false;
-        uint32_t members_field = 0;
-        bool got_complete_post = false;
+        uint32_t cluster_members_field = 0;
+        bool health_post_observed_converged = false;
 
         // Poll until the status monitor has posted at least once with the
         // converged cluster_members count.  The interval is min 5s, so a 30s
         // budget absorbs the first cycle plus headroom for CI variance.
-        while (std::chrono::steady_clock::now() < deadline && !got_complete_post) {
+        while (std::chrono::steady_clock::now() < deadline && !health_post_observed_converged) {
             try {
-                auto reply = cli.get(health_pv).exec()->wait(5.0);
+                auto reply = member_client.get(health_pv).exec()->wait(5.0);
                 if (reply.valid()) {
                     db_ok = reply["db_ok"].as<bool>();
                     ca_valid = reply["ca_valid"].as<bool>();
-                    members_field = reply["cluster_members"].as<uint32_t>();
-                    if (members_field == cluster.size() && db_ok && ca_valid) {
-                        got_complete_post = true;
+                    cluster_members_field = reply["cluster_members"].as<uint32_t>();
+                    if (cluster_members_field == cluster.size() && db_ok && ca_valid) {
+                        health_post_observed_converged = true;
                         break;
                     }
                 }
@@ -400,9 +401,9 @@ void testPerMemberHealthPvReportsConvergedCluster() {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
 
-        testOk(got_complete_post,
+        testOk(health_post_observed_converged,
                "member %zu HEALTH converged: db_ok=%d ca_valid=%d cluster_members=%u",
-               i, (int)db_ok, (int)ca_valid, members_field);
+               i, (int)db_ok, (int)ca_valid, cluster_members_field);
     }
 }
 
@@ -415,35 +416,35 @@ void testPerMemberHealthPvReportsConvergedCluster() {
 void testPerMemberMetricsPvReachable() {
     testDiag("Per-member METRICS PV is reachable with documented schema");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     const auto issuer = cluster.memberHandle(0).issuerId();
     const auto metrics_pv = std::string("CERT:METRICS:") + issuer;
 
     for (size_t i = 0; i < cluster.size(); ++i) {
-        auto cli = cluster.memberClientConfig(i).build();
-        bool reachable = false;
-        bool schema_ok = false;
+        auto member_client = cluster.memberClientConfig(i).build();
+        bool metrics_pv_reachable = false;
+        bool metrics_schema_ok = false;
         try {
-            auto reply = cli.get(metrics_pv).exec()->wait(10.0);
-            reachable = reply.valid();
-            if (reachable) {
+            auto reply = member_client.get(metrics_pv).exec()->wait(10.0);
+            metrics_pv_reachable = reply.valid();
+            if (metrics_pv_reachable) {
                 // The documented metrics schema includes these top-level
                 // sibling fields; their presence (regardless of value)
                 // proves we got a real metrics-typed reply, not an empty
                 // structure or a wrong-typed PV.
-                schema_ok = reply["value"].valid()
-                         && reply["uptime_secs"].valid()
-                         && reply["certs_created"].valid()
-                         && reply["certs_revoked"].valid()
-                         && reply["db_size_bytes"].valid();
+                metrics_schema_ok = reply["value"].valid()
+                                 && reply["uptime_secs"].valid()
+                                 && reply["certs_created"].valid()
+                                 && reply["certs_revoked"].valid()
+                                 && reply["db_size_bytes"].valid();
             }
         } catch (const std::exception &e) {
             testDiag("member %zu METRICS GET: %s", i, e.what());
         }
-        testOk(reachable, "member %zu METRICS PV reachable", i);
-        testOk(schema_ok, "member %zu METRICS PV has documented schema", i);
+        testOk(metrics_pv_reachable, "member %zu METRICS PV reachable", i);
+        testOk(metrics_schema_ok, "member %zu METRICS PV has documented schema", i);
     }
 }
 
@@ -455,17 +456,17 @@ void testPerMemberMetricsPvReachable() {
 void testPerMemberClientIsolation() {
     testDiag("memberClientConfig(i) cannot reach PVs served only by node j");
 
-    PVACMSCluster::Builder b;
-    auto cluster = b.size(2).build();
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
 
     const auto issuer = cluster.memberHandle(0).issuerId();
 
     // First: discover node 0's own sync_pv via a client targeted at node 0.
-    auto cli0 = cluster.memberClientConfig(0).build();
+    auto client_at_node_0 = cluster.memberClientConfig(0).build();
     const auto ctrl_pv = std::string("CERT:CLUSTER:CTRL:") + issuer;
-    std::string node0_sync_pv;
+    std::string node_0_sync_pv;
     try {
-        auto reply = cli0.get(ctrl_pv).exec()->wait(10.0);
+        auto reply = client_at_node_0.get(ctrl_pv).exec()->wait(10.0);
         auto members = reply["members"].as<pvxs::shared_array<const pvxs::Value>>();
         // Node 0's SYNC PV is the one whose suffix matches THIS node's ID.
         // We learn THIS node's ID from the client's POV by looking at which
@@ -473,14 +474,14 @@ void testPerMemberClientIsolation() {
         // listener address - simpler to use the first entry, since members
         // are in a deterministic order from one node's POV.
         if (members.size() > 0) {
-            node0_sync_pv = members[0]["sync_pv"].as<std::string>();
+            node_0_sync_pv = members[0]["sync_pv"].as<std::string>();
         }
     } catch (const std::exception &e) {
         testFail("Could not discover node 0's sync_pv: %s", e.what());
         return;
     }
 
-    if (node0_sync_pv.empty()) {
+    if (node_0_sync_pv.empty()) {
         testFail("Node 0 reported no sync_pv");
         return;
     }
@@ -491,22 +492,23 @@ void testPerMemberClientIsolation() {
     //
     // (Both nodes claim the wildcard CTRL PV, which is why testCtrlPvReportsAllMembers
     // is a poor isolation test - this one targets a per-node-unique PV.)
-    auto cli1 = cluster.memberClientConfig(1).build();
-    bool reachable_via_node1 = false;
+    auto client_at_node_1 = cluster.memberClientConfig(1).build();
+    bool node_0_sync_pv_reachable_via_node_1 = false;
     try {
-        cli1.get(node0_sync_pv).exec()->wait(2.0);
-        reachable_via_node1 = true;
+        client_at_node_1.get(node_0_sync_pv).exec()->wait(2.0);
+        node_0_sync_pv_reachable_via_node_1 = true;
     } catch (const std::exception &) {
         // Expected: node 1 doesn't serve node 0's sync PV.
     }
 
     // Node 0's SYNC PV name embeds node 0's node_id.  Node 1 is a different
-    // server on a different listener.  cli1 only sees node 1's listener
-    // (memberClientConfig(1) sets addressList to just member_addrs[1]).
+    // server on a different listener.  client_at_node_1 only sees node 1's
+    // listener (memberClientConfig(1) sets addressList to just member_addrs[1]).
     // pvxs may still resolve via cluster sync subscribers though - that
     // would be a real isolation leak.  If this assertion flakes, it
     // indicates a genuine cross-member reach we should investigate.
-    testOk(!reachable_via_node1, "node 1 does NOT serve node 0's SYNC PV (isolation holds)");
+    testOk(!node_0_sync_pv_reachable_via_node_1,
+           "node 1 does NOT serve node 0's SYNC PV (isolation holds)");
 }
 
 }  // namespace
