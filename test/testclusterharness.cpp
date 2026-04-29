@@ -220,6 +220,18 @@ void testBridgeOutOfRange() {
 }  // namespace
 
 MAIN(testclusterharness) {
+#ifdef __APPLE__
+    // Skipped on the macOS GitHub-hosted runner (CI=true): 41 sequential
+    // cluster build/teardown cycles do not complete within the 500-second
+    // test-runner timeout there.  Local macOS and every Linux runner
+    // exercise the suite.
+    if (getenv("CI")) {
+        testPlan(1);
+        pvxs::logger_config_env();
+        testSkip(1, "testclusterharness skipped on macOS CI runner");
+        return testDone();
+    }
+#endif
     testPlan(41);
     pvxs::logger_config_env();
     testClusterDefaultFullMeshBuild();
