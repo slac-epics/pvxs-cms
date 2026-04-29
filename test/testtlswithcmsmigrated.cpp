@@ -60,7 +60,10 @@ void testServerOnly() {
         testDiag("GET failed: %s", e.what());
     }
     testOk(get_succeeded, "testServerOnly: GET via TLS+PVACMS succeeded");
-    if (get_succeeded) testEq(reply_value, 42);
+    if (get_succeeded) {
+        testOk(reply_value == 42,
+               "GET reply value matches the value the server published (42)");
+    }
 
 #ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
     testOk(harness.totalSubscribes() >= 2,
@@ -107,7 +110,10 @@ void testGetIntermediate() {
         testDiag("GET failed: %s", e.what());
     }
     testOk(get_succeeded, "testGetIntermediate: mutual-TLS GET succeeded");
-    if (get_succeeded) testEq(reply_value, 42);
+    if (get_succeeded) {
+        testOk(reply_value == 42,
+               "mutual-TLS GET reply value matches the value the server published (42)");
+    }
 
     const auto observed_status_pvs = harness.observedStatusPvs();
 
@@ -163,7 +169,8 @@ void testCertStatusGating() {
     } catch (const std::exception &e) {
         testFail("Gating: GET failed: %s", e.what());
     }
-    testEq(reply_value, 99);
+    testOk(reply_value == 99,
+           "Gating: GET reply value matches the value the server published (99)");
 
 #ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
     const auto observed_status_pvs = harness.observedStatusPvs();
@@ -225,7 +232,8 @@ void testTlsCredentialsOnConnect() {
     } catch (const std::exception &e) {
         testDiag("GET failed: %s", e.what());
     }
-    testEq(reply_value, 77);
+    testOk(reply_value == 77,
+           "TLS-creds GET reply value matches the value the server published (77)");
     testOk(on_connect_fired.load(), "client received onConnect callback");
     testOk(on_connect_saw_tls.load(), "onConnect credentials reported isTLS");
     connect_handle.reset();

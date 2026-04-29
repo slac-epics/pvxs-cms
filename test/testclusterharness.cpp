@@ -30,13 +30,13 @@ void testClusterDefaultFullMeshBuild() {
     PVACMSCluster::Builder builder;
     auto cluster = builder.size(2).build();
 
-    testEq(cluster.size(), size_t{2});
-    testEq(cluster.topology().size(), size_t{2});
+    testOk(cluster.size() == 2, "Cluster size reported correctly as 2");
+    testOk(cluster.topology().size() == 2, "Cluster topology size reported correctly as 2");
     testOk(cluster.topology().sees(0, 1), "node 0 sees node 1 in default full-mesh topology");
     testOk(cluster.topology().sees(1, 0), "node 1 sees node 0 in default full-mesh topology");
 
     const auto &member_addrs = cluster.memberAddrs();
-    testEq(member_addrs.size(), size_t{2});
+    testOk(member_addrs.size() == 2, "Cluster reports 2 member listener addresses");
     testOk(!member_addrs[0].empty(), "node 0 listener address is populated");
     testOk(!member_addrs[1].empty(), "node 1 listener address is populated");
     testOk(member_addrs[0] != member_addrs[1], "node 0 and node 1 bound to distinct addresses");
@@ -44,7 +44,8 @@ void testClusterDefaultFullMeshBuild() {
     testDiag("Member 1 listener: %s", member_addrs[1].c_str());
 
     auto admin_client_config = cluster.cmsAdminClientConfig();
-    testEq(admin_client_config.addressList.size(), size_t{2});
+    testOk(admin_client_config.addressList.size() == 2,
+           "admin client config addressList contains both members");
     testOk(!admin_client_config.tls_keychain_file.empty(),
            "admin client config has a TLS keychain file populated");
 }
@@ -55,7 +56,7 @@ void testClusterLinearChainBuild() {
     PVACMSCluster::Builder builder;
     auto cluster = builder.size(3).topology(ClusterTopology::linearChain(3)).build();
 
-    testEq(cluster.size(), size_t{3});
+    testOk(cluster.size() == 3, "Cluster size reported correctly as 3");
     testOk(cluster.topology().sees(0, 1), "linear-chain: node 0 sees adjacent node 1");
     testOk(cluster.topology().sees(1, 2), "linear-chain: node 1 sees adjacent node 2");
     testOk(!cluster.topology().sees(0, 2), "linear-chain: node 0 does NOT see non-adjacent node 2");
@@ -126,8 +127,9 @@ void testRestartMemberPreservesEntityCert() {
 
     cluster.restartMember(0);
 
-    testEq(cluster.memberP12Path(0), p12_path_before_restart);
-    testEq(cluster.size(), size_t{2});
+    testOk(cluster.memberP12Path(0) == p12_path_before_restart,
+           "node 0 keychain file path is unchanged after restart");
+    testOk(cluster.size() == 2, "Cluster size still 2 after restart");
     // memberAddrs may or may not change (kernel may reuse the freed port),
     // but the field must be populated and reflect the current binding.
     testOk(!cluster.memberAddrs()[0].empty(),
@@ -145,14 +147,16 @@ void testAdminClientSurvivesRestart() {
     auto cluster = builder.size(2).clusterName("CERT:CLUSTER:CLISURV").build();
 
     auto admin_client_config_before = cluster.cmsAdminClientConfig();
-    testEq(admin_client_config_before.addressList.size(), size_t{2});
+    testOk(admin_client_config_before.addressList.size() == 2,
+           "pre-restart admin client config addressList contains both members");
 
     cluster.restartMember(0);
 
     // After restart, addressList may include the re-bound ephemeral port -
     // a newly-built config reflects current state.
     auto admin_client_config_after = cluster.cmsAdminClientConfig();
-    testEq(admin_client_config_after.addressList.size(), size_t{2});
+    testOk(admin_client_config_after.addressList.size() == 2,
+           "post-restart admin client config addressList contains both members");
     testOk(!admin_client_config_after.tls_keychain_file.empty(),
            "admin client config still has TLS keychain file populated after restart");
 }

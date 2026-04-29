@@ -99,7 +99,10 @@ void testStaplingDisabledOnServer() {
     }
 
     testOk(get_succeeded, "GET succeeded with server-side stapling disabled");
-    if (get_succeeded) testEq(reply_value, 42);
+    if (get_succeeded) {
+        testOk(reply_value == 42,
+               "GET reply value matches the value the server published (42)");
+    }
 }
 
 void testStaplingEnabledOnServer() {
@@ -145,7 +148,10 @@ void testStaplingEnabledOnServer() {
     }
 
     testOk(get_succeeded, "GET succeeded with server-side stapling enabled");
-    if (get_succeeded) testEq(reply_value, 42);
+    if (get_succeeded) {
+        testOk(reply_value == 42,
+               "GET reply value matches the value the server published (42)");
+    }
 }
 
 void testClientStaplingNoServerStapling() {
@@ -189,7 +195,10 @@ void testClientStaplingNoServerStapling() {
 
     testOk(get_succeeded,
            "client expecting stapling -> server not stapling -> GET still succeeds");
-    if (get_succeeded) testEq(reply_value, 42);
+    if (get_succeeded) {
+        testOk(reply_value == 42,
+               "GET reply value matches the value the server published (42)");
+    }
 }
 
 void testServerStaplingNoClientStapling() {
@@ -233,7 +242,10 @@ void testServerStaplingNoClientStapling() {
 
     testOk(get_succeeded,
            "server stapling -> client not expecting -> GET still succeeds");
-    if (get_succeeded) testEq(reply_value, 42);
+    if (get_succeeded) {
+        testOk(reply_value == 42,
+               "GET reply value matches the value the server published (42)");
+    }
 }
 
 void testStaplingFlagPropagatesViaCustomize() {
