@@ -60,7 +60,10 @@ void testServerOnlyMigrated() {
     }
 
     testOk(get_succeeded, "GET returned a value through full TLS+PVACMS flow");
-    if (get_succeeded) testEq(reply_value, 42);
+    if (get_succeeded) {
+        testOk(reply_value == 42,
+               "GET reply value matches the value the server published (42)");
+    }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
@@ -89,9 +92,15 @@ void testServerOnlyMigrated() {
         total_cache_hits += cache_hits;
         ++unique_status_pvs;
     }
-    testEq(total_subscribes, harness.totalSubscribes());
-    testEq(total_deliveries, harness.totalDeliveries());
-    testEq(total_cache_hits, harness.totalCacheHits());
+    testOk(total_subscribes == harness.totalSubscribes(),
+           "per-PV subscribe counts sum to harness totalSubscribes() (got %u, expected %u)",
+           total_subscribes, harness.totalSubscribes());
+    testOk(total_deliveries == harness.totalDeliveries(),
+           "per-PV delivery counts sum to harness totalDeliveries() (got %u, expected %u)",
+           total_deliveries, harness.totalDeliveries());
+    testOk(total_cache_hits == harness.totalCacheHits(),
+           "per-PV cache-hit counts sum to harness totalCacheHits() (got %u, expected %u)",
+           total_cache_hits, harness.totalCacheHits());
     testOk(total_deliveries >= total_cache_hits,
            "deliveries (%u) >= cache_hits (%u): cache hits cannot exceed total deliveries",
            total_deliveries, total_cache_hits);
@@ -141,8 +150,10 @@ void testCounterAPIBasics() {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     const auto unknown_status_pv = std::string("CERT:STATUS:nonexistent:9999");
-    testEq(harness.subscribesFor(unknown_status_pv), 0u);
-    testEq(harness.deliveriesFor(unknown_status_pv), 0u);
+    testOk(harness.subscribesFor(unknown_status_pv) == 0,
+           "unknown PV reports 0 subscribes");
+    testOk(harness.deliveriesFor(unknown_status_pv) == 0,
+           "unknown PV reports 0 deliveries");
 
     testOk(!harness.waitSubscribesAtLeast(unknown_status_pv, 1, 0.05),
            "waitSubscribesAtLeast returns false on timeout for unknown PV");
@@ -151,11 +162,14 @@ void testCounterAPIBasics() {
     testOk(!harness.waitCacheHitsAtLeast(unknown_status_pv, 1, 0.05),
            "waitCacheHitsAtLeast returns false on timeout for unknown PV");
 
-    testEq(harness.cacheHitsFor(unknown_status_pv), 0u);
+    testOk(harness.cacheHitsFor(unknown_status_pv) == 0,
+           "unknown PV reports 0 cache hits");
 
     harness.resetStatusEventCounters();
-    testEq(harness.subscribesFor(unknown_status_pv), 0u);
-    testEq(harness.cacheHitsFor(unknown_status_pv), 0u);
+    testOk(harness.subscribesFor(unknown_status_pv) == 0,
+           "after reset: unknown PV still reports 0 subscribes");
+    testOk(harness.cacheHitsFor(unknown_status_pv) == 0,
+           "after reset: unknown PV still reports 0 cache hits");
 }
 
 }  // namespace

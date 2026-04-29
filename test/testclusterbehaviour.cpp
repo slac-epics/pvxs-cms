@@ -46,9 +46,11 @@ void testTwoNodeClusterMembershipConverges() {
     PVACMSCluster::Builder builder;
     auto cluster = builder.size(2).build();
 
-    testEq(cluster.size(), size_t{2});
-    testEq(cluster.memberHandle(0).clusterMemberCount(), size_t{2});
-    testEq(cluster.memberHandle(1).clusterMemberCount(), size_t{2});
+    testOk(cluster.size() == 2, "Cluster size reported correctly as 2");
+    testOk(cluster.memberHandle(0).clusterMemberCount() == 2,
+           "Cluster Member 0 reports size as 2");
+    testOk(cluster.memberHandle(1).clusterMemberCount() == 2,
+           "Cluster Member 1 reports size as 2");
 }
 
 // 6.16-A extended: a 3-node linearChain cluster also converges to size=3 on
@@ -63,10 +65,13 @@ void testLinearChainMembershipPropagates() {
                        .topology(ClusterTopology::linearChain(3))
                        .build();
 
-    testEq(cluster.size(), size_t{3});
-    testEq(cluster.memberHandle(0).clusterMemberCount(), size_t{3});
-    testEq(cluster.memberHandle(1).clusterMemberCount(), size_t{3});
-    testEq(cluster.memberHandle(2).clusterMemberCount(), size_t{3});
+    testOk(cluster.size() == 3, "Cluster size reported correctly as 3");
+    testOk(cluster.memberHandle(0).clusterMemberCount() == 3,
+           "Cluster Member 0 reports size as 3");
+    testOk(cluster.memberHandle(1).clusterMemberCount() == 3,
+           "Cluster Member 1 reports size as 3");
+    testOk(cluster.memberHandle(2).clusterMemberCount() == 3,
+           "Cluster Member 2 reports size as 3");
 }
 
 // 6.16-A: every member reports the same issuer ID (they share a CA via the
@@ -81,7 +86,8 @@ void testAllMembersShareIssuer() {
     const auto &issuer_node_0 = cluster.memberHandle(0).issuerId();
     const auto &issuer_node_1 = cluster.memberHandle(1).issuerId();
     testOk(!issuer_node_0.empty(), "node 0 issuer ID is populated");
-    testEq(issuer_node_0, issuer_node_1);
+    testOk(issuer_node_0 == issuer_node_1,
+           "node 0 and node 1 share the same issuer ID");
 }
 
 // 6.16-B: the admin client can reach the cluster control PV via the
@@ -138,7 +144,8 @@ void testCtrlPvReportsAllMembers() {
     }
 
     auto members = reply["members"].as<pvxs::shared_array<const pvxs::Value>>();
-    testEq(members.size(), size_t{2});
+    testOk(members.size() == 2,
+           "CTRL PV's members[] field lists both cluster members");
 }
 
 // 6.16-C: an Entity Certificate preloaded into the cluster is reachable via
@@ -221,7 +228,8 @@ void testClusterPvNameShape() {
 
     const auto issuer = cluster.memberHandle(0).issuerId();
     testOk(!issuer.empty(), "issuer ID is populated");
-    testEq(issuer.size(), size_t{8});  // SKID first 8 hex chars
+    testOk(issuer.size() == 8,
+           "issuer ID is 8 hex chars (first 8 of subject key identifier)");
 
     auto admin_client = cluster.cmsAdminClientConfig().build();
 
@@ -246,9 +254,12 @@ void testEmptyTopologyEachMemberSole() {
                        .topology(ClusterTopology::empty(3))
                        .build();
 
-    testEq(cluster.memberHandle(0).clusterMemberCount(), size_t{1});
-    testEq(cluster.memberHandle(1).clusterMemberCount(), size_t{1});
-    testEq(cluster.memberHandle(2).clusterMemberCount(), size_t{1});
+    testOk(cluster.memberHandle(0).clusterMemberCount() == 1,
+           "Cluster Member 0 reports size as 1 (sole node)");
+    testOk(cluster.memberHandle(1).clusterMemberCount() == 1,
+           "Cluster Member 1 reports size as 1 (sole node)");
+    testOk(cluster.memberHandle(2).clusterMemberCount() == 1,
+           "Cluster Member 2 reports size as 1 (sole node)");
 }
 
 // 6.16-G: user-level ClusterController initial state.  Sole node = self only;
@@ -260,8 +271,9 @@ void testSoleNodeStartCount() {
     PVACMSCluster::Builder builder;
     auto cluster = builder.size(1).build();
 
-    testEq(cluster.size(), size_t{1});
-    testEq(cluster.memberHandle(0).clusterMemberCount(), size_t{1});
+    testOk(cluster.size() == 1, "Cluster size reported correctly as 1");
+    testOk(cluster.memberHandle(0).clusterMemberCount() == 1,
+           "sole-node cluster member reports its own count as 1");
 }
 
 // 6.16-H: per-member CTRL PV.  A client targeting ONLY member i (via
@@ -293,7 +305,9 @@ void testPerMemberCtrlPvReachable() {
             testDiag("member %zu GET %s failed: %s", i, ctrl_pv.c_str(), e.what());
         }
         testOk(get_succeeded, "member %zu serves CTRL PV", i);
-        testEq(members_seen, cluster.size());
+        testOk(members_seen == cluster.size(),
+               "member %zu's CTRL reply lists all %zu cluster members",
+               i, cluster.size());
     }
 }
 
