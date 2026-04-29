@@ -550,12 +550,12 @@ void PVACMSCluster::awaitConvergence() {
     }
 
     // Generous bound: we converge in ~1s on a fast loopback but CI macOS
-    // runners under load have shown >20s convergence (Join RPC retries
-    // through several timeouts before the bidi handshake completes).
-    // 8x discovery_secs gives 40s headroom at the default 5s knob without
-    // making local runs feel slow.
+    // runners under load have shown >40s convergence on a 2-node cluster
+    // (Join RPC retries + sqlite parse contention in clusterctrl's RPC
+    // handler).  16x discovery_secs gives 80s headroom at the default 5s
+    // knob.  Local runs still complete in ~1s and are not affected.
     const auto deadline = std::chrono::steady_clock::now()
-                          + std::chrono::seconds(8 * impl_->discovery_secs);
+                          + std::chrono::seconds(16 * impl_->discovery_secs);
 
     while (true) {
         bool all_converged = true;
@@ -582,7 +582,7 @@ void PVACMSCluster::awaitConvergence() {
         if (std::chrono::steady_clock::now() >= deadline) {
             std::ostringstream os;
             os << "PVACMSCluster::awaitConvergence: member " << laggard
-               << " did not converge within " << (8 * impl_->discovery_secs)
+               << " did not converge within " << (16 * impl_->discovery_secs)
                << "s (expected " << laggard_expected
                << " members, observed " << laggard_actual << ")";
             throw std::runtime_error(os.str());
