@@ -908,9 +908,9 @@ void ServerHandle::Pvt::runUntilShutdown()
     auto subject_string = std::string(data, len);
 
     try {
-        std::cout << "+=======================================+======================================="
-                  << std::endl;
         if (!config_copy.quiet) {
+            std::cout << "+=======================================+======================================="
+                      << std::endl;
             std::cout << "| EPICS Secure PVAccess Certificate Management Service v"
                       << PVACMS_MAJOR_VERSION << "."
                       << PVACMS_MINOR_VERSION << "."
@@ -930,10 +930,12 @@ void ServerHandle::Pvt::runUntilShutdown()
             std::cout << "| Cluster Status                        : " << cluster_status << std::endl;
             std::cout << "+---------------------------------------+---------------------------------------"
                       << std::endl;
+            std::cout << "| PVACMS [" << our_issuer_id << "] Service Running     |" << std::endl;
+            std::cout << "+=======================================+======================================="
+                      << std::endl;
+        } else {
+            std::cout << "PVACMS [" << our_issuer_id << "] Service Running" << std::endl;
         }
-        std::cout << "| PVACMS [" << our_issuer_id << "] Service Running     |" << std::endl;
-        std::cout << "+=======================================+======================================="
-                  << std::endl;
 
         // Use start() + condition-variable wait instead of pva_server.run() so
         // multiple PVACMSes can coexist in the same process (run() installs a
@@ -948,11 +950,15 @@ void ServerHandle::Pvt::runUntilShutdown()
         }
         pva_server.stop();
 
-        std::cout << "\n+=======================================+======================================="
-                  << std::endl;
-        std::cout << "| PVACMS [" << our_issuer_id << "] Service Exiting     |" << std::endl;
-        std::cout << "+=======================================+======================================="
-                  << std::endl;
+        if (!config_copy.quiet) {
+            std::cout << "\n+=======================================+======================================="
+                      << std::endl;
+            std::cout << "| PVACMS [" << our_issuer_id << "] Service Exiting     |" << std::endl;
+            std::cout << "+=======================================+======================================="
+                      << std::endl;
+        } else {
+            std::cout << "PVACMS [" << our_issuer_id << "] Service Exiting" << std::endl;
+        }
     } catch (const std::exception &e) {
         log_err_printf(pvacmsserver, "PVACMS error: %s\n", e.what());
     }
