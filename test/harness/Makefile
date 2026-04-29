@@ -9,6 +9,19 @@
 USR_CPPFLAGS += -I$(HARNESS_DIR)
 SRC_DIRS += $(HARNESS_DIR)
 
+# Probe pvxs's installed config.h for tls_status_cache_dir.  This field
+# is on pvxs-tls/dev but not yet merged to pvxs-tls/tls (the working
+# branch the production cluster links against).  Define
+# PVXS_HAS_TLS_STATUS_CACHE_DIR when the field is present so harness
+# sources can opt in to per-role cache isolation; otherwise they fall
+# back to the default shared cache (no isolation, but tests still work).
+ifneq ($(wildcard $(PVXS)/include/pvxs/config.h),)
+PVXS_HAS_TLS_STATUS_CACHE_DIR := $(shell grep -l tls_status_cache_dir $(PVXS)/include/pvxs/config.h 2>/dev/null)
+ifneq ($(PVXS_HAS_TLS_STATUS_CACHE_DIR),)
+USR_CPPFLAGS += -DPVXS_HAS_TLS_STATUS_CACHE_DIR
+endif
+endif
+
 HARNESS_SRCS  = pkifixture.cpp
 HARNESS_SRCS += initonce.cpp
 HARNESS_SRCS += harness.cpp
