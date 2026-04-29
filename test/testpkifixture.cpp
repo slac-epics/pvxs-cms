@@ -19,29 +19,34 @@ namespace {
 using cms::test::PkiFixture;
 using cms::test::SubjectSpec;
 
-bool fileExists(const std::string &p) {
-    struct stat st;
-    return ::stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+bool fileExists(const std::string &path) {
+    struct stat path_stat;
+    return ::stat(path.c_str(), &path_stat) == 0 && S_ISREG(path_stat.st_mode);
 }
 
-bool dirExists(const std::string &p) {
-    struct stat st;
-    return ::stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+bool dirExists(const std::string &path) {
+    struct stat path_stat;
+    return ::stat(path.c_str(), &path_stat) == 0 && S_ISDIR(path_stat.st_mode);
 }
 
 void testFreshPerConstruction() {
     testDiag("Two PkiFixtures produce different CA fingerprints + distinct temp dirs");
-    PkiFixture a;
-    PkiFixture b;
+    PkiFixture first_fixture;
+    PkiFixture second_fixture;
 
-    testOk(!a.dir().empty() && dirExists(a.dir()), "fixture A temp dir exists: %s", a.dir().c_str());
-    testOk(!b.dir().empty() && dirExists(b.dir()), "fixture B temp dir exists: %s", b.dir().c_str());
-    testOk(a.dir() != b.dir(), "two fixtures use distinct temp directories");
+    testOk(!first_fixture.dir().empty() && dirExists(first_fixture.dir()),
+           "first fixture temp dir exists: %s", first_fixture.dir().c_str());
+    testOk(!second_fixture.dir().empty() && dirExists(second_fixture.dir()),
+           "second fixture temp dir exists: %s", second_fixture.dir().c_str());
+    testOk(first_fixture.dir() != second_fixture.dir(),
+           "two fixtures use distinct temp directories");
 
-    const auto fa = a.caFingerprintSha256();
-    const auto fb = b.caFingerprintSha256();
-    testOk(!fa.empty() && fa.size() == 64, "fingerprint A is a 64-char hex string");
-    testOk(fa != fb, "fixture A and B have distinct CA fingerprints");
+    const auto first_fingerprint = first_fixture.caFingerprintSha256();
+    const auto second_fingerprint = second_fixture.caFingerprintSha256();
+    testOk(!first_fingerprint.empty() && first_fingerprint.size() == 64,
+           "first fingerprint is a 64-char hex string");
+    testOk(first_fingerprint != second_fingerprint,
+           "two fixtures have distinct CA fingerprints");
 }
 
 void testCaArtifacts() {
@@ -57,19 +62,23 @@ void testIssueDistinctCerts() {
     testDiag("issueServerCert and issueClientCert produce distinct files per call");
     PkiFixture pki;
 
-    SubjectSpec sub_a{"server-a", {}, {}, {}};
-    SubjectSpec sub_b{"server-b", {}, {}, {}};
-    SubjectSpec sub_c{"client-c", {}, {}, {}};
+    SubjectSpec server_a_subject{"server-a", {}, {}, {}};
+    SubjectSpec server_b_subject{"server-b", {}, {}, {}};
+    SubjectSpec client_c_subject{"client-c", {}, {}, {}};
 
-    auto a1 = pki.issueServerCert(sub_a);
-    auto a2 = pki.issueServerCert(sub_b);
-    auto c1 = pki.issueClientCert(sub_c);
+    auto server_a_cert_path = pki.issueServerCert(server_a_subject);
+    auto server_b_cert_path = pki.issueServerCert(server_b_subject);
+    auto client_c_cert_path = pki.issueClientCert(client_c_subject);
 
-    std::set<std::string> seen{a1, a2, c1};
-    testOk(seen.size() == 3, "three issued Entity Cert paths are distinct");
-    testOk(fileExists(a1), "issued server Entity Cert 1 exists: %s", a1.c_str());
-    testOk(fileExists(a2), "issued server Entity Cert 2 exists: %s", a2.c_str());
-    testOk(fileExists(c1), "issued client Entity Cert exists: %s", c1.c_str());
+    std::set<std::string> distinct_cert_paths{
+        server_a_cert_path, server_b_cert_path, client_c_cert_path};
+    testOk(distinct_cert_paths.size() == 3, "three issued Entity Cert paths are distinct");
+    testOk(fileExists(server_a_cert_path),
+           "issued server Entity Cert (server-a) exists: %s", server_a_cert_path.c_str());
+    testOk(fileExists(server_b_cert_path),
+           "issued server Entity Cert (server-b) exists: %s", server_b_cert_path.c_str());
+    testOk(fileExists(client_c_cert_path),
+           "issued client Entity Cert (client-c) exists: %s", client_c_cert_path.c_str());
 }
 
 void testTempDirCleanup() {
@@ -95,14 +104,17 @@ void testTempDirCleanup() {
 void testBorrowedFixtureSharing() {
     testDiag("A single PkiFixture issues multiple Entity Certs; both share the same CA fingerprint");
     PkiFixture pki;
-    const auto base_fp = pki.caFingerprintSha256();
+    const auto baseline_fingerprint = pki.caFingerprintSha256();
 
-    auto entity1 = pki.issueServerCert({"shared-srv-1", {}, {}, {}});
-    auto entity2 = pki.issueClientCert({"shared-cli-1", {}, {}, {}});
+    auto first_entity_cert_path = pki.issueServerCert({"shared-srv-1", {}, {}, {}});
+    auto second_entity_cert_path = pki.issueClientCert({"shared-cli-1", {}, {}, {}});
 
-    testOk(fileExists(entity1), "first Entity Cert issued under shared fixture");
-    testOk(fileExists(entity2), "second Entity Cert issued under shared fixture");
-    testOk(pki.caFingerprintSha256() == base_fp, "CA fingerprint stable across multiple issuances");
+    testOk(fileExists(first_entity_cert_path),
+           "first Entity Cert issued under shared fixture");
+    testOk(fileExists(second_entity_cert_path),
+           "second Entity Cert issued under shared fixture");
+    testOk(pki.caFingerprintSha256() == baseline_fingerprint,
+           "CA fingerprint stable across multiple issuances");
 }
 
 }  // namespace

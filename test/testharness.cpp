@@ -30,9 +30,9 @@ using cms::test::TestClientOpts;
 using cms::test::TestServerOpts;
 using cms::test::sanityCheckLoopback;
 
-bool dirExists(const std::string &p) {
-    struct stat st;
-    return ::stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+bool dirExists(const std::string &path) {
+    struct stat path_stat;
+    return ::stat(path.c_str(), &path_stat) == 0 && S_ISDIR(path_stat.st_mode);
 }
 
 void testInitOnce() {
@@ -45,39 +45,39 @@ void testInitOnce() {
 void testSanityCheckLoopback() {
     testDiag("sanityCheckLoopback accepts loopback configs and rejects non-loopback");
 
-    pvxs::client::Config cli;
-    cli.addressList = {"127.0.0.1:5075", "[::1]:5075"};
-    cli.nameServers = {"127.0.0.1:5075"};
+    pvxs::client::Config loopback_client_config;
+    loopback_client_config.addressList = {"127.0.0.1:5075", "[::1]:5075"};
+    loopback_client_config.nameServers = {"127.0.0.1:5075"};
     try {
-        sanityCheckLoopback(cli);
+        sanityCheckLoopback(loopback_client_config);
         testPass("sanityCheckLoopback accepts loopback client config");
     } catch (const std::exception &e) {
         testFail("sanityCheckLoopback should accept loopback client config: %s", e.what());
     }
 
-    pvxs::client::Config bad;
-    bad.addressList = {"192.168.1.1:5075"};
+    pvxs::client::Config non_loopback_client_config;
+    non_loopback_client_config.addressList = {"192.168.1.1:5075"};
     try {
-        sanityCheckLoopback(bad);
+        sanityCheckLoopback(non_loopback_client_config);
         testFail("sanityCheckLoopback should reject non-loopback client config");
     } catch (const std::exception &) {
         testPass("sanityCheckLoopback rejects non-loopback client config");
     }
 
-    pvxs::server::Config srv;
-    srv.interfaces = {"127.0.0.1"};
-    srv.beaconDestinations = {"127.0.0.1"};
+    pvxs::server::Config loopback_server_config;
+    loopback_server_config.interfaces = {"127.0.0.1"};
+    loopback_server_config.beaconDestinations = {"127.0.0.1"};
     try {
-        sanityCheckLoopback(srv);
+        sanityCheckLoopback(loopback_server_config);
         testPass("sanityCheckLoopback accepts loopback server config");
     } catch (const std::exception &e) {
         testFail("sanityCheckLoopback should accept loopback server config: %s", e.what());
     }
 
-    pvxs::server::Config srvBad;
-    srvBad.interfaces = {"0.0.0.0"};
+    pvxs::server::Config wildcard_server_config;
+    wildcard_server_config.interfaces = {"0.0.0.0"};
     try {
-        sanityCheckLoopback(srvBad);
+        sanityCheckLoopback(wildcard_server_config);
         testFail("sanityCheckLoopback should reject 0.0.0.0 server config");
     } catch (const std::exception &) {
         testPass("sanityCheckLoopback rejects 0.0.0.0 server config");
@@ -109,32 +109,33 @@ void testHarnessBuildAndDestruct() {
 
 void testTwoHarnessesDistinctPorts() {
     testDiag("Two harnesses use distinct ephemeral ports");
-    PVACMSHarness h1 = PVACMSHarness::Builder{}.build();
-    PVACMSHarness h2 = PVACMSHarness::Builder{}.build();
+    PVACMSHarness first_harness = PVACMSHarness::Builder{}.build();
+    PVACMSHarness second_harness = PVACMSHarness::Builder{}.build();
 
-    testOk(h1.pvacmsTcpPort() != h2.pvacmsTcpPort(),
+    testOk(first_harness.pvacmsTcpPort() != second_harness.pvacmsTcpPort(),
            "two harnesses get distinct tcp_port: %u vs %u",
-           (unsigned)h1.pvacmsTcpPort(), (unsigned)h2.pvacmsTcpPort());
-    testOk(h1.pvacmsTlsPort() != h2.pvacmsTlsPort(),
+           (unsigned)first_harness.pvacmsTcpPort(), (unsigned)second_harness.pvacmsTcpPort());
+    testOk(first_harness.pvacmsTlsPort() != second_harness.pvacmsTlsPort(),
            "two harnesses get distinct tls_port: %u vs %u",
-           (unsigned)h1.pvacmsTlsPort(), (unsigned)h2.pvacmsTlsPort());
-    testOk(h1.pkiFixture().dir() != h2.pkiFixture().dir(),
+           (unsigned)first_harness.pvacmsTlsPort(), (unsigned)second_harness.pvacmsTlsPort());
+    testOk(first_harness.pkiFixture().dir() != second_harness.pkiFixture().dir(),
            "two harnesses use distinct PKI dirs");
-    testOk(h1.pkiFixture().caFingerprintSha256() != h2.pkiFixture().caFingerprintSha256(),
+    testOk(first_harness.pkiFixture().caFingerprintSha256()
+               != second_harness.pkiFixture().caFingerprintSha256(),
            "two harnesses have distinct CA fingerprints");
 }
 
 void testCmsAdminClientConfigIsLoopback() {
     testDiag("cmsAdminClientConfig() produces a loopback-only client config");
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
-    auto cfg = harness.cmsAdminClientConfig();
+    auto admin_client_config = harness.cmsAdminClientConfig();
 
-    testOk(!cfg.addressList.empty(), "addressList is non-empty");
-    testOk(!cfg.tls_keychain_file.empty(), "tls_keychain_file is set");
-    testOk(cfg.tls_keychain_file == harness.adminP12Path(),
+    testOk(!admin_client_config.addressList.empty(), "addressList is non-empty");
+    testOk(!admin_client_config.tls_keychain_file.empty(), "tls_keychain_file is set");
+    testOk(admin_client_config.tls_keychain_file == harness.adminP12Path(),
            "tls_keychain_file points at admin.p12");
     try {
-        sanityCheckLoopback(cfg);
+        sanityCheckLoopback(admin_client_config);
         testPass("cmsAdminClientConfig() passes sanityCheckLoopback");
     } catch (const std::exception &e) {
         testFail("cmsAdminClientConfig() not loopback: %s", e.what());
@@ -145,91 +146,104 @@ void testTestServerBuilderProducesIsolatedServer() {
     testDiag("testServerBuilder().start() returns a running, isolated PVA server");
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
 
-    auto &srv = harness.testServerBuilder().start();
-    const auto &eff = srv.config();
+    auto &test_server = harness.testServerBuilder().start();
+    const auto &resolved_config = test_server.config();
 
-    testOk(eff.tcp_port != 0, "test server tcp_port resolved: %u", (unsigned)eff.tcp_port);
-    testOk(eff.udp_port != 0, "test server udp_port resolved: %u", (unsigned)eff.udp_port);
-    testOk(!eff.interfaces.empty() &&
-           (eff.interfaces.front() == "127.0.0.1" || eff.interfaces.front() == "::1"),
+    testOk(resolved_config.tcp_port != 0,
+           "test server tcp_port resolved: %u", (unsigned)resolved_config.tcp_port);
+    testOk(resolved_config.udp_port != 0,
+           "test server udp_port resolved: %u", (unsigned)resolved_config.udp_port);
+    testOk(!resolved_config.interfaces.empty() &&
+           (resolved_config.interfaces.front() == "127.0.0.1"
+            || resolved_config.interfaces.front() == "::1"),
            "test server interfaces loopback only");
-    testOk(eff.auto_beacon == false, "test server auto_beacon is false");
+    testOk(resolved_config.auto_beacon == false, "test server auto_beacon is false");
 
-    const auto &snap = harness.startedTestServers();
-    testOk(snap.size() == 1, "snapshot table has exactly 1 entry: %zu", snap.size());
-    testOk(snap.front().tcp_port == eff.tcp_port,
+    const auto &server_snapshot = harness.startedTestServers();
+    testOk(server_snapshot.size() == 1,
+           "snapshot table has exactly 1 entry: %zu", server_snapshot.size());
+    testOk(server_snapshot.front().tcp_port == resolved_config.tcp_port,
            "snapshot tcp_port (%u) matches resolved (%u)",
-           (unsigned)snap.front().tcp_port, (unsigned)eff.tcp_port);
+           (unsigned)server_snapshot.front().tcp_port, (unsigned)resolved_config.tcp_port);
 }
 
 void testTwoTestServersDistinctPorts() {
     testDiag("two testServerBuilder().start() calls produce distinct ports + snapshots");
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
 
-    auto &srv1 = harness.testServerBuilder().start();
-    auto &srv2 = harness.testServerBuilder().start();
+    auto &first_server = harness.testServerBuilder().start();
+    auto &second_server = harness.testServerBuilder().start();
 
-    testOk(srv1.config().tcp_port != srv2.config().tcp_port,
+    testOk(first_server.config().tcp_port != second_server.config().tcp_port,
            "two test servers get distinct tcp_port: %u vs %u",
-           (unsigned)srv1.config().tcp_port, (unsigned)srv2.config().tcp_port);
-    testOk(srv1.config().tls_port != srv2.config().tls_port,
+           (unsigned)first_server.config().tcp_port, (unsigned)second_server.config().tcp_port);
+    testOk(first_server.config().tls_port != second_server.config().tls_port,
            "two test servers get distinct tls_port: %u vs %u",
-           (unsigned)srv1.config().tls_port, (unsigned)srv2.config().tls_port);
+           (unsigned)first_server.config().tls_port, (unsigned)second_server.config().tls_port);
 
-    const auto &snap = harness.startedTestServers();
-    testOk(snap.size() == 2, "snapshot table has 2 entries: %zu", snap.size());
+    const auto &server_snapshot = harness.startedTestServers();
+    testOk(server_snapshot.size() == 2,
+           "snapshot table has 2 entries: %zu", server_snapshot.size());
 }
 
 void testStopTestServerRemovesFromSnapshot() {
     testDiag("stopTestServer() removes server from snapshot table");
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
 
-    auto &srv1 = harness.testServerBuilder().start();
-    auto &srv2 = harness.testServerBuilder().start();
-    (void)srv2;
+    auto &first_server = harness.testServerBuilder().start();
+    auto &second_server = harness.testServerBuilder().start();
+    (void)second_server;
 
-    const auto port1 = srv1.config().tcp_port;
-    const auto port2 = srv2.config().tcp_port;
+    const auto first_server_port = first_server.config().tcp_port;
+    const auto second_server_port = second_server.config().tcp_port;
     testOk(harness.startedTestServers().size() == 2, "started 2 servers");
 
-    harness.stopTestServer(srv1);
+    harness.stopTestServer(first_server);
 
-    const auto &after = harness.startedTestServers();
-    testOk(after.size() == 1, "after stop, snapshot has 1 entry: %zu", after.size());
-    testOk(after.front().tcp_port == port2,
-           "remaining entry is srv2 (port %u), not srv1 (port %u)",
-           (unsigned)after.front().tcp_port, (unsigned)port1);
+    const auto &snapshot_after_stop = harness.startedTestServers();
+    testOk(snapshot_after_stop.size() == 1,
+           "after stop, snapshot has 1 entry: %zu", snapshot_after_stop.size());
+    testOk(snapshot_after_stop.front().tcp_port == second_server_port,
+           "remaining entry is the second server (port %u), not first (port %u)",
+           (unsigned)snapshot_after_stop.front().tcp_port, (unsigned)first_server_port);
 }
 
 void testTestClientConfigSnapshotSemantics() {
     testDiag("testClientConfig() snapshot semantics: includes servers started before the call");
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
 
-    auto cfg_before = harness.testClientConfig();
-    const size_t addrs_before = cfg_before.addressList.size();
-    testDiag("before any test server: addressList size = %zu (PVACMS only)", addrs_before);
+    auto config_before_servers = harness.testClientConfig();
+    const size_t address_count_before = config_before_servers.addressList.size();
+    testDiag("before any test server: addressList size = %zu (PVACMS only)",
+             address_count_before);
 
-    auto &srv1 = harness.testServerBuilder().start();
-    (void)srv1;
+    auto &first_server = harness.testServerBuilder().start();
+    (void)first_server;
 
-    auto cfg_after = harness.testClientConfig();
-    testOk(cfg_after.addressList.size() > cfg_before.addressList.size(),
+    auto config_after_first_server = harness.testClientConfig();
+    testOk(config_after_first_server.addressList.size()
+               > config_before_servers.addressList.size(),
            "after starting 1 server: addressList grew (%zu -> %zu)",
-           cfg_before.addressList.size(), cfg_after.addressList.size());
+           config_before_servers.addressList.size(),
+           config_after_first_server.addressList.size());
 
-    auto &srv2 = harness.testServerBuilder().start();
-    (void)srv2;
+    auto &second_server = harness.testServerBuilder().start();
+    (void)second_server;
 
-    auto cfg_3 = harness.testClientConfig();
-    testOk(cfg_3.addressList.size() > cfg_after.addressList.size(),
+    auto config_after_two_servers = harness.testClientConfig();
+    testOk(config_after_two_servers.addressList.size()
+               > config_after_first_server.addressList.size(),
            "after starting 2nd server: addressList grew further (%zu -> %zu)",
-           cfg_after.addressList.size(), cfg_3.addressList.size());
+           config_after_first_server.addressList.size(),
+           config_after_two_servers.addressList.size());
 
-    testOk(cfg_before.addressList.size() == addrs_before,
-           "snapshot semantic: cfg_before still has its original addressList size");
+    testOk(config_before_servers.addressList.size() == address_count_before,
+           "snapshot semantic: config_before_servers still has its original addressList size");
 
-    testOk(!cfg_3.tls_keychain_file.empty(), "client Entity Cert path is set");
-    testOk(cfg_3.tls_keychain_file != cfg_before.tls_keychain_file,
+    testOk(!config_after_two_servers.tls_keychain_file.empty(),
+           "client Entity Cert path is set");
+    testOk(config_after_two_servers.tls_keychain_file
+               != config_before_servers.tls_keychain_file,
            "two testClientConfig() calls produce distinct client Entity Cert paths");
 }
 
@@ -237,9 +251,9 @@ void testTestClientConfigIsLoopback() {
     testDiag("testClientConfig() produces a loopback-only client config");
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
     harness.testServerBuilder().start();
-    auto cfg = harness.testClientConfig();
+    auto client_config = harness.testClientConfig();
     try {
-        sanityCheckLoopback(cfg);
+        sanityCheckLoopback(client_config);
         testPass("testClientConfig() passes sanityCheckLoopback");
     } catch (const std::exception &e) {
         testFail("testClientConfig() not loopback: %s", e.what());
@@ -252,13 +266,13 @@ void testCustomizeFnAppliedPreBuild() {
 
     bool customize_called = false;
     uint16_t observed_tcp_port = 0xffff;
-    auto &srv = harness.testServerBuilder()
-                    .customize([&](pvxs::server::Config &c) {
+    auto &test_server = harness.testServerBuilder()
+                    .customize([&](pvxs::server::Config &server_config) {
                         customize_called = true;
-                        observed_tcp_port = c.tcp_port;
+                        observed_tcp_port = server_config.tcp_port;
                     })
                     .start();
-    (void)srv;
+    (void)test_server;
 
     testOk(customize_called, "customize() lambda was invoked");
     testOk(observed_tcp_port == 0,
@@ -270,15 +284,16 @@ void testWithPVRegisters() {
     testDiag("withPV() registers a PV that can be reached via testClientConfig");
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
 
-    auto mbox = pvxs::server::SharedPV::buildMailbox();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildMailbox();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{42}));
 
-    auto &srv = harness.testServerBuilder().withPV("HARNESS:TEST:PV", mbox).start();
-    (void)srv;
+    auto &test_server = harness.testServerBuilder()
+        .withPV("HARNESS:TEST:PV", mailbox_pv).start();
+    (void)test_server;
 
-    const auto &snap = harness.startedTestServers();
-    testOk(snap.size() == 1, "PV-registered server appears in snapshot");
+    const auto &server_snapshot = harness.startedTestServers();
+    testOk(server_snapshot.size() == 1, "PV-registered server appears in snapshot");
 }
 
 void testBuilderApplyEnvDefaultsFalse() {
@@ -303,9 +318,9 @@ void testBorrowedPkiFixture() {
     const auto external_fp = external.caFingerprintSha256();
 
     {
-        PVACMSHarness::Builder b;
-        b.pki(external);
-        PVACMSHarness harness = b.build();
+        PVACMSHarness::Builder builder;
+        builder.pki(external);
+        PVACMSHarness harness = builder.build();
         testOk(harness.pkiFixture().caFingerprintSha256() == external_fp,
                "harness uses the borrowed fixture's CA");
     }
@@ -317,15 +332,15 @@ void testBorrowedPkiFixture() {
 void testAllowExternalBindThrowsInCI() {
     testDiag("allowExternalBind() throws when CI=non-empty");
     setenv("CI", "true", 1);
-    bool threw = false;
+    bool threw_when_ci_set = false;
     try {
-        PVACMSHarness::Builder b;
-        b.allowExternalBind();
-        threw = false;
+        PVACMSHarness::Builder builder;
+        builder.allowExternalBind();
+        threw_when_ci_set = false;
     } catch (const std::exception &) {
-        threw = true;
+        threw_when_ci_set = true;
     }
-    testOk(threw, "allowExternalBind() threw with CI=true");
+    testOk(threw_when_ci_set, "allowExternalBind() threw with CI=true");
     unsetenv("CI");
 }
 

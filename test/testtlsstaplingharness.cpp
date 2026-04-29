@@ -61,41 +61,45 @@ void testStaplingDisabledOnServer() {
 
     auto counter = std::make_shared<SubCounter>();
 
-    PVACMSHarness::Builder b;
-    b.observeStatusSubscriptions([counter](const std::string &pv) { (*counter)(pv); });
-    auto harness = b.build();
+    PVACMSHarness::Builder builder;
+    builder.observeStatusSubscriptions(
+        [counter](const std::string &pv) { (*counter)(pv); });
+    auto harness = builder.build();
 
-    auto mbox = pvxs::server::SharedPV::buildReadonly();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{42}));
 
-    TestServerOpts opts;
-    opts.subject = "stapling-disabled-server";
-    auto &srv = harness.testServerBuilder()
-                    .opts(opts)
-                    .customize([](pvxs::server::Config &c) { c.disableStapling(true); })
-                    .withPV(TEST_PV, mbox)
+    TestServerOpts server_opts;
+    server_opts.subject = "stapling-disabled-server";
+    auto &test_server = harness.testServerBuilder()
+                    .opts(server_opts)
+                    .customize([](pvxs::server::Config &server_config) {
+                        server_config.disableStapling(true);
+                    })
+                    .withPV(TEST_PV, mailbox_pv)
                     .start();
-    (void)srv;
+    (void)test_server;
 
-    testTrue(srv.config().isStaplingDisabled());
+    testOk(test_server.config().isStaplingDisabled(),
+           "server reports stapling disabled (matches customize() override)");
 
-    auto cli_cfg = harness.testClientConfig();
-    cli_cfg.disableStapling(false);
-    auto cli = cli_cfg.build();
+    auto client_config = harness.testClientConfig();
+    client_config.disableStapling(false);
+    auto client = client_config.build();
 
-    bool got_value = false;
-    int32_t value = -1;
+    bool get_succeeded = false;
+    int32_t reply_value = -1;
     try {
-        auto reply = cli.get(TEST_PV).exec()->wait(10.0);
-        value = reply["value"].as<int32_t>();
-        got_value = true;
+        auto reply = client.get(TEST_PV).exec()->wait(10.0);
+        reply_value = reply["value"].as<int32_t>();
+        get_succeeded = true;
     } catch (const std::exception &e) {
         testDiag("GET failed: %s", e.what());
     }
 
-    testOk(got_value, "GET succeeded with server-side stapling disabled");
-    if (got_value) testEq(value, 42);
+    testOk(get_succeeded, "GET succeeded with server-side stapling disabled");
+    if (get_succeeded) testEq(reply_value, 42);
 }
 
 void testStaplingEnabledOnServer() {
@@ -103,41 +107,45 @@ void testStaplingEnabledOnServer() {
 
     auto counter = std::make_shared<SubCounter>();
 
-    PVACMSHarness::Builder b;
-    b.observeStatusSubscriptions([counter](const std::string &pv) { (*counter)(pv); });
-    auto harness = b.build();
+    PVACMSHarness::Builder builder;
+    builder.observeStatusSubscriptions(
+        [counter](const std::string &pv) { (*counter)(pv); });
+    auto harness = builder.build();
 
-    auto mbox = pvxs::server::SharedPV::buildReadonly();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{42}));
 
-    TestServerOpts opts;
-    opts.subject = "stapling-enabled-server";
-    auto &srv = harness.testServerBuilder()
-                    .opts(opts)
-                    .customize([](pvxs::server::Config &c) { c.disableStapling(false); })
-                    .withPV(TEST_PV, mbox)
+    TestServerOpts server_opts;
+    server_opts.subject = "stapling-enabled-server";
+    auto &test_server = harness.testServerBuilder()
+                    .opts(server_opts)
+                    .customize([](pvxs::server::Config &server_config) {
+                        server_config.disableStapling(false);
+                    })
+                    .withPV(TEST_PV, mailbox_pv)
                     .start();
-    (void)srv;
+    (void)test_server;
 
-    testTrue(!srv.config().isStaplingDisabled());
+    testOk(!test_server.config().isStaplingDisabled(),
+           "server reports stapling enabled (matches customize() override)");
 
-    auto cli_cfg = harness.testClientConfig();
-    cli_cfg.disableStapling(false);
-    auto cli = cli_cfg.build();
+    auto client_config = harness.testClientConfig();
+    client_config.disableStapling(false);
+    auto client = client_config.build();
 
-    bool got_value = false;
-    int32_t value = -1;
+    bool get_succeeded = false;
+    int32_t reply_value = -1;
     try {
-        auto reply = cli.get(TEST_PV).exec()->wait(10.0);
-        value = reply["value"].as<int32_t>();
-        got_value = true;
+        auto reply = client.get(TEST_PV).exec()->wait(10.0);
+        reply_value = reply["value"].as<int32_t>();
+        get_succeeded = true;
     } catch (const std::exception &e) {
         testDiag("GET failed: %s", e.what());
     }
 
-    testOk(got_value, "GET succeeded with server-side stapling enabled");
-    if (got_value) testEq(value, 42);
+    testOk(get_succeeded, "GET succeeded with server-side stapling enabled");
+    if (get_succeeded) testEq(reply_value, 42);
 }
 
 void testClientStaplingNoServerStapling() {
@@ -145,39 +153,43 @@ void testClientStaplingNoServerStapling() {
 
     auto counter = std::make_shared<SubCounter>();
 
-    PVACMSHarness::Builder b;
-    b.observeStatusSubscriptions([counter](const std::string &pv) { (*counter)(pv); });
-    auto harness = b.build();
+    PVACMSHarness::Builder builder;
+    builder.observeStatusSubscriptions(
+        [counter](const std::string &pv) { (*counter)(pv); });
+    auto harness = builder.build();
 
-    auto mbox = pvxs::server::SharedPV::buildReadonly();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{42}));
 
-    TestServerOpts opts;
-    opts.subject = "no-staple-server";
-    auto &srv = harness.testServerBuilder()
-                    .opts(opts)
-                    .customize([](pvxs::server::Config &c) { c.disableStapling(true); })
-                    .withPV(TEST_PV, mbox)
+    TestServerOpts server_opts;
+    server_opts.subject = "no-staple-server";
+    auto &test_server = harness.testServerBuilder()
+                    .opts(server_opts)
+                    .customize([](pvxs::server::Config &server_config) {
+                        server_config.disableStapling(true);
+                    })
+                    .withPV(TEST_PV, mailbox_pv)
                     .start();
-    (void)srv;
+    (void)test_server;
 
-    auto cli_cfg = harness.testClientConfig();
-    cli_cfg.disableStapling(false);
-    auto cli = cli_cfg.build();
+    auto client_config = harness.testClientConfig();
+    client_config.disableStapling(false);
+    auto client = client_config.build();
 
-    bool got_value = false;
-    int32_t value = -1;
+    bool get_succeeded = false;
+    int32_t reply_value = -1;
     try {
-        auto reply = cli.get(TEST_PV).exec()->wait(10.0);
-        value = reply["value"].as<int32_t>();
-        got_value = true;
+        auto reply = client.get(TEST_PV).exec()->wait(10.0);
+        reply_value = reply["value"].as<int32_t>();
+        get_succeeded = true;
     } catch (const std::exception &e) {
         testDiag("GET failed: %s", e.what());
     }
 
-    testOk(got_value, "client expecting stapling -> server not stapling -> GET still succeeds");
-    if (got_value) testEq(value, 42);
+    testOk(get_succeeded,
+           "client expecting stapling -> server not stapling -> GET still succeeds");
+    if (get_succeeded) testEq(reply_value, 42);
 }
 
 void testServerStaplingNoClientStapling() {
@@ -185,66 +197,74 @@ void testServerStaplingNoClientStapling() {
 
     auto counter = std::make_shared<SubCounter>();
 
-    PVACMSHarness::Builder b;
-    b.observeStatusSubscriptions([counter](const std::string &pv) { (*counter)(pv); });
-    auto harness = b.build();
+    PVACMSHarness::Builder builder;
+    builder.observeStatusSubscriptions(
+        [counter](const std::string &pv) { (*counter)(pv); });
+    auto harness = builder.build();
 
-    auto mbox = pvxs::server::SharedPV::buildReadonly();
-    mbox.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
                   .update("value", int32_t{42}));
 
-    TestServerOpts opts;
-    opts.subject = "staple-server";
-    auto &srv = harness.testServerBuilder()
-                    .opts(opts)
-                    .customize([](pvxs::server::Config &c) { c.disableStapling(false); })
-                    .withPV(TEST_PV, mbox)
+    TestServerOpts server_opts;
+    server_opts.subject = "staple-server";
+    auto &test_server = harness.testServerBuilder()
+                    .opts(server_opts)
+                    .customize([](pvxs::server::Config &server_config) {
+                        server_config.disableStapling(false);
+                    })
+                    .withPV(TEST_PV, mailbox_pv)
                     .start();
-    (void)srv;
+    (void)test_server;
 
-    auto cli_cfg = harness.testClientConfig();
-    cli_cfg.disableStapling(true);
-    auto cli = cli_cfg.build();
+    auto client_config = harness.testClientConfig();
+    client_config.disableStapling(true);
+    auto client = client_config.build();
 
-    bool got_value = false;
-    int32_t value = -1;
+    bool get_succeeded = false;
+    int32_t reply_value = -1;
     try {
-        auto reply = cli.get(TEST_PV).exec()->wait(10.0);
-        value = reply["value"].as<int32_t>();
-        got_value = true;
+        auto reply = client.get(TEST_PV).exec()->wait(10.0);
+        reply_value = reply["value"].as<int32_t>();
+        get_succeeded = true;
     } catch (const std::exception &e) {
         testDiag("GET failed: %s", e.what());
     }
 
-    testOk(got_value, "server stapling -> client not expecting -> GET still succeeds");
-    if (got_value) testEq(value, 42);
+    testOk(get_succeeded,
+           "server stapling -> client not expecting -> GET still succeeds");
+    if (get_succeeded) testEq(reply_value, 42);
 }
 
 void testStaplingFlagPropagatesViaCustomize() {
     testDiag("testServerBuilder().customize() correctly toggles tls_disable_stapling");
-    PVACMSHarness::Builder b;
-    auto harness = b.build();
+    PVACMSHarness::Builder builder;
+    auto harness = builder.build();
 
-    bool customize_invoked_disabled = false;
-    bool customize_invoked_enabled = false;
+    bool customize_invoked_for_disabled_server = false;
+    bool customize_invoked_for_enabled_server = false;
 
-    auto &srv1 = harness.testServerBuilder()
-                     .customize([&](pvxs::server::Config &c) {
-                         c.disableStapling(true);
-                         customize_invoked_disabled = true;
+    auto &stapling_disabled_server = harness.testServerBuilder()
+                     .customize([&](pvxs::server::Config &server_config) {
+                         server_config.disableStapling(true);
+                         customize_invoked_for_disabled_server = true;
                      })
                      .start();
-    auto &srv2 = harness.testServerBuilder()
-                     .customize([&](pvxs::server::Config &c) {
-                         c.disableStapling(false);
-                         customize_invoked_enabled = true;
+    auto &stapling_enabled_server = harness.testServerBuilder()
+                     .customize([&](pvxs::server::Config &server_config) {
+                         server_config.disableStapling(false);
+                         customize_invoked_for_enabled_server = true;
                      })
                      .start();
 
-    testTrue(customize_invoked_disabled);
-    testTrue(customize_invoked_enabled);
-    testTrue(srv1.config().isStaplingDisabled());
-    testTrue(!srv2.config().isStaplingDisabled());
+    testOk(customize_invoked_for_disabled_server,
+           "customize() lambda fired for the stapling-disabled server");
+    testOk(customize_invoked_for_enabled_server,
+           "customize() lambda fired for the stapling-enabled server");
+    testOk(stapling_disabled_server.config().isStaplingDisabled(),
+           "stapling-disabled server reports isStaplingDisabled() == true");
+    testOk(!stapling_enabled_server.config().isStaplingDisabled(),
+           "stapling-enabled server reports isStaplingDisabled() == false");
 }
 
 }  // namespace
