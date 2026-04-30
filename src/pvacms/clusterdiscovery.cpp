@@ -13,8 +13,10 @@
 
 #include <epicsMutex.h>
 #include <epicsGuard.h>
+
 #include <epicsThread.h>
 #include <epicsTime.h>
+#include <iostream>
 
 #include <pvxs/log.h>
 
@@ -90,12 +92,12 @@ struct ConnTimerCtx {
 void connTimerEntry(void *arg) {
     auto ctx = std::unique_ptr<ConnTimerCtx>(static_cast<ConnTimerCtx *>(arg));
     epicsThreadSleep(static_cast<double>(ctx->timeout_secs));
-    if (!ctx->state->cancelled.load()) {
-        int expected = ClusterDiscovery::CONN_PENDING;
-        if (ctx->state->state.compare_exchange_strong(expected, ClusterDiscovery::CONN_UNREACHABLE)) {
-            ctx->discovery->onConnectivityTimeout(ctx->node_id);
-        }
-    }
+    if (ctx->state->cancelled.load()) return;
+    int expected = ClusterDiscovery::CONN_PENDING;
+    if (!ctx->state->state.compare_exchange_strong(expected, ClusterDiscovery::CONN_UNREACHABLE))
+        return;
+    if (ctx->state->cancelled.load()) return;
+    ctx->discovery->onConnectivityTimeout(ctx->node_id);
 }
 
 /**
@@ -117,7 +119,6 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
                                    std::string issuer_id,
                                    std::string pv_prefix,
                                    const uint32_t discovery_timeout_secs,
-                                   bool skip_peer_identity_check,
                                    sqlite3 *certs_db,
                                    const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                    const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
@@ -129,7 +130,6 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
     , issuer_id_(std::move(issuer_id))
     , pv_prefix_(std::move(pv_prefix))
     , discovery_timeout_secs_(discovery_timeout_secs)
-    , skip_peer_identity_check_(skip_peer_identity_check)
     , certs_db_(certs_db)
     , cert_auth_pkey_(cert_auth_pkey)
     , cert_auth_pub_key_(cert_auth_pub_key)
@@ -141,6 +141,49 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
     controller_.on_membership_changed = [this](const std::vector<ClusterMember> &members) {
         reconcileMembers(std::string(), members);
     };
+    rejoin_watchdog_thread_ = std::thread([this]() { rejoinWatchdogLoop(); });
+}
+
+ClusterDiscovery::~ClusterDiscovery() {
+    shutting_down_.store(true);
+    rejoin_watchdog_wakeup_.signal();
+    if (rejoin_watchdog_thread_.joinable()) rejoin_watchdog_thread_.join();
+
+    // Join rejoin threads first.  A rejoin thread may be in
+    // joinCluster()->client_ctx_.rpc().wait(timeout) and only sees
+    // shutting_down_ when that wait returns; we cannot bail it out earlier.
+    {
+        std::vector<std::thread> threads_to_join;
+        {
+            std::lock_guard<std::mutex> lk(rejoin_thread_mutex_);
+            threads_to_join.swap(old_rejoin_threads_);
+            if (rejoin_thread_.joinable()) {
+                threads_to_join.push_back(std::move(rejoin_thread_));
+            }
+        }
+        for (auto &t : threads_to_join) {
+            if (t.joinable()) t.join();
+        }
+    }
+
+    // Detach the maps under the lock, then destroy the shared_ptr<Subscription>
+    // entries OUTSIDE the lock.  ~Subscription dispatches cancel() to the
+    // tcp_loop and waits; if the tcp_loop is concurrently running our event
+    // callback, that callback will try to acquire state_lock_ on its own
+    // shutting_down_-check path, which would deadlock if we still held it.
+    std::map<std::string, std::shared_ptr<client::Subscription>> subs_to_destroy;
+    {
+        Guard G(state_lock_);
+        subs_to_destroy.swap(subscriptions_);
+        acknowledged_by_.clear();
+        for (auto &kv : peer_connectivity_) kv.second->cancelled.store(true);
+        peer_connectivity_.clear();
+        active_forwarding_.clear();
+        peer_sync_members_.clear();
+        peer_last_sequence_.clear();
+    }
+    subs_to_destroy.clear();
+    drainDeadSubscriptions();
 }
 
 SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
@@ -152,30 +195,31 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
 
     const auto certs_arr = snapshot["certs"].as<shared_array<const Value>>();
     for (const auto & row : certs_arr) {
-        const auto serial = row["serial"].as<int64_t>();
+        auto serial = row["serial"].as<uint64_t>();
+        const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
         const auto remote_status = static_cast<cms::cert::certstatus_t>(row["status"].as<int32_t>());
 
         sqlite3_stmt *check_stmt;
         if (sqlite3_prepare_v2(certs_db, SQL_SYNC_CHECK_CERT_STATUS, -1, &check_stmt, nullptr) != SQLITE_OK)
             continue;
-        sqlite3_bind_int64(check_stmt, sqlite3_bind_parameter_index(check_stmt, ":serial"), serial);
+        sqlite3_bind_int64(check_stmt, sqlite3_bind_parameter_index(check_stmt, ":serial"), db_serial);
 
         if (sqlite3_step(check_stmt) == SQLITE_ROW) {
             const auto local_status = static_cast<cms::cert::certstatus_t>(sqlite3_column_int(check_stmt, 0));
             sqlite3_finalize(check_stmt);
 
-            log_debug_printf(pvacmscluster, "Sync merge: serial=%lld local_status=%d remote_status=%d\n",
-                             static_cast<long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
+            log_debug_printf(pvacmscluster, "Sync merge: serial=%llu local_status=%d remote_status=%d\n",
+                             static_cast<unsigned long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
 
             if (!isValidStatusTransition(local_status, remote_status)) {
-                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%lld — invalid transition %d -> %d\n",
-                                 static_cast<long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
+                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%llu — invalid transition %d -> %d\n",
+                                 static_cast<unsigned long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
                 continue;
             }
 
             if (local_status == remote_status) {
-                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%lld — same status %d\n",
-                                 static_cast<long long>(serial), static_cast<int>(local_status));
+                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%llu — same status %d\n",
+                                 static_cast<unsigned long long>(serial), static_cast<int>(local_status));
                 continue;
             }
 
@@ -185,8 +229,8 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
 
             sqlite3_stmt *upd_stmt;
             if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, &upd_stmt, nullptr) != SQLITE_OK) {
-                log_debug_printf(pvacmscluster, "Sync merge: SQL_SYNC_UPDATE_CERT prepare failed for serial=%lld: %s\n",
-                                 static_cast<long long>(serial), sqlite3_errmsg(certs_db));
+                log_debug_printf(pvacmscluster, "Sync merge: SQL_SYNC_UPDATE_CERT prepare failed for serial=%llu: %s\n",
+                                 static_cast<unsigned long long>(serial), sqlite3_errmsg(certs_db));
                 continue;
             }
 
@@ -219,10 +263,10 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                     sqlite3_bind_null(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":san"));
                 }
             }
-            sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), serial);
+            sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), db_serial);
             auto rc = sqlite3_step(upd_stmt);
-            log_debug_printf(pvacmscluster, "Sync merge: UPDATE serial=%lld rc=%d changes=%d\n",
-                             static_cast<long long>(serial), rc, sqlite3_changes(certs_db));
+            log_debug_printf(pvacmscluster, "Sync merge: UPDATE serial=%llu rc=%d changes=%d\n",
+                             static_cast<unsigned long long>(serial), rc, sqlite3_changes(certs_db));
             insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
                                   static_cast<uint64_t>(serial), SB() << "status=" << remote_status);
             sqlite3_finalize(upd_stmt);
@@ -233,7 +277,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             if (sqlite3_prepare_v2(certs_db, SQL_SYNC_INSERT_CERT, -1, &ins_stmt, nullptr) != SQLITE_OK)
                 continue;
 
-            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), serial);
+            sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), db_serial);
             auto bind_text = [&](const char *param, const char *field) {
                 const auto s = row[field].as<std::string>();
                 sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, param), s.c_str(), -1, SQLITE_TRANSIENT);
@@ -264,12 +308,11 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                 }
             }
             sqlite3_step(ins_stmt);
-            insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
-                                  static_cast<uint64_t>(serial), SB() << "status=" << remote_status);
+            insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id, serial, SB() << "status=" << remote_status);
             sqlite3_finalize(ins_stmt);
             result.had_changes = true;
 
-            if (remote_status == cms::cert::REVOKED) {
+            if (remote_status == REVOKED) {
                 result.revoked_skids.push_back(row["skid"].as<std::string>());
             }
         }
@@ -278,27 +321,29 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
     auto sched_field = snapshot["cert_schedules"];
     if (sched_field) {
         auto sched_arr = sched_field.as<shared_array<const Value>>();
-        std::set<int64_t> synced_serials;
+        std::set<uint64_t> synced_serials;
         for (const auto &row : sched_arr) {
-            synced_serials.insert(row["serial"].as<int64_t>());
+            synced_serials.insert(row["serial"].as<uint64_t>());
         }
         for (auto serial : synced_serials) {
+            const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
             sqlite3_stmt *del_stmt = nullptr;
             if (sqlite3_prepare_v2(certs_db, "DELETE FROM cert_schedules WHERE serial = ?", -1, &del_stmt, nullptr) == SQLITE_OK) {
-                sqlite3_bind_int64(del_stmt, 1, serial);
+                sqlite3_bind_int64(del_stmt, 1, db_serial);
                 sqlite3_step(del_stmt);
                 sqlite3_finalize(del_stmt);
             }
         }
         for (const auto &row : sched_arr) {
-            const auto serial = row["serial"].as<int64_t>();
+            auto serial = row["serial"].as<uint64_t>();
+            const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
             sqlite3_stmt *ins_stmt = nullptr;
             if (sqlite3_prepare_v2(certs_db,
                                    "INSERT INTO cert_schedules(serial, day_of_week, start_time, end_time) VALUES(?, ?, ?, ?)",
                                    -1,
                                    &ins_stmt,
                                    nullptr) == SQLITE_OK) {
-                sqlite3_bind_int64(ins_stmt, 1, serial);
+                sqlite3_bind_int64(ins_stmt, 1, db_serial);
                 auto txt = [&](const char *field) { return row[field].as<std::string>(); };
                 const auto day_of_week = txt("day_of_week");
                 const auto start_time = txt("start_time");
@@ -326,18 +371,6 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
  * @param val Incoming PVAccess Value containing the signed sync snapshot.
  */
 void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &&val) {
-    if (peer_cert_ids_.find(peer_node_id) == peer_cert_ids_.end()) {
-        if (!skip_peer_identity_check_) {
-            log_warn_printf(pvacmscluster,
-                "Received snapshot from %s before peer identity was verified, rejecting\n",
-                peer_node_id.c_str());
-            return;
-        }
-        log_debug_printf(pvacmscluster,
-            "Peer identity check skipped for %s (--cluster-skip-peer-identity-check)\n",
-            peer_node_id.c_str());
-    }
-
     const auto snapshot_node_id = val["node_id"].as<std::string>();
     if (snapshot_node_id != peer_node_id) {
         log_warn_printf(pvacmscluster,
@@ -448,46 +481,35 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
  * @param sync_pv PVAccess name of the peer's sync PV.
  */
 void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::string &sync_pv) {
+    drainDeadSubscriptions();
+    if (shutting_down_.load()) return;
     if (node_id == node_id_) return;
-    if (subscriptions_.count(node_id)) return;
 
-    auto conn_state = std::make_shared<PeerConnectivity>();
-    peer_connectivity_[node_id] = conn_state;
+    std::shared_ptr<PeerConnectivity> conn_state;
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+        if (subscriptions_.count(node_id)) return;
+        conn_state = std::make_shared<PeerConnectivity>();
+        peer_connectivity_[node_id] = conn_state;
+    }
 
     auto sub = client_ctx_.monitor(sync_pv)
         .maskConnected(false)
         .maskDisconnected(false)
         .event([this, node_id, sync_pv](client::Subscription &sub) {
+            if (shutting_down_.load()) return;
             while (true) {
                 try {
                     while (auto val = sub.pop()) {
+                        if (shutting_down_.load()) return;
                         handleSyncUpdate(node_id, std::move(val));
                     }
                     break;
-                } catch (client::Connected &conn) {
-                    if (conn.cred && conn.cred->isTLS && conn.cred->method == "x509") {
-                        const auto peer_cert_id = conn.cred->issuer_id + ":" + conn.cred->serial;
-
-                        if (conn.cred->issuer_id != issuer_id_) {
-                            if (!skip_peer_identity_check_) {
-                                log_warn_printf(pvacmscluster,
-                                    "Peer issuer_id mismatch on SYNC PV %s: expected %s, got %s\n",
-                                    sync_pv.c_str(), issuer_id_.c_str(), conn.cred->issuer_id.c_str());
-                                handleDisconnect(node_id);
-                                break;
-                            }
-                            log_debug_printf(pvacmscluster,
-                                "Peer identity check skipped for %s (--cluster-skip-peer-identity-check)\n",
-                                sync_pv.c_str());
-                        }
-
-                        peer_cert_ids_[node_id] = peer_cert_id;
-                        log_debug_printf(pvacmscluster, "Cached peer cert identity %s for node %s\n",
-                                         peer_cert_id.c_str(), node_id.c_str());
-                    } else if (skip_peer_identity_check_) {
-                        peer_cert_ids_[node_id] = "tcp:" + node_id;
-                    }
-
+                } catch (client::Connected &) {
+                    if (shutting_down_.load()) return;
+                    Guard G(state_lock_);
+                    if (shutting_down_.load()) return;
                     auto it = peer_connectivity_.find(node_id);
                     if (it != peer_connectivity_.end()) {
                         int prev = it->second->state.exchange(CONN_CONNECTED);
@@ -500,7 +522,7 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
                     }
                     // continue loop to drain any data queued after Connected
                 } catch (client::Disconnect &) {
-                    peer_cert_ids_.erase(node_id);
+                    if (shutting_down_.load()) return;
                     handleDisconnect(node_id);
                     break;
                 } catch (const std::exception &e) {
@@ -511,10 +533,15 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
         })
         .exec();
 
-    subscriptions_[node_id] = std::move(sub);
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+        subscriptions_[node_id] = std::move(sub);
+    }
     log_debug_printf(pvacmscluster, "Subscribed to sync PV %s (node %s)\n",
                      sync_pv.c_str(), node_id.c_str());
 
+    if (shutting_down_.load()) return;
     auto *timer_ctx = new ConnTimerCtx{this, node_id, conn_state, discovery_timeout_secs_};
     epicsThreadCreate("pvacms-conn",
         epicsThreadPriorityLow,
@@ -527,28 +554,49 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
  * @brief Removes all state for a peer node after its sync subscription disconnects.
  * @param peer_node_id Unique identifier of the node that disconnected.
  */
-void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
-    peer_cert_ids_.erase(peer_node_id);
-    peer_last_sequence_.erase(peer_node_id);
-    subscriptions_.erase(peer_node_id);
+void ClusterDiscovery::drainDeadSubscriptions() {
+    std::vector<std::shared_ptr<client::Subscription>> to_destroy;
+    {
+        Guard G(dead_subscriptions_lock_);
+        to_destroy.swap(dead_subscriptions_);
+    }
+}
 
-    auto conn_it = peer_connectivity_.find(peer_node_id);
-    if (conn_it != peer_connectivity_.end()) {
-        conn_it->second->cancelled.store(true);
-        peer_connectivity_.erase(conn_it);
+void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
+    if (shutting_down_.load()) return;
+
+    // Treat TCP loss as transient: pvxs auto-reconnects.  Eviction on a
+    // gateway-flap-induced Disconnect would split-brain the cluster
+    // because the bounced peer is unaware it was evicted.
+    bool was_forwarding = false;
+    bool transitioned_to_unreachable = false;
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+
+        peer_last_sequence_.erase(peer_node_id);
+
+        auto conn_it = peer_connectivity_.find(peer_node_id);
+        if (conn_it != peer_connectivity_.end()) {
+            int prev = conn_it->second->state.exchange(CONN_UNREACHABLE);
+            transitioned_to_unreachable = (prev == CONN_CONNECTED);
+        }
+
+        was_forwarding = sync_publisher_.isForwarding(peer_node_id);
     }
 
-    if (sync_publisher_.isForwarding(peer_node_id)) {
+    if (was_forwarding) {
         log_info_printf(pvacmscluster, "Forwardee %s disconnected, stopping forwarding\n",
                         peer_node_id.c_str());
         sync_publisher_.removeForwardingRelationship(peer_node_id);
-        publishMemberConnectivity();
     }
 
-    controller_.removeMember(peer_node_id);
-    log_info_printf(pvacmscluster, "Removed disconnected member %s\n", peer_node_id.c_str());
-
-    rejoinCluster();
+    if (transitioned_to_unreachable) {
+        log_info_printf(pvacmscluster,
+                        "Peer %s TCP lost; awaiting auto-reconnect (membership preserved)\n",
+                        peer_node_id.c_str());
+        publishMemberConnectivity();
+    }
 }
 
 /**
@@ -557,6 +605,8 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
  */
 void ClusterDiscovery::reconcileMembers(const std::string &sender_node_id,
                                         const std::vector<ClusterMember> &remote_members) {
+    if (shutting_down_.load()) return;
+
     // Detect self-eviction per peer: only trigger if THIS specific peer
     // previously included us in its membership and now does not.  Stale
     // snapshots from peers that haven't processed our join yet are ignored.
@@ -581,50 +631,115 @@ void ClusterDiscovery::reconcileMembers(const std::string &sender_node_id,
     }
 
     for (const auto &m : remote_members) {
+        if (shutting_down_.load()) return;
         if (m.node_id == node_id_) continue;
-        if (subscriptions_.count(m.node_id) == 0) {
+        bool already_subscribed;
+        {
+            Guard G(state_lock_);
+            already_subscribed = subscriptions_.count(m.node_id) > 0;
+        }
+        if (!already_subscribed) {
             log_info_printf(pvacmscluster, "Discovered new member %s via peer sync\n", m.node_id.c_str());
             subscribeToMember(m.node_id, m.sync_pv);
-            controller_.addMember(m);
+            // Only add to membership if subscribe actually succeeded -
+            // otherwise we'd recurse via on_membership_changed forever
+            // (subscriptions_.count(m.node_id) stays 0, addMember fires
+            // on_membership_changed, which calls back into us).
+            bool subscribed_now;
+            {
+                Guard G(state_lock_);
+                subscribed_now = subscriptions_.count(m.node_id) > 0;
+            }
+            if (subscribed_now) {
+                controller_.addMember(m);
+            }
         }
     }
 }
 
-void rejoinThreadEntry(void *arg) {
-    auto *self = static_cast<ClusterDiscovery *>(arg);
-    self->doRejoin();
+void ClusterDiscovery::rejoinWatchdogLoop() {
+    // Wake up periodically; if we are still a sole-node cluster (e.g.
+    // because startup raced peer-readiness — gateway not yet TLS-ready
+    // when we first attempted to join), trigger another rejoin.  Once
+    // we have peers, the watchdog stays cheap (it just re-checks).
+    constexpr double kWatchdogIntervalSecs = 30.0;
+    while (!shutting_down_.load()) {
+        rejoin_watchdog_wakeup_.wait(kWatchdogIntervalSecs);
+        if (shutting_down_.load()) return;
+        if (controller_.getMembers().size() <= 1) {
+            log_info_printf(pvacmscluster,
+                            "Watchdog: still sole-node, attempting rejoin\n%s", "");
+            rejoinCluster();
+        }
+    }
 }
 
 void ClusterDiscovery::rejoinCluster() {
+    if (shutting_down_.load()) return;
     if (rejoin_in_progress_.exchange(true)) {
         return;
     }
 
     log_info_printf(pvacmscluster, "Membership changed — re-establishing cluster for node %s\n", node_id_.c_str());
 
-    // Run on a background thread — joinCluster() blocks for up to
-    // discovery_timeout_secs_ and must not stall the server worker thread.
-    epicsThreadCreate("pvacms-rejoin",
-        epicsThreadPriorityMedium,
-        epicsThreadGetStackSize(epicsThreadStackMedium),
-        rejoinThreadEntry,
-        this);
+    // Hand the previous (now-finished, since rejoin_in_progress_ was false)
+    // thread off to a side-vector so we never block the caller (which may
+    // be running on the client tcp_loop) on join().  The destructor joins
+    // both the side-vector entries and the live thread.
+    std::lock_guard<std::mutex> lk(rejoin_thread_mutex_);
+    if (shutting_down_.load()) {
+        rejoin_in_progress_.store(false);
+        return;
+    }
+    if (rejoin_thread_.joinable()) {
+        old_rejoin_threads_.push_back(std::move(rejoin_thread_));
+    }
+    rejoin_thread_ = std::thread([this]() { doRejoin(); });
 }
 
 void ClusterDiscovery::doRejoin() {
-    acknowledged_by_.clear();
-    peer_cert_ids_.clear();
-    peer_last_sequence_.clear();
-    subscriptions_.clear();
+    if (shutting_down_.load()) {
+        rejoin_in_progress_.store(false);
+        return;
+    }
 
-    for (auto &kv : peer_connectivity_)
-        kv.second->cancelled.store(true);
-    peer_connectivity_.clear();
-    active_forwarding_.clear();
-    peer_sync_members_.clear();
+    // Detach subscriptions under the lock, destroy them OUTSIDE.  Same
+    // deadlock-avoidance pattern as ~ClusterDiscovery: ~Subscription cancel()
+    // dispatches to the tcp_loop and waits, but the tcp_loop is concurrently
+    // running our event callback which (on Disconnect) tries to acquire
+    // state_lock_ via handleDisconnect.  Holding state_lock_ across the
+    // clear() deadlocks against that.
+    std::map<std::string, std::shared_ptr<client::Subscription>> subs_to_destroy;
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) {
+            rejoin_in_progress_.store(false);
+            return;
+        }
+        acknowledged_by_.clear();
+        peer_last_sequence_.clear();
+        subs_to_destroy.swap(subscriptions_);
+
+        for (auto &kv : peer_connectivity_)
+            kv.second->cancelled.store(true);
+        peer_connectivity_.clear();
+        active_forwarding_.clear();
+        peer_sync_members_.clear();
+    }
+    subs_to_destroy.clear();
+
+    if (shutting_down_.load()) {
+        rejoin_in_progress_.store(false);
+        return;
+    }
 
     controller_.initAsSoleNode(node_id_, sync_publisher_.getSyncPvName());
     sync_publisher_.publishSnapshot();
+
+    if (shutting_down_.load()) {
+        rejoin_in_progress_.store(false);
+        return;
+    }
 
     auto result = joinCluster();
     if (result == JoinResult::Joined) {
@@ -646,11 +761,14 @@ void ClusterDiscovery::doRejoin() {
  * @return true if the join handshake succeeded and the cluster was joined; false otherwise.
  */
 ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
+    if (shutting_down_.load()) return JoinResult::NotFound;
+    drainDeadSubscriptions();
     static constexpr int kMaxBidiRetries = 3;
     auto ctrl_pv_name = pv_prefix_ + ":CTRL:" + issuer_id_ + ":" + node_id_;
     auto sync_pv_name = sync_publisher_.getSyncPvName();
 
     for (int bidi_attempt = 0; bidi_attempt <= kMaxBidiRetries; bidi_attempt++) {
+    if (shutting_down_.load()) return JoinResult::NotFound;
     shared_array<uint8_t> nonce(16);
     if (RAND_bytes(nonce.data(), 16) != 1)
         throw std::runtime_error("Failed to generate nonce");
@@ -667,9 +785,11 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
     clusterSign(cert_auth_pkey_, req);
 
     try {
+        // Short-circuit RPC on shutdown so destructor join can complete fast.
+        double rpc_timeout = shutting_down_.load() ? 0.5 : double(discovery_timeout_secs_);
         auto resp = client_ctx_.rpc(ctrl_pv_name, req)
             .exec()
-            ->wait(discovery_timeout_secs_);
+            ->wait(rpc_timeout);
 
         if (!clusterVerify(cert_auth_pub_key_, resp)) {
             log_warn_printf(pvacmscluster, "Join response signature verification failed%s\n", "");
@@ -718,6 +838,18 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
             });
         }
 
+        // Merge response members with any locally-discovered ones rather
+        // than overwriting: a node we found via peer sync before joining
+        // (e.g. a 3rd member that was already in our table from a prior
+        // sync snapshot) must not be erased by a join response that the
+        // responder constructed before learning about that 3rd member.
+        for (const auto &existing : controller_.getMembers()) {
+            bool present = false;
+            for (const auto &m : members) {
+                if (m.node_id == existing.node_id) { present = true; break; }
+            }
+            if (!present) members.push_back(existing);
+        }
         controller_.updateMembership(members);
 
         for (const auto &m : members) {
@@ -747,9 +879,11 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
 }
 
 void ClusterDiscovery::onConnectivityTimeout(const std::string &node_id) {
+    if (shutting_down_.load()) return;
     log_warn_printf(pvacmscluster, "Peer %s unreachable after %u second timeout\n",
                     node_id.c_str(), discovery_timeout_secs_);
     publishMemberConnectivity();
+    if (shutting_down_.load()) return;
     seekForwarder(node_id);
 }
 

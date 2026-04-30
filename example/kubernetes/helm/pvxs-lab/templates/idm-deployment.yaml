@@ -79,7 +79,7 @@ spec:
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: /home/idm/.config/pva/1.5/pvacms.p12
             - name: PVACMS_EXTRA_ARGS
-              value: "--cluster-mode --cluster-discovery-timeout 30 --cluster-bidi-timeout 30 --cluster-skip-peer-identity-check --cert-auth-keychain /etc/pvacms/cert_auth.p12 --acf /etc/pvacms/pvacms.acf"
+              value: "--cluster-mode --cluster-discovery-timeout 30 --cluster-bidi-timeout 30 --cert-auth-keychain /etc/pvacms/cert_auth.p12 --acf /etc/pvacms/pvacms.acf"
             - name: PVXS_LOG
               value: {{ .Values.idm.debug.logLevel | quote }}
             - name: KADMIN_ADMIN_SERVER

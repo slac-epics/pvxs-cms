@@ -34,7 +34,7 @@ struct Source;
 
 namespace server {
 
-using cms::detail::RWLock;
+using ::cms::detail::RWLock;
 
 struct WildcardPV {
     //! Create a new SharedPV with a Put handler which post() s any client-provided Value.

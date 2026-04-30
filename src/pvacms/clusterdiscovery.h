@@ -10,10 +10,13 @@
 #include <atomic>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
+#include <epicsEvent.h>
 #include <epicsMutex.h>
 #include <epicsThread.h>
 
@@ -60,7 +63,6 @@ public:
                      std::string issuer_id,
                      std::string pv_prefix,
                      uint32_t discovery_timeout_secs,
-                     bool skip_peer_identity_check,
                      sqlite3 *certs_db,
                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
@@ -68,6 +70,8 @@ public:
                      ClusterSyncPublisher &sync_publisher,
                      ClusterController &controller,
                      const client::Context& client_ctx);
+
+    ~ClusterDiscovery();
 
     enum class JoinResult { Joined, NotFound, Revoked };
 
@@ -117,7 +121,6 @@ private:
     std::string issuer_id_;
     std::string pv_prefix_;
     uint32_t discovery_timeout_secs_;
-    bool skip_peer_identity_check_;
     sqlite3 *certs_db_;
     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
@@ -126,13 +129,43 @@ private:
     ClusterController &controller_;
     client::Context client_ctx_;
 
+    // Serializes all mutating access to the peer-tracking maps below.
+    // Never held across blocking RPC; long async paths check shutting_down_.
+    // Order: status_update_lock_ -> state_lock_ -> dead_subscriptions_lock_.
+    mutable epicsMutex state_lock_;
+
+    // Set true at the start of ~ClusterDiscovery.  Async paths bail without
+    // touching state once it is observed true.
+    std::atomic<bool> shutting_down_{false};
+
     std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
-    std::map<std::string, std::string> peer_cert_ids_;
+
+    // Deferred-destruction list for Subscriptions whose handleDisconnect
+    // fires from inside the tcp_loop event callback for that same Subscription.
+    // Synchronously destroying ~Subscription on the tcp_loop self-deadlocks
+    // (cancel() dispatches to tcp_loop and waits). We move the shared_ptr here
+    // instead, leaving subscriptions_[node_id] free for immediate reconnection,
+    // and drain this list from non-tcp_loop contexts (subscribeToMember entry,
+    // joinCluster entry, ~ClusterDiscovery).
+    std::vector<std::shared_ptr<client::Subscription>> dead_subscriptions_;
+    epicsMutex dead_subscriptions_lock_;
+    void drainDeadSubscriptions();
 
     std::atomic<bool> rejoin_in_progress_{false};
     std::set<std::string> acknowledged_by_;
     void doRejoin();
-    friend void rejoinThreadEntry(void *arg);
+    // Tracked rejoin thread.  Joined in ~ClusterDiscovery so a slow
+    // joinCluster() RPC inside a rejoin cannot leak past destruction
+    // and dereference a destroyed `this`.
+    std::thread rejoin_thread_;
+    std::vector<std::thread> old_rejoin_threads_;
+    std::mutex rejoin_thread_mutex_;
+
+    // Periodic background watchdog: re-attempts join while this PVACMS
+    // remains a sole-node cluster, in case startup raced peer-readiness.
+    std::thread rejoin_watchdog_thread_;
+    epicsEvent rejoin_watchdog_wakeup_;
+    void rejoinWatchdogLoop();
 
     std::map<std::string, std::shared_ptr<PeerConnectivity>> peer_connectivity_;
     void onConnectivityTimeout(const std::string &node_id);

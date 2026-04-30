@@ -869,18 +869,11 @@ could join a cluster that cannot subscribe to its data.  The test subscription
 join time.  In gateway-chained topologies (e.g. lab-gw ↔ ml-gw), increase this
 timeout to accommodate the extra latency of multi-hop PV resolution.
 
-**Gateway-mediated clusters and peer identity**: When nodes communicate through
-PVA gateways, TLS is terminated at each gateway hop.  The receiving node sees
-the gateway's TCP, or TLS, credentials, not the originating peer's x509 certificate.
-This affects two mechanisms: (1) the sync snapshot identity pre-check, which
-normally caches the peer's TLS cert before accepting data, and (2) the
-forwarding RPC handler, which normally requires x509 authentication.  The
-`--cluster-skip-peer-identity-check` flag relaxes both checks for nodes that
-participate in gateway-mediated communication.  Security is maintained by the
-CA-key signature on every sync snapshot — a node without the CA private key
-cannot forge sync data regardless of the transport identity.  The cluster client
-reads `EPICS_PVACMS_CLUSTER_NAME_SERVERS` to add TCP name servers for PV
-discovery through gateways where UDP broadcast is not available.
+**Gateway-mediated clusters**: gateway-chained topologies behave identically
+to direct topologies; only timeouts may need to be longer to accommodate the
+extra latency of multi-hop PV resolution.  The cluster client reads
+`EPICS_PVACMS_CLUSTER_NAME_SERVERS` to add TCP name servers for PV discovery
+through gateways where UDP broadcast is not available.
 
 In a partial-mesh cluster, any node may answer the join RPC — including one
 that cannot reach the joiner.  To handle this, a node that fails the bidi check

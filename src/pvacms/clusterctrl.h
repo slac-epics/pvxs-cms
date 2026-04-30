@@ -18,8 +18,6 @@
 #include <epicsMutex.h>
 #include <epicsGuard.h>
 
-#include <asLib.h>
-
 #include <pvxs/source.h>
 #include <pvxs/sharedpv.h>
 
@@ -78,7 +76,7 @@ public:
      * @param cert_auth_pkey    CA private key used to sign cluster messages.
      * @param cert_auth_pub_key CA public key used to verify incoming join-request signatures.
      * @param sync_publisher    Publisher used to propagate membership snapshots to peers.
-     * @param as_cluster_mem    EPICS access security member for the CLUSTER ASG.
+     * @param bidi_timeout_secs bi-di timeout seconds
      */
     ClusterController(const std::string &issuer_id,
                       const std::string &node_id,
@@ -86,7 +84,6 @@ public:
                       const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                       const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                       ClusterSyncPublisher &sync_publisher,
-                      ASMEMBERPVT as_cluster_mem,
                       uint32_t bidi_timeout_secs = 5);
 
     /**
@@ -170,7 +167,6 @@ private:
     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
     ClusterSyncPublisher &sync_publisher_;
-    ASMEMBERPVT as_cluster_mem_;
     uint32_t bidi_timeout_secs_;
     server::SharedPV ctrl_pv_;
     bool opened_{false};

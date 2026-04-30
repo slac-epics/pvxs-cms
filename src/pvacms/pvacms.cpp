@@ -12,6 +12,8 @@
 
 #include "pvacms.h"
 
+#include <cms/cms.h>
+
 #ifdef _WIN32
 #  ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
@@ -62,6 +64,8 @@
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 
+#include <CLI/CLI.hpp>
+
 #include <pvxs/client.h>
 #include <pvxs/config.h>
 #include <pvxs/log.h>
@@ -84,13 +88,12 @@
 #include "pvacmsVersion.h"
 #include "openssl.h"
 #include "ownedptr.h"
+#include "pvacmsruntime.h"
 #include "security.h"
 #include "serverev.h"
 #include "sqlite3.h"
 #include "tokenbucket.h"
 #include "utilpvt.h"
-
-#include <CLI/CLI.hpp>
 
 DEFINE_LOGGER(pvacms, "cms.certs.cms");
 DEFINE_LOGGER(pvacmsmonitor, "cms");
@@ -148,14 +151,6 @@ using cms::cert::KeyPair;
     using cms::cluster::ClusterSyncPublisher;
     using cms::cluster::TokenBucket;
 
-// fwd decl
-static void insertLoadedCertIfMissing(const ConfigCms &config,
-                                      sql_ptr &certs_db,
-                                      const ossl_ptr<X509> &cert,
-                                      const ossl_shared_ptr<STACK_OF(X509)> &chain,
-                                      const std::string &expected_issuer_id,
-                                      bool is_ca);
-
 bool postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_factory,
                                   server::WildcardPV &status_pv,
                                   const sql_ptr &certs_db,
@@ -177,31 +172,33 @@ bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
                                   const std::string &cert_pv_prefix,
                                   const std::string &issuer_id);
 
-epicsMutex status_pv_lock;
-epicsMutex status_update_lock;
+PvacmsRuntime &defaultRuntime()
+{
+    static PvacmsRuntime runtime;
+    return runtime;
+}
+
+epicsMutex &getStatusPvLock()       { return defaultRuntime().status_pv_lock; }
+epicsMutex &getStatusUpdateLock()   { return defaultRuntime().status_update_lock; }
 
 TokenBucket &getCreateCertificateRateLimiter()
 {
-    static TokenBucket limiter;
-    return limiter;
+    return defaultRuntime().create_certificate_rate_limiter;
 }
 
 std::atomic<uint32_t> &getCreateCertificateInflightCount()
 {
-    static std::atomic<uint32_t> inflight{0u};
-    return inflight;
+    return defaultRuntime().create_certificate_inflight_count;
 }
 
 std::atomic<uint64_t> &getCertsCreatedCounter()
 {
-    static std::atomic<uint64_t> counter{0u};
-    return counter;
+    return defaultRuntime().certs_created_counter;
 }
 
 std::atomic<uint64_t> &getCertsRevokedCounter()
 {
-    static std::atomic<uint64_t> counter{0u};
-    return counter;
+    return defaultRuntime().certs_revoked_counter;
 }
 
 void pruneOldBackups(const std::string &dir, uint32_t max_count)
@@ -279,27 +276,9 @@ bool performBackup(sqlite3 *src_db, const std::string &dest_path)
     return true;
 }
 
-struct CcrTimingTracker {
-    mutable std::mutex mtx_;
-    double total_ms_{0.0};
-    uint64_t count_{0u};
-
-    void record(double ms) {
-        std::lock_guard<std::mutex> lk(mtx_);
-        total_ms_ += ms;
-        ++count_;
-    }
-
-    double averageMs() const {
-        std::lock_guard<std::mutex> lk(mtx_);
-        return count_ > 0 ? total_ms_ / static_cast<double>(count_) : 0.0;
-    }
-};
-
 CcrTimingTracker &getCcrTimingTracker()
 {
-    static CcrTimingTracker tracker;
-    return tracker;
+    return defaultRuntime().ccr_timing_tracker;
 }
 
 namespace {
@@ -722,6 +701,7 @@ Value makeHealthValue() {
         Bool("ca_valid"),
         UInt64("uptime_secs"),
         UInt64("cert_count"),
+        Bool("cluster_mode"),
         UInt32("cluster_members"),
         String("last_check"),
     };
@@ -769,7 +749,7 @@ Value makeMetricsValue() {
  *
  * @throws std::runtime_error if the database can't be opened or initialised
  */
-void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
+void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file, bool quiet) {
     log_debug_printf(pvacms, "Attempting to open certificate database file: %s\n", db_file.c_str());
     if (sqlite3_open(db_file.c_str(), certs_db.acquire()) != SQLITE_OK) {
         throw std::runtime_error(SB() << "Can't open certs db file for writing: " << sqlite3_errmsg(certs_db.get()));
@@ -803,7 +783,7 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
         if (sql_status != SQLITE_OK && sql_status != SQLITE_DONE) {
             throw std::runtime_error(SB() << "Can't initialize certs db file: " << sqlite3_errmsg(certs_db.get()));
         }
-        std::cout << "Certificate DB created  : " << db_file << std::endl;
+        if (!quiet) std::cout << "Certificate DB created  : " << db_file << std::endl;
     }
     log_debug_printf(pvacms, "Certs database exists: %s\n", "certs");
 
@@ -994,18 +974,21 @@ std::tuple<certstatus_t, time_t> getCertificateStatus(const sql_ptr &certs_db, s
     time_t status_date = std::time(nullptr);
 
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
-    sqlite3_stmt *sql_statement;
-    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_STATUS, -1, &sql_statement, nullptr) == SQLITE_OK) {
-        sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":serial"), db_serial);
-
-        if (sqlite3_step(sql_statement) == SQLITE_ROW) {
-            cert_status = sqlite3_column_int(sql_statement, 0);
-            status_date = sqlite3_column_int64(sql_statement, 1);
-        }
-    } else {
-        sqlite3_finalize(sql_statement);
+    sqlite3_stmt *sql_statement = nullptr;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_STATUS, -1, &sql_statement, nullptr) != SQLITE_OK) {
+        // On prepare failure SQLite leaves sql_statement undefined - do NOT finalize.
         throw std::logic_error(SB() << "failed to prepare sqlite statement: " << sqlite3_errmsg(certs_db.get()));
     }
+
+    sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":serial"), db_serial);
+
+    if (sqlite3_step(sql_statement) == SQLITE_ROW) {
+        cert_status = sqlite3_column_int(sql_statement, 0);
+        status_date = sqlite3_column_int64(sql_statement, 1);
+    }
+
+    // Finalize after a successful prepare_v2: an unfinalized SELECT holds a WAL read transaction.
+    sqlite3_finalize(sql_statement);
 
     return std::make_tuple(static_cast<certstatus_t>(cert_status), status_date);
 }
@@ -1040,29 +1023,38 @@ bool isNodeCertRevoked(const sql_ptr &certs_db, const std::string &node_id) {
 }
 
 /**
- * @brief Get the validity of a certificate from the database
+ * @brief Look up a certificate's database row by serial number.
  *
- * @param certs_db The database to get the certificate validity from
- * @param serial The serial number of the certificate
- * @return certificate info
+ * Returns the validity dates (`not_before`, `not_after`, `renew_by`) for the
+ * cert with the given serial. If no matching row exists the returned `DbCert`
+ * is default-initialised (all dates zero) — callers that need to distinguish
+ * "not found" from "found with unset dates" must check separately.
+ *
+ * @param certs_db The certs database to query.
+ * @param serial   The serial number of the certificate.
+ * @return The matching `DbCert` row, or a default-initialised `DbCert` if no
+ *         row matches the serial.
  */
-DbCert getCertificateValidity(const sql_ptr &certs_db, serial_number_t serial) {
+DbCert getDbCert(const sql_ptr &certs_db, serial_number_t serial) {
     DbCert certificate;
 
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
-    sqlite3_stmt *sql_statement;
-    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_VALIDITY, -1, &sql_statement, nullptr) == SQLITE_OK) {
-        sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":serial"), db_serial);
-
-        if (sqlite3_step(sql_statement) == SQLITE_ROW) {
-            certificate.not_before = sqlite3_column_int64(sql_statement, 0);
-            certificate.not_after = sqlite3_column_int64(sql_statement, 1);
-            certificate.renew_by = sqlite3_column_int64(sql_statement, 2);
-        }
-    } else {
-        sqlite3_finalize(sql_statement);
+    sqlite3_stmt *sql_statement = nullptr;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_VALIDITY, -1, &sql_statement, nullptr) != SQLITE_OK) {
+        // On prepare failure SQLite leaves sql_statement undefined - do NOT finalize.
         throw std::logic_error(SB() << "failed to prepare sqlite statement: " << sqlite3_errmsg(certs_db.get()));
     }
+
+    sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":serial"), db_serial);
+
+    if (sqlite3_step(sql_statement) == SQLITE_ROW) {
+        certificate.not_before = sqlite3_column_int64(sql_statement, 0);
+        certificate.not_after = sqlite3_column_int64(sql_statement, 1);
+        certificate.renew_by = sqlite3_column_int64(sql_statement, 2);
+    }
+
+    // Finalize after a successful prepare_v2: an unfinalized SELECT holds a WAL read transaction.
+    sqlite3_finalize(sql_statement);
 
     return {certificate};
 }
@@ -1163,7 +1155,57 @@ void updateCertificateStatus(const sql_ptr &certs_db,
                              const int approval_status,
                              const std::vector<certstatus_t> &valid_status) {
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
-    sqlite3_stmt *sql_statement;
+
+    // Pre-flight: distinguish "row absent" (NOT_FOUND) from "wrong current
+    // status" (INVALID_STATE) so callers (notably pvxcert in cluster mode)
+    // can decide whether to retry.  The previous single-UPDATE-and-count-
+    // rows path conflated both into one error message.
+    int current_status = -1;
+    {
+        sqlite3_stmt *select_stmt = nullptr;
+        if (sqlite3_prepare_v2(certs_db.get(),
+                               "SELECT status FROM certs WHERE serial = :serial",
+                               -1, &select_stmt, nullptr) != SQLITE_OK) {
+            throw std::runtime_error(SB() << "Failed to prepare cert status lookup: "
+                                          << sqlite3_errmsg(certs_db.get()));
+        }
+        sqlite3_bind_int64(select_stmt,
+                           sqlite3_bind_parameter_index(select_stmt, ":serial"),
+                           db_serial);
+        const int rc = sqlite3_step(select_stmt);
+        if (rc == SQLITE_ROW) {
+            current_status = sqlite3_column_int(select_stmt, 0);
+        }
+        sqlite3_finalize(select_stmt);
+
+        if (current_status < 0) {
+            throw std::runtime_error(SB()
+                << "NOT_FOUND: certificate with serial " << serial
+                << " is not in this PVACMS's database");
+        }
+
+        bool current_in_valid = false;
+        for (auto allowed : valid_status) {
+            if (static_cast<int>(allowed) == current_status) {
+                current_in_valid = true;
+                break;
+            }
+        }
+        if (!current_in_valid) {
+            SB allowed_list;
+            for (size_t i = 0; i < valid_status.size(); ++i) {
+                if (i) allowed_list << ", ";
+                allowed_list << ::cms::cert::cert_state_name(static_cast<int>(valid_status[i]));
+            }
+            throw std::runtime_error(SB()
+                << "INVALID_STATE: certificate with serial " << serial
+                << " is in state " << ::cms::cert::cert_state_name(current_status)
+                << " but " << ::cms::cert::cert_state_name(static_cast<int>(cert_status))
+                << " requires one of [" << allowed_list.str() << "]");
+        }
+    }
+
+    sqlite3_stmt *sql_statement = nullptr;
     int sql_status;
     std::string sql(approval_status == -1 ? SQL_CERT_SET_STATUS : SQL_CERT_SET_STATUS_W_APPROVAL);
     sql += getValidStatusesClause(valid_status);
@@ -1179,11 +1221,17 @@ void updateCertificateStatus(const sql_ptr &certs_db,
     }
     sqlite3_finalize(sql_statement);
 
-    // Check the number of rows affected
     if (sql_status == SQLITE_DONE) {
         const int rows_affected = sqlite3_changes(certs_db.get());
         if (rows_affected == 0) {
-            throw std::runtime_error("Invalid state transition or invalid serial number");
+            // Race: row was modified between SELECT and UPDATE.  Re-classify
+            // by looking up the current status again so the caller still
+            // receives a typed error.
+            throw std::runtime_error(SB()
+                << "INVALID_STATE: certificate with serial " << serial
+                << " status changed concurrently before "
+                << ::cms::cert::cert_state_name(static_cast<int>(cert_status))
+                << " could be applied");
         }
     } else {
         throw std::runtime_error(SB() << "Failed to set cert status: " << sqlite3_errmsg(certs_db.get()));
@@ -1215,7 +1263,7 @@ void insertAuditRecord(sqlite3 *db, const std::string &action,
 }
 
 void updateCertificateRenewalStatus(const sql_ptr &certs_db, serial_number_t serial, const certstatus_t cert_status, const time_t renew_by) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
     sqlite3_stmt *sql_statement;
     int sql_status;
@@ -1246,7 +1294,7 @@ void updateCertificateRenewalStatus(const sql_ptr &certs_db, serial_number_t ser
 
 
 void touchCertificateStatus(const sql_ptr &certs_db, serial_number_t serial) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
     sqlite3_stmt *sql_statement;
     int sql_status;
@@ -2076,7 +2124,9 @@ void onGetStatus(const ConfigCms &config,
         }
 
         const auto now = std::time(nullptr);
-        const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, status, now, status_date);
+        const auto db_cert = getDbCert(certs_db, serial);
+        const auto cert_status = cert_status_creator.createPVACertificateStatus(
+            serial, status, now, status_date, CertDate(db_cert.renew_by), false);
         const auto pvacms_node_id = our_node_id.empty() ? std::string{} : (our_issuer_id + ":" + our_node_id);
         postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db, pvacms_node_id);
     } catch (std::exception &e) {
@@ -2116,7 +2166,7 @@ void onRevoke(const ConfigCms &config,
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
-        Guard G(status_update_lock);
+        Guard G(getStatusUpdateLock());
         serial_number_t serial = getParameters(parameters);
         log_debug_printf(pvacms, "REVOKE: Certificate %s\n", getCertId(our_issuer_id, serial).c_str());
 
@@ -2127,8 +2177,8 @@ void onRevoke(const ConfigCms &config,
         getCertsRevokedCounter().fetch_add(1u);
 
         const auto revocation_date = std::time(nullptr);
-        const auto ocsp_status =
-            cert_status_creator.createPVACertificateStatus(serial, REVOKED, revocation_date, revocation_date);
+        const auto ocsp_status = cert_status_creator.createPVACertificateStatus(
+            serial, REVOKED, revocation_date, revocation_date, CertDate{}, false);
         postCertificateStatus(status_pv, pv_name, serial, ocsp_status, &certs_db);
         log_info_printf(pvacms, "%s ==> REVOKED\n", getCertId(our_issuer_id, serial).c_str());
         op->reply();
@@ -2168,20 +2218,22 @@ void onApprove(const ConfigCms &config,
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
-        Guard G(status_update_lock);
+        Guard G(getStatusUpdateLock());
         std::string issuer_id;
         serial_number_t serial = getParameters(parameters);
         log_debug_printf(pvacms, "APPROVE: Certificate %s\n", getCertId(our_issuer_id, serial).c_str());
 
         // set status value
         const auto status_date(time(nullptr));
-        const DbCert db_cert(getCertificateValidity(certs_db, serial));
+        const DbCert db_cert(getDbCert(certs_db, serial));
         const certstatus_t new_state = status_date < db_cert.not_before ? PENDING : status_date >= db_cert.not_after ? EXPIRED : status_date >= db_cert.renew_by ? PENDING_RENEWAL : VALID;
         updateCertificateStatus(certs_db, serial, new_state, 1, {PENDING_APPROVAL});
         insertAuditRecord(certs_db.get(), AUDIT_ACTION_APPROVE, operator_id,
                           serial, SB() << "new_state=" << CERT_STATE(new_state));
 
-        const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, new_state, status_date);
+        const auto cert_status = cert_status_creator.createPVACertificateStatus(
+            serial, new_state, status_date, CertDate(std::time(nullptr)),
+            CertDate(db_cert.renew_by), false);
         postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
         switch (new_state) {
             case VALID:
@@ -2230,7 +2282,7 @@ void onDeny(const ConfigCms &config,
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
-        Guard G(status_update_lock);
+        Guard G(getStatusUpdateLock());
         std::string issuer_id;
         serial_number_t serial = getParameters(parameters);
         log_debug_printf(pvacms, "DENY: Certificate %s\n", getCertId(our_issuer_id, serial).c_str());
@@ -2241,8 +2293,8 @@ void onDeny(const ConfigCms &config,
                           serial, "");
 
         const auto revocation_date = std::time(nullptr);
-        const auto cert_status =
-            cert_status_creator.createPVACertificateStatus(serial, REVOKED, revocation_date, revocation_date);
+        const auto cert_status = cert_status_creator.createPVACertificateStatus(
+            serial, REVOKED, revocation_date, revocation_date, CertDate{}, false);
         postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
         log_info_printf(pvacms, "%s ==> REVOKED (Approval Request Denied)\n", getCertId(our_issuer_id, serial).c_str());
         op->reply();
@@ -2601,9 +2653,6 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data) {
                                                              "  - name: CMS_ADMIN\n"
                                                              "    users:\n"
                                                              "      - admin\n"
-                                                             "  - name: CMS_CLUSTER\n"
-                                                             "    users:\n"
-                                                             "      - \"" << config.pvacms_name << "\"\n"
                                                              "\n"
                                                              "# Access security group definitions\n"
                                                              "asgs:\n"
@@ -2618,36 +2667,12 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data) {
                                                              "        methods:\n"
                                                              "          - x509\n"
                                                              "        authorities:\n"
-                                                             "          - CMS_AUTH\n"
-                                                             "  - name: CLUSTER\n"
-                                                             "    rules:\n"
-                                                             "      - level: 0\n"
-                                                             "        access: READ\n"
-                                                             "        uags:\n"
-                                                             "          - CMS_CLUSTER\n"
-                                                             "        methods:\n"
-                                                             "          - x509\n"
-                                                             "        authorities:\n"
-                                                             "          - CMS_AUTH\n"
-                                                             "        protocols:\n"
-                                                             "          - TLS\n"
-                                                             "      - level: 1\n"
-                                                             "        access: WRITE\n"
-                                                             "        uags:\n"
-                                                             "          - CMS_CLUSTER\n"
-                                                             "        methods:\n"
-                                                             "          - x509\n"
-                                                             "        authorities:\n"
-                                                             "          - CMS_AUTH\n"
-                                                             "        protocols:\n"
-                                                             "          - TLS"
+                                                             "          - CMS_AUTH"
                                                          << std::endl
                                               : out_file << toACFAuth("CMS_AUTH", cert_data)
                                                           << "\n"
                                                              "\n"
                                                              "UAG(CMS_ADMIN) {admin}\n"
-                                                             "\n"
-                                                             "UAG(CMS_CLUSTER) {\"" << config.pvacms_name << "\"}\n"
                                                              "\n"
                                                              "ASG(DEFAULT) {\n"
                                                              "    RULE(0,READ)\n"
@@ -2656,27 +2681,12 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data) {
                                                              "        METHOD(\"x509\")\n"
                                                              "        AUTHORITY(CMS_AUTH)\n"
                                                              "    }\n"
-                                                             "}\n"
-                                                             "\n"
-                                                             "ASG(CLUSTER) {\n"
-                                                             "    RULE(0,READ) {\n"
-                                                             "        UAG(CMS_CLUSTER)\n"
-                                                             "        METHOD(\"x509\")\n"
-                                                             "        AUTHORITY(CMS_AUTH)\n"
-                                                             "        PROTOCOL(TLS)\n"
-                                                             "    }\n"
-                                                             "    RULE(1,WRITE) {\n"
-                                                             "        UAG(CMS_CLUSTER)\n"
-                                                             "        METHOD(\"x509\")\n"
-                                                             "        AUTHORITY(CMS_AUTH)\n"
-                                                             "        PROTOCOL(TLS)\n"
-                                                             "    }\n"
                                                              "}"
                                                          << std::endl;
 
     out_file.close();
 
-    std::cout << "Created Default ACF file: " << config.pvacms_acf_filename << std::endl;
+    if (!config.quiet) std::cout << "Created Default ACF file: " << config.pvacms_acf_filename << std::endl;
 }
 
 /**
@@ -2893,18 +2903,18 @@ void createAdminClientCert(const ConfigCms &config,
 }
 
 // Helper: ensure a loaded certificate is present in the DB, validating status extension and issuer
-static void insertLoadedCertIfMissing(const ConfigCms &config,
-                                      sql_ptr &certs_db,
-                                      const ossl_ptr<X509> &cert,
-                                      const ossl_shared_ptr<STACK_OF(X509)> & /*chain*/,
-                                      const std::string &expected_issuer_id,
-                                      bool is_ca)
+void insertLoadedCertIfMissing(const ConfigCms &config,
+                               sql_ptr &certs_db,
+                               const ossl_ptr<X509> &cert,
+                               const ossl_shared_ptr<STACK_OF(X509)> & /*chain*/,
+                               const std::string &expected_issuer_id,
+                               bool is_ca)
 {
     if (!cert) return;
 
     // Check if already in DB
     const auto serial = CertStatusFactory::getSerialNumber(cert);
-    const auto validity = getCertificateValidity(certs_db, serial);
+    const auto validity = getDbCert(certs_db, serial);
     if (validity.not_after != 0) {
         // already present
         return;
@@ -3003,7 +3013,7 @@ static void insertLoadedCertIfMissing(const ConfigCms &config,
     if (rc != SQLITE_OK && rc != SQLITE_DONE) {
         throw std::runtime_error(SB() << "Failed to insert loaded certificate into DB: " << sqlite3_errmsg(certs_db.get()));
     }
-    std::cout << "Pre-loaded Certificate  : " << status_uri << " : " << cn  << std::endl;
+    if (!config.quiet) std::cout << "Pre-loaded Certificate  : " << status_uri << " : " << cn  << std::endl;
 }
 
 /**
@@ -3301,7 +3311,7 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
                             const PVACertificateStatus &cert_status,
                             const sql_ptr *certs_db,
                             const std::string &node_id) {
-    Guard G(status_pv_lock);
+    Guard G(getStatusPvLock());
     Value status_value;
     const auto was_open = status_pv.isOpen(pv_name);
     if (was_open) {
@@ -3316,7 +3326,7 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
     setValue<uint32_t>(status_value, "value.index", cert_status.status.i);
     setValue<time_t>(status_value, "timeStamp.secondsPastEpoch", now - POSIX_TIME_AT_EPICS_EPOCH);
     setValue<std::string>(status_value, "state", cert_status.status.s);
-    setValue<time_t>(status_value, "renew_by", cert_status.renew_by.t - POSIX_TIME_AT_EPICS_EPOCH);
+    setValue<time_t>(status_value, "renew_by", cert_status.renew_by.t > 0 ? cert_status.renew_by.t - POSIX_TIME_AT_EPICS_EPOCH : 0);
     setValue<bool>(status_value, "renewal_due", cert_status.renewal_due);
     setValue<time_t>(status_value, "ocsp_status.timeStamp.secondsPastEpoch", now - POSIX_TIME_AT_EPICS_EPOCH);
     setValue<uint32_t>(status_value, "ocsp_status.value.index", cert_status.ocsp_status.i);
@@ -3370,7 +3380,7 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
 bool postUpdateToNextCertBecomingValid(const CertStatusFactory &cert_status_creator,
                                        const StatusMonitor &status_monitor_params) {
     bool changed = false;
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     sqlite3_stmt *stmt;
     std::string valid_sql(SQL_CERT_TO_VALID);
     const std::vector<certstatus_t> valid_status{PENDING};
@@ -3388,7 +3398,10 @@ bool postUpdateToNextCertBecomingValid(const CertStatusFactory &cert_status_crea
                                                            serial));
                 updateCertificateStatus(status_monitor_params.certs_db_, serial, VALID, 1, {PENDING});
                 const auto status_date = std::time(nullptr);
-                const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, VALID, status_date);
+                const auto db_cert = getDbCert(status_monitor_params.certs_db_, serial);
+                const auto cert_status = cert_status_creator.createPVACertificateStatus(
+                    serial, VALID, status_date, CertDate(std::time(nullptr)),
+                    CertDate(db_cert.renew_by), false);
                 postCertificateStatus(status_monitor_params.status_pv_, pv_name, serial, cert_status, &status_monitor_params.certs_db_);
                 log_info_printf(pvacmsmonitor,
                                 "%s ==> VALID\n",
@@ -3431,7 +3444,7 @@ bool postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_factory,
                                   const std::string &cert_pv_prefix,
                                   const std::string &issuer_id,
                                   const std::string &full_skid) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     bool updated{false};
     sqlite3_stmt *stmt;
     std::string expired_sql(full_skid.empty() ? SQL_CERT_TO_EXPIRED : SQL_CERT_TO_EXPIRED_WITH_FULL_SKID);
@@ -3450,7 +3463,10 @@ bool postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_factory,
                 const std::string pv_name(getCertStatusURI(cert_pv_prefix, issuer_id, serial));
                 updateCertificateStatus(certs_db, serial, EXPIRED, -1, {VALID, PENDING_APPROVAL, PENDING_RENEWAL, PENDING});
                 const auto status_date = std::time(nullptr);
-                const auto cert_status = cert_status_factory.createPVACertificateStatus(serial, EXPIRED, status_date);
+                const auto db_cert = getDbCert(certs_db, serial);
+                const auto cert_status = cert_status_factory.createPVACertificateStatus(
+                    serial, EXPIRED, status_date, CertDate(std::time(nullptr)),
+                    CertDate(db_cert.renew_by), false);
                 postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
                 log_info_printf(pvacmsmonitor, "%s ==> EXPIRED\n", getCertId(issuer_id, serial).c_str());
             } catch (const std::runtime_error &e) {
@@ -3472,7 +3488,7 @@ bool postUpdateToNextCertToExpire(const CertStatusFactory &cert_status_factory,
  * @param issuer_id the issuer of the certificates
  */
 DbCert getOriginalCert(CertFactory &cert_factory, const sql_ptr &certs_db, const std::string &issuer_id) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     const std::vector<certstatus_t> valid_statuses{VALID, PENDING_APPROVAL, PENDING_RENEWAL, PENDING};
     const int64_t db_serial = *reinterpret_cast<int64_t*>(&cert_factory.serial_);
 
@@ -3528,7 +3544,7 @@ bool postUpdateToNextCertNearingRenewal(const CertStatusFactory &cert_status_cre
                                   const sql_ptr &certs_db,
                                   const std::string &cert_pv_prefix,
                                   const std::string &issuer_id) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     bool updated{false};
     sqlite3_stmt *stmt;
     std::string nearing_renewal_sql(SQL_CERT_NEARING_RENEWAL);
@@ -3587,7 +3603,7 @@ bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
                                   const sql_ptr &certs_db,
                                   const std::string &cert_pv_prefix,
                                   const std::string &issuer_id) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     bool updated{false};
     sqlite3_stmt *stmt;
     std::string pending_renewal_sql(SQL_CERT_TO_PENDING_RENEWAL);
@@ -3604,7 +3620,10 @@ bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
                 const std::string pv_name(getCertStatusURI(cert_pv_prefix, issuer_id, serial));
                 updateCertificateStatus(certs_db, serial, PENDING_RENEWAL, -1, {VALID, PENDING_APPROVAL, PENDING});
                 const auto status_date = std::time(nullptr);
-                const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, PENDING_RENEWAL, status_date);
+                const auto db_cert = getDbCert(certs_db, serial);
+                const auto cert_status = cert_status_creator.createPVACertificateStatus(
+                    serial, PENDING_RENEWAL, status_date, CertDate(std::time(nullptr)),
+                    CertDate(db_cert.renew_by), false);
                 postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
                 log_info_printf(pvacmsmonitor, "%s ==> PENDING_RENEWAL\n", getCertId(issuer_id, serial).c_str());
             } catch (const std::runtime_error &e) {
@@ -3636,7 +3655,7 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
                                   const sql_ptr &certs_db,
                                   const std::string &cert_pv_prefix,
                                   const std::string &issuer_id) {
-    Guard G(status_update_lock);
+    Guard G(getStatusUpdateLock());
     bool updated{false};
     sqlite3_stmt *stmt;
     std::string cert_status_nearly_invalid_sql(SQL_CERT_STATUS_NEARLY_INVALID);
@@ -3653,7 +3672,10 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
                 const std::string pv_name(getCertStatusURI(cert_pv_prefix, issuer_id, serial));
                 touchCertificateStatus(certs_db, serial);
                 const auto status_date = std::time(nullptr);
-                const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, status, status_date);
+                const auto db_cert = getDbCert(certs_db, serial);
+                const auto cert_status = cert_status_creator.createPVACertificateStatus(
+                    serial, status, status_date, CertDate(std::time(nullptr)),
+                    CertDate(db_cert.renew_by), false);
                 postCertificateStatus(status_pv, pv_name, serial, cert_status, &certs_db);
                 log_info_printf(pvacmsmonitor, "%s Certificate Status Keep Alive\n", getCertId(issuer_id, serial).c_str());
             } catch (const std::runtime_error &e) {
@@ -3785,9 +3807,10 @@ bool postUpdatesToExpiredStatuses(const CertStatusFactory &cert_status_creator,
                                                            status_monitor_params.issuer_id_,
                                                            serial));
                 auto status_date = std::time(nullptr);
-                auto cert_status = cert_status_creator.createPVACertificateStatus(serial,
-                                                                                  static_cast<certstatus_t>(status),
-                                                                                  status_date);
+                const auto db_cert = getDbCert(status_monitor_params.certs_db_, serial);
+                auto cert_status = cert_status_creator.createPVACertificateStatus(
+                    serial, static_cast<certstatus_t>(status), status_date,
+                    CertDate(std::time(nullptr)), CertDate(db_cert.renew_by), false);
                 postCertificateStatus(status_monitor_params.status_pv_, pv_name, serial, cert_status, &status_monitor_params.certs_db_);
                 status_monitor_params.setValidity(serial, cert_status.status_valid_until_date.t);
                 log_debug_printf(pvacmsmonitor,
@@ -3858,9 +3881,12 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
                 }
 
                 if (new_status != current_status) {
-                    Guard G(status_update_lock);
+                    Guard G(getStatusUpdateLock());
                     updateCertificateStatus(status_monitor_params.certs_db_, serial, new_status, 0);
-                    const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, new_status, now_utc, {});
+                    const auto db_cert = getDbCert(status_monitor_params.certs_db_, serial);
+                    const auto cert_status = cert_status_creator.createPVACertificateStatus(
+                        serial, new_status, now_utc, CertDate(std::time(nullptr)),
+                        CertDate(db_cert.renew_by), false);
                     auto cert_id = getCertId(status_monitor_params.issuer_id_, serial);
                     auto status_pv_name = getCertStatusURI(status_monitor_params.config_.getCertPvPrefix(), cert_id);
                     postCertificateStatus(status_monitor_params.status_pv_, status_pv_name, serial, cert_status, &status_monitor_params.certs_db_);
@@ -4009,6 +4035,7 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
             value["ca_valid"] = ca_valid;
             value["uptime_secs"] = static_cast<uint64_t>(now_time - status_monitor_params.getStartTime());
             value["cert_count"] = cert_count;
+            value["cluster_mode"] = status_monitor_params.isClusterMode();
             value["cluster_members"] = status_monitor_params.getClusterMemberCount();
             value["last_check"] = std::string(time_buf);
 
@@ -4213,6 +4240,8 @@ int readParameters(int argc,
 
     app.add_flag("-h,--help", help);
     app.add_flag("-v,--verbose", verbose, "Make more noise");
+    app.add_flag("-q,--quiet", config.quiet,
+                 "Suppress banner and certificate-DB output; force cms.* and pvxs.* loggers to Warn.");
     app.add_flag("-V,--version", show_version, "Print version and exit.");
 
     app.add_option("-c,--cert-auth-keychain",
@@ -4330,9 +4359,6 @@ int readParameters(int argc,
     app.add_option("--cluster-bidi-timeout",
                    config.cluster_bidi_timeout_secs,
                    "Seconds to wait for bidirectional connectivity check during join.  Default 5");
-    app.add_flag("--cluster-skip-peer-identity-check",
-                 config.cluster_skip_peer_identity_check,
-                 "Skip TLS peer identity verification for cluster sync (for gateway-mediated topologies)");
     app.add_option("--integrity-check-interval",
                    config.integrity_check_interval_secs,
                    "Seconds between SQLite integrity checks and WAL checkpoints.  0 to disable.  Default 86400");
@@ -4455,7 +4481,6 @@ int readParameters(int argc,
             << "        --cluster-pv-prefix <prefix>         Prefix for cluster PV names. Default `CERT:CLUSTER`\n"
             << "        --cluster-discovery-timeout <secs>   Seconds to wait for cluster discovery. Default 10\n"
             << "        --cluster-bidi-timeout <secs>        Seconds to wait for bidirectional connectivity check during join. Default 5\n"
-            << "        --cluster-skip-peer-identity-check   Skip TLS peer identity verification for cluster sync\n"
             << "        --integrity-check-interval <secs>    Seconds between SQLite integrity checks. 0=disabled. Default 86400\n"
             << "        --audit-retention-days <days>        Days to retain audit log records. 0=disabled. Default 365\n"
             << "        --rate-limit <reqs/sec>              Sustained certificate creation rate limit. 0=disabled. Default 10\n"
@@ -4468,6 +4493,8 @@ int readParameters(int argc,
             << "        --backup-dir <path>                  Directory for periodic backup files\n"
             << "        --backup-retention <count>           Maximum backup files to keep. Default 7\n"
             << "  (-v | --verbose)                           Verbose mode\n"
+            << "  (-q | --quiet)                             Quiet mode: suppress banner and certificate-DB output;\n"
+            << "                                             force cms.* and pvxs.* loggers to Warn (overrides PVXS_LOG)\n"
             << std::endl
             << "admin options:\n"
             << "        --acf <acf_file>                     Specify Admin Security Configuration File. Default "
@@ -4586,751 +4613,3 @@ int readParameters(int argc,
 }
 
 }  // namespace cms
-
-int main(int argc, char *argv[]) {
-    using cms::cert::CertFactory;
-using cms::cert::CertStatus;
-using cms::cert::CmsStatusManager;
-using cms::cert::CertStatusFactory;
-using cms::cert::CertData;
-using cms::cert::CertDate;
-using cms::cert::PVACertificateStatus;
-using cms::cert::getCertId;
-using cms::cert::getCertCreatePv;
-using cms::cert::getCertStatusPvBase;
-using cms::cert::getCertStatusPv;
-using cms::cert::getCertIssuerPv;
-using cms::cert::getCertAuthRootPv;
-using cms::cert::getCertStatusURI;
-using cms::cert::certstatus_t;
-using cms::cert::CertStatusSubscription;
-using cms::cert::DEFAULT;
-using cms::cert::YES;
-using cms::cert::NO;
-using cms::cert::VALID;
-using cms::cert::PENDING;
-using cms::cert::PENDING_APPROVAL;
-using cms::cert::PENDING_RENEWAL;
-using cms::cert::SCHEDULED_OFFLINE;
-using cms::cert::EXPIRED;
-using cms::cert::REVOKED;
-using cms::cert::UNKNOWN;
-using cms::cluster::ClusterController;
-using cms::cluster::ClusterDiscovery;
-using cms::cluster::ClusterSyncPublisher;
-using cms::cluster::TokenBucket;
-    using namespace cms;
-    using namespace pvxs::server;
-
-    try {
-        std::map<serial_number_t, time_t> active_status_validity;
-        // Get config
-        auto config = ConfigCms::forCms();
-        // And, get all configured authn configs
-        auto authn_config_map = getAuthNConfigMap();
-
-        pvxs::sql_ptr certs_db;
-        auto program_name = argv[0];
-        bool verbose = false;
-        std::string cert_auth_password_file, pvacms_password_file, admin_password_file, admin_name, admin_name_ensure;
-
-        auto parse_result = readParameters(argc, argv, program_name, config, authn_config_map, verbose, admin_name, admin_name_ensure);
-        if (parse_result)
-            exit(parse_result);
-
-        // Logger config from environment (so environment overrides verbose setting)
-        if (verbose)
-            logger_level_set("cms.*", pvxs::Level::Info);
-        pvxs::logger_config_env();
-
-        if (!config.backup_path.empty()) {
-            std::string backup_dest = config.backup_path;
-            if (backup_dest.size() < 3 || backup_dest.substr(backup_dest.size() - 3) != ".db")
-                backup_dest += ".db";
-            if (sqlite3_open_v2(config.certs_db_filename.c_str(), certs_db.acquire(),
-                                SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
-                std::cerr << "Cannot open database for backup: " << config.certs_db_filename << std::endl;
-                return 1;
-            }
-            const bool ok = performBackup(certs_db.get(), backup_dest);
-            if (ok) std::cout << "Database backup written: " << backup_dest << std::endl;
-            return ok ? 0 : 1;
-        }
-
-        // Initialize the certificates database
-        initCertsDatabase(certs_db, config.certs_db_filename);
-
-        // Get the Certificate Authority Certificate
-        pvxs::ossl_ptr<EVP_PKEY> cert_auth_pkey;
-        pvxs::ossl_ptr<X509> cert_auth_cert;
-        pvxs::ossl_ptr<X509> cert_auth_root_cert;
-        pvxs::ossl_shared_ptr<STACK_OF(X509)> cert_auth_chain;
-
-        // Get or create Certificate Authority Certificate
-        auto is_initialising{false};
-        getOrCreateCertAuthCertificate(config,
-                                       certs_db,
-                                       cert_auth_cert,
-                                       cert_auth_pkey,
-                                       cert_auth_chain,
-                                       cert_auth_root_cert,
-                                       is_initialising);
-        auto our_issuer_id = CertStatus::getSkId(cert_auth_cert);
-
-        if (!admin_name.empty()) {
-            try {
-                createAdminClientCert(config, certs_db, cert_auth_pkey, cert_auth_cert, cert_auth_chain, admin_name);
-                addUserToAdminACF(config, admin_name);
-                log_warn_printf(pvacms, "Admin user \"%s\" has been added to list of administrators of this PVACMS.  Restart the PVACMS for it to take effect\n", admin_name.c_str());
-            } catch (const std::runtime_error &e) {
-                if (!is_initialising)
-                    throw std::runtime_error(std::string("Error creating admin user certificate: ") + e.what());
-            }
-            exit(0);
-        }
-
-        if (!admin_name_ensure.empty()) {
-            try {
-                createAdminClientCert(config, certs_db, cert_auth_pkey, cert_auth_cert, cert_auth_chain, admin_name_ensure);
-                log_warn_printf(pvacms, "Make sure user \"%s\" appears in %s to ensure it is in the list of administrators of this PVACMS\n", admin_name_ensure.c_str(), config.pvacms_acf_filename.c_str());
-            } catch (const std::runtime_error &e) {
-                const std::string msg = e.what();
-                if (msg.find("Duplicate Certificate Subject") != std::string::npos) {
-                    log_warn_printf(pvacms,
-                                    "Admin user \"%s\" certificate not created: a certificate with this subject is already registered. Continuing startup.\n",
-                                    admin_name_ensure.c_str());
-                    addUserToAdminACF(config, admin_name_ensure);
-                } else {
-                    throw std::runtime_error(std::string("Error ensuring admin user certificate: ") + e.what());
-                }
-            }
-        }
-
-        // Create this PVACMS server's certificate if it does not already exist
-        ensureServerCertificateExists(config, certs_db, cert_auth_cert, cert_auth_pkey, cert_auth_chain);
-
-        // Derive cluster node ID from the server certificate's SKID (first 8 hex chars)
-        auto server_cert_data = IdFileFactory::create(config.tls_keychain_file, config.getKeychainPassword())->getCertDataFromFile();
-        auto our_node_id = CertStatus::getSkId(server_cert_data.cert);
-        auto our_serial = CertStatusFactory::getSerialNumber(server_cert_data.cert);
-
-        // Preload additional certificates into DB if requested
-        for (const auto &preload_path : config.preload_cert_files) {
-            try {
-                CertData preload = IdFileFactory::create(preload_path, std::string())->getCertDataFromFile();
-                if (preload.cert) {
-                    insertLoadedCertIfMissing(config, certs_db, preload.cert, preload.cert_auth_chain, our_issuer_id, false);
-                }
-            } catch (const std::exception &e) {
-                log_err_printf(pvacms, "Failed to preload certificate '%s': %s\n", preload_path.c_str(), e.what());
-            }
-        }
-
-        // Set security if configured
-        if (!config.pvacms_acf_filename.empty()) {
-            log_debug_printf(pvacms, "Setting server access security from ACF: %s\n", config.pvacms_acf_filename.c_str());
-            if(auto err = asInitFile(config.pvacms_acf_filename.c_str(), ""))
-                throw std::runtime_error(pvxs::SB()<<"Failed to load "<<config.pvacms_acf_filename<<" : "<<err);
-        } else {
-            log_err_printf(pvacms, "****EXITING****: PVACMS Access Security Policy File Required%s", "\n");
-            return 1;
-        }
-
-        pvxs::ossl_ptr<EVP_PKEY> cert_auth_pub_key(X509_get_pubkey(cert_auth_cert.get()));
-
-        getCreateCertificateRateLimiter().configure(config.rate_limit, config.rate_limit_burst);
-        getCreateCertificateInflightCount().store(0u);
-
-        ASMember as_cluster_member("CLUSTER");
-
-        ClusterSyncPublisher cluster_sync(our_node_id, our_issuer_id,
-                                           config.cluster_pv_prefix,
-                                           certs_db.get(),
-                                           cert_auth_pkey,
-                                           status_update_lock);
-        cluster_sync.skip_peer_identity_check = config.cluster_skip_peer_identity_check;
-
-        ClusterController cluster_ctrl(our_issuer_id,
-                                         our_node_id,
-                                         config.cluster_pv_prefix,
-                                         cert_auth_pkey,
-                                         cert_auth_pub_key,
-                                         cluster_sync,
-                                         as_cluster_member.mem,
-                                         config.cluster_bidi_timeout_secs);
-
-        // Create the PVs
-        SharedPV create_pv(SharedPV::buildReadonly());
-        SharedPV schedule_pv(SharedPV::buildReadonly());
-        SharedPV health_pv(SharedPV::buildReadonly());
-        SharedPV metrics_pv(SharedPV::buildReadonly());
-        SharedPV root_pv(SharedPV::buildReadonly());
-        SharedPV issuer_pv(SharedPV::buildReadonly());
-        WildcardPV status_pv(WildcardPV::buildMailbox());
-
-        // Create Root and issuer PV values which won't change
-        pvxs::Value root_pv_value = getRootValue(our_issuer_id, cert_auth_root_cert);
-        pvxs::Value issuer_pv_value = getIssuerValue(our_issuer_id, cert_auth_cert, cert_auth_chain);
-
-        // RPC handlers
-        create_pv.onRPC([&config,
-                         &certs_db,
-                         &cert_auth_pkey,
-                         &cert_auth_cert,
-                         cert_auth_chain,
-                         &our_issuer_id,
-                         &status_pv,
-                         &cluster_sync](const SharedPV &, std::unique_ptr<ExecOp> &&op, pvxs::Value &&args) {
-            auto created_serial = onCreateCertificate(config,
-                                certs_db,
-                                status_pv,
-                                std::move(op),
-                                std::move(args),
-                                cert_auth_pkey,
-                                cert_auth_cert,
-                                cert_auth_chain,
-                                our_issuer_id);
-            if (created_serial > 0)
-                cluster_sync.publishCertChange(created_serial);
-            else
-                cluster_sync.publishSnapshot();
-        });
-
-        schedule_pv.onRPC([&config, &certs_db, &our_issuer_id, &status_pv,
-                           &cert_auth_pkey, &cert_auth_cert, cert_auth_chain,
-                           &cluster_sync](const SharedPV &, std::unique_ptr<ExecOp> &&op, pvxs::Value &&args) {
-            try {
-                const auto creds = op->credentials();
-                pvxs::ioc::Credentials credentials(*creds);
-                pvxs::ioc::SecurityClient securityClient;
-                static ASMember as_member;
-                securityClient.update(as_member.mem, ASL1, credentials);
-                const std::string operator_str = pvxs::SB() << *creds;
-
-                auto query = args["query"];
-                auto serial = query["serial"].as<uint64_t>();
-                if (serial == 0) {
-                    op->error("serial is required");
-                    return;
-                }
-
-                const bool read_only = query["read_only"] && query["read_only"].as<bool>();
-                const bool is_admin = securityClient.canWrite();
-                const bool is_own_cert =
-                    (credentials.issuer_id == our_issuer_id &&
-                     std::to_string(serial) == credentials.serial);
-
-                if (!is_admin && !(read_only && is_own_cert)) {
-                    op->error("CERT:SCHEDULE operation not authorized");
-                    return;
-                }
-
-                std::vector<ScheduleWindow> new_windows;
-                if (!read_only) {
-                    auto sched_arr = query["schedule"];
-                    if (sched_arr) {
-                        auto sched = sched_arr.as<pvxs::shared_array<const pvxs::Value>>();
-                        for (const auto &win : sched) {
-                            ScheduleWindow sw;
-                            sw.day_of_week = win["day_of_week"].as<std::string>();
-                            sw.start_time = win["start_time"].as<std::string>();
-                            sw.end_time = win["end_time"].as<std::string>();
-                            if (sw.day_of_week != "*" &&
-                                (sw.day_of_week.size() != 1 || sw.day_of_week[0] < '0' || sw.day_of_week[0] > '6'))
-                                throw std::runtime_error("Invalid day_of_week: must be 0-6 or *");
-                            if (!isValidScheduleTime(sw.start_time) || !isValidScheduleTime(sw.end_time))
-                                throw std::runtime_error("Invalid time format: must be HH:MM");
-                            new_windows.push_back(std::move(sw));
-                        }
-                    }
-
-                    {
-                        Guard G(status_update_lock);
-                        sqlite3_stmt *del_stmt = nullptr;
-                        if (sqlite3_prepare_v2(certs_db.get(), SQL_DELETE_SCHEDULES_BY_SERIAL, -1, &del_stmt, nullptr) == SQLITE_OK) {
-                            sqlite3_bind_int64(del_stmt, sqlite3_bind_parameter_index(del_stmt, ":serial"), static_cast<sqlite3_int64>(serial));
-                            sqlite3_step(del_stmt);
-                            sqlite3_finalize(del_stmt);
-                        }
-                        for (const auto &sw : new_windows) {
-                            sqlite3_stmt *ins_stmt = nullptr;
-                            if (sqlite3_prepare_v2(certs_db.get(), SQL_INSERT_SCHEDULE, -1, &ins_stmt, nullptr) == SQLITE_OK) {
-                                sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), static_cast<sqlite3_int64>(serial));
-                                sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":day_of_week"), sw.day_of_week.c_str(), -1, SQLITE_TRANSIENT);
-                                sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":start_time"), sw.start_time.c_str(), -1, SQLITE_TRANSIENT);
-                                sqlite3_bind_text(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":end_time"), sw.end_time.c_str(), -1, SQLITE_TRANSIENT);
-                                sqlite3_step(ins_stmt);
-                                sqlite3_finalize(ins_stmt);
-                            }
-                        }
-
-                        certstatus_t current_status;
-                        time_t status_date;
-                        std::tie(current_status, status_date) = getCertificateStatus(certs_db, serial);
-                        if (current_status == VALID || current_status == SCHEDULED_OFFLINE) {
-                            const bool in_window = isWithinSchedule(time(nullptr), new_windows);
-                            certstatus_t target = in_window ? VALID : (new_windows.empty() ? VALID : SCHEDULED_OFFLINE);
-                            if (target != current_status) {
-                                updateCertificateStatus(certs_db, serial, target, -1, {VALID, SCHEDULED_OFFLINE});
-                                const auto cert_status_creator(CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
-                                const auto now = std::time(nullptr);
-                                const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, target, now, {});
-                                auto cert_id = getCertId(our_issuer_id, serial);
-                                auto status_pv_name = getCertStatusURI(config.getCertPvPrefix(), cert_id);
-                                postCertificateStatus(status_pv, status_pv_name, serial, cert_status, &certs_db);
-                                log_info_printf(pvacms, "%s ==> %s (schedule RPC)\n", cert_id.c_str(), CERT_STATE(target));
-                            }
-                        }
-
-                        std::string detail = new_windows.empty() ? "removed" : std::to_string(new_windows.size()) + " windows";
-                        insertAuditRecord(certs_db.get(), AUDIT_ACTION_SCHEDULE, operator_str, serial, detail);
-                    }
-
-                    cluster_sync.publishCertChange(static_cast<int64_t>(serial));
-                }
-
-                const auto current_windows = loadScheduleWindows(certs_db.get(), serial);
-                auto reply = pvxs::TypeDef(pvxs::TypeCode::Struct, {
-                    pvxs::members::String("result"),
-                    pvxs::members::StructA("schedule", {
-                        pvxs::members::String("day_of_week"),
-                        pvxs::members::String("start_time"),
-                        pvxs::members::String("end_time"),
-                    }),
-                }).create();
-                reply["result"] = "ok";
-                if (!current_windows.empty()) {
-                    pvxs::shared_array<pvxs::Value> sched_arr(current_windows.size());
-                    for (size_t i = 0; i < current_windows.size(); i++) {
-                        sched_arr[i] = reply["schedule"].allocMember();
-                        sched_arr[i]["day_of_week"] = current_windows[i].day_of_week;
-                        sched_arr[i]["start_time"]  = current_windows[i].start_time;
-                        sched_arr[i]["end_time"]    = current_windows[i].end_time;
-                    }
-                    reply["schedule"] = sched_arr.freeze();
-                }
-                op->reply(reply);
-            } catch (const std::exception &e) {
-                op->error(pvxs::SB() << "CERT:SCHEDULE error: " << e.what());
-            }
-        });
-
-        // Client Connect handlers GET/MONITOR
-        status_pv.onFirstConnect([&config,
-                                  &certs_db,
-                                  &cert_auth_pkey,
-                                  &cert_auth_cert,
-                                  &cert_auth_chain,
-                                  &our_issuer_id,
-                                  &our_node_id,
-                                  &active_status_validity](WildcardPV &pv,
-                                                           const std::string &pv_name,
-                                                           const std::list<std::string> &parameters) {
-            serial_number_t serial = getParameters(parameters);
-            onGetStatus(config,
-                        certs_db,
-                        our_issuer_id,
-                        pv,
-                        pv_name,
-                        serial,
-                        our_issuer_id,
-                        cert_auth_pkey,
-                        cert_auth_cert,
-                        cert_auth_chain,
-                        our_node_id);
-
-            // Add reference to this serial number
-            active_status_validity.emplace(serial, 0);
-        });
-        status_pv.onLastDisconnect([&active_status_validity](WildcardPV &pv,
-                                                             const std::string &pv_name,
-                                                             const std::list<std::string> &parameters) {
-            pv.close(pv_name);
-
-            // Remove reference to this serial number
-            active_status_validity.erase(getParameters(parameters));
-        });
-
-        std::function<void(const std::string& skid)> check_cms_node_revocation;
-
-        // PUT handlers
-        status_pv.onPut([&config,
-                         &certs_db,
-                         &our_issuer_id,
-                         &cert_auth_pkey,
-                         &cert_auth_cert,
-                         &cert_auth_chain,
-                         &cluster_sync,
-                         &check_cms_node_revocation](WildcardPV &pv,
-                                        std::unique_ptr<ExecOp> &&op,
-                                        const std::string &pv_name,
-                                        const std::list<std::string> &parameters,
-                                        pvxs::Value &&value) {
-            // Make sure that pv is open before any put operation
-            if (!pv.isOpen(pv_name)) {
-                pv.open(pv_name, CertStatus::getStatusPrototype());
-            }
-
-            const serial_number_t serial = getParameters(parameters);
-
-            // Get the desired state
-            auto state = value["state"].as<std::string>();
-            std::transform(state.begin(), state.end(), state.begin(), toupper);
-
-            // Get credentials for this operation
-            const auto creds = op->credentials();
-            const std::string operator_str = pvxs::SB() << *creds;
-
-            pvxs::ioc::Credentials credentials(*creds);
-
-            // Get security client from channel
-            pvxs::ioc::SecurityClient securityClient;
-
-            static ASMember as_member;
-            securityClient.update(as_member.mem, ASL1, credentials);
-
-            // Don't allow if:
-            // - The new `state` is not `REVOKE` and the user is not an administrator, OR
-            // - The new `state` is `REVOKE` and either:
-            //   - both conditions are true (an administrator is revoking their own certificate), OR
-            //   - both are false (a non-administrator is revoking a certificate that is not their own).
-            const auto is_admin = securityClient.canWrite();
-            const auto is_own_cert =
-                (credentials.issuer_id == our_issuer_id && std::to_string(serial) == credentials.serial);
-            const auto is_revoke = (state == "REVOKED");
-
-            if (is_revoke && is_own_cert) {
-                if (is_admin) {
-                    log_err_printf(pvacms, "PVACMS Admin Not Allowed to Self-Revoke%s", "\n");
-                    op->error(pvxs::SB() << state << " Admin Self-Revoke not permitted on " << our_issuer_id << ":"
-                                         << serial << " by " << *creds);
-                    return;
-                }
-            } else if (!is_admin) {
-                log_err_printf(pvacms, "PVACMS Client Not Authorised%s", "\n");
-                op->error(pvxs::SB() << state << " operation not authorized on " << our_issuer_id << ":" << serial
-                                     << " by " << *creds);
-                return;
-            }
-
-            if (is_revoke) {
-                onRevoke(config,
-                         certs_db,
-                         our_issuer_id,
-                         pv,
-                         std::move(op),
-                         pv_name,
-                         parameters,
-                         cert_auth_pkey,
-                         cert_auth_cert,
-                         cert_auth_chain,
-                         operator_str);
-                cluster_sync.publishCertChange(serial);
-                if (check_cms_node_revocation) {
-                    auto skid = getCertificateSkid(certs_db, serial);
-                    if (!skid.empty())
-                        check_cms_node_revocation(skid);
-                }
-            } else if (state == "APPROVED") {
-                onApprove(config,
-                          certs_db,
-                          our_issuer_id,
-                          pv,
-                          std::move(op),
-                          pv_name,
-                          parameters,
-                          cert_auth_pkey,
-                          cert_auth_cert,
-                          cert_auth_chain,
-                          operator_str);
-                cluster_sync.publishCertChange(serial);
-            } else if (state == "DENIED") {
-                onDeny(config,
-                       certs_db,
-                       our_issuer_id,
-                       pv,
-                       std::move(op),
-                       pv_name,
-                       parameters,
-                       cert_auth_pkey,
-                       cert_auth_cert,
-                       cert_auth_chain,
-                       operator_str);
-                cluster_sync.publishCertChange(serial);
-                if (check_cms_node_revocation) {
-                    auto skid = getCertificateSkid(certs_db, serial);
-                    if (!skid.empty())
-                        check_cms_node_revocation(skid);
-                }
-            } else {
-                op->error(pvxs::SB() << "Invalid certificate state requested: " << state);
-            }
-        });
-
-        if (!runSelfTests(certs_db, cert_auth_cert, cert_auth_pkey, cert_auth_chain)) {
-            log_err_printf(pvacms, "****EXITING****: Startup self-tests failed%s\n", "");
-            return 1;
-        }
-
-        StatusMonitor status_monitor_params(config,
-                                             certs_db,
-                                             our_issuer_id,
-                                             status_pv,
-                                             cert_auth_cert,
-                                             cert_auth_pkey,
-                                             cert_auth_chain,
-                                             active_status_validity);
-        status_monitor_params.setHealthPV(&health_pv);
-        status_monitor_params.setMetricsPV(&metrics_pv);
-        if (config.cluster_mode) {
-            status_monitor_params.setClusterMemberCount([&cluster_ctrl]() -> uint32_t {
-                return static_cast<uint32_t>(cluster_ctrl.getMembers().size());
-            });
-        }
-
-        // Create a server with a certificate monitoring function attached to the cert file monitor timer
-        // Return true to indicate that we want the file monitor time to run after this
-        auto pva_server =
-            ServerEv(config, [&status_monitor_params](short) { return statusMonitor(status_monitor_params); });
-
-        // Add a Wildcard Source for the status PV
-        auto wildcard_source = WildcardSource::build();
-        wildcard_source->add(getCertStatusPv(config.getCertPvPrefix(), our_issuer_id), status_pv);
-        pva_server.addSource("__wildcard", wildcard_source);
-        // TODO(§3.10): Register CERT:AUDIT[:<issuer_id>] subscribable SharedPV for audit log
-
-        if (config.cluster_mode) {
-            cluster_sync.setEnabled(true);
-            pva_server.addSource("syncsrc", cluster_sync.getSource());
-            pva_server.addSource("ctrlsrc", cluster_ctrl.getSource());
-        }
-
-        pva_server.addPV(getCertCreatePv(config.getCertPvPrefix()), create_pv)
-            .addPV(getCertCreatePv(config.getCertPvPrefix(), our_issuer_id), create_pv)
-            .addPV(config.getCertPvPrefix() + ":SCHEDULE", schedule_pv)
-            .addPV(config.getCertPvPrefix() + ":SCHEDULE:" + our_issuer_id, schedule_pv)
-            .addPV(getCertAuthRootPv(config.getCertPvPrefix()), root_pv)
-            .addPV(getCertAuthRootPv(config.getCertPvPrefix(), our_issuer_id), root_pv)
-            .addPV(getCertIssuerPv(config.getCertPvPrefix()), issuer_pv)
-            .addPV(getCertIssuerPv(config.getCertPvPrefix(), our_issuer_id), issuer_pv)
-            .addPV(config.health_pv_prefix, health_pv)
-            .addPV(config.health_pv_prefix + ":" + our_issuer_id, health_pv)
-            .addPV(config.metrics_pv_prefix, metrics_pv)
-            .addPV(config.metrics_pv_prefix + ":" + our_issuer_id, metrics_pv);
-
-        auto health_value = makeHealthValue();
-        health_value["value.index"] = static_cast<int32_t>(1);
-        health_value["db_ok"] = true;
-        health_value["ca_valid"] = true;
-        health_value["uptime_secs"] = static_cast<uint64_t>(0u);
-        health_value["cert_count"] = static_cast<uint64_t>(0u);
-        health_value["cluster_members"] = config.cluster_mode ? static_cast<uint32_t>(0u) : static_cast<uint32_t>(1u);
-        health_value["last_check"] = std::string();
-        health_value["alarm.severity"] = static_cast<int32_t>(0);
-        health_value["alarm.status"] = static_cast<int32_t>(0);
-        health_value["alarm.message"] = std::string();
-        health_value["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(time(nullptr) - POSIX_TIME_AT_EPICS_EPOCH);
-        health_value["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
-        health_value["timeStamp.userTag"] = static_cast<int32_t>(0);
-
-        auto metrics_value = makeMetricsValue();
-        metrics_value["value"] = static_cast<uint64_t>(0u);
-        metrics_value["certs_created"] = static_cast<uint64_t>(0u);
-        metrics_value["certs_revoked"] = static_cast<uint64_t>(0u);
-        metrics_value["avg_ccr_time_ms"] = 0.0;
-        metrics_value["db_size_bytes"] = static_cast<uint64_t>(0u);
-        metrics_value["uptime_secs"] = static_cast<uint64_t>(0u);
-        metrics_value["alarm.severity"] = static_cast<int32_t>(0);
-        metrics_value["alarm.status"] = static_cast<int32_t>(0);
-        metrics_value["alarm.message"] = std::string();
-        metrics_value["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(time(nullptr) - POSIX_TIME_AT_EPICS_EPOCH);
-        metrics_value["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
-        metrics_value["timeStamp.userTag"] = static_cast<int32_t>(0);
-
-        auto schedule_rpc_proto = pvxs::TypeDef(pvxs::TypeCode::Struct, {
-            pvxs::members::Struct("query", {
-                pvxs::members::UInt64("serial"),
-                pvxs::members::Bool("read_only"),
-                pvxs::members::StructA("schedule", {
-                    pvxs::members::String("day_of_week"),
-                    pvxs::members::String("start_time"),
-                    pvxs::members::String("end_time"),
-                }),
-            }),
-        }).create();
-
-        schedule_pv.open(schedule_rpc_proto);
-        health_pv.open(health_value);
-        metrics_pv.open(metrics_value);
-        root_pv.open(root_pv_value);
-        issuer_pv.open(issuer_pv_value);
-        status_monitor_params.setHealthProto(health_value);
-        status_monitor_params.setMetricsProto(metrics_value);
-
-        std::string cluster_status;
-        std::unique_ptr<ClusterDiscovery> cluster_discovery;
-
-        if (config.cluster_mode) {
-            auto cluster_client_config = pva_server.clientConfig();
-            cluster_client_config.tls_keychain_file = config.tls_keychain_file;
-            cluster_client_config.setKeychainPassword(config.getKeychainPassword());
-            if (auto *ns = getenv("EPICS_PVACMS_CLUSTER_NAME_SERVERS")) {
-                std::istringstream iss(ns);
-                std::string entry;
-                while (iss >> entry)
-                    cluster_client_config.nameServers.push_back(entry);
-            }
-            auto cluster_client = cluster_client_config.build();
-
-            cluster_ctrl.verify_bidirectional = [cluster_client](const std::string &sync_pv,
-                                                                  uint32_t timeout_secs) mutable -> bool {
-                auto connected = std::make_shared<std::promise<void>>();
-                auto future = connected->get_future();
-                auto sub = cluster_client.monitor(sync_pv)
-                    .maskConnected(false)
-                    .event([connected](pvxs::client::Subscription &sub) {
-                        try {
-                            while (sub.pop()) {}
-                        } catch (pvxs::client::Connected &) {
-                            try { connected->set_value(); } catch (...) {}
-                        } catch (...) {}
-                    })
-                    .exec();
-                return future.wait_for(std::chrono::seconds(timeout_secs)) == std::future_status::ready;
-            };
-
-            cluster_discovery.reset(new ClusterDiscovery(our_node_id, our_issuer_id,
-                                                config.cluster_pv_prefix,
-                                                config.cluster_discovery_timeout_secs,
-                                                config.cluster_skip_peer_identity_check,
-                                                certs_db.get(),
-                                               cert_auth_pkey,
-                                               cert_auth_pub_key,
-                                               status_update_lock,
-                                               cluster_sync,
-                                               cluster_ctrl,
-                                               std::move(cluster_client)));
-
-            cluster_sync.is_peer_connected = [&cluster_discovery](const std::string &node_id) -> bool {
-                return cluster_discovery && cluster_discovery->isPeerConnected(node_id);
-            };
-
-            check_cms_node_revocation = [&our_node_id, &cluster_ctrl, &cluster_discovery, &cluster_sync, &pva_server](const std::string &skid) {
-                if (skid.size() < 8)
-                    return;
-                auto short_skid = skid.substr(0, 8);
-                if (!cluster_ctrl.isCmsNode(skid))
-                    return;
-                if (short_skid == our_node_id) {
-                    log_err_printf(pvacms, "Own PVACMS certificate has been revoked (SKID: %s), shutting down\n", skid.c_str());
-                    epicsThreadSleep(1.0);
-                    pva_server.interrupt();
-                    return;
-                }
-                for (const auto &m : cluster_ctrl.getMembers()) {
-                    if (m.node_id == short_skid) {
-                        log_err_printf(pvacms, "PVACMS peer certificate revoked, disconnecting peer %s\n", m.node_id.c_str());
-                        cluster_sync.publishSnapshot();
-                        epicsThreadSleep(1.0);
-                        if (cluster_discovery)
-                            cluster_discovery->handleDisconnect(m.node_id);
-                        return;
-                    }
-                }
-            };
-            cluster_discovery->on_node_cert_revoked = check_cms_node_revocation;
-            cluster_ctrl.is_node_revoked = [&certs_db](const std::string &node_id) {
-                return isNodeCertRevoked(certs_db, node_id);
-            };
-        }
-
-        if (!is_initialising) {
-            auto status_tuple = getCertificateStatus(certs_db, our_serial);
-            if (std::get<0>(status_tuple) == REVOKED) {
-                log_err_printf(pvacms, "****EXITING****: Cannot start PVACMS with revoked certificate, SKID: %s\n",
-                               our_node_id.c_str());
-                return 1;
-            }
-        }
-
-        if (config.cluster_mode) {
-            cluster_ctrl.initAsSoleNode(our_node_id, cluster_sync.getSyncPvName());
-            cluster_sync.publishSnapshot();
-        }
-        pva_server.start();
-
-        if (config.cluster_mode) {
-            if (is_initialising) {
-                log_info_printf(pvacms, "Fresh CA init - bootstrapping as sole cluster node%s", "\n");
-                cluster_status = "Created new cluster";
-            } else {
-                log_info_printf(pvacms, "Attempting to join existing cluster...%s", "\n");
-                auto join_result = cluster_discovery->joinCluster();
-                if (join_result == ClusterDiscovery::JoinResult::Revoked) {
-                    log_err_printf(pvacms, "****EXITING****: This node's PVACMS certificate has been revoked by the cluster\n%s", "");
-                    return 1;
-                } else if (join_result == ClusterDiscovery::JoinResult::Joined) {
-                    cluster_sync.publishSnapshot();
-                    cluster_status = "Joined existing cluster";
-                } else {
-                    log_info_printf(pvacms, "No existing cluster found - remaining sole node%s", "\n");
-                    cluster_status = "Created new cluster (no existing cluster found)";
-                }
-            }
-        } else {
-            cluster_status = "Disabled";
-        }
-
-        // Log the effective config
-        if (verbose) {
-            std::cout << "Effective config\n" << config << std::endl;
-        }
-
-        // Get the subject of the certificate authority certificate
-        pvxs::ossl_ptr<BIO> io(BIO_new(BIO_s_mem()));
-        X509_NAME_print_ex(io.get(), X509_get_subject_name(cert_auth_cert.get()), 0, XN_FLAG_ONELINE);
-        char *data = nullptr;
-        auto len = BIO_get_mem_data(io.get(), &data);
-        auto subject_string = std::string(data, len);
-
-        try {
-            std::cout << "+=======================================+======================================="
-                      << std::endl;
-            std::cout << "| EPICS Secure PVAccess Certificate Management Service v"
-                      << PVACMS_MAJOR_VERSION << "."
-                      << PVACMS_MINOR_VERSION << "."
-                      << PVACMS_MAINTENANCE_VERSION << std::endl;
-            std::cout << "+---------------------------------------+---------------------------------------"
-                      << std::endl;
-            std::cout << "| Certificate Database                  : " << config.certs_db_filename << std::endl;
-            std::cout << "| Certificate Authority                 : " << subject_string << std::endl;
-            std::cout << "| Certificate Authority Keychain File   : " << config.cert_auth_keychain_file << std::endl;
-            std::cout << "| PVACMS Keychain File                  : " << config.tls_keychain_file << std::endl;
-            std::cout << "| PVACMS Access Control File            : " << config.pvacms_acf_filename << std::endl;
-            std::cout << "+---------------------------------------+---------------------------------------"
-                      << std::endl;
-            std::cout << "| Cluster Node ID                       : " << our_node_id << std::endl;
-            std::cout << "| Cluster Sync PV                       : " << cluster_sync.getSyncPvName() << std::endl;
-            std::cout << "| Cluster Ctrl PV                       : " << cluster_ctrl.getCtrlPvName() << std::endl;
-            std::cout << "| Cluster Status                        : " << cluster_status << std::endl;
-            std::cout << "+---------------------------------------+---------------------------------------"
-                      << std::endl;
-            std::cout << "| PVACMS [" << our_issuer_id << "] Service Running     |" << std::endl;
-            std::cout << "+=======================================+======================================="
-                      << std::endl;
-            pva_server.run();
-            std::cout << "\n+=======================================+======================================="
-                      << std::endl;
-            std::cout << "| PVACMS [" << our_issuer_id << "] Service Exiting     |" << std::endl;
-            std::cout << "+=======================================+======================================="
-                      << std::endl;
-        } catch (const std::exception &e) {
-            log_err_printf(pvacms, "PVACMS error: %s\n", e.what());
-        }
-
-        return 0;
-    } catch (std::exception &e) {
-        log_err_printf(pvacms, "PVACMS Error: %s\n", e.what());
-        return 1;
-    }
-}

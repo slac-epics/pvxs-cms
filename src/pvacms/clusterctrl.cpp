@@ -10,10 +10,7 @@
 
 #include "certstatus.h"
 
-#include <dbBase.h>
-
 #include <pvxs/log.h>
-#include <pvxs/credentials.h>
 
 #include "clustersync.h"
 #include "pvacmsVersion.h"
@@ -107,7 +104,6 @@ ClusterController::ClusterController(const std::string &issuer_id,
                                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
                                      ClusterSyncPublisher &sync_publisher,
-                                     ASMEMBERPVT as_cluster_mem,
                                      uint32_t bidi_timeout_secs)
     : issuer_id_(issuer_id)
     , node_id_(node_id)
@@ -115,7 +111,6 @@ ClusterController::ClusterController(const std::string &issuer_id,
     , cert_auth_pkey_(cert_auth_pkey)
     , cert_auth_pub_key_(cert_auth_pub_key)
     , sync_publisher_(sync_publisher)
-    , as_cluster_mem_(as_cluster_mem)
     , bidi_timeout_secs_(bidi_timeout_secs)
     , ctrl_pv_(server::SharedPV::buildReadonly())
     , bidi_failed_(std::make_shared<BidiFailedCache>())
@@ -132,18 +127,6 @@ ClusterController::ClusterController(const std::string &issuer_id,
 void ClusterController::setupRpcHandler() {
     ctrl_pv_.onRPC([this](server::SharedPV &, std::unique_ptr<server::ExecOp> &&op, Value &&args) {
         try {
-            const auto creds = op->credentials();
-            ioc::Credentials credentials(*creds);
-            ioc::SecurityClient securityClient;
-            securityClient.update(as_cluster_mem_, ASL1, credentials);
-
-            if (!securityClient.canWrite()) {
-                log_warn_printf(pvacmscluster, "Join request rejected: client not authorized (%s)\n",
-                                creds->account.c_str());
-                op->error("Not authorized for cluster operations");
-                return;
-            }
-
             auto req_major = args["version_major"].as<uint32_t>();
             if (req_major != 1) {
                 log_warn_printf(pvacmscluster, "Join request unsupported major version %u from node %s\n",
@@ -179,7 +162,17 @@ void ClusterController::setupRpcHandler() {
                 return;
             }
 
-            if (verify_bidirectional) {
+            // Skip bidi-check when joiner is already a known member
+            // (post-restart recovery): a fresh bidi-monitor would race
+            // pvxs's auto-reconnect to the same address and deadlock.
+            bool already_member = false;
+            for (const auto &m : members_) {
+                if (m.node_id == joiner_node_id) {
+                    already_member = true;
+                    break;
+                }
+            }
+            if (verify_bidirectional && !already_member) {
                 if (!verify_bidirectional(joiner_sync_pv, bidi_timeout_secs_)) {
                     log_warn_printf(pvacmscluster,
                         "Join rejected: cannot subscribe to joiner %s SYNC PV %s within %u seconds\n",
@@ -192,6 +185,10 @@ void ClusterController::setupRpcHandler() {
                 }
                 log_debug_printf(pvacmscluster,
                     "Bidirectional connectivity verified for joiner %s\n", joiner_node_id.c_str());
+            } else if (already_member) {
+                log_info_printf(pvacmscluster,
+                    "Re-join from existing member %s (recovery), skipping bidi-check\n",
+                    joiner_node_id.c_str());
             }
 
             addMember({joiner_node_id, joiner_sync_pv, req_major, joiner_minor, joiner_patch, true});

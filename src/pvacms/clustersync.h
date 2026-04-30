@@ -154,7 +154,7 @@ struct ClusterMember {
  */
 struct CertUpdate {
     int64_t sequence;       ///< Monotonic sequence number assigned by the publisher.
-    int64_t serial;
+    uint64_t serial;
     std::string skid;
     std::string cn;
     std::string o;
@@ -257,7 +257,7 @@ public:
      *
      * @param serial Serial number of the certificate that changed.
      */
-    void publishCertChange(int64_t serial);
+    void publishCertChange(uint64_t serial);
 
     /**
      * @brief Returns the fully-qualified PV name used for cluster synchronization.
@@ -295,7 +295,6 @@ public:
     std::map<std::string, std::string> getForwardingRelationships() const;
 
     std::function<bool(const std::string &node_id)> is_peer_connected;
-    bool skip_peer_identity_check = false;
 
 private:
     std::string node_id_;
