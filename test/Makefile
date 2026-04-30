@@ -173,6 +173,20 @@ testtlswithcmsmigrated_SRCS += testtlswithcmsmigrated.cpp
 testtlswithcmsmigrated_SRCS += $(HARNESS_SRCS)
 testtlswithcmsmigrated_LIBS += pvxsIoc
 testtlswithcmsmigrated_SYS_LIBS += $(HARNESS_SYS_LIBS)
+
+TESTS += testdisconnectresilience
+TESTPROD_HOST += testdisconnectresilience
+testdisconnectresilience_SRCS += testdisconnectresilience.cpp
+testdisconnectresilience_SRCS += $(HARNESS_SRCS)
+testdisconnectresilience_LIBS += pvxsIoc
+testdisconnectresilience_SYS_LIBS += $(HARNESS_SYS_LIBS)
+
+TESTS += testclustergatewayresilience
+TESTPROD_HOST += testclustergatewayresilience
+testclustergatewayresilience_SRCS += testclustergatewayresilience.cpp
+testclustergatewayresilience_SRCS += $(HARNESS_SRCS)
+testclustergatewayresilience_LIBS += pvxsIoc
+testclustergatewayresilience_SYS_LIBS += $(HARNESS_SYS_LIBS)
 endif # SPVA_ASLIB_AVAILABLE
 endif # PVXS_CMS_BUILD_TEST_HARNESS
 

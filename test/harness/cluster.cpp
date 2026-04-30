@@ -53,7 +53,7 @@ void writeClusterAcf(const std::string &path, size_t n_members) {
     }
     out << "AUTHORITY(CMS_AUTH, \"PVXS CMS Test CA\")\n"
         << "\n"
-        << "UAG(CMS_ADMIN) {admin}\n"
+        << "UAG(CMS_ADMIN) {\"PVACMS Test Admin\"}\n"
         << "\n"
         << "UAG(CMS_CLUSTER) {";
     for (size_t i = 0; i < n_members; ++i) {
@@ -591,6 +591,14 @@ void PVACMSCluster::awaitConvergence() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+}
+
+void PVACMSCluster::addExtraPeer(size_t i, const std::string &address) {
+    std::lock_guard<std::mutex> lk(impl_->coord_mutex);
+    if (i >= impl_->topology.size()) {
+        throw std::out_of_range("PVACMSCluster::addExtraPeer: index out of range");
+    }
+    impl_->bridge_entries[i].push_back(address);
 }
 
 void bridge(PVACMSCluster &a, size_t a_node, PVACMSCluster &b, size_t b_node) {

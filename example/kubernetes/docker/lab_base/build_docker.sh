@@ -10,7 +10,7 @@ pushd "${DOCKER_DIR}"
 trap "popd" EXIT
 
 BASE_IMAGE_NAME="pvxs-cms"
-BASE_IMAGE_TAG="latest"
+BASE_IMAGE_TAG="dev"
 TARGET_IMAGE_NAME="lab_base"
 TARGET_IMAGE_TAG="dev"
 
