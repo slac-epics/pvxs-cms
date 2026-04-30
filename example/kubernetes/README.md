@@ -109,7 +109,7 @@ The CMS runs in three-node cluster mode (`--cluster-mode`) on `idm`, `it`, and `
 - `CERT:CLUSTER` PVs are allowed through both gateways' cross-zone servers for cluster discovery.
 - `--cluster-discovery-timeout 30` and `--cluster-bidi-timeout 30` are set on `it` and `idm`.
 - `--cluster-discovery-timeout 90` and `--cluster-bidi-timeout 30` are set on `ml` (longer timeout for cross-zone discovery).
-- Cluster-traffic authentication is by CA-signed payload verification (every join request and every sync snapshot is signed with the cluster CA's private key and verified against the same CA's public key on the receiving side). Gateway-mediated topologies work transparently — no per-node `--cluster-skip-peer-identity-check` flag is needed because there is no separate TLS-peer-identity check on incoming SYNC connections that would need to be relaxed.
+- Cluster-traffic authentication is by CA-signed payload verification (every join request and every sync snapshot is signed with the cluster CA's private key and verified against the same CA's public key on the receiving side). 
 
 ## Users
 

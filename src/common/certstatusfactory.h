@@ -93,12 +93,6 @@ class CertStatusFactory {
      * revocation date if applicable.
      * The PVA status is also included for completeness
      *
-     * Renew_by and renewal_due are REQUIRED to prevent silent zero-fill regressions
-     * where the status PV publishes a Unix-epoch-zero renew_by because a caller
-     * forgot to thread the database value through. See fix/renew-by-on-status-publish.
-     * Pass CertDate{} explicitly only when the cert genuinely has no renewal
-     * (e.g. a REVOKED cert).
-     *
      * @param cert Certificate to create OCSP response for
      * @param status the PVA certificate status to create an OCSP response with
      * @param status_date the status date to set in the OCSP response
