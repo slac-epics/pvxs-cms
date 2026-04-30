@@ -367,6 +367,13 @@ class PVXS_CMS_TEST_API PVACMSCluster {
     void setUnreachable(size_t i, size_t j);
     void setReachable(size_t i, size_t j);
 
+    /// Append `address` to member i's extra-peer list.  Used by tests that
+    /// need the member to discover a peer not in its built-in topology
+    /// (e.g. a foreign-cluster node reachable only via a forwarding
+    /// proxy / mock gateway).  No restart is performed; the caller must
+    /// invoke `restartMember(i)` to take effect.
+    void addExtraPeer(size_t i, const std::string &address);
+
     /// Aggregated client config: addressList lists every member's PVACMS
     /// PVA TCP listener; admin Entity Cert from the shared PKI fixture.
     client::Config cmsAdminClientConfig() const;

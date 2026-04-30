@@ -162,7 +162,17 @@ void ClusterController::setupRpcHandler() {
                 return;
             }
 
-            if (verify_bidirectional) {
+            // Skip bidi-check when joiner is already a known member
+            // (post-restart recovery): a fresh bidi-monitor would race
+            // pvxs's auto-reconnect to the same address and deadlock.
+            bool already_member = false;
+            for (const auto &m : members_) {
+                if (m.node_id == joiner_node_id) {
+                    already_member = true;
+                    break;
+                }
+            }
+            if (verify_bidirectional && !already_member) {
                 if (!verify_bidirectional(joiner_sync_pv, bidi_timeout_secs_)) {
                     log_warn_printf(pvacmscluster,
                         "Join rejected: cannot subscribe to joiner %s SYNC PV %s within %u seconds\n",
@@ -175,6 +185,10 @@ void ClusterController::setupRpcHandler() {
                 }
                 log_debug_printf(pvacmscluster,
                     "Bidirectional connectivity verified for joiner %s\n", joiner_node_id.c_str());
+            } else if (already_member) {
+                log_info_printf(pvacmscluster,
+                    "Re-join from existing member %s (recovery), skipping bidi-check\n",
+                    joiner_node_id.c_str());
             }
 
             addMember({joiner_node_id, joiner_sync_pv, req_major, joiner_minor, joiner_patch, true});

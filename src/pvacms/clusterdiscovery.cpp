@@ -141,10 +141,13 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
     controller_.on_membership_changed = [this](const std::vector<ClusterMember> &members) {
         reconcileMembers(std::string(), members);
     };
+    rejoin_watchdog_thread_ = std::thread([this]() { rejoinWatchdogLoop(); });
 }
 
 ClusterDiscovery::~ClusterDiscovery() {
     shutting_down_.store(true);
+    rejoin_watchdog_wakeup_.signal();
+    if (rejoin_watchdog_thread_.joinable()) rejoin_watchdog_thread_.join();
 
     // Join rejoin threads first.  A rejoin thread may be in
     // joinCluster()->client_ctx_.rpc().wait(timeout) and only sees
@@ -562,23 +565,21 @@ void ClusterDiscovery::drainDeadSubscriptions() {
 void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
     if (shutting_down_.load()) return;
 
+    // Treat TCP loss as transient: pvxs auto-reconnects.  Eviction on a
+    // gateway-flap-induced Disconnect would split-brain the cluster
+    // because the bounced peer is unaware it was evicted.
     bool was_forwarding = false;
+    bool transitioned_to_unreachable = false;
     {
         Guard G(state_lock_);
         if (shutting_down_.load()) return;
 
         peer_last_sequence_.erase(peer_node_id);
-        auto it = subscriptions_.find(peer_node_id);
-        if (it != subscriptions_.end()) {
-            Guard DG(dead_subscriptions_lock_);
-            dead_subscriptions_.push_back(std::move(it->second));
-            subscriptions_.erase(it);
-        }
 
         auto conn_it = peer_connectivity_.find(peer_node_id);
         if (conn_it != peer_connectivity_.end()) {
-            conn_it->second->cancelled.store(true);
-            peer_connectivity_.erase(conn_it);
+            int prev = conn_it->second->state.exchange(CONN_UNREACHABLE);
+            transitioned_to_unreachable = (prev == CONN_CONNECTED);
         }
 
         was_forwarding = sync_publisher_.isForwarding(peer_node_id);
@@ -588,14 +589,14 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
         log_info_printf(pvacmscluster, "Forwardee %s disconnected, stopping forwarding\n",
                         peer_node_id.c_str());
         sync_publisher_.removeForwardingRelationship(peer_node_id);
-        publishMemberConnectivity();
     }
 
-    if (shutting_down_.load()) return;
-    controller_.removeMember(peer_node_id);
-    log_info_printf(pvacmscluster, "Removed disconnected member %s\n", peer_node_id.c_str());
-
-    rejoinCluster();
+    if (transitioned_to_unreachable) {
+        log_info_printf(pvacmscluster,
+                        "Peer %s TCP lost; awaiting auto-reconnect (membership preserved)\n",
+                        peer_node_id.c_str());
+        publishMemberConnectivity();
+    }
 }
 
 /**
@@ -652,6 +653,23 @@ void ClusterDiscovery::reconcileMembers(const std::string &sender_node_id,
             if (subscribed_now) {
                 controller_.addMember(m);
             }
+        }
+    }
+}
+
+void ClusterDiscovery::rejoinWatchdogLoop() {
+    // Wake up periodically; if we are still a sole-node cluster (e.g.
+    // because startup raced peer-readiness — gateway not yet TLS-ready
+    // when we first attempted to join), trigger another rejoin.  Once
+    // we have peers, the watchdog stays cheap (it just re-checks).
+    constexpr double kWatchdogIntervalSecs = 30.0;
+    while (!shutting_down_.load()) {
+        rejoin_watchdog_wakeup_.wait(kWatchdogIntervalSecs);
+        if (shutting_down_.load()) return;
+        if (controller_.getMembers().size() <= 1) {
+            log_info_printf(pvacmscluster,
+                            "Watchdog: still sole-node, attempting rejoin\n%s", "");
+            rejoinCluster();
         }
     }
 }
@@ -820,6 +838,18 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
             });
         }
 
+        // Merge response members with any locally-discovered ones rather
+        // than overwriting: a node we found via peer sync before joining
+        // (e.g. a 3rd member that was already in our table from a prior
+        // sync snapshot) must not be erased by a join response that the
+        // responder constructed before learning about that 3rd member.
+        for (const auto &existing : controller_.getMembers()) {
+            bool present = false;
+            for (const auto &m : members) {
+                if (m.node_id == existing.node_id) { present = true; break; }
+            }
+            if (!present) members.push_back(existing);
+        }
         controller_.updateMembership(members);
 
         for (const auto &m : members) {

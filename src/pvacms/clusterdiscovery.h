@@ -16,6 +16,7 @@
 #include <thread>
 #include <vector>
 
+#include <epicsEvent.h>
 #include <epicsMutex.h>
 #include <epicsThread.h>
 
@@ -159,6 +160,12 @@ private:
     std::thread rejoin_thread_;
     std::vector<std::thread> old_rejoin_threads_;
     std::mutex rejoin_thread_mutex_;
+
+    // Periodic background watchdog: re-attempts join while this PVACMS
+    // remains a sole-node cluster, in case startup raced peer-readiness.
+    std::thread rejoin_watchdog_thread_;
+    epicsEvent rejoin_watchdog_wakeup_;
+    void rejoinWatchdogLoop();
 
     std::map<std::string, std::shared_ptr<PeerConnectivity>> peer_connectivity_;
     void onConnectivityTimeout(const std::string &node_id);

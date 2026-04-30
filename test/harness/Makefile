@@ -30,6 +30,7 @@ HARNESS_SRCS += observingsource.cpp
 HARNESS_SRCS += clustertopology.cpp
 HARNESS_SRCS += cluster.cpp
 HARNESS_SRCS += statuseventcapture.cpp
+HARNESS_SRCS += mockclustergateway.cpp
 
 # Shared CMS sources from src/. Resolved by basename via SRC_DIRS
 # (test/Makefile adds COMMON_DIR, AUTHN_DIR, PVACMS_DIR).
