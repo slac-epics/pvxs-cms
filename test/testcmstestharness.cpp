@@ -405,6 +405,37 @@ void testCustomizeFnAppliedPreBuild() {
            (unsigned)observed_tcp_port);
 }
 
+void testStaplingFlagPropagatesViaCustomize() {
+    testDiag("testServerBuilder().customize() correctly toggles tls_disable_stapling");
+    PVACMSHarness::Builder builder;
+    auto harness = builder.build();
+
+    bool customize_invoked_for_disabled_server = false;
+    bool customize_invoked_for_enabled_server = false;
+
+    auto &stapling_disabled_server = harness.testServerBuilder()
+                     .customize([&](pvxs::server::Config &server_config) {
+                         server_config.disableStapling(true);
+                         customize_invoked_for_disabled_server = true;
+                     })
+                     .start();
+    auto &stapling_enabled_server = harness.testServerBuilder()
+                     .customize([&](pvxs::server::Config &server_config) {
+                         server_config.disableStapling(false);
+                         customize_invoked_for_enabled_server = true;
+                     })
+                     .start();
+
+    testOk(customize_invoked_for_disabled_server,
+           "customize() lambda fired for the stapling-disabled server");
+    testOk(customize_invoked_for_enabled_server,
+           "customize() lambda fired for the stapling-enabled server");
+    testOk(stapling_disabled_server.config().isStaplingDisabled(),
+           "stapling-disabled server reports isStaplingDisabled() == true");
+    testOk(!stapling_enabled_server.config().isStaplingDisabled(),
+           "stapling-enabled server reports isStaplingDisabled() == false");
+}
+
 void testWithPVRegisters() {
     testDiag("withPV() registers a PV that can be reached via testClientConfig");
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
@@ -804,9 +835,9 @@ MAIN(testcmstestharness) {
 #endif
 
     if (skip_cluster_builds) {
-        testPlan(108);
+        testPlan(112);
     } else {
-        testPlan(149);
+        testPlan(153);
     }
 
     testFreshPerConstruction();
@@ -826,6 +857,7 @@ MAIN(testcmstestharness) {
     testTestClientConfigSnapshotSemantics();
     testTestClientConfigIsLoopback();
     testCustomizeFnAppliedPreBuild();
+    testStaplingFlagPropagatesViaCustomize();
     testWithPVRegisters();
     testBuilderApplyEnvDefaultsFalse();
     testBorrowedPkiFixture();

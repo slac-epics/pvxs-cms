@@ -10,6 +10,7 @@
 #include <stdexcept>
 
 #include <pvxs/client.h>
+#include <pvxs/config.h>
 #include <pvxs/server.h>
 #include <pvxs/sharedpv.h>
 #include <pvxs/source.h>
@@ -92,7 +93,7 @@ pvxs::server::Server &TestServerBuilder::start() && {
         cfg.beaconDestinations.emplace_back("127.0.0.1");
     }
     cfg.tls_keychain_file = entity_p12;
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
     cfg.tls_status_cache_dir = impl.fixture().dir() + "/cache/test-server-" +
                                std::to_string(impl.test_server_counter.fetch_add(1));
 #else

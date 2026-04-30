@@ -23,6 +23,7 @@
 #include <asLib.h>
 
 #include <pvxs/client.h>
+#include <pvxs/config.h>
 #include <pvxs/log.h>
 #include <pvxs/server.h>
 
@@ -126,7 +127,7 @@ void writeClusterAcf(const std::string &path, size_t n_members) {
     cfg.preload_cert_files.push_back(pki.adminP12Path());
     cfg.preload_cert_files.push_back(member_p12_path);
 
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
     cfg.tls_status_cache_dir = pki.dir() + "/cache/pvacms-node-" + std::to_string(member_index);
 #endif
 

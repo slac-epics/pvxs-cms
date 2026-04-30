@@ -27,6 +27,7 @@
 #include <testMain.h>
 
 #include <pvxs/client.h>
+#include <pvxs/config.h>
 #include <pvxs/data.h>
 #include <pvxs/log.h>
 #include <pvxs/nt.h>
@@ -63,37 +64,6 @@ struct SubCounter {
         return sum;
     }
 };
-
-void testStaplingFlagPropagatesViaCustomize() {
-    testDiag("testServerBuilder().customize() correctly toggles tls_disable_stapling");
-    PVACMSHarness::Builder builder;
-    auto harness = builder.build();
-
-    bool customize_invoked_for_disabled_server = false;
-    bool customize_invoked_for_enabled_server = false;
-
-    auto &stapling_disabled_server = harness.testServerBuilder()
-                     .customize([&](pvxs::server::Config &server_config) {
-                         server_config.disableStapling(true);
-                         customize_invoked_for_disabled_server = true;
-                     })
-                     .start();
-    auto &stapling_enabled_server = harness.testServerBuilder()
-                     .customize([&](pvxs::server::Config &server_config) {
-                         server_config.disableStapling(false);
-                         customize_invoked_for_enabled_server = true;
-                     })
-                     .start();
-
-    testOk(customize_invoked_for_disabled_server,
-           "customize() lambda fired for the stapling-disabled server");
-    testOk(customize_invoked_for_enabled_server,
-           "customize() lambda fired for the stapling-enabled server");
-    testOk(stapling_disabled_server.config().isStaplingDisabled(),
-           "stapling-disabled server reports isStaplingDisabled() == true");
-    testOk(!stapling_enabled_server.config().isStaplingDisabled(),
-           "stapling-enabled server reports isStaplingDisabled() == false");
-}
 
 void testStaplingDisabledOnServer() {
     testDiag("Server with stapling disabled - GET via PVACMS still succeeds");
@@ -291,7 +261,7 @@ void testServerStaplingNoClientStapling() {
 // Server-with-Entity-Cert + status-event counter API
 // =====================================================================
 
-void testServerOnlyMigrated() {
+void testServerOnlyWithCounters() {
     testDiag("Server with Entity Cert, client with admin cert; status-event counters");
 
     PVACMSHarness::Builder builder;
@@ -370,7 +340,7 @@ void testServerOnlyMigrated() {
     testDiag("Invariant: deliveries (%u) = live (%u) + cache-hits (%u)",
              total_deliveries, total_deliveries - total_cache_hits, total_cache_hits);
 
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
     // The cert-status subscribe/deliver counters depend on pvxs's
     // per-role cache-dir override; on older pvxs without it, the shared
     // cache may pre-populate and the assertions below would underreport.
@@ -451,7 +421,7 @@ void testServerOnly() {
     auto &test_server = harness.testServerBuilder()
                     .opts([]{
                         TestServerOpts server_opts;
-                        server_opts.subject = "migrated-server-only";
+                        server_opts.subject = "server-only-flow";
                         return server_opts;
                     }())
                     .withPV(TEST_PV, mailbox_pv)
@@ -475,7 +445,7 @@ void testServerOnly() {
                "GET reply value matches the value the server published (42)");
     }
 
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
     testOk(harness.totalSubscribes() >= 2,
            "totalSubscribes >= 2 (got %u)", harness.totalSubscribes());
     testOk(harness.totalStatusReceived() >= 2,
@@ -500,7 +470,7 @@ void testGetIntermediate() {
     auto &test_server = harness.testServerBuilder()
                     .opts([]{
                         TestServerOpts server_opts;
-                        server_opts.subject = "migrated-mutual-server";
+                        server_opts.subject = "mutual-tls-server";
                         server_opts.clientCertRequired = true;
                         return server_opts;
                     }())
@@ -527,7 +497,7 @@ void testGetIntermediate() {
 
     const auto observed_status_pvs = harness.observedStatusPvs();
 
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
     testOk(harness.totalSubscribes() >= 4,
            "totalSubscribes >= 4 for mutual-TLS (got %u)", harness.totalSubscribes());
     testOk(harness.totalStatusReceived() >= 2,
@@ -582,7 +552,7 @@ void testCertStatusGating() {
     testOk(reply_value == 99,
            "Gating: GET reply value matches the value the server published (99)");
 
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
     const auto observed_status_pvs = harness.observedStatusPvs();
     testOk(!observed_status_pvs.empty(), "at least one CERT:STATUS PV observed");
     for (const auto &status_pv : observed_status_pvs) {
@@ -692,7 +662,7 @@ void testCacheHitOnRepeatedSubscribe() {
 
     const uint32_t cache_hits_after_second_client = harness.totalCacheHits();
 
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
     testOk(cache_hits_after_second_client > cache_hits_after_first_client,
            "second client (same role, same cert) added cache hits: %u -> %u",
            cache_hits_after_first_client, cache_hits_after_second_client);
@@ -745,20 +715,24 @@ void testNoCacheBleedAcrossRoles() {
 }  // namespace
 
 MAIN(testtlswithcms) {
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
-    testPlan(51);
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
+    testPlan(47);
 #else
-    testPlan(37);
+    testPlan(33);
 #endif
     pvxs::logger_config_env();
 
-    testStaplingFlagPropagatesViaCustomize();
+#ifndef PVXS_HAS_DISK_OCSP_CACHE
+    testDiag("pvxs does not advertise PVXS_HAS_DISK_OCSP_CACHE — "
+             "14 cache-coverage assertions omitted from this run");
+#endif
+
     testStaplingDisabledOnServer();
     testStaplingEnabledOnServer();
     testClientStaplingNoServerStapling();
     testServerStaplingNoClientStapling();
 
-    testServerOnlyMigrated();
+    testServerOnlyWithCounters();
     testCounterAPIBasics();
 
     testServerOnly();

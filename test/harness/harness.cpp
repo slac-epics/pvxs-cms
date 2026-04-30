@@ -20,6 +20,7 @@
 #include <asLib.h>
 
 #include <pvxs/client.h>
+#include <pvxs/config.h>
 #include <pvxs/log.h>
 #include <pvxs/server.h>
 #include <pvxs/source.h>
@@ -110,7 +111,7 @@ std::string makeUniqueSubject(const std::string &prefix) {
 
     cfg.preload_cert_files.push_back(pki.adminP12Path());
 
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
     cfg.tls_status_cache_dir = pki.dir() + "/cache/pvacms";
 #endif
 
@@ -347,7 +348,7 @@ pvxs::client::Config PVACMSHarness::cmsAdminClientConfig() const {
     cfg.nameServers.clear();
     cfg.nameServers.push_back(impl_->pvacms_listener_addr);
     cfg.tls_keychain_file = impl_->fixture().adminP12Path();
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
     cfg.tls_status_cache_dir = impl_->fixture().dir() + "/cache/admin";
 #endif
     return cfg;
@@ -378,7 +379,7 @@ pvxs::client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts)
     cfg.addressList.push_back(impl_->pvacms_listener_addr);
     cfg.nameServers.push_back(impl_->pvacms_listener_addr);
     cfg.tls_keychain_file = client_p12;
-#ifdef PVXS_HAS_TLS_STATUS_CACHE_DIR
+#ifdef PVXS_HAS_DISK_OCSP_CACHE
     cfg.tls_status_cache_dir = impl_->fixture().dir() + "/cache/test-client-" +
                                std::to_string(client_id);
 #else
