@@ -701,6 +701,7 @@ Value makeHealthValue() {
         Bool("ca_valid"),
         UInt64("uptime_secs"),
         UInt64("cert_count"),
+        Bool("cluster_mode"),
         UInt32("cluster_members"),
         String("last_check"),
     };
@@ -1154,7 +1155,57 @@ void updateCertificateStatus(const sql_ptr &certs_db,
                              const int approval_status,
                              const std::vector<certstatus_t> &valid_status) {
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
-    sqlite3_stmt *sql_statement;
+
+    // Pre-flight: distinguish "row absent" (NOT_FOUND) from "wrong current
+    // status" (INVALID_STATE) so callers (notably pvxcert in cluster mode)
+    // can decide whether to retry.  The previous single-UPDATE-and-count-
+    // rows path conflated both into one error message.
+    int current_status = -1;
+    {
+        sqlite3_stmt *select_stmt = nullptr;
+        if (sqlite3_prepare_v2(certs_db.get(),
+                               "SELECT status FROM certs WHERE serial = :serial",
+                               -1, &select_stmt, nullptr) != SQLITE_OK) {
+            throw std::runtime_error(SB() << "Failed to prepare cert status lookup: "
+                                          << sqlite3_errmsg(certs_db.get()));
+        }
+        sqlite3_bind_int64(select_stmt,
+                           sqlite3_bind_parameter_index(select_stmt, ":serial"),
+                           db_serial);
+        const int rc = sqlite3_step(select_stmt);
+        if (rc == SQLITE_ROW) {
+            current_status = sqlite3_column_int(select_stmt, 0);
+        }
+        sqlite3_finalize(select_stmt);
+
+        if (current_status < 0) {
+            throw std::runtime_error(SB()
+                << "NOT_FOUND: certificate with serial " << serial
+                << " is not in this PVACMS's database");
+        }
+
+        bool current_in_valid = false;
+        for (auto allowed : valid_status) {
+            if (static_cast<int>(allowed) == current_status) {
+                current_in_valid = true;
+                break;
+            }
+        }
+        if (!current_in_valid) {
+            SB allowed_list;
+            for (size_t i = 0; i < valid_status.size(); ++i) {
+                if (i) allowed_list << ", ";
+                allowed_list << ::cms::cert::cert_state_name(static_cast<int>(valid_status[i]));
+            }
+            throw std::runtime_error(SB()
+                << "INVALID_STATE: certificate with serial " << serial
+                << " is in state " << ::cms::cert::cert_state_name(current_status)
+                << " but " << ::cms::cert::cert_state_name(static_cast<int>(cert_status))
+                << " requires one of [" << allowed_list.str() << "]");
+        }
+    }
+
+    sqlite3_stmt *sql_statement = nullptr;
     int sql_status;
     std::string sql(approval_status == -1 ? SQL_CERT_SET_STATUS : SQL_CERT_SET_STATUS_W_APPROVAL);
     sql += getValidStatusesClause(valid_status);
@@ -1170,11 +1221,17 @@ void updateCertificateStatus(const sql_ptr &certs_db,
     }
     sqlite3_finalize(sql_statement);
 
-    // Check the number of rows affected
     if (sql_status == SQLITE_DONE) {
         const int rows_affected = sqlite3_changes(certs_db.get());
         if (rows_affected == 0) {
-            throw std::runtime_error("Invalid state transition or invalid serial number");
+            // Race: row was modified between SELECT and UPDATE.  Re-classify
+            // by looking up the current status again so the caller still
+            // receives a typed error.
+            throw std::runtime_error(SB()
+                << "INVALID_STATE: certificate with serial " << serial
+                << " status changed concurrently before "
+                << ::cms::cert::cert_state_name(static_cast<int>(cert_status))
+                << " could be applied");
         }
     } else {
         throw std::runtime_error(SB() << "Failed to set cert status: " << sqlite3_errmsg(certs_db.get()));
@@ -3978,6 +4035,7 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
             value["ca_valid"] = ca_valid;
             value["uptime_secs"] = static_cast<uint64_t>(now_time - status_monitor_params.getStartTime());
             value["cert_count"] = cert_count;
+            value["cluster_mode"] = status_monitor_params.isClusterMode();
             value["cluster_members"] = status_monitor_params.getClusterMemberCount();
             value["last_check"] = std::string(time_buf);
 

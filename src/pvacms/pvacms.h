@@ -489,6 +489,7 @@ class StatusMonitor {
     void setMetricsProto(const Value &proto) { metrics_proto_ = proto; }
     void setClusterMemberCount(std::function<uint32_t()> fn) { get_cluster_member_count_ = std::move(fn); }
     uint32_t getClusterMemberCount() const { return get_cluster_member_count_ ? get_cluster_member_count_() : 1u; }
+    bool isClusterMode() const { return config_.cluster_mode; }
     server::SharedPV *getHealthPV() const { return health_pv_; }
     server::SharedPV *getMetricsPV() const { return metrics_pv_; }
     Value cloneHealthValue() const { return health_proto_.cloneEmpty(); }

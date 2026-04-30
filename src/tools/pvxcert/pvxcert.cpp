@@ -14,6 +14,7 @@
 #include <iostream>
 #include <list>
 #include <string>
+#include <thread>
 
 #include <sys/stat.h>
 
@@ -433,7 +434,11 @@ void dumpHealthSection(const Value& result) {
     std::cout << "\nPVACMS Health\n"
               << "============================================\n";
 
-    const bool ok = result["ok"].as<bool>();
+    // CERT:HEALTH is published as Normative Type NTEnum:
+    //   value.index   0 = "Not OK", 1 = "OK"
+    //   value.choices ["Not OK", "OK"]
+    // plus sibling fields for ancillary data.
+    const bool ok = result["value.index"].as<int32_t>() == 1;
     const bool db_ok = result["db_ok"].as<bool>();
     const bool ca_valid = result["ca_valid"].as<bool>();
 
@@ -447,6 +452,10 @@ void dumpHealthSection(const Value& result) {
     std::cout << formatUptime(result["uptime_secs"].as<uint64_t>()) << "\n";
     writeLabel(std::cout, "Certificate Count");
     std::cout << result["cert_count"].as<uint64_t>() << "\n";
+    if (auto cluster_mode = result["cluster_mode"]) {
+        writeLabel(std::cout, "Cluster Mode");
+        std::cout << (cluster_mode.as<bool>() ? "ENABLED" : "DISABLED") << "\n";
+    }
     writeLabel(std::cout, "Cluster Members");
     std::cout << result["cluster_members"].as<uint32_t>() << "\n";
     writeLabel(std::cout, "Last Check");
@@ -458,6 +467,9 @@ void dumpMetricsSection(const Value& result) {
     std::cout << "\nPVACMS Metrics\n"
               << "============================================\n";
 
+    // CERT:METRICS is published as Normative Type NTScalar (UInt64):
+    //   value         currently active VALID certificates (top-level scalar)
+    //   plus sibling counters/gauges for the rest.
     writeSubHeader(std::cout, "Counters (since startup)");
     writeLabel(std::cout, "Certificates Created", 4);
     std::cout << result["certs_created"].as<uint64_t>() << "\n";
@@ -468,7 +480,7 @@ void dumpMetricsSection(const Value& result) {
 
     writeSubHeader(std::cout, "Gauges (current state)");
     writeLabel(std::cout, "Certificates Active", 4);
-    std::cout << result["certs_active"].as<uint64_t>() << "\n";
+    std::cout << result["value"].as<uint64_t>() << "\n";
     {
         std::ostringstream os;
         os << std::fixed << std::setprecision(3) << result["avg_ccr_time_ms"].as<double>() << " ms";
@@ -478,6 +490,35 @@ void dumpMetricsSection(const Value& result) {
     writeLabel(std::cout, "Database Size", 4);
     std::cout << formatBytes(result["db_size_bytes"].as<uint64_t>()) << "\n";
     std::cout << "--------------------------------------------\n" << std::endl;
+}
+
+// Probe CERT:HEALTH to learn whether the responding PVACMS is in
+// cluster mode.  Returns true when the response carries
+// `cluster_mode=true`; false on any error or absent field — those
+// callers fall back to the no-retry path, which is safe (retries
+// are an optimisation for cluster-induced races, not a correctness
+// requirement).
+bool probeClusterMode(client::Context &client, const client::Config &conf) {
+    try {
+        auto health = client.get("CERT:HEALTH").exec()->wait(conf.getRequestTimeout());
+        if (!health) return false;
+        if (auto field = health["cluster_mode"]) {
+            return field.as<bool>();
+        }
+    } catch (...) {
+    }
+    return false;
+}
+
+// Returns true if `what` looks like a transient cluster-sync race that
+// will resolve once the new state has propagated to this PVACMS.
+bool isClusterSyncTransientError(const std::string &what) {
+    if (what.find("NOT_FOUND:") != std::string::npos) return true;
+    if (what.find("INVALID_STATE:") != std::string::npos) return true;
+    // Pre-typed-error PVACMS emitted a single conflated message.
+    if (what.find("Invalid state transition") != std::string::npos) return true;
+    if (what.find("invalid serial number") != std::string::npos) return true;
+    return false;
 }
 
 }  // namespace
@@ -885,14 +926,48 @@ int main(int argc, char *argv[]) {
                     }
                     break;
                 case APPROVE:
-                    result = client.put(cert_id).set("state", "APPROVED").exec()->wait(conf.getRequestTimeout());
-                    break;
                 case DENY:
-                    result = client.put(cert_id).set("state", "DENIED").exec()->wait(conf.getRequestTimeout());
+                case REVOKE: {
+                    const char *new_state =
+                        (action == APPROVE) ? "APPROVED" :
+                        (action == DENY)    ? "DENIED"   : "REVOKED";
+
+                    auto put_once = [&]() {
+                        return client.put(cert_id).set("state", new_state)
+                                     .exec()->wait(conf.getRequestTimeout());
+                    };
+
+                    // Retry policy: when the responding PVACMS is in cluster
+                    // mode, a NOT_FOUND or INVALID_STATE error commonly means
+                    // the new state has not yet replicated from the issuing
+                    // peer.  Sleep 1s and retry up to 4 additional times.
+                    // Standalone PVACMS doesn't have this race; do not retry.
+                    constexpr int kMaxRetries = 4;
+                    constexpr int kRetrySleepMs = 1000;
+                    bool cluster_mode_known = false;
+                    bool cluster_mode = false;
+
+                    int attempt = 0;
+                    while (true) {
+                        try {
+                            result = put_once();
+                            break;
+                        } catch (const std::exception &e) {
+                            const std::string what = e.what();
+                            if (!isClusterSyncTransientError(what)) throw;
+                            if (!cluster_mode_known) {
+                                cluster_mode = probeClusterMode(client, conf);
+                                cluster_mode_known = true;
+                            }
+                            if (!cluster_mode) throw;
+                            if (attempt >= kMaxRetries) throw;
+                            ++attempt;
+                            std::this_thread::sleep_for(
+                                std::chrono::milliseconds(kRetrySleepMs));
+                        }
+                    }
                     break;
-                case REVOKE:
-                    result = client.put(cert_id).set("state", "REVOKED").exec()->wait(conf.getRequestTimeout());
-                    break;
+                }
                 case SCHEDULE: {
                     auto colon = issuer_serial_string.rfind(':');
                     if (colon == std::string::npos) {
