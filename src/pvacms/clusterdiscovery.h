@@ -8,6 +8,7 @@
 #define PVXS_CLUSTERDISCOVERY_H_
 
 #include <atomic>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <set>
@@ -103,8 +104,8 @@ public:
      * @brief Clears all peer state and re-runs the join protocol on a background thread.
      *
      * Triggered when the node detects it has been evicted (self absent from a
-     * peer's membership list) or when all peers disconnect.  Guarded by an
-     * atomic flag to prevent concurrent rejoin attempts.
+     * peer's membership list) or when startup/watchdog logic needs a full
+     * membership reset before rejoining.
      */
     void rejoinCluster();
 
@@ -149,23 +150,27 @@ private:
     epicsMutex dead_subscriptions_lock_;
     void drainDeadSubscriptions();
 
-    std::atomic<bool> rejoin_in_progress_{false};
+    std::atomic<bool> pending_full_rejoin_{false};
+    std::atomic<bool> pending_discovery_refresh_{false};
     std::set<std::string> acknowledged_by_;
     void doRejoin();
+    void doDiscoveryRefresh();
+    void startBeaconDiscovery();
+    void handleBeaconEvent(const client::Discovered &evt);
+    void scheduleDiscoveryRefresh(const std::string &reason);
 
-    // Joined in ~ClusterDiscovery so a slow joinCluster() RPC inside a
-    // rejoin cannot leak past destruction and dereference a destroyed
-    // `this`.  unique_ptr because epicsThread is non-movable but we need
-    // to swap it into a side-vector when a new rejoin supersedes the old.
-    struct RejoinRunnable : public epicsThreadRunable {
+    // Single background worker for all join and rejoin work.  This keeps
+    // discovery callbacks non-blocking while ensuring there is never more
+    // than one concurrent joinCluster() execution.
+    void joinWorkerLoop();
+    struct JoinWorkerRunnable : public epicsThreadRunable {
         ClusterDiscovery *owner;
-        explicit RejoinRunnable(ClusterDiscovery *o) : owner(o) {}
-        void run() override { owner->doRejoin(); }
+        explicit JoinWorkerRunnable(ClusterDiscovery *o) : owner(o) {}
+        void run() override { owner->joinWorkerLoop(); }
     };
-    RejoinRunnable rejoin_runnable_{this};
-    std::unique_ptr<epicsThread> rejoin_thread_;
-    std::vector<std::unique_ptr<epicsThread>> old_rejoin_threads_;
-    epicsMutex rejoin_thread_mutex_;
+    JoinWorkerRunnable join_worker_runnable_{this};
+    std::unique_ptr<epicsThread> join_worker_thread_;
+    epicsEvent join_worker_wakeup_;
 
     // Periodic background watchdog: re-attempts join while this PVACMS
     // remains a sole-node cluster, in case startup raced peer-readiness.
@@ -193,6 +198,14 @@ private:
     void seekForwarder(const std::string &unreachable_node_id);
     void cancelForwarding(const std::string &node_id);
     void rescanForwarders();
+
+    JoinResult tryJoinClusterAt(const std::string &server);
+
+    std::shared_ptr<client::Operation> beacon_discovery_;
+    epicsMutex beacon_refresh_lock_;
+    std::chrono::steady_clock::time_point last_beacon_refresh_{};
+    std::set<std::string> pending_beacon_servers_;
+    static constexpr int64_t kBeaconRefreshCooldownSecs = 5;
 
     std::atomic<int64_t> global_high_water_mark_{0};
     std::map<std::string, int64_t> peer_last_sequence_;

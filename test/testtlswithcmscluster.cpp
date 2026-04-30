@@ -35,6 +35,8 @@ namespace {
 using cms::test::ClusterTopology;
 using cms::test::PVACMSCluster;
 
+double awaitMembershipReachesAcrossAll(PVACMSCluster &cluster, size_t expected, double budget_secs);
+
 // =====================================================================
 // Membership convergence
 // =====================================================================

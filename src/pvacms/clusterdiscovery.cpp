@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cinttypes>
+#include <chrono>
 #include <cstring>
 #include <set>
 #include <utility>
@@ -82,6 +83,8 @@ void insertSyncAuditRecord(sqlite3 *db, const std::string &action,
 
 typedef epicsGuard<epicsMutex> Guard;
 
+constexpr int64_t ClusterDiscovery::kBeaconRefreshCooldownSecs;
+
 struct ConnTimerCtx {
     ClusterDiscovery *discovery;
     std::string node_id;
@@ -141,37 +144,25 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
     controller_.on_membership_changed = [this](const std::vector<ClusterMember> &members) {
         reconcileMembers(std::string(), members);
     };
-    rejoin_watchdog_thread_.reset(new epicsThread(
-        rejoin_watchdog_runnable_,
-        "pvacms-rejoin-wd",
-        epicsThreadGetStackSize(epicsThreadStackSmall),
-        epicsThreadPriorityLow));
+    join_worker_thread_.reset(new epicsThread( join_worker_runnable_, "pvacms-cluster-join", epicsThreadGetStackSize(epicsThreadStackSmall), epicsThreadPriorityLow));
+    join_worker_thread_->start();
+    rejoin_watchdog_thread_.reset(new epicsThread( rejoin_watchdog_runnable_, "pvacms-rejoin-wd", epicsThreadGetStackSize(epicsThreadStackSmall), epicsThreadPriorityLow));
     rejoin_watchdog_thread_->start();
+    startBeaconDiscovery();
 }
 
 ClusterDiscovery::~ClusterDiscovery() {
     shutting_down_.store(true);
+    join_worker_wakeup_.signal();
     rejoin_watchdog_wakeup_.signal();
+    beacon_discovery_.reset();
+    if (join_worker_thread_) {
+        join_worker_thread_->exitWait();
+        join_worker_thread_.reset();
+    }
     if (rejoin_watchdog_thread_) {
         rejoin_watchdog_thread_->exitWait();
         rejoin_watchdog_thread_.reset();
-    }
-
-    // A rejoin thread may be in joinCluster()->client_ctx_.rpc().wait(timeout)
-    // and only sees shutting_down_ when that wait returns; we cannot bail it
-    // out earlier.
-    {
-        std::vector<std::unique_ptr<epicsThread>> threads_to_join;
-        {
-            Guard G(rejoin_thread_mutex_);
-            threads_to_join.swap(old_rejoin_threads_);
-            if (rejoin_thread_) {
-                threads_to_join.push_back(std::move(rejoin_thread_));
-            }
-        }
-        for (auto &t : threads_to_join) {
-            if (t) t->exitWait();
-        }
     }
 
     // Detach the maps under the lock, then destroy the shared_ptr<Subscription>
@@ -684,37 +675,13 @@ void ClusterDiscovery::rejoinWatchdogLoop() {
 
 void ClusterDiscovery::rejoinCluster() {
     if (shutting_down_.load()) return;
-    if (rejoin_in_progress_.exchange(true)) {
-        return;
-    }
-
     log_info_printf(pvacmscluster, "Membership changed — re-establishing cluster for node %s\n", node_id_.c_str());
-
-    // Hand the previous (now-finished, since rejoin_in_progress_ was false)
-    // thread off to a side-vector so we never block the caller (which may
-    // be running on the client tcp_loop) on exitWait().  The destructor
-    // joins both the side-vector entries and the live thread.
-    Guard G(rejoin_thread_mutex_);
-    if (shutting_down_.load()) {
-        rejoin_in_progress_.store(false);
-        return;
-    }
-    if (rejoin_thread_) {
-        old_rejoin_threads_.push_back(std::move(rejoin_thread_));
-    }
-    rejoin_thread_.reset(new epicsThread(
-        rejoin_runnable_,
-        "pvacms-rejoin",
-        epicsThreadGetStackSize(epicsThreadStackSmall),
-        epicsThreadPriorityLow));
-    rejoin_thread_->start();
+    pending_full_rejoin_.store(true);
+    join_worker_wakeup_.signal();
 }
 
 void ClusterDiscovery::doRejoin() {
-    if (shutting_down_.load()) {
-        rejoin_in_progress_.store(false);
-        return;
-    }
+    if (shutting_down_.load()) return;
 
     // Detach subscriptions under the lock, destroy them OUTSIDE.  Same
     // deadlock-avoidance pattern as ~ClusterDiscovery: ~Subscription cancel()
@@ -725,10 +692,7 @@ void ClusterDiscovery::doRejoin() {
     std::map<std::string, std::shared_ptr<client::Subscription>> subs_to_destroy;
     {
         Guard G(state_lock_);
-        if (shutting_down_.load()) {
-            rejoin_in_progress_.store(false);
-            return;
-        }
+        if (shutting_down_.load()) return;
         acknowledged_by_.clear();
         peer_last_sequence_.clear();
         subs_to_destroy.swap(subscriptions_);
@@ -742,7 +706,6 @@ void ClusterDiscovery::doRejoin() {
     subs_to_destroy.clear();
 
     if (shutting_down_.load()) {
-        rejoin_in_progress_.store(false);
         return;
     }
 
@@ -750,7 +713,6 @@ void ClusterDiscovery::doRejoin() {
     sync_publisher_.publishSnapshot();
 
     if (shutting_down_.load()) {
-        rejoin_in_progress_.store(false);
         return;
     }
 
@@ -765,8 +727,92 @@ void ClusterDiscovery::doRejoin() {
         log_info_printf(pvacmscluster,
             "No peers found — continuing as sole node%s\n", "");
     }
+}
 
-    rejoin_in_progress_.store(false);
+void ClusterDiscovery::doDiscoveryRefresh() {
+    if (shutting_down_.load()) return;
+
+    const auto members_before = controller_.getMembers().size();
+    std::vector<std::string> targets;
+    {
+        Guard G(beacon_refresh_lock_);
+        targets.assign(pending_beacon_servers_.begin(), pending_beacon_servers_.end());
+        pending_beacon_servers_.clear();
+    }
+
+    JoinResult result = JoinResult::NotFound;
+    for (const auto &server : targets) {
+        result = tryJoinClusterAt(server);
+        if (result != JoinResult::NotFound) break;
+    }
+    if (result == JoinResult::NotFound) result = joinCluster();
+    if (result == JoinResult::Joined) {
+        if (controller_.getMembers().size() > members_before) {
+            log_info_printf(pvacmscluster,
+                            "Beacon-triggered discovery added cluster members%s\n",
+                            "");
+        }
+        sync_publisher_.publishSnapshot();
+    }
+}
+
+void ClusterDiscovery::joinWorkerLoop() {
+    while (!shutting_down_.load()) {
+        join_worker_wakeup_.wait();
+        if (shutting_down_.load()) return;
+
+        while (!shutting_down_.load()) {
+            if (pending_full_rejoin_.exchange(false)) {
+                pending_discovery_refresh_.store(false);
+                doRejoin();
+                continue;
+            }
+            if (pending_discovery_refresh_.exchange(false)) {
+                doDiscoveryRefresh();
+                continue;
+            }
+            break;
+        }
+    }
+}
+
+void ClusterDiscovery::startBeaconDiscovery() {
+    beacon_discovery_ = client_ctx_.discover([this](const client::Discovered &evt) {
+            handleBeaconEvent(evt);
+        })
+        .pingAll(true)
+        .exec();
+}
+
+void ClusterDiscovery::scheduleDiscoveryRefresh(const std::string &reason) {
+    if (shutting_down_.load()) return;
+    pending_discovery_refresh_.store(true);
+    log_info_printf(pvacmscluster, "%s\n", reason.c_str());
+    join_worker_wakeup_.signal();
+}
+
+void ClusterDiscovery::handleBeaconEvent(const client::Discovered &evt) {
+    if (shutting_down_.load()) return;
+    if (evt.event != client::Discovered::Online) return;
+
+    const auto now = std::chrono::steady_clock::now();
+    bool should_refresh = false;
+    {
+        Guard G(beacon_refresh_lock_);
+        if (last_beacon_refresh_.time_since_epoch().count() == 0 ||
+            now - last_beacon_refresh_ >= std::chrono::seconds(kBeaconRefreshCooldownSecs)) {
+            last_beacon_refresh_ = now;
+            should_refresh = true;
+        }
+        if (!evt.server.empty()) {
+            pending_beacon_servers_.insert(evt.server);
+        }
+    }
+    if (!should_refresh) return;
+
+    scheduleDiscoveryRefresh(SB() << "Beacon discovered server " << evt.server
+                                  << " (proto=" << evt.proto
+                                  << ") - refreshing cluster discovery");
 }
 
 /**
@@ -774,6 +820,10 @@ void ClusterDiscovery::doRejoin() {
  * @return true if the join handshake succeeded and the cluster was joined; false otherwise.
  */
 ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
+    return tryJoinClusterAt(std::string());
+}
+
+ClusterDiscovery::JoinResult ClusterDiscovery::tryJoinClusterAt(const std::string &server) {
     if (shutting_down_.load()) return JoinResult::NotFound;
     drainDeadSubscriptions();
     static constexpr int kMaxBidiRetries = 3;
@@ -800,9 +850,11 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
     try {
         // Short-circuit RPC on shutdown so destructor join can complete fast.
         double rpc_timeout = shutting_down_.load() ? 0.5 : double(discovery_timeout_secs_);
-        auto resp = client_ctx_.rpc(ctrl_pv_name, req)
-            .exec()
-            ->wait(rpc_timeout);
+        auto rpc = client_ctx_.rpc(ctrl_pv_name, req);
+        if (!server.empty()) {
+            rpc.server(server);
+        }
+        auto resp = rpc.exec()->wait(rpc_timeout);
 
         if (!clusterVerify(cert_auth_pub_key_, resp)) {
             log_warn_printf(pvacmscluster, "Join response signature verification failed%s\n", "");
