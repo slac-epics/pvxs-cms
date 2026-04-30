@@ -15,6 +15,7 @@
 #else
 #  include <arpa/inet.h>
 #endif
+#include <cinttypes>
 #include <limits>
 #include <memory>
 #include <string>
@@ -293,7 +294,7 @@ void CertFactory::setSerialNumber(const ossl_ptr<X509> &certificate) const {
     if (X509_set_serialNumber(certificate.get(), serial_number.get()) != 1) {
         throw std::runtime_error("Failed to set certificate serial number.");
     }
-    log_debug_printf(certs, "Serial Number: %llu\n", static_cast<unsigned long long>(serial_));
+    log_debug_printf(certs, "Serial Number: %" PRIu64 "\n", serial_);
 }
 
 /**

@@ -6,6 +6,7 @@
 
 #include "clustersync.h"
 
+#include <cinttypes>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -129,14 +130,14 @@ void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
         setup->onClose([this, sub_id](const std::string &) {
             Guard G(lock_);
             subscribers_.erase(sub_id);
-            log_debug_printf(pvacmscluster, "Sync subscriber %llu disconnected\n",
-                             static_cast<unsigned long long>(sub_id));
+            log_debug_printf(pvacmscluster, "Sync subscriber %" PRIu64 " disconnected\n",
+                             sub_id);
         });
 
         subscribers_.emplace(sub_id, std::move(state));
 
-        log_debug_printf(pvacmscluster, "New sync subscriber %llu from %s\n",
-                         static_cast<unsigned long long>(sub_id), sub_ptr->peerName().c_str());
+        log_debug_printf(pvacmscluster, "New sync subscriber %" PRIu64 " from %s\n",
+                         sub_id, sub_ptr->peerName().c_str());
     });
 }
 
@@ -368,8 +369,8 @@ void ClusterSyncPublisher::publishCertChange(uint64_t serial) {
 
     sqlite3_stmt *stmt;
     if (sqlite3_prepare_v2(certs_db_, SQL_SYNC_SELECT_CERT_BY_SERIAL, -1, &stmt, nullptr) != SQLITE_OK) {
-        log_err_printf(pvacmscluster, "Failed to query cert %llu: %s\n",
-                       static_cast<unsigned long long>(serial), sqlite3_errmsg(certs_db_));
+        log_err_printf(pvacmscluster, "Failed to query cert %" PRIu64 ": %s\n",
+                       serial, sqlite3_errmsg(certs_db_));
         return;
     }
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
@@ -377,8 +378,8 @@ void ClusterSyncPublisher::publishCertChange(uint64_t serial) {
 
     if (sqlite3_step(stmt) != SQLITE_ROW) {
         sqlite3_finalize(stmt);
-        log_warn_printf(pvacmscluster, "Cert %llu not found for incremental publish\n",
-                        static_cast<unsigned long long>(serial));
+        log_warn_printf(pvacmscluster, "Cert %" PRIu64 " not found for incremental publish\n",
+                        serial);
         return;
     }
 
@@ -406,9 +407,9 @@ void ClusterSyncPublisher::publishCertChange(uint64_t serial) {
 
     appendToLog(std::move(update));
 
-    log_debug_printf(pvacmscluster, "Published incremental cert change (serial=%llu, seq=%lld) to %zu subscribers\n",
-                     static_cast<unsigned long long>(serial),
-                     static_cast<long long>(next_sequence_ - 1),
+    log_debug_printf(pvacmscluster, "Published incremental cert change (serial=%" PRIu64 ", seq=%" PRId64 ") to %zu subscribers\n",
+                     serial,
+                     next_sequence_ - 1,
                      sync_source_->subscribers_.size());
 }
 
@@ -446,8 +447,8 @@ void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, 
     }
     dispatchToSubscribers();
 
-    log_debug_printf(pvacmscluster, "Dispatched sync update (seq=%lld) to %zu subscribers (members_changed=%d, certs_changed=%d)\n",
-                     static_cast<long long>(seq), sync_source_->subscribers_.size(), members_changed, certs_changed);
+    log_debug_printf(pvacmscluster, "Dispatched sync update (seq=%" PRId64 ") to %zu subscribers (members_changed=%d, certs_changed=%d)\n",
+                     seq, sync_source_->subscribers_.size(), members_changed, certs_changed);
 }
 
 std::string ClusterSyncPublisher::getSyncPvName() const {

@@ -7,13 +7,13 @@
 #include "clusterdiscovery.h"
 
 #include <algorithm>
+#include <cinttypes>
 #include <cstring>
 #include <set>
 #include <utility>
 
 #include <epicsMutex.h>
 #include <epicsGuard.h>
-
 #include <epicsThread.h>
 #include <epicsTime.h>
 #include <iostream>
@@ -141,28 +141,36 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
     controller_.on_membership_changed = [this](const std::vector<ClusterMember> &members) {
         reconcileMembers(std::string(), members);
     };
-    rejoin_watchdog_thread_ = std::thread([this]() { rejoinWatchdogLoop(); });
+    rejoin_watchdog_thread_.reset(new epicsThread(
+        rejoin_watchdog_runnable_,
+        "pvacms-rejoin-wd",
+        epicsThreadGetStackSize(epicsThreadStackSmall),
+        epicsThreadPriorityLow));
+    rejoin_watchdog_thread_->start();
 }
 
 ClusterDiscovery::~ClusterDiscovery() {
     shutting_down_.store(true);
     rejoin_watchdog_wakeup_.signal();
-    if (rejoin_watchdog_thread_.joinable()) rejoin_watchdog_thread_.join();
+    if (rejoin_watchdog_thread_) {
+        rejoin_watchdog_thread_->exitWait();
+        rejoin_watchdog_thread_.reset();
+    }
 
-    // Join rejoin threads first.  A rejoin thread may be in
-    // joinCluster()->client_ctx_.rpc().wait(timeout) and only sees
-    // shutting_down_ when that wait returns; we cannot bail it out earlier.
+    // A rejoin thread may be in joinCluster()->client_ctx_.rpc().wait(timeout)
+    // and only sees shutting_down_ when that wait returns; we cannot bail it
+    // out earlier.
     {
-        std::vector<std::thread> threads_to_join;
+        std::vector<std::unique_ptr<epicsThread>> threads_to_join;
         {
-            std::lock_guard<std::mutex> lk(rejoin_thread_mutex_);
+            Guard G(rejoin_thread_mutex_);
             threads_to_join.swap(old_rejoin_threads_);
-            if (rejoin_thread_.joinable()) {
+            if (rejoin_thread_) {
                 threads_to_join.push_back(std::move(rejoin_thread_));
             }
         }
         for (auto &t : threads_to_join) {
-            if (t.joinable()) t.join();
+            if (t) t->exitWait();
         }
     }
 
@@ -208,18 +216,18 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             const auto local_status = static_cast<cms::cert::certstatus_t>(sqlite3_column_int(check_stmt, 0));
             sqlite3_finalize(check_stmt);
 
-            log_debug_printf(pvacmscluster, "Sync merge: serial=%llu local_status=%d remote_status=%d\n",
-                             static_cast<unsigned long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
+            log_debug_printf(pvacmscluster, "Sync merge: serial=%" PRIu64 " local_status=%d remote_status=%d\n",
+                             serial, static_cast<int>(local_status), static_cast<int>(remote_status));
 
             if (!isValidStatusTransition(local_status, remote_status)) {
-                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%llu — invalid transition %d -> %d\n",
-                                 static_cast<unsigned long long>(serial), static_cast<int>(local_status), static_cast<int>(remote_status));
+                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%" PRIu64 " — invalid transition %d -> %d\n",
+                                 serial, static_cast<int>(local_status), static_cast<int>(remote_status));
                 continue;
             }
 
             if (local_status == remote_status) {
-                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%llu — same status %d\n",
-                                 static_cast<unsigned long long>(serial), static_cast<int>(local_status));
+                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%" PRIu64 " — same status %d\n",
+                                 serial, static_cast<int>(local_status));
                 continue;
             }
 
@@ -229,8 +237,8 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
 
             sqlite3_stmt *upd_stmt;
             if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, &upd_stmt, nullptr) != SQLITE_OK) {
-                log_debug_printf(pvacmscluster, "Sync merge: SQL_SYNC_UPDATE_CERT prepare failed for serial=%llu: %s\n",
-                                 static_cast<unsigned long long>(serial), sqlite3_errmsg(certs_db));
+                log_debug_printf(pvacmscluster, "Sync merge: SQL_SYNC_UPDATE_CERT prepare failed for serial=%" PRIu64 ": %s\n",
+                                 serial, sqlite3_errmsg(certs_db));
                 continue;
             }
 
@@ -265,8 +273,8 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             }
             sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), db_serial);
             auto rc = sqlite3_step(upd_stmt);
-            log_debug_printf(pvacmscluster, "Sync merge: UPDATE serial=%llu rc=%d changes=%d\n",
-                             static_cast<unsigned long long>(serial), rc, sqlite3_changes(certs_db));
+            log_debug_printf(pvacmscluster, "Sync merge: UPDATE serial=%" PRIu64 " rc=%d changes=%d\n",
+                             serial, rc, sqlite3_changes(certs_db));
             insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
                                   static_cast<uint64_t>(serial), SB() << "status=" << remote_status);
             sqlite3_finalize(upd_stmt);
@@ -390,8 +398,8 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     const auto incoming_ts = getTimeStamp(val);
     const auto hwm = global_high_water_mark_.load();
     if (hwm > 0 && incoming_ts < hwm - kClockSkewTolerance) {
-        log_warn_printf(pvacmscluster, "Stale/replayed sync snapshot from %s (ts=%lld, hwm=%lld)\n",
-                        peer_node_id.c_str(), static_cast<long long>(incoming_ts), static_cast<long long>(hwm));
+        log_warn_printf(pvacmscluster, "Stale/replayed sync snapshot from %s (ts=%" PRId64 ", hwm=%" PRId64 ")\n",
+                        peer_node_id.c_str(), incoming_ts, hwm);
         return;
     }
 
@@ -406,10 +414,10 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     if (update_type == SYNC_INCREMENTAL && peer_seq_it != peer_last_sequence_.end()) {
         if (sequence != peer_seq_it->second + 1) {
             log_warn_printf(pvacmscluster,
-                "Sequence gap from %s: expected %lld, got %lld — requesting resync\n",
+                "Sequence gap from %s: expected %" PRId64 ", got %" PRId64 " — requesting resync\n",
                 peer_node_id.c_str(),
-                static_cast<long long>(peer_seq_it->second + 1),
-                static_cast<long long>(sequence));
+                peer_seq_it->second + 1,
+                sequence);
 
             auto peer_sync_pv = pv_prefix_ + ":SYNC:" + issuer_id_ + ":" + peer_node_id;
             try {
@@ -437,9 +445,9 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     sync_publisher_.sync_ingestion_in_progress.store(false);
 
     auto certs_arr = val["certs"].as<shared_array<const Value>>();
-    log_debug_printf(pvacmscluster, "Ingested sync %s from node %s (seq=%lld, %zu certs, changes=%d)\n",
+    log_debug_printf(pvacmscluster, "Ingested sync %s from node %s (seq=%" PRId64 ", %zu certs, changes=%d)\n",
                      update_type == SYNC_INCREMENTAL ? "incremental" : "snapshot",
-                     peer_node_id.c_str(), static_cast<long long>(sequence), certs_arr.size(),
+                     peer_node_id.c_str(), sequence, certs_arr.size(),
                      merge_result.had_changes);
 
     if (merge_result.had_changes && sync_publisher_.isForwarding(peer_node_id)) {
@@ -684,17 +692,22 @@ void ClusterDiscovery::rejoinCluster() {
 
     // Hand the previous (now-finished, since rejoin_in_progress_ was false)
     // thread off to a side-vector so we never block the caller (which may
-    // be running on the client tcp_loop) on join().  The destructor joins
-    // both the side-vector entries and the live thread.
-    std::lock_guard<std::mutex> lk(rejoin_thread_mutex_);
+    // be running on the client tcp_loop) on exitWait().  The destructor
+    // joins both the side-vector entries and the live thread.
+    Guard G(rejoin_thread_mutex_);
     if (shutting_down_.load()) {
         rejoin_in_progress_.store(false);
         return;
     }
-    if (rejoin_thread_.joinable()) {
+    if (rejoin_thread_) {
         old_rejoin_threads_.push_back(std::move(rejoin_thread_));
     }
-    rejoin_thread_ = std::thread([this]() { doRejoin(); });
+    rejoin_thread_.reset(new epicsThread(
+        rejoin_runnable_,
+        "pvacms-rejoin",
+        epicsThreadGetStackSize(epicsThreadStackSmall),
+        epicsThreadPriorityLow));
+    rejoin_thread_->start();
 }
 
 void ClusterDiscovery::doRejoin() {
@@ -814,8 +827,8 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
         epicsTimeStamp now_ts = epicsTime::getCurrent();
         auto now = static_cast<int64_t>(now_ts.secPastEpoch);
         if (std::abs(now - resp_ts) > kJoinTimestampTolerance) {
-            log_warn_printf(pvacmscluster, "Join response stale timestamp (ts=%lld, now=%lld)\n",
-                            static_cast<long long>(resp_ts), static_cast<long long>(now));
+            log_warn_printf(pvacmscluster, "Join response stale timestamp (ts=%" PRId64 ", now=%" PRId64 ")\n",
+                            resp_ts, now);
             return JoinResult::NotFound;
         }
 

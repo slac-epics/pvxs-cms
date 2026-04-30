@@ -10,10 +10,8 @@
 #include <atomic>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <set>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include <epicsEvent.h>
@@ -154,18 +152,32 @@ private:
     std::atomic<bool> rejoin_in_progress_{false};
     std::set<std::string> acknowledged_by_;
     void doRejoin();
-    // Tracked rejoin thread.  Joined in ~ClusterDiscovery so a slow
-    // joinCluster() RPC inside a rejoin cannot leak past destruction
-    // and dereference a destroyed `this`.
-    std::thread rejoin_thread_;
-    std::vector<std::thread> old_rejoin_threads_;
-    std::mutex rejoin_thread_mutex_;
+
+    // Joined in ~ClusterDiscovery so a slow joinCluster() RPC inside a
+    // rejoin cannot leak past destruction and dereference a destroyed
+    // `this`.  unique_ptr because epicsThread is non-movable but we need
+    // to swap it into a side-vector when a new rejoin supersedes the old.
+    struct RejoinRunnable : public epicsThreadRunable {
+        ClusterDiscovery *owner;
+        explicit RejoinRunnable(ClusterDiscovery *o) : owner(o) {}
+        void run() override { owner->doRejoin(); }
+    };
+    RejoinRunnable rejoin_runnable_{this};
+    std::unique_ptr<epicsThread> rejoin_thread_;
+    std::vector<std::unique_ptr<epicsThread>> old_rejoin_threads_;
+    epicsMutex rejoin_thread_mutex_;
 
     // Periodic background watchdog: re-attempts join while this PVACMS
     // remains a sole-node cluster, in case startup raced peer-readiness.
-    std::thread rejoin_watchdog_thread_;
-    epicsEvent rejoin_watchdog_wakeup_;
     void rejoinWatchdogLoop();
+    struct RejoinWatchdogRunnable : public epicsThreadRunable {
+        ClusterDiscovery *owner;
+        explicit RejoinWatchdogRunnable(ClusterDiscovery *o) : owner(o) {}
+        void run() override { owner->rejoinWatchdogLoop(); }
+    };
+    RejoinWatchdogRunnable rejoin_watchdog_runnable_{this};
+    std::unique_ptr<epicsThread> rejoin_watchdog_thread_;
+    epicsEvent rejoin_watchdog_wakeup_;
 
     std::map<std::string, std::shared_ptr<PeerConnectivity>> peer_connectivity_;
     void onConnectivityTimeout(const std::string &node_id);

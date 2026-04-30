@@ -38,7 +38,7 @@ DEFINE_LOGGER(status_setup, "cms.certs.status");
 #elif defined(__INT_MAX__)
 #define PERMANENTLY_VALID_STATUS (time_t)(__INT_MAX__)
 #else
-#define PERMANENTLY_VALID_STATUS (time_t)((~(unsigned long long)0) >> 1)
+#define PERMANENTLY_VALID_STATUS (time_t)((~(uint64_t)0) >> 1)
 #endif
 
 namespace cms {

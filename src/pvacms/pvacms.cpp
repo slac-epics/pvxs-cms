@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cinttypes>
 #include <cstdio>
 #include <condition_variable>
 #include <cstdlib>
@@ -267,8 +268,8 @@ bool performBackup(sqlite3 *src_db, const std::string &dest_path)
 
     struct stat st;
     if (stat(dest_path.c_str(), &st) == 0) {
-        log_info_printf(pvacms, "Completed database backup to %s (%lld bytes)\n",
-                        dest_path.c_str(), static_cast<long long>(st.st_size));
+        log_info_printf(pvacms, "Completed database backup to %s (%" PRIdMAX " bytes)\n",
+                        dest_path.c_str(), static_cast<intmax_t>(st.st_size));
     } else {
         log_info_printf(pvacms, "Completed database backup to %s\n", dest_path.c_str());
     }
