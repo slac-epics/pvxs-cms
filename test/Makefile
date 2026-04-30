@@ -120,73 +120,27 @@ SPVA_ASLIB_AVAILABLE := $(shell grep -l ASGAUTHORITY $(EPICS_BASE)/include/asLib
 ifneq ($(SPVA_ASLIB_AVAILABLE),)
 include $(HARNESS_DIR)/Makefile
 
-TESTS += testclustertopology
-TESTPROD_HOST += testclustertopology
-testclustertopology_SRCS += testclustertopology.cpp
-testclustertopology_SRCS += clustertopology.cpp
+TESTS += testcmstestharness
+TESTPROD_HOST += testcmstestharness
+testcmstestharness_SRCS += testcmstestharness.cpp
+testcmstestharness_SRCS += $(HARNESS_SRCS)
+testcmstestharness_LIBS += pvxsIoc
+testcmstestharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
 
-TESTS += testpkifixture
-TESTPROD_HOST += testpkifixture
-testpkifixture_SRCS += testpkifixture.cpp
-testpkifixture_SRCS += $(HARNESS_SRCS)
-testpkifixture_LIBS += pvxsIoc
-testpkifixture_SYS_LIBS += $(HARNESS_SYS_LIBS)
+TESTS += testtlswithcmscluster
+TESTPROD_HOST += testtlswithcmscluster
+testtlswithcmscluster_SRCS += testtlswithcmscluster.cpp
+testtlswithcmscluster_SRCS += $(HARNESS_SRCS)
+testtlswithcmscluster_LIBS += pvxsIoc
+testtlswithcmscluster_SYS_LIBS += $(HARNESS_SYS_LIBS)
 
-TESTS += testharness
-TESTPROD_HOST += testharness
-testharness_SRCS += testharness.cpp
-testharness_SRCS += $(HARNESS_SRCS)
-testharness_LIBS += pvxsIoc
-testharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
+TESTS += testtlswithcms
+TESTPROD_HOST += testtlswithcms
+testtlswithcms_SRCS += testtlswithcms.cpp
+testtlswithcms_SRCS += $(HARNESS_SRCS)
+testtlswithcms_LIBS += pvxsIoc
+testtlswithcms_SYS_LIBS += $(HARNESS_SYS_LIBS)
 
-TESTS += testtlswithcmsharness
-TESTPROD_HOST += testtlswithcmsharness
-testtlswithcmsharness_SRCS += testtlswithcmsharness.cpp
-testtlswithcmsharness_SRCS += $(HARNESS_SRCS)
-testtlswithcmsharness_LIBS += pvxsIoc
-testtlswithcmsharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
-
-TESTS += testclusterharness
-TESTPROD_HOST += testclusterharness
-testclusterharness_SRCS += testclusterharness.cpp
-testclusterharness_SRCS += $(HARNESS_SRCS)
-testclusterharness_LIBS += pvxsIoc
-testclusterharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
-
-TESTS += testclusterbehaviour
-TESTPROD_HOST += testclusterbehaviour
-testclusterbehaviour_SRCS += testclusterbehaviour.cpp
-testclusterbehaviour_SRCS += $(HARNESS_SRCS)
-testclusterbehaviour_LIBS += pvxsIoc
-testclusterbehaviour_SYS_LIBS += $(HARNESS_SYS_LIBS)
-
-TESTS += testtlsstaplingharness
-TESTPROD_HOST += testtlsstaplingharness
-testtlsstaplingharness_SRCS += testtlsstaplingharness.cpp
-testtlsstaplingharness_SRCS += $(HARNESS_SRCS)
-testtlsstaplingharness_LIBS += pvxsIoc
-testtlsstaplingharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
-
-TESTS += testtlswithcmsmigrated
-TESTPROD_HOST += testtlswithcmsmigrated
-testtlswithcmsmigrated_SRCS += testtlswithcmsmigrated.cpp
-testtlswithcmsmigrated_SRCS += $(HARNESS_SRCS)
-testtlswithcmsmigrated_LIBS += pvxsIoc
-testtlswithcmsmigrated_SYS_LIBS += $(HARNESS_SYS_LIBS)
-
-TESTS += testdisconnectresilience
-TESTPROD_HOST += testdisconnectresilience
-testdisconnectresilience_SRCS += testdisconnectresilience.cpp
-testdisconnectresilience_SRCS += $(HARNESS_SRCS)
-testdisconnectresilience_LIBS += pvxsIoc
-testdisconnectresilience_SYS_LIBS += $(HARNESS_SYS_LIBS)
-
-TESTS += testclustergatewayresilience
-TESTPROD_HOST += testclustergatewayresilience
-testclustergatewayresilience_SRCS += testclustergatewayresilience.cpp
-testclustergatewayresilience_SRCS += $(HARNESS_SRCS)
-testclustergatewayresilience_LIBS += pvxsIoc
-testclustergatewayresilience_SYS_LIBS += $(HARNESS_SYS_LIBS)
 endif # SPVA_ASLIB_AVAILABLE
 endif # PVXS_CMS_BUILD_TEST_HARNESS
 

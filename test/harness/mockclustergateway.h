@@ -22,39 +22,24 @@ namespace client = ::pvxs::client;
 namespace server = ::pvxs::server;
 
 /**
- * Minimal pvxs forwarder for cluster sync traffic only.
- *
- * Mimics the production lab's `gateway-xgw` forwarder pod's role for
- * `EPICS_PVACMS_CLUSTER_NAME_SERVERS`: a TCP listener that, for any PV
- * matching `CERT:CLUSTER:CTRL:*` or `CERT:CLUSTER:SYNC:*`, opens an
- * upstream subscription/RPC to a configured backend address and pipes
- * results back.
+ * Minimal pvxs forwarder for cluster sync traffic only.  A TCP listener
+ * that, for any PV matching the configured substrings (default: CERT:
+ * CLUSTER:CTRL:* and CERT:CLUSTER:SYNC:*), opens an upstream subscription
+ * or RPC to a backend address and pipes results back.
  *
  * Test usage:
- *   - Build PVACMS A on loopback addr_a, PVACMS B on addr_b (both
- *     advertise CERT:CLUSTER:* via their own listeners).
- *   - Build a MockClusterGateway on addr_g listening for the cluster
- *     PVs, with upstream pointing at addr_b (and another instance the
- *     other way).
- *   - Configure each PVACMS's cluster_pva_name_servers to point at
- *     addr_g, NOT directly at the peer's addr.
- *   - Start the cluster, observe peer-via-gateway discovery.
- *   - Call gateway.stop() to simulate gateway pod restart.
- *   - Call gateway.start() to simulate recovery.
- *   - Assert that the cluster reconverges.
+ *   - Build PVACMS A on loopback addr_a, PVACMS B on addr_b.
+ *   - Build a MockClusterGateway on addr_g forwarding to addr_b (and
+ *     another forwarding the other way).
+ *   - Configure each PVACMS's cluster nameservers to point at the
+ *     gateway, not directly at the peer.
+ *   - Call gateway.stop() / gateway.start() to simulate forwarder loss
+ *     and recovery.
  *
- * What is NOT modelled (deliberately, to keep this tiny):
- *   - TLS termination + re-encryption (the real gateway-xgw bridges
- *     mTLS-on-one-side to TCP-on-the-other; our mock is plain TCP).
- *   - PUT operations, multi-search-batch optimisations, ACL filters,
- *     statistics, banning, fan-in / fan-out optimisations.
- *
- * The mock forwards exactly two operation kinds:
- *   - MONITOR (pvxs subscription) — used for SYNC PV ingestion
- *   - RPC      (pvxs request/response) — used for CTRL-PV joins
- *
- * Both are sufficient to reproduce the production cluster-sync
- * behaviour through a forwarder.
+ * Forwards exactly two pvxs operation kinds: MONITOR (for SYNC PV
+ * ingestion) and RPC (for CTRL PV joins).  Does NOT model TLS
+ * termination / re-encryption, PUT, ACL filtering, beacons, or
+ * statistics.  Plain TCP only.
  */
 class MockClusterGateway {
 public:
