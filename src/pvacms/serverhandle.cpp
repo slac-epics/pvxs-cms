@@ -479,10 +479,11 @@ void ServerHandle::Pvt::configureHandlers()
                                 cert::CertDate(db_cert.renew_by), false);
                             auto cert_id = cert::getCertId(our_issuer_id, serial);
                             auto status_pv_name = cert::getCertStatusURI(config_copy.getCertPvPrefix(),
-                                                                          cert_id);
+                                                                          our_issuer_id,
+                                                                          serial);
                             postCertificateStatus(status_pv,
-                                                         status_pv_name,
-                                                         serial,
+                                                          status_pv_name,
+                                                          serial,
                                                          cert_status,
                                                          &certs_db);
                             log_info_printf(pvacmsserver,
