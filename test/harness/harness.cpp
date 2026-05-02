@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -77,6 +78,28 @@ std::string formatLoopback(const std::string &iface, uint16_t port) {
 std::atomic<uint64_t> g_unique_subject_counter{0};
 std::string makeUniqueSubject(const std::string &prefix) {
     return prefix + "-" + std::to_string(g_unique_subject_counter.fetch_add(1));
+}
+
+void writeHarnessAcf(const std::string &path) {
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("PVACMSHarness: failed to open ACF for write: " + path);
+    }
+    out << "AUTHORITY(CMS_AUTH, \"PVXS CMS Test CA\")\n"
+        << "\n"
+        << "UAG(CMS_ADMIN) {\"PVACMS Test Admin\"}\n"
+        << "\n"
+        << "ASG(DEFAULT) {\n"
+        << "    RULE(0,READ)\n"
+        << "    RULE(1,WRITE) {\n"
+        << "        UAG(CMS_ADMIN)\n"
+        << "        METHOD(\"x509\")\n"
+        << "        AUTHORITY(CMS_AUTH)\n"
+        << "    }\n"
+        << "}\n";
+    if (!out) {
+        throw std::runtime_error("PVACMSHarness: failed to write ACF: " + path);
+    }
 }
 
 
@@ -469,6 +492,8 @@ PVACMSHarness PVACMSHarness::Builder::build() {
     impl.status_event_capture.reset(new internal::StatusEventCapture{});
 
     impl.interface_addr = pvt_->ipv6 ? "::1" : "127.0.0.1";
+
+    writeHarnessAcf(impl.pki->dir() + "/pvacms.acf");
 
     auto cfg = makeIsolatedConfigCms(*impl.pki, pvt_->ipv6, pvt_->apply_env, pvt_->monitor_interval_secs);
 
