@@ -18,6 +18,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -54,6 +55,7 @@ using cms::cert::CertCreationRequest;
 using cms::cert::CertStatusFactory;
 using cms::cert::IdFileFactory;
 using cms::cert::PENDING_RENEWAL;
+using cms::cert::SCHEDULED_OFFLINE;
 using cms::cert::VALID;
 using cms::cert::getCertCreatePv;
 using cms::cert::getCertStatusURI;
@@ -66,6 +68,12 @@ struct CertRow {
     int status{0};
     sqlite3_int64 renew_by{0};
     int renewal_due{0};
+};
+
+struct ScheduleWindowSpec {
+    std::string day_of_week;
+    std::string start_time;
+    std::string end_time;
 };
 
 CertRow loadCertRow(const std::string &db_path, uint64_t serial) {
@@ -136,6 +144,78 @@ bool waitForCertRow(const std::string &db_path,
 
 std::string errorText(const std::exception &e) {
     return e.what() ? e.what() : "";
+}
+
+int currentStatusIndex(pvxs::client::Context &client, const std::string &status_pv) {
+    return client.get(status_pv).exec()->wait(1.0)["value.index"].as<int32_t>();
+}
+
+std::string formatUtcMinute(int minute_of_day) {
+    minute_of_day %= 24 * 60;
+    if (minute_of_day < 0) minute_of_day += 24 * 60;
+    const int hour = minute_of_day / 60;
+    const int minute = minute_of_day % 60;
+    char buf[6];
+    std::snprintf(buf, sizeof(buf), "%02d:%02d", hour, minute);
+    return std::string(buf);
+}
+
+int currentUtcMinuteOfDay() {
+    const auto now = std::time(nullptr);
+    struct tm utc_now;
+    gmtime_r(&now, &utc_now);
+    return utc_now.tm_hour * 60 + utc_now.tm_min;
+}
+
+ScheduleWindowSpec activeScheduleWindow() {
+    const int now_minute = currentUtcMinuteOfDay();
+    return {"*", formatUtcMinute(now_minute - 1), formatUtcMinute(now_minute + 2)};
+}
+
+ScheduleWindowSpec inactiveScheduleWindow() {
+    const int now_minute = currentUtcMinuteOfDay();
+    const int start = now_minute < 10 * 60 ? 12 * 60 : 30;
+    return {"*", formatUtcMinute(start), formatUtcMinute(start + 30)};
+}
+
+ScheduleWindowSpec laterInactiveScheduleWindow() {
+    const int now_minute = currentUtcMinuteOfDay();
+    const int start = now_minute < 14 * 60 ? 18 * 60 : 90;
+    return {"*", formatUtcMinute(start), formatUtcMinute(start + 30)};
+}
+
+pvxs::Value makeScheduleArgument(uint64_t serial,
+                                 const std::vector<ScheduleWindowSpec> &windows,
+                                 bool read_only = false) {
+    auto arg = pvxs::TypeDef(pvxs::TypeCode::Struct, {
+        members::Struct("query", {
+            members::UInt64("serial"),
+            members::Bool("read_only"),
+            members::StructA("schedule", {
+                members::String("day_of_week"),
+                members::String("start_time"),
+                members::String("end_time"),
+            }),
+        }),
+    }).create();
+    arg["query.serial"] = serial;
+    arg["query.read_only"] = read_only;
+    if (!windows.empty()) {
+        pvxs::shared_array<pvxs::Value> sched_arr(windows.size());
+        for (size_t i = 0; i < windows.size(); ++i) {
+            sched_arr[i] = arg["query.schedule"].allocMember();
+            sched_arr[i]["day_of_week"] = windows[i].day_of_week;
+            sched_arr[i]["start_time"] = windows[i].start_time;
+            sched_arr[i]["end_time"] = windows[i].end_time;
+        }
+        arg["query.schedule"] = sched_arr.freeze();
+    }
+    return arg;
+}
+
+size_t scheduleReplyWindowCount(const pvxs::Value &reply) {
+    auto sched = reply["schedule"];
+    return sched ? sched.as<pvxs::shared_array<const pvxs::Value>>().size() : 0u;
 }
 
 bool waitForStatusIndex(pvxs::client::Context &client,
@@ -855,7 +935,7 @@ void testNoCacheBleedAcrossRoles() {
 }
 
 void testRenewFromPendingRenewal() {
-    testDiag("monitor-driven PENDING_RENEWAL renewal behavior");
+    testDiag("monitor-driven PENDING_RENEWAL renewal via standard authenticator-style CCR");
 
     auto builder = PVACMSHarness::Builder{};
     builder.monitorIntervalSecs(1);
@@ -954,7 +1034,10 @@ void testRenewFromPendingRenewal() {
                  pending_cert_renewal_error.c_str());
     }
 
-    auto renewal_reply = admin_client.rpc(create_pv, renewal_arg).exec()->wait(10.0);
+    auto renewal_client_config = original_client_config;
+    renewal_client_config.tls_disabled = true;
+    auto renewal_client = renewal_client_config.build();
+    auto renewal_reply = renewal_client.rpc(create_pv, renewal_arg).exec()->wait(10.0);
     testOk(renewal_reply["serial"].as<uint64_t>() == serial,
            "renewal reuses the original certificate serial instead of creating a new row");
 
@@ -962,13 +1045,105 @@ void testRenewFromPendingRenewal() {
            "status process variable returns to VALID after renewal from PENDING_RENEWAL");
 }
 
+void testAdminScheduleStateTransitions() {
+    testDiag("administrator schedule updates recompute certificate state immediately");
+
+    auto harness = PVACMSHarness::Builder{}.build();
+    TestClientOpts client_opts;
+    client_opts.subject = "schedule-state-transitions";
+    auto client_config = harness.testClientConfig(client_opts);
+
+    auto reader = IdFileFactory::createReader(client_config.tls_keychain_file);
+    auto cert = reader->getCertDataFromFile();
+    const auto serial = CertStatusFactory::getSerialNumber(cert.cert);
+    const auto issuer_id = harness.pvacmsIssuerId();
+    const auto status_pv = getCertStatusURI("CERT", issuer_id, serial);
+    const auto schedule_pv = std::string("CERT:SCHEDULE:") + issuer_id;
+    const auto db_path = harness.pkiFixture().dir() + "/certs.db";
+
+    auto admin_client = harness.cmsAdminClientConfig().build();
+    testOk(currentStatusIndex(admin_client, status_pv) == VALID,
+           "registered certificate starts VALID before schedule changes");
+
+    const auto active_window = activeScheduleWindow();
+    const auto inactive_window = inactiveScheduleWindow();
+    const auto later_inactive_window = laterInactiveScheduleWindow();
+
+    auto add_active_reply = admin_client.rpc(schedule_pv,
+                                             makeScheduleArgument(serial, {active_window}))
+        .exec()->wait(5.0);
+    testOk(scheduleReplyWindowCount(add_active_reply) == 1u,
+           "adding an active schedule returns one persisted window");
+    testOk(waitForStatusIndex(admin_client, status_pv, VALID, 2.0),
+           "adding an active schedule keeps the certificate VALID");
+
+    auto replace_inactive_reply = admin_client.rpc(schedule_pv,
+                                                   makeScheduleArgument(serial, {inactive_window}))
+        .exec()->wait(5.0);
+    testOk(scheduleReplyWindowCount(replace_inactive_reply) == 1u,
+           "replacing with an inactive schedule returns one persisted window");
+    testOk(waitForStatusIndex(admin_client, status_pv, SCHEDULED_OFFLINE, 2.0),
+           "replacing an active schedule with an inactive one emits SCHEDULED_OFFLINE");
+    testOk(waitForCertRow(db_path,
+                          serial,
+                          [](const CertRow &row) { return row.status == SCHEDULED_OFFLINE; },
+                          2.0),
+           "database status changes to SCHEDULED_OFFLINE after inactive schedule is applied");
+
+    auto replace_inactive_again_reply = admin_client.rpc(schedule_pv,
+                                                         makeScheduleArgument(serial, {later_inactive_window}))
+        .exec()->wait(5.0);
+    testOk(scheduleReplyWindowCount(replace_inactive_again_reply) == 1u,
+           "replacing with another inactive schedule keeps one persisted window");
+    testOk(waitForStatusIndex(admin_client, status_pv, SCHEDULED_OFFLINE, 2.0),
+           "replacing one inactive schedule with another keeps SCHEDULED_OFFLINE");
+
+    auto replace_active_reply = admin_client.rpc(schedule_pv,
+                                                 makeScheduleArgument(serial, {active_window}))
+        .exec()->wait(5.0);
+    testOk(scheduleReplyWindowCount(replace_active_reply) == 1u,
+           "replacing with an active schedule returns one persisted window");
+    testOk(waitForStatusIndex(admin_client, status_pv, VALID, 2.0),
+           "replacing an inactive schedule with an active one emits VALID");
+
+    auto clear_from_valid_reply = admin_client.rpc(schedule_pv,
+                                                   makeScheduleArgument(serial, {}))
+        .exec()->wait(5.0);
+    testOk(scheduleReplyWindowCount(clear_from_valid_reply) == 0u,
+           "clearing schedule from VALID returns no persisted windows");
+    testOk(waitForStatusIndex(admin_client, status_pv, VALID, 2.0),
+           "removing schedule while VALID keeps the certificate VALID");
+
+    auto add_inactive_reply = admin_client.rpc(schedule_pv,
+                                               makeScheduleArgument(serial, {inactive_window}))
+        .exec()->wait(5.0);
+    testOk(scheduleReplyWindowCount(add_inactive_reply) == 1u,
+           "adding an inactive schedule returns one persisted window");
+    testOk(waitForStatusIndex(admin_client, status_pv, SCHEDULED_OFFLINE, 2.0),
+           "adding an inactive schedule emits SCHEDULED_OFFLINE immediately");
+
+    auto clear_from_offline_reply = admin_client.rpc(schedule_pv,
+                                                     makeScheduleArgument(serial, {}))
+        .exec()->wait(5.0);
+    testOk(scheduleReplyWindowCount(clear_from_offline_reply) == 0u,
+           "clearing schedule from SCHEDULED_OFFLINE returns no persisted windows");
+    testOk(waitForStatusIndex(admin_client, status_pv, VALID, 2.0),
+           "removing schedule from SCHEDULED_OFFLINE emits VALID immediately");
+
+    auto read_only_reply = admin_client.rpc(schedule_pv,
+                                            makeScheduleArgument(serial, {}, true))
+        .exec()->wait(5.0);
+    testOk(scheduleReplyWindowCount(read_only_reply) == 0u,
+           "read-only schedule query reports no windows after clearing the schedule");
+}
+
 }  // namespace
 
 MAIN(testtlswithcms) {
 #ifdef PVXS_HAS_DISK_OCSP_CACHE
-    testPlan(54);
+    testPlan(71);
 #else
-    testPlan(40);
+    testPlan(57);
 #endif
     pvxs::logger_config_env();
 
@@ -992,6 +1167,7 @@ MAIN(testtlswithcms) {
     testCacheHitOnRepeatedSubscribe();
     testNoCacheBleedAcrossRoles();
     testRenewFromPendingRenewal();
+    testAdminScheduleStateTransitions();
 
     return testDone();
 }
