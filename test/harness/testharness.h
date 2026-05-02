@@ -285,6 +285,9 @@ public:
     /// deterministic and prevent leakage from the developer's shell.
     Builder &applyEnv(bool yes) &;
 
+    /// Use one fixed certificate monitor interval for deterministic timing.
+    Builder &monitorIntervalSecs(uint32_t secs) &;
+
     /// Bind on non-loopback interfaces.  Strongly discouraged: emits a
     /// `cms.test` WARN log line and, if `_PVXS_CMS_TEST_REJECT_EXTERNAL`
     /// is set in the environment (CI), throws `std::runtime_error`.

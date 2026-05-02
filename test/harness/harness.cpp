@@ -81,7 +81,7 @@ std::string makeUniqueSubject(const std::string &prefix) {
 
 
 
-::cms::ConfigCms makeIsolatedConfigCms(const PkiFixture &pki, bool ipv6, bool apply_env) {
+::cms::ConfigCms makeIsolatedConfigCms(const PkiFixture &pki, bool ipv6, bool apply_env, uint32_t monitor_interval_secs) {
     ::cms::ConfigCms cfg{};
     if (apply_env) {
         cfg.applyCertsEnv();
@@ -122,6 +122,11 @@ std::string makeUniqueSubject(const std::string &prefix) {
 
     cfg.cluster_discovery_timeout_secs = 1;
     cfg.cluster_bidi_timeout_secs = 0;
+
+    if (monitor_interval_secs > 0) {
+        cfg.monitor_interval_min_secs = monitor_interval_secs;
+        cfg.monitor_interval_max_secs = monitor_interval_secs;
+    }
 
     cfg.quiet = (getenv("PVXS_CMS_TEST_VERBOSE") == nullptr);
 
@@ -402,6 +407,7 @@ struct PVACMSHarness::Builder::Pvt {
     bool ipv6{false};
     bool apply_env{false};
     bool allow_external{false};
+    uint32_t monitor_interval_secs{0};
     PkiFixture *external_pki{nullptr};
     std::function<void(const std::string &)> status_subscription_observer;
 };
@@ -421,6 +427,10 @@ PVACMSHarness::Builder &PVACMSHarness::Builder::pki(PkiFixture &fixture) & {
 }
 PVACMSHarness::Builder &PVACMSHarness::Builder::applyEnv(bool yes) & {
     pvt_->apply_env = yes;
+    return *this;
+}
+PVACMSHarness::Builder &PVACMSHarness::Builder::monitorIntervalSecs(uint32_t secs) & {
+    pvt_->monitor_interval_secs = secs;
     return *this;
 }
 PVACMSHarness::Builder &PVACMSHarness::Builder::observeStatusSubscriptions(
@@ -460,7 +470,7 @@ PVACMSHarness PVACMSHarness::Builder::build() {
 
     impl.interface_addr = pvt_->ipv6 ? "::1" : "127.0.0.1";
 
-    auto cfg = makeIsolatedConfigCms(*impl.pki, pvt_->ipv6, pvt_->apply_env);
+    auto cfg = makeIsolatedConfigCms(*impl.pki, pvt_->ipv6, pvt_->apply_env, pvt_->monitor_interval_secs);
 
     auto state = ::cms::prepareCmsState(cfg);
     impl.pvacms_issuer_id = state.our_issuer_id;
