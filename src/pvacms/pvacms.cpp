@@ -100,6 +100,12 @@ DEFINE_LOGGER(pvacms, "cms.certs.cms");
 DEFINE_LOGGER(pvacmsmonitor, "cms");
 
 namespace cms {
+
+enum ApprovalUpdateMode {
+    APPROVAL_KEEP_RENEWAL_DUE = -2,
+    APPROVAL_UNCHANGED = -1,
+};
+
 using pvxs::Value;
 using pvxs::shared_array;
 using pvxs::version_information;
@@ -1208,7 +1214,9 @@ void updateCertificateStatus(const sql_ptr &certs_db,
 
     sqlite3_stmt *sql_statement = nullptr;
     int sql_status;
-    std::string sql(approval_status == -1 ? SQL_CERT_SET_STATUS : SQL_CERT_SET_STATUS_W_APPROVAL);
+    std::string sql(approval_status == APPROVAL_KEEP_RENEWAL_DUE ? SQL_CERT_SET_STATUS_KEEP_RENEWAL_DUE
+                    : approval_status == APPROVAL_UNCHANGED ? SQL_CERT_SET_STATUS
+                                                            : SQL_CERT_SET_STATUS_W_APPROVAL);
     sql += getValidStatusesClause(valid_status);
     const auto current_time = std::time(nullptr);
     if ((sql_status = sqlite3_prepare_v2(certs_db.get(), sql.c_str(), -1, &sql_statement, nullptr)) == SQLITE_OK) {
@@ -3561,8 +3569,7 @@ bool postUpdateToNextCertNearingRenewal(const CertStatusFactory &cert_status_cre
             const uint64_t serial = *reinterpret_cast<uint64_t *>(&db_serial);
             try {
                 const std::string pv_name(getCertStatusURI(cert_pv_prefix, issuer_id, serial));
-                // Change the status date and nothing else
-                updateCertificateStatus(certs_db, serial, VALID, -1, {});
+                updateCertificateRenewalStatus(certs_db, serial, VALID, 0);
                 // Create a status that has a renewal due
                 const auto status_date = std::time(nullptr);
                 const auto cert_status = cert_status_creator.createPVACertificateStatus(serial, VALID, status_date,
@@ -3619,7 +3626,7 @@ bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
             const uint64_t serial = *reinterpret_cast<uint64_t *>(&db_serial);
             try {
                 const std::string pv_name(getCertStatusURI(cert_pv_prefix, issuer_id, serial));
-                updateCertificateStatus(certs_db, serial, PENDING_RENEWAL, -1, {VALID, PENDING_APPROVAL, PENDING});
+                updateCertificateStatus(certs_db, serial, PENDING_RENEWAL, APPROVAL_KEEP_RENEWAL_DUE, {VALID, PENDING_APPROVAL, PENDING});
                 const auto status_date = std::time(nullptr);
                 const auto db_cert = getDbCert(certs_db, serial);
                 const auto cert_status = cert_status_creator.createPVACertificateStatus(

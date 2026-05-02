@@ -271,6 +271,12 @@ ServerHandle prepareServerFromState(const ConfigCms &config,
     "  , renewal_due = 0 "            \
     "WHERE serial = :serial "
 
+#define SQL_CERT_SET_STATUS_KEEP_RENEWAL_DUE \
+    "UPDATE certs "                         \
+    "SET status = :status "                 \
+    "  , status_date = :status_date "       \
+    "WHERE serial = :serial "
+
 #define SQL_CERT_SET_STATUS_W_APPROVAL \
     "UPDATE certs "                    \
     "SET status = :status "            \
