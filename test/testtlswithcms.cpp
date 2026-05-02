@@ -18,12 +18,15 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <map>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
 #include <epicsUnitTest.h>
+#include <sqlite3.h>
 #include <testMain.h>
 
 #include <pvxs/client.h>
@@ -36,13 +39,152 @@
 #include <pvxs/unittest.h>
 
 #include "testharness.h"
+#include "certfilefactory.h"
+#include "certstatus.h"
+#include "certstatusfactory.h"
+#include "openssl.h"
+#include "security.h"
 
 namespace {
 
 using cms::test::PVACMSHarness;
+using cms::test::TestClientOpts;
 using cms::test::TestServerOpts;
+using cms::cert::CertCreationRequest;
+using cms::cert::CertStatusFactory;
+using cms::cert::IdFileFactory;
+using cms::cert::PENDING_RENEWAL;
+using cms::cert::VALID;
+using cms::cert::getCertCreatePv;
+using cms::cert::getCertStatusURI;
+namespace members = pvxs::members;
+namespace nt = pvxs::nt;
 
 const char *TEST_PV = "TEST:HARNESS:PV";
+
+struct CertRow {
+    int status{0};
+    sqlite3_int64 renew_by{0};
+    int renewal_due{0};
+};
+
+CertRow loadCertRow(const std::string &db_path, uint64_t serial) {
+    sqlite3 *db = nullptr;
+    if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
+        throw std::runtime_error("sqlite3_open failed");
+    }
+
+    sqlite3_stmt *stmt = nullptr;
+    CertRow row;
+    const char *sql = "SELECT status, renew_by, renewal_due FROM certs WHERE serial = ?";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        sqlite3_close(db);
+        throw std::runtime_error("prepare cert row query failed");
+    }
+    sqlite3_bind_int64(stmt, 1, static_cast<sqlite3_int64>(serial));
+    if (sqlite3_step(stmt) != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+        throw std::runtime_error("certificate row not found");
+    }
+    row.status = sqlite3_column_int(stmt, 0);
+    row.renew_by = sqlite3_column_int64(stmt, 1);
+    row.renewal_due = sqlite3_column_int(stmt, 2);
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return row;
+}
+
+void updateCertRenewBy(const std::string &db_path, uint64_t serial, time_t renew_by) {
+    sqlite3 *db = nullptr;
+    if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
+        throw std::runtime_error("sqlite3_open failed");
+    }
+
+    sqlite3_stmt *stmt = nullptr;
+    const char *sql = "UPDATE certs SET renew_by = ?, renewal_due = 0 WHERE serial = ?";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        sqlite3_close(db);
+        throw std::runtime_error("prepare renew-by update failed");
+    }
+
+    sqlite3_bind_int64(stmt, 1, static_cast<sqlite3_int64>(renew_by));
+    sqlite3_bind_int64(stmt, 2, static_cast<sqlite3_int64>(serial));
+
+    if (sqlite3_step(stmt) != SQLITE_DONE || sqlite3_changes(db) != 1) {
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+        throw std::runtime_error("renew-by update failed");
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+}
+
+bool waitForCertRow(const std::string &db_path,
+                    uint64_t serial,
+                    std::function<bool(const CertRow &)> predicate,
+                    double timeout_secs) {
+    const auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(static_cast<int>(timeout_secs * 1000.0));
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate(loadCertRow(db_path, serial))) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    return predicate(loadCertRow(db_path, serial));
+}
+
+std::string errorText(const std::exception &e) {
+    return e.what() ? e.what() : "";
+}
+
+bool waitForStatusIndex(pvxs::client::Context &client,
+                        const std::string &status_pv,
+                        int32_t expected_status,
+                        double timeout_secs) {
+    const auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(static_cast<int>(timeout_secs * 1000.0));
+    while (std::chrono::steady_clock::now() < deadline) {
+        try {
+            auto status = client.get(status_pv).exec()->wait(1.0);
+            if (status["value.index"].as<int32_t>() == expected_status) return true;
+        } catch (const std::exception &) {
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    auto status = client.get(status_pv).exec()->wait(1.0);
+    return status["value.index"].as<int32_t>() == expected_status;
+}
+
+pvxs::Value makeCreateArgument(const std::string &create_pv,
+                               const std::string &name,
+                               const std::string &country,
+                               const std::string &organization,
+                               const std::string &organization_unit,
+                               uint16_t usage,
+                               time_t not_before,
+                               time_t not_after,
+                               const std::string &public_key) {
+    CertCreationRequest request("std", {});
+    request.ccr["type"] = std::string("std");
+    request.ccr["name"] = name;
+    request.ccr["country"] = country;
+    request.ccr["organization"] = organization;
+    request.ccr["organization_unit"] = organization_unit;
+    request.ccr["usage"] = usage;
+    request.ccr["not_before"] = static_cast<uint64_t>(not_before);
+    request.ccr["not_after"] = static_cast<uint64_t>(not_after);
+    request.ccr["pub_key"] = public_key;
+    request.ccr["config_uri_base"] = std::string();
+    request.ccr["no_status"] = false;
+
+    auto uri = nt::NTURI({}).build();
+    uri += {members::Struct("query", CCR_PROTOTYPE(request.verifier_fields))};
+    auto arg = uri.create();
+    arg["path"] = create_pv;
+    arg["query"].from(request.ccr);
+    return arg;
+}
 
 // =====================================================================
 // OCSP stapling matrix (client x server: enabled / disabled)
@@ -712,13 +854,121 @@ void testNoCacheBleedAcrossRoles() {
            harness.totalCacheHits());
 }
 
+void testRenewFromPendingRenewal() {
+    testDiag("monitor-driven PENDING_RENEWAL renewal behavior");
+
+    auto builder = PVACMSHarness::Builder{};
+    builder.monitorIntervalSecs(1);
+    auto harness = builder.build();
+    TestClientOpts original_opts;
+    original_opts.subject = "renew-after-pending";
+    auto original_client_config = harness.testClientConfig(original_opts);
+
+    auto original_reader = IdFileFactory::createReader(original_client_config.tls_keychain_file);
+    auto original_cert = original_reader->getCertDataFromFile();
+    const auto serial = CertStatusFactory::getSerialNumber(original_cert.cert);
+    const auto issuer_id = harness.pvacmsIssuerId();
+    const auto status_pv = getCertStatusURI("CERT", issuer_id, serial);
+    const auto create_pv = getCertCreatePv("CERT", issuer_id);
+    const auto db_path = harness.pkiFixture().dir() + "/certs.db";
+
+    auto admin_client = harness.cmsAdminClientConfig().build();
+    auto initial_status = admin_client.get(status_pv).exec()->wait(5.0);
+    testOk(initial_status["value.index"].as<int32_t>() == VALID,
+           "registered client certificate starts VALID");
+
+    const auto renew_by = std::time(nullptr) + 4;
+    updateCertRenewBy(db_path, serial, renew_by);
+
+    const bool saw_renewal_due = waitForCertRow(db_path,
+                                                serial,
+                                                [](const CertRow &row) {
+                                                    return row.status == VALID && row.renewal_due == 1;
+                                                },
+                                                6.0);
+    testOk(saw_renewal_due,
+           "monitor sets renewal_due while certificate remains VALID");
+
+    const bool saw_pending_renewal = waitForCertRow(db_path,
+                                                    serial,
+                                                    [](const CertRow &row) {
+                                                        return row.status == PENDING_RENEWAL && row.renewal_due == 1;
+                                                    },
+                                                    8.0);
+    testOk(saw_pending_renewal,
+           "monitor changes status to PENDING_RENEWAL after renew_by passes");
+
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+                  .update("value", int32_t{123}));
+    auto &test_server = harness.testServerBuilder()
+        .opts([]{
+            TestServerOpts server_opts;
+            server_opts.subject = "pending-renewal-server";
+            server_opts.clientCertRequired = true;
+            return server_opts;
+        }())
+        .withPV(TEST_PV, mailbox_pv)
+        .start();
+    (void)test_server;
+
+    bool operational_get_succeeded = false;
+    std::string operational_get_error;
+    try {
+        original_client_config.build().get(TEST_PV).exec()->wait(5.0);
+        operational_get_succeeded = true;
+    } catch (const std::exception &e) {
+        operational_get_error = errorText(e);
+    }
+    testOk(!operational_get_succeeded,
+           "client certificate in PENDING_RENEWAL is rejected for ordinary data-plane operations");
+    if (!operational_get_error.empty()) {
+        testDiag("ordinary data-plane GET from PENDING_RENEWAL client failed as expected: %s",
+                 operational_get_error.c_str());
+    }
+
+    auto renewal_key_pair = IdFileFactory::createKeyPair();
+    const auto now = std::time(nullptr);
+    auto renewal_arg = makeCreateArgument(create_pv,
+                                          "renew-after-pending",
+                                          "US",
+                                          "pvxs-cms-test",
+                                          "PkiFixture Entity",
+                                          cms::ssl::kForClient,
+                                          now,
+                                          now + 3600,
+                                          renewal_key_pair->public_key);
+
+    bool renewal_with_pending_cert_succeeded = false;
+    std::string pending_cert_renewal_error;
+    try {
+        original_client_config.build().rpc(create_pv, renewal_arg).exec()->wait(5.0);
+        renewal_with_pending_cert_succeeded = true;
+    } catch (const std::exception &e) {
+        pending_cert_renewal_error = errorText(e);
+    }
+    testOk(!renewal_with_pending_cert_succeeded,
+           "renewal RPC using the PENDING_RENEWAL client certificate is rejected");
+    if (!pending_cert_renewal_error.empty()) {
+        testDiag("renewal RPC from PENDING_RENEWAL client failed as expected: %s",
+                 pending_cert_renewal_error.c_str());
+    }
+
+    auto renewal_reply = admin_client.rpc(create_pv, renewal_arg).exec()->wait(10.0);
+    testOk(renewal_reply["serial"].as<uint64_t>() == serial,
+           "renewal reuses the original certificate serial instead of creating a new row");
+
+    testOk(waitForStatusIndex(admin_client, status_pv, VALID, 5.0),
+           "status process variable returns to VALID after renewal from PENDING_RENEWAL");
+}
+
 }  // namespace
 
 MAIN(testtlswithcms) {
 #ifdef PVXS_HAS_DISK_OCSP_CACHE
-    testPlan(47);
+    testPlan(54);
 #else
-    testPlan(33);
+    testPlan(40);
 #endif
     pvxs::logger_config_env();
 
@@ -741,6 +991,7 @@ MAIN(testtlswithcms) {
     testTlsCredentialsOnConnect();
     testCacheHitOnRepeatedSubscribe();
     testNoCacheBleedAcrossRoles();
+    testRenewFromPendingRenewal();
 
     return testDone();
 }
