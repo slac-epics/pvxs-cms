@@ -89,8 +89,7 @@ private:
 // ---------------------------------------------------------------------------
 
 struct TestServerOpts {
-    /// Common-name override for the issued Entity Cert.  When empty the harness
-    /// auto-generates a unique CN.
+    /// Common-name override for the issued Entity Cert.  When empty, the harness auto-generates a unique CN.
     std::string subject;
     /// Use IPv6 loopback (`::1`) instead of `127.0.0.1`.
     bool ipv6{false};
@@ -230,7 +229,7 @@ public:
     /// Snapshot of every test server started under this harness so far.
     const std::vector<RegisteredServer> &startedTestServers() const noexcept;
 
-    /// Stop and de-register a test server previously returned by
+    /// Stop and deregister a test server previously returned by
     /// `testServerBuilder().start()`.  No-op if `srv` is not owned here.
     void stopTestServer(server::Server &srv);
 
@@ -388,6 +387,21 @@ class PVXS_CMS_TEST_API PVACMSCluster {
     /// PVA fall-through search resolving to a different responder.
     client::Config memberClientConfig(size_t i) const;
 
+    /// Return member i issuer identifier as served by CERT:ISSUER.
+    std::string memberIssuerId(size_t i) const;
+
+    /// Return current status enumerator for serial as observed by member i.
+    int32_t certStatusIndex(size_t i, uint64_t serial) const;
+
+    /// Approve certificate through the normal CERT:STATUS put path on member i.
+    void approveCert(size_t i, uint64_t serial) const;
+
+    /// Deny certificate through the normal CERT:STATUS put path on member i.
+    void denyCert(size_t i, uint64_t serial) const;
+
+    /// Revoke certificate through the normal CERT:STATUS put path on member i.
+    void revokeCert(size_t i, uint64_t serial) const;
+
     /// Filesystem path to member i's P12 keychain.  Stable across
     /// restartMember(i): the harness reuses the same Entity Cert on
     /// restart rather than minting a fresh one.
@@ -403,7 +417,7 @@ class PVXS_CMS_TEST_API PVACMSCluster {
     /// restartMember(i) and by ~PVACMSCluster.  Throws std::out_of_range
     /// if i >= size() or std::logic_error if member i is not currently
     /// running.
-    ::cms::ServerHandle &memberHandle(size_t i);
+    ::cms::ServerHandle &memberHandle(size_t i) const;
 
     /// Construct an empty (un-built) cluster handle.  The only valid
     /// operations on an empty handle are destruction and move-assignment

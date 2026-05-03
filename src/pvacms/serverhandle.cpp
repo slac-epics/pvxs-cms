@@ -172,44 +172,21 @@ detail::PreparedCmsState prepareCmsState(const ConfigCms &config)
 
     initCertsDatabase(state.certs_db, config.certs_db_filename, config.quiet);
 
-    getOrCreateCertAuthCertificate(config,
-                                   state.certs_db,
-                                   state.cert_auth_cert,
-                                   state.cert_auth_pkey,
-                                   state.cert_auth_chain,
-                                   state.cert_auth_root_cert,
-                                   state.is_initialising);
+    getOrCreateCertAuthCertificate(config, state.certs_db, state.cert_auth_cert, state.cert_auth_pkey, state.cert_auth_chain, state.cert_auth_root_cert, state.is_initialising);
     state.our_issuer_id = CertStatus::getSkId(state.cert_auth_cert);
 
-    ensureServerCertificateExists(config,
-                                  state.certs_db,
-                                  state.cert_auth_cert,
-                                  state.cert_auth_pkey,
-                                  state.cert_auth_chain);
+    ensureServerCertificateExists(config, state.certs_db, state.cert_auth_cert, state.cert_auth_pkey, state.cert_auth_chain);
 
-    auto server_cert_data = IdFileFactory::create(config.tls_keychain_file,
-                                                  config.getKeychainPassword())
-                                ->getCertDataFromFile();
+    const auto server_cert_data = IdFileFactory::create(config.tls_keychain_file, config.getKeychainPassword()) ->getCertDataFromFile();
     state.our_node_id = CertStatus::getSkId(server_cert_data.cert);
     state.our_serial = CertStatusFactory::getSerialNumber(server_cert_data.cert);
 
     for (const auto &preload_path : config.preload_cert_files) {
         try {
-            auto preload = IdFileFactory::create(preload_path, std::string())
-                               ->getCertDataFromFile();
-            if (preload.cert) {
-                insertLoadedCertIfMissing(config,
-                                          state.certs_db,
-                                          preload.cert,
-                                          preload.cert_auth_chain,
-                                          state.our_issuer_id,
-                                          false);
-            }
+            auto preload = IdFileFactory::create(preload_path, std::string()) ->getCertDataFromFile();
+            if (preload.cert) insertLoadedCertIfMissing(config, state.certs_db, preload.cert, preload.cert_auth_chain, state.our_issuer_id, false);
         } catch (const std::exception &e) {
-            log_err_printf(pvacmsserver,
-                           "Failed to preload certificate '%s': %s\n",
-                           preload_path.c_str(),
-                           e.what());
+            log_err_printf(pvacmsserver, "Failed to preload certificate '%s': %s\n", preload_path.c_str(), e.what());
         }
     }
 

@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <ctime>
 #include <vector>
 
 #include <epicsUnitTest.h>
@@ -26,14 +27,72 @@
 #include <pvxs/client.h>
 #include <pvxs/data.h>
 #include <pvxs/log.h>
+#include <pvxs/nt.h>
 #include <pvxs/unittest.h>
 
 #include "testharness.h"
+#include "certstatus.h"
+#include "certstatusfactory.h"
+#include "certfilefactory.h"
+#include "openssl.h"
+#include "security.h"
 
 namespace {
 
 using cms::test::ClusterTopology;
 using cms::test::PVACMSCluster;
+using cms::cert::CertCreationRequest;
+using cms::cert::IdFileFactory;
+using cms::cert::PENDING_APPROVAL;
+using cms::cert::VALID;
+using cms::cert::getCertCreatePv;
+using cms::cert::getCertStatusURI;
+namespace members = pvxs::members;
+namespace nt = pvxs::nt;
+
+bool waitForStatusIndex(pvxs::client::Context &client,
+                        const std::string &status_pv,
+                        int32_t expected_status,
+                        double timeout_secs) {
+    const auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(static_cast<int>(timeout_secs * 1000.0));
+    while (std::chrono::steady_clock::now() < deadline) {
+        try {
+            auto status = client.get(status_pv).exec()->wait(1.0);
+            if (status["value.index"].as<int32_t>() == expected_status) return true;
+        } catch (const std::exception &) {
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    auto status = client.get(status_pv).exec()->wait(1.0);
+    return status["value.index"].as<int32_t>() == expected_status;
+}
+
+pvxs::Value makeCreateArgument(const std::string &create_pv,
+                               uint16_t usage,
+                               const std::string &public_key,
+                               const std::string &name) {
+    cms::cert::CertCreationRequest request("std", {});
+    request.ccr["type"] = std::string("std");
+    request.ccr["name"] = name;
+    request.ccr["country"] = std::string("US");
+    request.ccr["organization"] = std::string("pvxs-cms-test");
+    request.ccr["organization_unit"] = std::string("PkiFixture Entity");
+    request.ccr["usage"] = usage;
+    request.ccr["pub_key"] = public_key;
+    request.ccr["config_uri_base"] = std::string();
+    request.ccr["no_status"] = false;
+
+    auto uri = nt::NTURI({}).build();
+    uri += {members::Struct("query", CCR_PROTOTYPE(request.verifier_fields))};
+    auto arg = uri.create();
+    const auto now = std::time(nullptr);
+    arg["path"] = create_pv;
+    request.ccr["not_before"] = static_cast<uint64_t>(now);
+    request.ccr["not_after"] = static_cast<uint64_t>(now + 3600);
+    arg["query"].from(request.ccr);
+    return arg;
+}
 
 double awaitMembershipReachesAcrossAll(PVACMSCluster &cluster, size_t expected, double budget_secs);
 
@@ -330,7 +389,7 @@ void testPerMemberHealthPvReportsConvergedCluster() {
 
         testOk(health_post_observed_converged,
                "member %zu HEALTH converged: db_ok=%d ca_valid=%d cluster_members=%u",
-               i, (int)db_ok, (int)ca_valid, cluster_members_field);
+               i, static_cast<int>(db_ok), static_cast<int>(ca_valid), cluster_members_field);
     }
 }
 
@@ -382,10 +441,8 @@ void testPerMemberClientIsolation() {
     std::string node_0_sync_pv;
     try {
         auto reply = client_at_node_0.get(ctrl_pv).exec()->wait(10.0);
-        auto members = reply["members"].as<pvxs::shared_array<const pvxs::Value>>();
-        if (members.size() > 0) {
-            node_0_sync_pv = members[0]["sync_pv"].as<std::string>();
-        }
+        const auto members = reply["members"].as<pvxs::shared_array<const pvxs::Value>>();
+        if (!members.empty()) node_0_sync_pv = members[0]["sync_pv"].as<std::string>();
     } catch (const std::exception &e) {
         testFail("Could not discover node 0's sync_pv: %s", e.what());
         return;
@@ -396,7 +453,7 @@ void testPerMemberClientIsolation() {
         return;
     }
 
-    // Node 0's SYNC PV name embeds node 0's node_id.  Node 1's listener
+    // Node 0's SYNC PV name embeds node 0's node_id. Node 1's listener
     // does not claim that name; memberClientConfig(1) restricts its
     // addressList to node 1's listener only.  pvxs may still resolve via
     // cluster sync subscribers — that would be a real isolation leak.
@@ -518,6 +575,43 @@ void testSurvivorRecoversAfterPeerRestart() {
     }
 }
 
+void testGatewayApprovalPropagationViaStatusPut() {
+    testDiag("status approval put on one cluster node propagates to peer");
+
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
+
+    auto admin_on_node_zero = cluster.memberClientConfig(0).build();
+    auto admin_on_node_one = cluster.memberClientConfig(1).build();
+
+    const auto issuer_zero = cluster.memberIssuerId(0);
+    const auto issuer_one = cluster.memberIssuerId(1);
+    testOk(issuer_zero == issuer_one,
+           "both nodes report the same issuer identifier");
+
+    const auto create_pv = getCertCreatePv("CERT", issuer_zero);
+    auto key_pair = IdFileFactory::createKeyPair();
+    auto create_arg = makeCreateArgument(create_pv,
+                                         cms::ssl::kForClientAndServer,
+                                         key_pair->public_key,
+                                         "cluster-gateway-approval-ioc");
+    auto create_reply = admin_on_node_zero.rpc(create_pv, create_arg).exec()->wait(10.0);
+    const auto serial = create_reply["serial"].as<uint64_t>();
+    const auto status_pv = getCertStatusURI("CERT", issuer_zero, serial);
+
+    testOk(waitForStatusIndex(admin_on_node_zero, status_pv, PENDING_APPROVAL, 10.0),
+           "node zero observes pending approval before approval put");
+    testOk(waitForStatusIndex(admin_on_node_one, status_pv, PENDING_APPROVAL, 10.0),
+           "node one observes pending approval before approval put");
+
+    cluster.approveCert(0, serial);
+
+    testOk(waitForStatusIndex(admin_on_node_zero, status_pv, VALID, 10.0),
+           "node zero observes valid after status put approval");
+    testOk(waitForStatusIndex(admin_on_node_one, status_pv, VALID, 10.0),
+           "node one observes propagated valid after status put approval");
+}
+
 }  // namespace
 
 MAIN(testtlswithcmscluster) {
@@ -535,7 +629,7 @@ MAIN(testtlswithcmscluster) {
     }
 #endif
 
-    testPlan(38);
+    testPlan(43);
 
     testTwoNodeClusterMembershipConverges();
     testLinearChainMembershipPropagates();
@@ -556,6 +650,7 @@ MAIN(testtlswithcmscluster) {
 
     testAdminClientSurvivesMemberLoss();
     testSurvivorRecoversAfterPeerRestart();
+    testGatewayApprovalPropagationViaStatusPut();
 
     return testDone();
 }

@@ -196,7 +196,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
     for (const auto & row : certs_arr) {
         auto serial = row["serial"].as<uint64_t>();
         const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
-        const auto remote_status = static_cast<cms::cert::certstatus_t>(row["status"].as<int32_t>());
+        const auto remote_status = static_cast<certstatus_t>(row["status"].as<int32_t>());
 
         sqlite3_stmt *check_stmt;
         if (sqlite3_prepare_v2(certs_db, SQL_SYNC_CHECK_CERT_STATUS, -1, &check_stmt, nullptr) != SQLITE_OK)
@@ -204,7 +204,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
         sqlite3_bind_int64(check_stmt, sqlite3_bind_parameter_index(check_stmt, ":serial"), db_serial);
 
         if (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            const auto local_status = static_cast<cms::cert::certstatus_t>(sqlite3_column_int(check_stmt, 0));
+            const auto local_status = static_cast<certstatus_t>(sqlite3_column_int(check_stmt, 0));
             sqlite3_finalize(check_stmt);
 
             log_debug_printf(pvacmscluster, "Sync merge: serial=%" PRIu64 " local_status=%d remote_status=%d\n",
@@ -217,8 +217,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             }
 
             if (local_status == remote_status) {
-                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%" PRIu64 " — same status %d\n",
-                                 serial, static_cast<int>(local_status));
+                log_debug_printf(pvacmscluster, "Sync merge: skipping serial=%" PRIu64 " — same status %d\n", serial, static_cast<int>(local_status));
                 continue;
             }
 
@@ -264,10 +263,8 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             }
             sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), db_serial);
             auto rc = sqlite3_step(upd_stmt);
-            log_debug_printf(pvacmscluster, "Sync merge: UPDATE serial=%" PRIu64 " rc=%d changes=%d\n",
-                             serial, rc, sqlite3_changes(certs_db));
-            insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id,
-                                  static_cast<uint64_t>(serial), SB() << "status=" << remote_status);
+            log_debug_printf(pvacmscluster, "Sync merge: UPDATE serial=%" PRIu64 " rc=%d changes=%d\n", serial, rc, sqlite3_changes(certs_db));
+            insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id, serial, SB() << "status=" << remote_status);
             sqlite3_finalize(upd_stmt);
             result.had_changes = true;
         } else {

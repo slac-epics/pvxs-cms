@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cstdio>
 #include <functional>
+#include <future>
 #include <map>
 #include <mutex>
 #include <stdexcept>
@@ -27,7 +28,6 @@
 #include <thread>
 
 #include <epicsUnitTest.h>
-#include <sqlite3.h>
 #include <testMain.h>
 
 #include <pvxs/client.h>
@@ -40,6 +40,8 @@
 #include <pvxs/unittest.h>
 
 #include "testharness.h"
+#include "mockclustergateway.h"
+#include "certstatusdb.h"
 #include "certfilefactory.h"
 #include "certstatus.h"
 #include "certstatusfactory.h"
@@ -49,11 +51,13 @@
 namespace {
 
 using cms::test::PVACMSHarness;
+using cms::test::MockClusterGateway;
 using cms::test::TestClientOpts;
 using cms::test::TestServerOpts;
 using cms::cert::CertCreationRequest;
 using cms::cert::CertStatusFactory;
 using cms::cert::IdFileFactory;
+using cms::cert::PENDING_APPROVAL;
 using cms::cert::PENDING_RENEWAL;
 using cms::cert::SCHEDULED_OFFLINE;
 using cms::cert::VALID;
@@ -64,83 +68,11 @@ namespace nt = pvxs::nt;
 
 const char *TEST_PV = "TEST:HARNESS:PV";
 
-struct CertRow {
-    int status{0};
-    sqlite3_int64 renew_by{0};
-    int renewal_due{0};
-};
-
 struct ScheduleWindowSpec {
     std::string day_of_week;
     std::string start_time;
     std::string end_time;
 };
-
-CertRow loadCertRow(const std::string &db_path, uint64_t serial) {
-    sqlite3 *db = nullptr;
-    if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
-        throw std::runtime_error("sqlite3_open failed");
-    }
-
-    sqlite3_stmt *stmt = nullptr;
-    CertRow row;
-    const char *sql = "SELECT status, renew_by, renewal_due FROM certs WHERE serial = ?";
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        sqlite3_close(db);
-        throw std::runtime_error("prepare cert row query failed");
-    }
-    sqlite3_bind_int64(stmt, 1, static_cast<sqlite3_int64>(serial));
-    if (sqlite3_step(stmt) != SQLITE_ROW) {
-        sqlite3_finalize(stmt);
-        sqlite3_close(db);
-        throw std::runtime_error("certificate row not found");
-    }
-    row.status = sqlite3_column_int(stmt, 0);
-    row.renew_by = sqlite3_column_int64(stmt, 1);
-    row.renewal_due = sqlite3_column_int(stmt, 2);
-    sqlite3_finalize(stmt);
-    sqlite3_close(db);
-    return row;
-}
-
-void updateCertRenewBy(const std::string &db_path, uint64_t serial, time_t renew_by) {
-    sqlite3 *db = nullptr;
-    if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
-        throw std::runtime_error("sqlite3_open failed");
-    }
-
-    sqlite3_stmt *stmt = nullptr;
-    const char *sql = "UPDATE certs SET renew_by = ?, renewal_due = 0 WHERE serial = ?";
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        sqlite3_close(db);
-        throw std::runtime_error("prepare renew-by update failed");
-    }
-
-    sqlite3_bind_int64(stmt, 1, static_cast<sqlite3_int64>(renew_by));
-    sqlite3_bind_int64(stmt, 2, static_cast<sqlite3_int64>(serial));
-
-    if (sqlite3_step(stmt) != SQLITE_DONE || sqlite3_changes(db) != 1) {
-        sqlite3_finalize(stmt);
-        sqlite3_close(db);
-        throw std::runtime_error("renew-by update failed");
-    }
-
-    sqlite3_finalize(stmt);
-    sqlite3_close(db);
-}
-
-bool waitForCertRow(const std::string &db_path,
-                    uint64_t serial,
-                    std::function<bool(const CertRow &)> predicate,
-                    double timeout_secs) {
-    const auto deadline = std::chrono::steady_clock::now() +
-        std::chrono::milliseconds(static_cast<int>(timeout_secs * 1000.0));
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (predicate(loadCertRow(db_path, serial))) return true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-    return predicate(loadCertRow(db_path, serial));
-}
 
 std::string errorText(const std::exception &e) {
     return e.what() ? e.what() : "";
@@ -157,12 +89,12 @@ std::string formatUtcMinute(int minute_of_day) {
     const int minute = minute_of_day % 60;
     char buf[6];
     std::snprintf(buf, sizeof(buf), "%02d:%02d", hour, minute);
-    return std::string(buf);
+    return {buf};
 }
 
 int currentUtcMinuteOfDay() {
     const auto now = std::time(nullptr);
-    struct tm utc_now;
+    tm utc_now{};
     gmtime_r(&now, &utc_now);
     return utc_now.tm_hour * 60 + utc_now.tm_min;
 }
@@ -958,20 +890,20 @@ void testRenewFromPendingRenewal() {
            "registered client certificate starts VALID");
 
     const auto renew_by = std::time(nullptr) + 4;
-    updateCertRenewBy(db_path, serial, renew_by);
+    cms::test::setCertRenewBy(db_path, serial, renew_by);
 
-    const bool saw_renewal_due = waitForCertRow(db_path,
+    const bool saw_renewal_due = cms::test::waitForCertRecord(db_path,
                                                 serial,
-                                                [](const CertRow &row) {
+                                                [](const cms::test::CertRecord &row) {
                                                     return row.status == VALID && row.renewal_due == 1;
                                                 },
                                                 6.0);
     testOk(saw_renewal_due,
            "monitor sets renewal_due while certificate remains VALID");
 
-    const bool saw_pending_renewal = waitForCertRow(db_path,
+    const bool saw_pending_renewal = cms::test::waitForCertRecord(db_path,
                                                     serial,
-                                                    [](const CertRow &row) {
+                                                    [](const cms::test::CertRecord &row) {
                                                         return row.status == PENDING_RENEWAL && row.renewal_due == 1;
                                                     },
                                                     8.0);
@@ -1019,6 +951,9 @@ void testRenewFromPendingRenewal() {
                                           now + 3600,
                                           renewal_key_pair->public_key);
 
+    testOk(waitForStatusIndex(admin_client, status_pv, PENDING_RENEWAL, 5.0),
+           "status process variable remains PENDING_RENEWAL before renewal RPC");
+
     bool renewal_with_pending_cert_succeeded = false;
     std::string pending_cert_renewal_error;
     try {
@@ -1045,6 +980,102 @@ void testRenewFromPendingRenewal() {
            "status process variable returns to VALID after renewal from PENDING_RENEWAL");
 }
 
+void testPendingApprovalGatewayCertAllowsPlainTcpThroughGateway() {
+    testDiag("gateway certificate in PENDING_APPROVAL still allows plain TCP monitor through MockClusterGateway");
+
+    auto harness = PVACMSHarness::Builder{}.build();
+    auto admin_client = harness.cmsAdminClientConfig().build();
+    const auto issuer_id = harness.pvacmsIssuerId();
+    const auto db_path = harness.pkiFixture().dir() + "/certs.db";
+
+    auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
+    mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
+                  .update("value", int32_t{123}));
+
+    const std::string server_subject = "pending-approval-server";
+    auto &test_server = harness.testServerBuilder()
+        .opts([&server_subject] {
+            TestServerOpts server_opts;
+            server_opts.subject = server_subject;
+            server_opts.clientCertRequired = true;
+            return server_opts;
+        }())
+        .withPV(TEST_PV, mailbox_pv)
+        .start();
+
+    const auto server_serial = cms::test::findCertSerialByCommonName(db_path, server_subject);
+    const auto server_status_pv = getCertStatusURI("CERT", issuer_id, server_serial);
+    testOk(waitForStatusIndex(admin_client, server_status_pv, VALID, 5.0),
+           "server certificate status remains VALID");
+
+    TestClientOpts client_opts;
+    client_opts.subject = "pending-approval-client";
+    auto plain_tcp_client_config = harness.testClientConfig(client_opts);
+    auto client_reader = IdFileFactory::createReader(plain_tcp_client_config.tls_keychain_file);
+    auto client_cert = client_reader->getCertDataFromFile();
+    const auto client_serial = CertStatusFactory::getSerialNumber(client_cert.cert);
+    const auto client_status_pv = getCertStatusURI("CERT", issuer_id, client_serial);
+    testOk(waitForStatusIndex(admin_client, client_status_pv, VALID, 5.0),
+           "client certificate status remains VALID");
+
+    const auto create_pv = getCertCreatePv("CERT", issuer_id);
+    auto gateway_key_pair = IdFileFactory::createKeyPair();
+    const auto now = std::time(nullptr);
+    auto gateway_create_arg = makeCreateArgument(create_pv,
+                                                 "pending-approval-gateway-ioc",
+                                                 "US",
+                                                 "pvxs-cms-test",
+                                                 "PkiFixture Entity",
+                                                 cms::ssl::kForClientAndServer,
+                                                 now,
+                                                 now + 3600,
+                                                 gateway_key_pair->public_key);
+    auto gateway_reply = admin_client.rpc(create_pv, gateway_create_arg).exec()->wait(5.0);
+    const auto gateway_serial = gateway_reply["serial"].as<uint64_t>();
+    const auto gateway_status_pv = getCertStatusURI("CERT", issuer_id, gateway_serial);
+
+    testOk(gateway_reply["value.index"].as<int32_t>() == PENDING_APPROVAL,
+           "gateway IOC certificate create reply state is PENDING_APPROVAL");
+    testOk(waitForStatusIndex(admin_client, gateway_status_pv, PENDING_APPROVAL, 5.0),
+           "gateway IOC certificate status is PENDING_APPROVAL");
+
+    MockClusterGateway::Options gateway_opts;
+    gateway_opts.upstream_address = std::string("127.0.0.1:") +
+        std::to_string(static_cast<unsigned>(test_server.config().tcp_port));
+    gateway_opts.forwarded_substrings = {TEST_PV};
+    MockClusterGateway gateway(gateway_opts);
+    gateway.start();
+
+    plain_tcp_client_config.tls_disabled = true;
+    plain_tcp_client_config.autoAddrList = false;
+    plain_tcp_client_config.addressList.clear();
+    plain_tcp_client_config.nameServers = {gateway.listenAddress()};
+    auto plain_tcp_client = plain_tcp_client_config.build();
+
+    auto connected_promise = std::make_shared<std::promise<void>>();
+    auto connected_future = connected_promise->get_future();
+    auto plain_tcp_subscription = plain_tcp_client.monitor(TEST_PV)
+        .maskConnected(false)
+        .event([connected_promise](pvxs::client::Subscription &sub) {
+            try {
+                while (sub.pop()) {}
+            } catch (pvxs::client::Connected &) {
+                try { connected_promise->set_value(); } catch (...) {}
+            } catch (...) {
+            }
+        })
+        .exec();
+
+    const bool plain_tcp_monitor_connected =
+        connected_future.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+    testOk(plain_tcp_monitor_connected,
+           "plain TCP monitor through MockClusterGateway connects while gateway cert is PENDING_APPROVAL");
+
+    plain_tcp_subscription.reset();
+    gateway.stop();
+
+}
+
 void testAdminScheduleStateTransitions() {
     testDiag("administrator schedule updates recompute certificate state immediately");
 
@@ -1056,7 +1087,7 @@ void testAdminScheduleStateTransitions() {
     auto reader = IdFileFactory::createReader(client_config.tls_keychain_file);
     auto cert = reader->getCertDataFromFile();
     const auto serial = CertStatusFactory::getSerialNumber(cert.cert);
-    const auto issuer_id = harness.pvacmsIssuerId();
+    const auto& issuer_id = harness.pvacmsIssuerId();
     const auto status_pv = getCertStatusURI("CERT", issuer_id, serial);
     const auto schedule_pv = std::string("CERT:SCHEDULE:") + issuer_id;
     const auto db_path = harness.pkiFixture().dir() + "/certs.db";
@@ -1084,9 +1115,9 @@ void testAdminScheduleStateTransitions() {
            "replacing with an inactive schedule returns one persisted window");
     testOk(waitForStatusIndex(admin_client, status_pv, SCHEDULED_OFFLINE, 2.0),
            "replacing an active schedule with an inactive one emits SCHEDULED_OFFLINE");
-    testOk(waitForCertRow(db_path,
+    testOk(cms::test::waitForCertRecord(db_path,
                           serial,
-                          [](const CertRow &row) { return row.status == SCHEDULED_OFFLINE; },
+                          [](const cms::test::CertRecord &row) { return row.status == SCHEDULED_OFFLINE; },
                           2.0),
            "database status changes to SCHEDULED_OFFLINE after inactive schedule is applied");
 
@@ -1141,9 +1172,9 @@ void testAdminScheduleStateTransitions() {
 
 MAIN(testtlswithcms) {
 #ifdef PVXS_HAS_DISK_OCSP_CACHE
-    testPlan(71);
+    testPlan(77);
 #else
-    testPlan(57);
+    testPlan(63);
 #endif
     pvxs::logger_config_env();
 
@@ -1167,6 +1198,7 @@ MAIN(testtlswithcms) {
     testCacheHitOnRepeatedSubscribe();
     testNoCacheBleedAcrossRoles();
     testRenewFromPendingRenewal();
+    testPendingApprovalGatewayCertAllowsPlainTcpThroughGateway();
     testAdminScheduleStateTransitions();
 
     return testDone();
