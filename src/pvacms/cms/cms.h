@@ -96,7 +96,7 @@ public:
 private:
     friend ServerHandle prepareServer(const ConfigCms &config);
     friend void startCluster(ServerHandle& handle);
-    friend void startCluster(ServerHandle& handle,
+    friend void startCluster(const ServerHandle& handle,
                              const std::vector<std::string>& peers);
     friend void stopServer(ServerHandle& handle);
     friend ServerHandle detail::prepareServerFromState(const ConfigCms &config, detail::PreparedCmsState &&state);
@@ -139,7 +139,7 @@ void startCluster(ServerHandle& handle);
  *
  * @since UNRELEASED
  */
-void startCluster(ServerHandle& handle, const std::vector<std::string>& peers);
+void startCluster(const ServerHandle& handle, const std::vector<std::string>& peers);
 
 /** Stop the cluster runtime and prepared server.
  *

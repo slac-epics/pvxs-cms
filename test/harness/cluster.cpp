@@ -174,7 +174,7 @@ struct PVACMSCluster::Impl {
 
     ClusterTopology topology{ClusterTopology::empty(0)};
 
-    std::vector<std::unique_ptr<cms::ServerHandle>> handles;
+    std::vector<std::unique_ptr<ServerHandle>> handles;
     std::vector<std::thread> workers;
     std::vector<std::unique_ptr<std::atomic<bool>>> running;
     std::vector<std::string> member_addrs;
@@ -376,16 +376,16 @@ PVACMSCluster PVACMSCluster::Builder::build() {
                                             impl.ipv6,
                                             impl.discovery_secs, impl.bidi_secs,
                                             impl.cluster_name);
-        auto state = ::cms::prepareCmsState(cfg);
+        auto state = prepareCmsState(cfg);
 
         if (!cfg.pvacms_acf_filename.empty()) {
-            if (auto err = asInitFile(cfg.pvacms_acf_filename.c_str(), "")) {
+            if (const auto err = asInitFile(cfg.pvacms_acf_filename.c_str(), "")) {
                 (void)err;
                 throw std::runtime_error("PVACMSCluster: asInitFile failed");
             }
         }
 
-        impl.handles[i].reset(new cms::ServerHandle(
+        impl.handles[i].reset(new ServerHandle(
             cms::detail::prepareServerFromState(cfg, std::move(state))));
 
         const auto &eff = impl.handles[i]->pvaServer().config();
@@ -401,7 +401,7 @@ PVACMSCluster PVACMSCluster::Builder::build() {
         impl.workers[i] = std::thread([handle_ptr, running_ptr, peers]() {
             for (uint32_t attempt = 1; attempt <= 3; ++attempt) {
                 try {
-                    cms::startCluster(*handle_ptr, peers);
+                    startCluster(*handle_ptr, peers);
                     running_ptr->store(false);
                     return;
                 } catch (const std::exception &e) {

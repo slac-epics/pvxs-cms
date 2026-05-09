@@ -70,8 +70,8 @@ bool dirExists(const std::string &path) {
 
 void testFreshPerConstruction() {
     testDiag("Two PkiFixtures produce different CA fingerprints + distinct temp dirs");
-    PkiFixture first_fixture;
-    PkiFixture second_fixture;
+    const PkiFixture first_fixture;
+    const PkiFixture second_fixture;
 
     testOk(!first_fixture.dir().empty() && dirExists(first_fixture.dir()),
            "first fixture temp dir exists: %s", first_fixture.dir().c_str());
@@ -90,7 +90,7 @@ void testFreshPerConstruction() {
 
 void testCaArtifacts() {
     testDiag("CA, server, admin P12s and CA chain PEM exist after construction");
-    PkiFixture pki;
+    const PkiFixture pki;
     testOk(fileExists(pki.caP12Path()), "ca.p12 exists: %s", pki.caP12Path().c_str());
     testOk(fileExists(pki.caChainPemPath()), "ca-chain.pem exists: %s", pki.caChainPemPath().c_str());
     testOk(fileExists(pki.serverP12Path()), "pvacms-server.p12 exists: %s", pki.serverP12Path().c_str());
@@ -145,8 +145,8 @@ void testBorrowedFixtureSharing() {
     PkiFixture pki;
     const auto baseline_fingerprint = pki.caFingerprintSha256();
 
-    auto first_entity_cert_path = pki.issueServerCert({"shared-srv-1", {}, {}, {}});
-    auto second_entity_cert_path = pki.issueClientCert({"shared-cli-1", {}, {}, {}});
+    const auto first_entity_cert_path = pki.issueServerCert({"shared-srv-1", {}, {}, {}});
+    const auto second_entity_cert_path = pki.issueClientCert({"shared-cli-1", {}, {}, {}});
 
     testOk(fileExists(first_entity_cert_path),
            "first Entity Cert issued under shared fixture");
@@ -156,9 +156,6 @@ void testBorrowedFixtureSharing() {
            "CA fingerprint stable across multiple issuances");
 }
 
-// =====================================================================
-// PVACMSHarness (44 assertions)
-// =====================================================================
 
 void testInitOnce() {
     testDiag("initOnce() is idempotent");
@@ -239,10 +236,10 @@ void testTwoHarnessesDistinctPorts() {
 
     testOk(first_harness.pvacmsTcpPort() != second_harness.pvacmsTcpPort(),
            "two harnesses get distinct tcp_port: %u vs %u",
-           (unsigned)first_harness.pvacmsTcpPort(), (unsigned)second_harness.pvacmsTcpPort());
+           static_cast<unsigned>(first_harness.pvacmsTcpPort()), static_cast<unsigned>(second_harness.pvacmsTcpPort()));
     testOk(first_harness.pvacmsTlsPort() != second_harness.pvacmsTlsPort(),
            "two harnesses get distinct tls_port: %u vs %u",
-           (unsigned)first_harness.pvacmsTlsPort(), (unsigned)second_harness.pvacmsTlsPort());
+           static_cast<unsigned>(first_harness.pvacmsTlsPort()), static_cast<unsigned>(second_harness.pvacmsTlsPort()));
     testOk(first_harness.pkiFixture().dir() != second_harness.pkiFixture().dir(),
            "two harnesses use distinct PKI dirs");
     testOk(first_harness.pkiFixture().caFingerprintSha256()
@@ -252,8 +249,8 @@ void testTwoHarnessesDistinctPorts() {
 
 void testCmsAdminClientConfigIsLoopback() {
     testDiag("cmsAdminClientConfig() produces a loopback-only client config");
-    PVACMSHarness harness = PVACMSHarness::Builder{}.build();
-    auto admin_client_config = harness.cmsAdminClientConfig();
+    const PVACMSHarness harness = PVACMSHarness::Builder{}.build();
+    const auto admin_client_config = harness.cmsAdminClientConfig();
 
     testOk(!admin_client_config.addressList.empty(), "addressList is non-empty");
     testOk(!admin_client_config.tls_keychain_file.empty(), "tls_keychain_file is set");
@@ -316,7 +313,7 @@ void testStopTestServerRemovesFromSnapshot() {
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
 
     auto &first_server = harness.testServerBuilder().start();
-    auto &second_server = harness.testServerBuilder().start();
+    const auto &second_server = harness.testServerBuilder().start();
     (void)second_server;
 
     const auto first_server_port = first_server.config().tcp_port;
@@ -337,12 +334,12 @@ void testTestClientConfigSnapshotSemantics() {
     testDiag("testClientConfig() snapshot semantics: includes servers started before the call");
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
 
-    auto config_before_servers = harness.testClientConfig();
+    const auto config_before_servers = harness.testClientConfig();
     const size_t address_count_before = config_before_servers.addressList.size();
     testDiag("before any test server: addressList size = %zu (PVACMS only)",
              address_count_before);
 
-    auto &first_server = harness.testServerBuilder().start();
+    const auto &first_server = harness.testServerBuilder().start();
     (void)first_server;
 
     auto config_after_first_server = harness.testClientConfig();
@@ -352,7 +349,7 @@ void testTestClientConfigSnapshotSemantics() {
            config_before_servers.addressList.size(),
            config_after_first_server.addressList.size());
 
-    auto &second_server = harness.testServerBuilder().start();
+    const auto &second_server = harness.testServerBuilder().start();
     (void)second_server;
 
     auto config_after_two_servers = harness.testClientConfig();
@@ -376,7 +373,7 @@ void testTestClientConfigIsLoopback() {
     testDiag("testClientConfig() produces a loopback-only client config");
     PVACMSHarness harness = PVACMSHarness::Builder{}.build();
     harness.testServerBuilder().start();
-    auto client_config = harness.testClientConfig();
+    const auto client_config = harness.testClientConfig();
     try {
         sanityCheckLoopback(client_config);
         testPass("testClientConfig() passes sanityCheckLoopback");
@@ -391,7 +388,7 @@ void testCustomizeFnAppliedPreBuild() {
 
     bool customize_called = false;
     uint16_t observed_tcp_port = 0xffff;
-    auto &test_server = harness.testServerBuilder()
+    const auto &test_server = harness.testServerBuilder()
                     .customize([&](pvxs::server::Config &server_config) {
                         customize_called = true;
                         observed_tcp_port = server_config.tcp_port;
@@ -413,13 +410,13 @@ void testStaplingFlagPropagatesViaCustomize() {
     bool customize_invoked_for_disabled_server = false;
     bool customize_invoked_for_enabled_server = false;
 
-    auto &stapling_disabled_server = harness.testServerBuilder()
+    const auto &stapling_disabled_server = harness.testServerBuilder()
                      .customize([&](pvxs::server::Config &server_config) {
                          server_config.disableStapling(true);
                          customize_invoked_for_disabled_server = true;
                      })
                      .start();
-    auto &stapling_enabled_server = harness.testServerBuilder()
+    const auto &stapling_enabled_server = harness.testServerBuilder()
                      .customize([&](pvxs::server::Config &server_config) {
                          server_config.disableStapling(false);
                          customize_invoked_for_enabled_server = true;
@@ -507,14 +504,14 @@ void testAllowExternalBindThrowsInCI() {
 void testTopologyValueType() {
     testDiag("ClusterTopology factories produce expected adjacency");
 
-    auto fm = ClusterTopology::fullMesh(3);
+    const auto fm = ClusterTopology::fullMesh(3);
     testEq(fm.size(), size_t{3});
     testTrue(fm.sees(0, 1));
     testTrue(fm.sees(1, 2));
     testTrue(fm.sees(2, 0));
     testTrue(!fm.sees(0, 0));
 
-    auto chain = ClusterTopology::linearChain(3);
+    const auto chain = ClusterTopology::linearChain(3);
     testTrue(chain.sees(0, 1));
     testTrue(chain.sees(1, 0));
     testTrue(chain.sees(1, 2));
@@ -522,18 +519,18 @@ void testTopologyValueType() {
     testTrue(!chain.sees(0, 2));
     testTrue(!chain.sees(2, 0));
 
-    auto st = ClusterTopology::star(4, 0);
+    const auto st = ClusterTopology::star(4, 0);
     testTrue(st.sees(0, 1));
     testTrue(st.sees(0, 2));
     testTrue(st.sees(0, 3));
     testTrue(st.sees(1, 0));
     testTrue(!st.sees(1, 2));
 
-    auto e = ClusterTopology::empty(3);
+    const auto e = ClusterTopology::empty(3);
     testTrue(!e.sees(0, 1));
     testTrue(!e.sees(0, 2));
 
-    auto cu = ClusterTopology::custom(3, {{0, 1}, {1, 2}});
+    const auto cu = ClusterTopology::custom(3, {{0, 1}, {1, 2}});
     testTrue(cu.sees(0, 1));
     testTrue(cu.sees(1, 2));
     testTrue(!cu.sees(1, 0));
@@ -563,18 +560,18 @@ void testTopologyMutators() {
 void testPeersSeenBy() {
     testDiag("ClusterTopology::peersSeenBy returns all directed-out neighbours");
 
-    auto fm = ClusterTopology::fullMesh(3);
+    const auto fm = ClusterTopology::fullMesh(3);
     auto p0 = fm.peersSeenBy(0);
-    std::set<size_t> p0_set(p0.begin(), p0.end());
+    const std::set<size_t> p0_set(p0.begin(), p0.end());
     testEq(p0_set.size(), size_t{2});
     testTrue(p0_set.count(1) == 1);
     testTrue(p0_set.count(2) == 1);
     testTrue(p0_set.count(0) == 0);
 
-    auto chain = ClusterTopology::linearChain(3);
-    auto c0 = chain.peersSeenBy(0);
-    auto c1 = chain.peersSeenBy(1);
-    auto c2 = chain.peersSeenBy(2);
+    const auto chain = ClusterTopology::linearChain(3);
+    const auto c0 = chain.peersSeenBy(0);
+    const auto c1 = chain.peersSeenBy(1);
+    const auto c2 = chain.peersSeenBy(2);
     testEq(c0.size(), size_t{1});
     testEq(c1.size(), size_t{2});
     testEq(c2.size(), size_t{1});
@@ -644,7 +641,7 @@ void testClusterDefaultFullMeshBuild() {
     testDiag("PVACMSCluster::Builder{}.size(2).build() produces 2-node fullMesh cluster");
 
     PVACMSCluster::Builder builder;
-    auto cluster = builder.size(2).build();
+    const auto cluster = builder.size(2).build();
 
     testOk(cluster.size() == 2, "Cluster size reported correctly as 2");
     testOk(cluster.topology().size() == 2, "Cluster topology size reported correctly as 2");
@@ -659,7 +656,7 @@ void testClusterDefaultFullMeshBuild() {
     testDiag("Member 0 listener: %s", member_addrs[0].c_str());
     testDiag("Member 1 listener: %s", member_addrs[1].c_str());
 
-    auto admin_client_config = cluster.cmsAdminClientConfig();
+    const auto admin_client_config = cluster.cmsAdminClientConfig();
     testOk(admin_client_config.addressList.size() == 2,
            "admin client config addressList contains both members");
     testOk(!admin_client_config.tls_keychain_file.empty(),
@@ -670,7 +667,7 @@ void testClusterLinearChainBuild() {
     testDiag("PVACMSCluster supports pre-partitioned linearChain(3)");
 
     PVACMSCluster::Builder builder;
-    auto cluster = builder.size(3).topology(ClusterTopology::linearChain(3)).build();
+    const auto cluster = builder.size(3).topology(ClusterTopology::linearChain(3)).build();
 
     testOk(cluster.size() == 3, "Cluster size reported correctly as 3");
     testOk(cluster.topology().sees(0, 1), "linear-chain: node 0 sees adjacent node 1");
@@ -686,7 +683,7 @@ void testClusterEnvVarSuppression() {
     setenv("EPICS_PVA_NAME_SERVERS", "bar.host:5075", 1);
 
     PVACMSCluster::Builder builder;
-    auto cluster = builder.size(2).build();
+    const auto cluster = builder.size(2).build();
 
     testOk(getenv("EPICS_PVACMS_CLUSTER_NAME_SERVERS") == nullptr,
            "EPICS_PVACMS_CLUSTER_NAME_SERVERS was unset by Builder");
@@ -748,7 +745,7 @@ void testAdminClientSurvivesRestart() {
     PVACMSCluster::Builder builder;
     auto cluster = builder.size(2).clusterName("CERT:CLUSTER:CLISURV").build();
 
-    auto admin_client_config_before = cluster.cmsAdminClientConfig();
+    const auto admin_client_config_before = cluster.cmsAdminClientConfig();
     testOk(admin_client_config_before.addressList.size() == 2,
            "pre-restart admin client config addressList contains both members");
 

@@ -1085,7 +1085,7 @@ void startCluster(ServerHandle &handle)
     handle.pvt_->runUntilShutdown();
 }
 
-void startCluster(ServerHandle &handle,
+void startCluster(const ServerHandle &handle,
                   const std::vector<std::string> &peers)
 {
     if (!handle.pvt_) {
