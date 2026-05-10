@@ -55,58 +55,7 @@ TESTFILES += superserver1.p12
 TESTPROD_HOST += gen_test_certs
 gen_test_certs_SRCS += gen_test_certs.cpp
 
-# Test TLS status operations
-TESTS += testtlsstatus
-TESTPROD_HOST += testtlsstatus
-testtlsstatus_SRCS += testtlsstatus.cpp
-
-
-
-# Test SQLite hardening (WAL, busy_timeout, foreign_keys, schema_version)
-TESTS += testsqlitehardening
-TESTPROD_HOST += testsqlitehardening
-testsqlitehardening_SRCS += testsqlitehardening.cpp
-testsqlitehardening_SYS_LIBS += sqlite3
-
-TESTS += testauditlogging
-TESTPROD_HOST += testauditlogging
-testauditlogging_SRCS += testauditlogging.cpp
-testauditlogging_SYS_LIBS += sqlite3
-
-TESTS += testratelimiting
-TESTPROD_HOST += testratelimiting
-testratelimiting_SRCS += testratelimiting.cpp
-
-TESTS += testadaptivemonitor
-TESTPROD_HOST += testadaptivemonitor
-testadaptivemonitor_SRCS += testadaptivemonitor.cpp
-testadaptivemonitor_SYS_LIBS += sqlite3
-
-TESTS += testhealthcheck
-TESTPROD_HOST += testhealthcheck
-testhealthcheck_SRCS += testhealthcheck.cpp
-testhealthcheck_SYS_LIBS += sqlite3
-
-TESTS += testoperationalmetrics
-TESTPROD_HOST += testoperationalmetrics
-testoperationalmetrics_SRCS += testoperationalmetrics.cpp
-testoperationalmetrics_SYS_LIBS += sqlite3
-
-PROD_HOST += testdatabasebackup
-testdatabasebackup_SRCS += testdatabasebackup.cpp
-testdatabasebackup_SYS_LIBS += sqlite3
-TESTS += testdatabasebackup
-
-TESTS += testvalidityschedules
-TESTPROD_HOST += testvalidityschedules
-testvalidityschedules_SRCS += testvalidityschedules.cpp
-testvalidityschedules_SYS_LIBS += sqlite3
-
-TESTS += testsanccr
-TESTPROD_HOST += testsanccr
-testsanccr_SRCS += testsanccr.cpp
-testsanccr_SYS_LIBS += sqlite3
-
+# --- Test Harness ------------------------------------------------------
 # CMS test harness sources. See test/harness/Makefile.
 # Harness ACF uses SPVA-extended access security keywords (AUTHORITY,
 # METHOD, PROTOCOL) that are only present in Michael Davidsaver's
@@ -126,14 +75,64 @@ testcmstestharness_SRCS += testcmstestharness.cpp
 testcmstestharness_SRCS += $(HARNESS_SRCS)
 testcmstestharness_LIBS += pvxsIoc
 testcmstestharness_SYS_LIBS += $(HARNESS_SYS_LIBS)
+endif # SPVA_ASLIB_AVAILABLE
+endif # PVXS_CMS_BUILD_TEST_HARNESS
 
-TESTS += testtlswithcmscluster
-TESTPROD_HOST += testtlswithcmscluster
-testtlswithcmscluster_SRCS += testtlswithcmscluster.cpp
-testtlswithcmscluster_SRCS += $(HARNESS_SRCS)
-testtlswithcmscluster_LIBS += pvxsIoc
-testtlswithcmscluster_SYS_LIBS += $(HARNESS_SYS_LIBS)
+# --- Test PVACMS internals ---------------------------------------------
+# Test SQLite hardening (WAL, busy_timeout, foreign_keys, schema_version)
+TESTS += testsqlitehardening
+TESTPROD_HOST += testsqlitehardening
+testsqlitehardening_SRCS += testsqlitehardening.cpp
+testsqlitehardening_SYS_LIBS += sqlite3
 
+TESTS += testadaptivemonitor
+TESTPROD_HOST += testadaptivemonitor
+testadaptivemonitor_SRCS += testadaptivemonitor.cpp
+testadaptivemonitor_SYS_LIBS += sqlite3
+
+TESTS += testratelimiting
+TESTPROD_HOST += testratelimiting
+testratelimiting_SRCS += testratelimiting.cpp
+
+# --- PVACMS DevOps -----------------------------------------------------
+TESTS += testauditlogging
+TESTPROD_HOST += testauditlogging
+testauditlogging_SRCS += testauditlogging.cpp
+testauditlogging_SYS_LIBS += sqlite3
+
+TESTS += testhealthcheck
+TESTPROD_HOST += testhealthcheck
+testhealthcheck_SRCS += testhealthcheck.cpp
+testhealthcheck_SYS_LIBS += sqlite3
+
+TESTS += testoperationalmetrics
+TESTPROD_HOST += testoperationalmetrics
+testoperationalmetrics_SRCS += testoperationalmetrics.cpp
+testoperationalmetrics_SYS_LIBS += sqlite3
+
+PROD_HOST += testdatabasebackup
+testdatabasebackup_SRCS += testdatabasebackup.cpp
+testdatabasebackup_SYS_LIBS += sqlite3
+TESTS += testdatabasebackup
+
+# --- Test PVACMS functional --------------------------------------------
+TESTS += testsanccr
+TESTPROD_HOST += testsanccr
+testsanccr_SRCS += testsanccr.cpp
+testsanccr_SYS_LIBS += sqlite3
+
+TESTS += testvalidityschedules
+TESTPROD_HOST += testvalidityschedules
+testvalidityschedules_SRCS += testvalidityschedules.cpp
+testvalidityschedules_SYS_LIBS += sqlite3
+
+# Test TLS status operations
+TESTS += testtlsstatus
+TESTPROD_HOST += testtlsstatus
+testtlsstatus_SRCS += testtlsstatus.cpp
+
+ifeq ($(PVXS_CMS_BUILD_TEST_HARNESS),YES)
+ifneq ($(SPVA_ASLIB_AVAILABLE),)
 TESTS += testtlswithcms
 TESTPROD_HOST += testtlswithcms
 testtlswithcms_SRCS += testtlswithcms.cpp
@@ -141,6 +140,12 @@ testtlswithcms_SRCS += $(HARNESS_SRCS)
 testtlswithcms_LIBS += pvxsIoc
 testtlswithcms_SYS_LIBS += $(HARNESS_SYS_LIBS)
 
+TESTS += testtlswithcmscluster
+TESTPROD_HOST += testtlswithcmscluster
+testtlswithcmscluster_SRCS += testtlswithcmscluster.cpp
+testtlswithcmscluster_SRCS += $(HARNESS_SRCS)
+testtlswithcmscluster_LIBS += pvxsIoc
+testtlswithcmscluster_SYS_LIBS += $(HARNESS_SYS_LIBS)
 endif # SPVA_ASLIB_AVAILABLE
 endif # PVXS_CMS_BUILD_TEST_HARNESS
 
