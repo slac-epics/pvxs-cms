@@ -130,6 +130,10 @@ PVXS_CMS_TEST_API void initOnce();
 PVXS_CMS_TEST_API void sanityCheckLoopback(const client::Config &cfg);
 PVXS_CMS_TEST_API void sanityCheckLoopback(const server::Config &cfg);
 
+/// Run `cfg.expand()` then drop any non-loopback addresses from
+/// `addressList` / `nameServers`.  Post: `sanityCheckLoopback(cfg)` passes.
+PVXS_CMS_TEST_API void sanitizeLoopbackOnly(client::Config &cfg);
+
 // ---------------------------------------------------------------------------
 // PVACMSHarness - single-instance fixture
 // ---------------------------------------------------------------------------

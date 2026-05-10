@@ -962,8 +962,7 @@ int main(int argc, char *argv[]) {
                             if (!cluster_mode) throw;
                             if (attempt >= kMaxRetries) throw;
                             ++attempt;
-                            std::this_thread::sleep_for(
-                                std::chrono::milliseconds(kRetrySleepMs));
+                            std::this_thread::sleep_for(std::chrono::milliseconds(kRetrySleepMs));
                         }
                     }
                     break;

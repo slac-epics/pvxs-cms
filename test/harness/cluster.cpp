@@ -60,6 +60,7 @@ bool waitForMemberReady(const std::string &addr, const std::string &admin_p12, d
     cfg.addressList.push_back(addr);
     cfg.nameServers.push_back(addr);
     cfg.tls_keychain_file = admin_p12;
+    sanitizeLoopbackOnly(cfg);
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(timeout_secs * 1000.0));
     while (std::chrono::steady_clock::now() < deadline) {
@@ -505,8 +506,8 @@ void PVACMSCluster::setReachable(size_t i, size_t j) {
     restartMember(j);
 }
 
-pvxs::client::Config PVACMSCluster::cmsAdminClientConfig() const {
-    pvxs::client::Config cfg;
+client::Config PVACMSCluster::cmsAdminClientConfig() const {
+    client::Config cfg;
     cfg.addressList.clear();
     cfg.nameServers.clear();
     for (const auto &addr : impl_->member_addrs) {
@@ -514,17 +515,19 @@ pvxs::client::Config PVACMSCluster::cmsAdminClientConfig() const {
         cfg.nameServers.push_back(addr);
     }
     cfg.tls_keychain_file = impl_->fixture().adminP12Path();
+    sanitizeLoopbackOnly(cfg);
     return cfg;
 }
 
-pvxs::client::Config PVACMSCluster::memberClientConfig(size_t i) const {
+client::Config PVACMSCluster::memberClientConfig(size_t i) const {
     if (!impl_ || i >= impl_->member_addrs.size()) throw std::out_of_range("PVACMSCluster::memberClientConfig: index out of range");
-    pvxs::client::Config cfg;
+    client::Config cfg;
     cfg.addressList.clear();
     cfg.nameServers.clear();
     cfg.addressList.push_back(impl_->member_addrs[i]);
     cfg.nameServers.push_back(impl_->member_addrs[i]);
     cfg.tls_keychain_file = impl_->fixture().adminP12Path();
+    sanitizeLoopbackOnly(cfg);
     return cfg;
 }
 

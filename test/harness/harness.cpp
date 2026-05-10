@@ -51,17 +51,17 @@ bool isLoopback(const std::string &addr) {
         return inLoopbackV6(addr.substr(1, end - 1));
     }
     if (addr.find("::") != std::string::npos) {
-        auto last_colon = addr.rfind(':');
-        auto port_pos = addr.find_first_of("0123456789", last_colon);
+        const auto last_colon = addr.rfind(':');
+        const auto port_pos = addr.find_first_of("0123456789", last_colon);
         if (last_colon != std::string::npos && port_pos != std::string::npos &&
             port_pos > last_colon) {
             return inLoopbackV6(addr.substr(0, last_colon));
         }
         return inLoopbackV6(addr);
     }
-    auto slash = addr.find('/');
-    auto colon = addr.find(':');
-    auto bare = addr.substr(0, std::min(slash, colon));
+    const auto slash = addr.find('/');
+    const auto colon = addr.find(':');
+    const auto bare = addr.substr(0, std::min(slash, colon));
     return inLoopbackV4(bare);
 }
 
@@ -82,9 +82,7 @@ std::string makeUniqueSubject(const std::string &prefix) {
 
 void writeHarnessAcf(const std::string &path) {
     std::ofstream out(path);
-    if (!out) {
-        throw std::runtime_error("PVACMSHarness: failed to open ACF for write: " + path);
-    }
+    if (!out) throw std::runtime_error("PVACMSHarness: failed to open ACF for write: " + path);
     out << "AUTHORITY(CMS_AUTH, \"PVXS CMS Test CA\")\n"
         << "\n"
         << "UAG(CMS_ADMIN) {\"PVACMS Test Admin\"}\n"
@@ -97,15 +95,13 @@ void writeHarnessAcf(const std::string &path) {
         << "        AUTHORITY(CMS_AUTH)\n"
         << "    }\n"
         << "}\n";
-    if (!out) {
-        throw std::runtime_error("PVACMSHarness: failed to write ACF: " + path);
-    }
+    if (!out) throw std::runtime_error("PVACMSHarness: failed to write ACF: " + path);
 }
 
 
 
-::cms::ConfigCms makeIsolatedConfigCms(const PkiFixture &pki, bool ipv6, bool apply_env, uint32_t monitor_interval_secs) {
-    ::cms::ConfigCms cfg{};
+ConfigCms makeIsolatedConfigCms(const PkiFixture &pki, const bool ipv6, const bool apply_env, const uint32_t monitor_interval_secs) {
+    ConfigCms cfg{};
     if (apply_env) {
         cfg.applyCertsEnv();
         cfg.applyCmsEnv({});
@@ -160,7 +156,7 @@ void writeHarnessAcf(const std::string &path) {
 
 namespace internal {
 
-void startWithEaddrRetry(pvxs::server::Server &srv, int max_retries) {
+void startWithEaddrRetry(server::Server &srv, const int max_retries) {
     for (int attempt = 0; attempt < max_retries; ++attempt) {
         try {
             srv.start();
@@ -171,12 +167,8 @@ void startWithEaddrRetry(pvxs::server::Server &srv, int max_retries) {
                 msg.find("EADDRINUSE") != std::string::npos ||
                 msg.find("Address already in use") != std::string::npos ||
                 msg.find("address already in use") != std::string::npos;
-            if (!is_eaddrinuse || attempt + 1 >= max_retries) {
-                throw;
-            }
-            log_warn_printf(harness_log,
-                            "Server::start() EADDRINUSE on attempt %d/%d: %s\n",
-                            attempt + 1, max_retries, e.what());
+            if (!is_eaddrinuse || attempt + 1 >= max_retries) throw;
+            log_warn_printf(harness_log, "Server::start() EADDRINUSE on attempt %d/%d: %s\n", attempt + 1, max_retries, e.what());
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
@@ -198,14 +190,27 @@ static void checkLoopbackList(const std::vector<std::string> &addrs,
     }
 }
 
-void sanityCheckLoopback(const pvxs::client::Config &cfg) {
+void sanityCheckLoopback(const client::Config &cfg) {
     checkLoopbackList(cfg.addressList, "addressList");
     checkLoopbackList(cfg.nameServers, "nameServers");
 }
 
-void sanityCheckLoopback(const pvxs::server::Config &cfg) {
+void sanityCheckLoopback(const server::Config &cfg) {
     checkLoopbackList(cfg.interfaces, "interfaces");
     checkLoopbackList(cfg.beaconDestinations, "beaconDestinations");
+}
+
+void sanitizeLoopbackOnly(client::Config &cfg) {
+    cfg.expand();
+    const auto not_loopback = [](const std::string &a) {
+        return !a.empty() && !isLoopback(a);
+    };
+    cfg.addressList.erase(
+        std::remove_if(cfg.addressList.begin(), cfg.addressList.end(), not_loopback),
+        cfg.addressList.end());
+    cfg.nameServers.erase(
+        std::remove_if(cfg.nameServers.begin(), cfg.nameServers.end(), not_loopback),
+        cfg.nameServers.end());
 }
 
 // ---------- PVACMSHarness ----------
@@ -349,7 +354,7 @@ const std::vector<RegisteredServer> &PVACMSHarness::startedTestServers() const n
     return impl_->snapshot_table;
 }
 
-void PVACMSHarness::stopTestServer(pvxs::server::Server &srv) {
+void PVACMSHarness::stopTestServer(server::Server &srv) {
     std::lock_guard<std::mutex> lk(impl_->tables_mutex);
     for (size_t i = 0; i < impl_->owned_servers.size(); ++i) {
         if (impl_->owned_servers[i].get() == &srv) {
@@ -369,8 +374,8 @@ void PVACMSHarness::stopTestServer(pvxs::server::Server &srv) {
     }
 }
 
-pvxs::client::Config PVACMSHarness::cmsAdminClientConfig() const {
-    pvxs::client::Config cfg;
+client::Config PVACMSHarness::cmsAdminClientConfig() const {
+    client::Config cfg;
     cfg.addressList.clear();
     cfg.addressList.push_back(impl_->pvacms_listener_addr);
     cfg.nameServers.clear();
@@ -379,10 +384,11 @@ pvxs::client::Config PVACMSHarness::cmsAdminClientConfig() const {
 #ifdef PVXS_HAS_DISK_OCSP_CACHE
     cfg.tls_status_cache_dir = impl_->fixture().dir() + "/cache/admin";
 #endif
+    sanitizeLoopbackOnly(cfg);
     return cfg;
 }
 
-pvxs::client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts) const {
+client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts) const {
     SubjectSpec subj;
     subj.common_name = opts.subject.empty() ? makeUniqueSubject("test-client") : opts.subject;
     auto client_p12 = const_cast<PkiFixture &>(impl_->fixture()).issueClientCert(subj);
@@ -393,7 +399,7 @@ pvxs::client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts)
 
     const auto client_id = impl_->test_client_counter.fetch_add(1);
 
-    pvxs::client::Config cfg;
+    client::Config cfg;
     cfg.addressList.clear();
     cfg.nameServers.clear();
     {
@@ -413,6 +419,7 @@ pvxs::client::Config PVACMSHarness::testClientConfig(const TestClientOpts &opts)
 #else
     (void)client_id;
 #endif
+    sanitizeLoopbackOnly(cfg);
     return cfg;
 }
 
@@ -504,8 +511,8 @@ PVACMSHarness PVACMSHarness::Builder::build() {
     if (impl.status_subscription_observer) {
         auto observer = impl.status_subscription_observer;
         state.wrap_wildcard_source =
-            [observer](std::shared_ptr<pvxs::server::Source> inner)
-            -> std::shared_ptr<pvxs::server::Source> {
+            [observer](std::shared_ptr<server::Source> inner)
+            -> std::shared_ptr<server::Source> {
             return internal::makeObservingSource(std::move(inner), observer);
         };
     }
