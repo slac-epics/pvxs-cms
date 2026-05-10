@@ -462,6 +462,50 @@ void dumpHealthSection(const Value& result) {
     std::cout << "--------------------------------------------\n" << std::endl;
 }
 
+void dumpHealthUnknown(const std::string &reason) {
+    std::cout << "\nPVACMS Health\n"
+              << "============================================\n";
+    writeLabel(std::cout, "Status");
+    std::cout << "UNKNOWN (" << reason << ")\n";
+    writeLabel(std::cout, "Database Integrity");
+    std::cout << "unknown\n";
+    writeLabel(std::cout, "CA Certificate");
+    std::cout << "unknown\n";
+    writeLabel(std::cout, "Uptime");
+    std::cout << "unknown\n";
+    writeLabel(std::cout, "Certificate Count");
+    std::cout << "unknown\n";
+    writeLabel(std::cout, "Cluster Mode");
+    std::cout << "unknown\n";
+    writeLabel(std::cout, "Cluster Members");
+    std::cout << "unknown\n";
+    writeLabel(std::cout, "Last Check");
+    std::cout << "unknown\n";
+    std::cout << "--------------------------------------------\n" << std::endl;
+}
+
+void dumpMetricsUnknown(const std::string &reason) {
+    std::cout << "\nPVACMS Metrics\n"
+              << "============================================\n";
+    writeLabel(std::cout, "Status");
+    std::cout << "UNKNOWN (" << reason << ")\n";
+    writeSubHeader(std::cout, "Counters (since startup)");
+    writeLabel(std::cout, "Certificates Created", 4);
+    std::cout << "unknown\n";
+    writeLabel(std::cout, "Certificates Revoked", 4);
+    std::cout << "unknown\n";
+    writeLabel(std::cout, "Uptime", 4);
+    std::cout << "unknown\n";
+    writeSubHeader(std::cout, "Gauges (current state)");
+    writeLabel(std::cout, "Certificates Active", 4);
+    std::cout << "unknown\n";
+    writeLabel(std::cout, "Avg CCR Time", 4);
+    std::cout << "unknown\n";
+    writeLabel(std::cout, "Database Size", 4);
+    std::cout << "unknown\n";
+    std::cout << "--------------------------------------------\n" << std::endl;
+}
+
 void dumpMetricsSection(const Value& result) {
     std::cout << "\nPVACMS Metrics\n"
               << "============================================\n";
@@ -1049,7 +1093,19 @@ int main(int argc, char *argv[]) {
                 }
                 case HEALTH:
                 case METRICS:
-                    result = client.get(cert_id).exec()->wait(conf.getRequestTimeout());
+                    try {
+                        result = client.get(cert_id).exec()->wait(conf.getRequestTimeout());
+                    } catch (const client::Timeout &) {
+                        Indented I(std::cout);
+                        if (action == HEALTH) dumpHealthUnknown("PVACMS not contactable");
+                        else dumpMetricsUnknown("PVACMS not contactable");
+                        return 0;
+                    } catch (const client::Disconnect &e) {
+                        Indented I(std::cout);
+                        if (action == HEALTH) dumpHealthUnknown(std::string("PVACMS not contactable: ") + e.what());
+                        else dumpMetricsUnknown(std::string("PVACMS not contactable: ") + e.what());
+                        return 0;
+                    }
                     break;
             }
             Indented I(std::cout);
