@@ -10,7 +10,6 @@
 #include <epicsThread.h>
 #include <sqlite3.h>
 #include <stdexcept>
-#include <thread>
 
 namespace cms {
 namespace test {
@@ -102,7 +101,7 @@ bool waitForCertRecord(const std::string &db_path, const std::uint64_t serial, c
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(timeout_secs * 1000.0));
     while (std::chrono::steady_clock::now() < deadline) {
         if (predicate(loadCertRecord(db_path, serial))) return true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        epicsThreadSleep(0.1);
     }
     return predicate(loadCertRecord(db_path, serial));
 }

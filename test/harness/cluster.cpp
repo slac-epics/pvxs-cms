@@ -22,6 +22,7 @@
 #include <vector>
 
 #include <asLib.h>
+#include <epicsThread.h>
 
 #include <pvxs/client.h>
 #include <pvxs/config.h>
@@ -69,7 +70,7 @@ bool waitForMemberReady(const std::string &addr, const std::string &admin_p12, d
             auto issuer = reply["issuer"].as<std::string>();
             if (!issuer.empty()) return true;
         } catch (const std::exception &) { }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        epicsThreadSleep(0.1);
     }
     return false;
 }
@@ -413,7 +414,7 @@ PVACMSCluster PVACMSCluster::Builder::build() {
                     log_warn_printf(cluster_log,
                                     "startCluster attempt %u failed: %s (retrying)\n",
                                     attempt, e.what());
-                    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                    epicsThreadSleep(0.25);
                 }
             }
             running_ptr->store(false);
@@ -426,7 +427,7 @@ PVACMSCluster PVACMSCluster::Builder::build() {
         }
 
         if (i + 1 < pvt_->n) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            epicsThreadSleep(0.2);
         }
     }
 
@@ -643,7 +644,7 @@ void PVACMSCluster::awaitConvergence() {
             }
         }
         if (restarted_dead_member) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            epicsThreadSleep(0.1);
             continue;
         }
         if (all_converged) return;
@@ -655,7 +656,7 @@ void PVACMSCluster::awaitConvergence() {
                << " members, observed " << laggard_actual << ")";
             throw std::runtime_error(os.str());
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        epicsThreadSleep(0.05);
     }
 }
 

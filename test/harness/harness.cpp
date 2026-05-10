@@ -169,7 +169,7 @@ void startWithEaddrRetry(server::Server &srv, const int max_retries) {
                 msg.find("address already in use") != std::string::npos;
             if (!is_eaddrinuse || attempt + 1 >= max_retries) throw;
             log_warn_printf(harness_log, "Server::start() EADDRINUSE on attempt %d/%d: %s\n", attempt + 1, max_retries, e.what());
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            epicsThreadSleep(0.05);
         }
     }
     throw std::runtime_error("startWithEaddrRetry: exhausted retries");

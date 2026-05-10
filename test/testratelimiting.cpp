@@ -4,9 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include <chrono>
-#include <thread>
-
+#include <epicsThread.h>
 #include <epicsUnitTest.h>
 #include <testMain.h>
 
@@ -38,7 +36,7 @@ void testRefillBehavior()
     }
     testOk(!bucket.tryConsume(), "bucket exhausted before waiting for refill");
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(220));
+    epicsThreadSleep(0.220);
 
     const double retry_after = bucket.secsUntilReady();
     const bool first_after_wait = bucket.tryConsume();

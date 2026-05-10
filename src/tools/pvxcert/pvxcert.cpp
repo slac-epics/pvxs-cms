@@ -14,7 +14,6 @@
 #include <iostream>
 #include <list>
 #include <string>
-#include <thread>
 
 #include <sys/stat.h>
 
@@ -962,7 +961,7 @@ int main(int argc, char *argv[]) {
                             if (!cluster_mode) throw;
                             if (attempt >= kMaxRetries) throw;
                             ++attempt;
-                            std::this_thread::sleep_for(std::chrono::milliseconds(kRetrySleepMs));
+                            epicsThreadSleep(kRetrySleepMs / 1000.0);
                         }
                     }
                     break;

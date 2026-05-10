@@ -19,6 +19,7 @@
 #include <ctime>
 #include <vector>
 
+#include <epicsThread.h>
 #include <epicsUnitTest.h>
 #include <testMain.h>
 
@@ -62,7 +63,7 @@ bool waitForStatusIndex(pvxs::client::Context &client,
             if (status["value.index"].as<int32_t>() == expected_status) return true;
         } catch (const std::exception &) {
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        epicsThreadSleep(0.1);
     }
     auto status = client.get(status_pv).exec()->wait(1.0);
     return status["value.index"].as<int32_t>() == expected_status;
@@ -384,7 +385,7 @@ void testPerMemberHealthPvReportsConvergedCluster() {
             } catch (const std::exception &e) {
                 testDiag("member %zu HEALTH GET (poll): %s", i, e.what());
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            epicsThreadSleep(0.5);
         }
 
         testOk(health_post_observed_converged,
@@ -501,7 +502,7 @@ void testAdminClientSurvivesMemberLoss() {
                 admin_client.get(ctrl_pv).exec()->wait(6.0);
                 get_succeeded_after_restart = true;
             } catch (const std::exception &) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                epicsThreadSleep(0.5);
             }
         }
     } catch (const std::exception &) {}
@@ -532,7 +533,7 @@ double awaitMembershipReachesAcrossAll(PVACMSCluster &cluster,
         if (all_match) {
             return std::chrono::duration<double>(clock::now() - t0).count();
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        epicsThreadSleep(0.1);
     }
     return 0.0;
 }

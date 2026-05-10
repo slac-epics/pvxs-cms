@@ -27,6 +27,7 @@
 #include <string>
 #include <thread>
 
+#include <epicsThread.h>
 #include <epicsUnitTest.h>
 #include <testMain.h>
 
@@ -162,7 +163,7 @@ bool waitForStatusIndex(pvxs::client::Context &client,
             if (status["value.index"].as<int32_t>() == expected_status) return true;
         } catch (const std::exception &) {
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        epicsThreadSleep(0.1);
     }
     auto status = client.get(status_pv).exec()->wait(1.0);
     return status["value.index"].as<int32_t>() == expected_status;
@@ -452,7 +453,7 @@ void testServerOnlyWithCounters() {
                "GET reply value matches the value the server published (42)");
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    epicsThreadSleep(0.5);
 
     const auto &issuer = harness.pvacmsIssuerId();
     testDiag("Issuer ID: %s", issuer.c_str());
@@ -533,7 +534,7 @@ void testCounterAPIBasics() {
     } catch (const std::exception &) {
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    epicsThreadSleep(0.5);
 
     const auto unknown_status_pv = std::string("CERT:STATUS:nonexistent:9999");
     testOk(harness.subscribesFor(unknown_status_pv) == 0,
@@ -802,7 +803,7 @@ void testCacheHitOnRepeatedSubscribe() {
     } catch (const std::exception &) {
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    epicsThreadSleep(0.5);
 
     const uint32_t cache_hits_after_first_client = harness.totalCacheHits();
 
@@ -812,7 +813,7 @@ void testCacheHitOnRepeatedSubscribe() {
     } catch (const std::exception &) {
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    epicsThreadSleep(0.5);
 
     const uint32_t cache_hits_after_second_client = harness.totalCacheHits();
 
@@ -854,7 +855,7 @@ void testNoCacheBleedAcrossRoles() {
     } catch (const std::exception &) {
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    epicsThreadSleep(0.5);
 
     testDiag("After single GET: subscribes=%u deliveries=%u cache_hits=%u",
              harness.totalSubscribes(),
