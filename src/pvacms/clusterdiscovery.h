@@ -232,12 +232,9 @@ private:
     void cancelForwarding(const std::string &node_id);
     void rescanForwarders();
 
-    JoinResult tryJoinClusterAt(const std::string &server);
-
     std::shared_ptr<client::Operation> beacon_discovery_;
     epicsMutex beacon_refresh_lock_;
     std::chrono::steady_clock::time_point last_beacon_refresh_{};
-    std::set<std::string> pending_beacon_servers_;
     static constexpr int64_t kBeaconRefreshCooldownSecs = 5;
 
     std::atomic<int64_t> global_high_water_mark_{0};

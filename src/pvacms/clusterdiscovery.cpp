@@ -862,20 +862,7 @@ void ClusterDiscovery::doDiscoveryRefresh() {
     if (shutting_down_.load()) return;
 
     const auto members_before = controller_.getMembers().size();
-    std::vector<std::string> targets;
-    {
-        Guard G(beacon_refresh_lock_);
-        targets.assign(pending_beacon_servers_.begin(), pending_beacon_servers_.end());
-        pending_beacon_servers_.clear();
-    }
-
-    JoinResult result = JoinResult::NotFound;
-    for (const auto &server : targets) {
-        result = tryJoinClusterAt(server);
-        if (result != JoinResult::NotFound) break;
-    }
-    if (result == JoinResult::NotFound) result = joinCluster();
-    if (result == JoinResult::Joined) {
+    if (joinCluster() == JoinResult::Joined) {
         if (controller_.getMembers().size() > members_before) {
             log_info_printf(pvacmscluster,
                             "Beacon-triggered discovery added cluster members%s\n",
@@ -933,9 +920,6 @@ void ClusterDiscovery::handleBeaconEvent(const client::Discovered &evt) {
             last_beacon_refresh_ = now;
             should_refresh = true;
         }
-        if (!evt.server.empty()) {
-            pending_beacon_servers_.insert(evt.server);
-        }
     }
     if (!should_refresh) return;
 
@@ -949,10 +933,6 @@ void ClusterDiscovery::handleBeaconEvent(const client::Discovered &evt) {
  * @return true if the join handshake succeeded and the cluster was joined; false otherwise.
  */
 ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
-    return tryJoinClusterAt(std::string());
-}
-
-ClusterDiscovery::JoinResult ClusterDiscovery::tryJoinClusterAt(const std::string &server) {
     if (shutting_down_.load()) return JoinResult::NotFound;
     drainDeadSubscriptions();
     static constexpr int kMaxBidiRetries = 3;
@@ -979,11 +959,9 @@ ClusterDiscovery::JoinResult ClusterDiscovery::tryJoinClusterAt(const std::strin
     try {
         // Short-circuit RPC on shutdown so destructor join can complete fast.
         double rpc_timeout = shutting_down_.load() ? 0.5 : double(discovery_timeout_secs_);
-        auto rpc = client_ctx_.rpc(ctrl_pv_name, req);
-        if (!server.empty()) {
-            rpc.server(server);
-        }
-        auto resp = rpc.exec()->wait(rpc_timeout);
+        auto resp = client_ctx_.rpc(ctrl_pv_name, req)
+            .exec()
+            ->wait(rpc_timeout);
 
         if (!clusterVerify(cert_auth_pub_key_, resp)) {
             log_warn_printf(pvacmscluster, "Join response signature verification failed%s\n", "");
