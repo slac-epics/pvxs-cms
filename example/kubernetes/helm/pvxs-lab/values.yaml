@@ -76,7 +76,7 @@ it:
 ml:
   replicas: 1
   debug:
-    enabled: false
+    enabled: true
     logLevel: "pvxs.*=INFO"
   persistence:
     enabled: true
