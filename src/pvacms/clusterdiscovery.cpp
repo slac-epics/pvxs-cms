@@ -896,7 +896,6 @@ void ClusterDiscovery::startBeaconDiscovery() {
     beacon_discovery_ = client_ctx_.discover([this](const client::Discovered &evt) {
             handleBeaconEvent(evt);
         })
-        .pingAll(true)
         .exec();
 }
 
