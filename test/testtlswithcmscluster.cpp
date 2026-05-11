@@ -51,10 +51,7 @@ using cms::cert::getCertStatusURI;
 namespace members = pvxs::members;
 namespace nt = pvxs::nt;
 
-bool waitForStatusIndex(pvxs::client::Context &client,
-                        const std::string &status_pv,
-                        int32_t expected_status,
-                        double timeout_secs) {
+bool waitForStatusIndex(pvxs::client::Context &client, const std::string &status_pv, int32_t expected_status, double timeout_secs) {
     const auto deadline = std::chrono::steady_clock::now() +
         std::chrono::milliseconds(static_cast<int>(timeout_secs * 1000.0));
     while (std::chrono::steady_clock::now() < deadline) {
@@ -69,10 +66,7 @@ bool waitForStatusIndex(pvxs::client::Context &client,
     return status["value.index"].as<int32_t>() == expected_status;
 }
 
-pvxs::Value makeCreateArgument(const std::string &create_pv,
-                               uint16_t usage,
-                               const std::string &public_key,
-                               const std::string &name) {
+pvxs::Value makeCreateArgument(const std::string &create_pv, uint16_t usage, const std::string &public_key, const std::string &name) {
     cms::cert::CertCreationRequest request("std", {});
     request.ccr["type"] = std::string("std");
     request.ccr["name"] = name;
