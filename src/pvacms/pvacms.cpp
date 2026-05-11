@@ -1918,8 +1918,13 @@ int64_t onCreateCertificate(ConfigCms &config,
         const auto original_certificate = getOriginalCert(certificate_factory, certs_db, issuer_id);
         // If we got an original certificate ok, then renew it
         if (original_certificate.status != UNKNOWN) {
-            // The new renewal date is the renewal date from this ccr unless it's less than the expiration date of the original cert
-            const auto new_renewal_date = std::min(original_certificate.not_after, renew_by);
+            // The new renewal date is the renewal date from this ccr unless it's less than the expiration date of the original cert.
+            // When the CCR has no renew_by (renew_by==expiration was zeroed above), use the cert's not_after so the DB write path
+            // takes SQL_RENEW_CERTS (which writes status and clears renewal_due) rather than the flag-only short-circuit that
+            // would leave status unchanged.
+            const auto new_renewal_date = (renew_by > 0)
+                ? std::min(original_certificate.not_after, renew_by)
+                : original_certificate.not_after;
 
             const auto status_date = std::time(nullptr); // Status date
             const std::string pv_name(getCertStatusURI(config.getCertPvPrefix(), issuer_id, original_certificate.serial));
