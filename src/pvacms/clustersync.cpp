@@ -19,11 +19,14 @@
 #include <sqlite3.h>
 
 #include "pvacmsVersion.h"
+#include "sqlitestmtguard.h"
 
 DEFINE_LOGGER(pvacmscluster, "cms.certs.cluster");
 
 namespace cms {
 namespace cluster {
+
+using ::cms::detail::SqliteStmtGuard;
 
 namespace members = ::pvxs::members;
 namespace server = ::pvxs::server;
@@ -163,10 +166,12 @@ Value serializeCertsTable(sqlite3 *certs_db,
     }
     val["members"] = members_arr.freeze();
 
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_CERTS, -1, &stmt, nullptr) != SQLITE_OK) {
+    sqlite3_stmt *stmt_raw = nullptr;
+    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_CERTS, -1, &stmt_raw, nullptr) != SQLITE_OK) {
         throw std::runtime_error(std::string("Failed to query certs: ") + sqlite3_errmsg(certs_db));
     }
+    SqliteStmtGuard stmt_guard(stmt_raw);
+    sqlite3_stmt *stmt = stmt_guard.get();
 
     std::vector<Value> cert_rows;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -191,14 +196,15 @@ Value serializeCertsTable(sqlite3 *certs_db,
         row["san"] = col_text(13);
         cert_rows.push_back(std::move(row));
     }
-    sqlite3_finalize(stmt);
 
     shared_array<Value> certs_arr(cert_rows.size());
     for (size_t i = 0; i < cert_rows.size(); i++) certs_arr[i] = std::move(cert_rows[i]);
     val["certs"] = certs_arr.freeze();
 
-    sqlite3_stmt *sched_stmt;
-    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_SCHEDULES, -1, &sched_stmt, nullptr) == SQLITE_OK) {
+    sqlite3_stmt *sched_stmt_raw = nullptr;
+    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_SCHEDULES, -1, &sched_stmt_raw, nullptr) == SQLITE_OK) {
+        SqliteStmtGuard sched_guard(sched_stmt_raw);
+        sqlite3_stmt *sched_stmt = sched_guard.get();
         std::vector<Value> sched_rows;
         while (sqlite3_step(sched_stmt) == SQLITE_ROW) {
             auto row = val["cert_schedules"].allocMember();
@@ -212,7 +218,6 @@ Value serializeCertsTable(sqlite3 *certs_db,
             row["end_time"] = txt(3);
             sched_rows.push_back(std::move(row));
         }
-        sqlite3_finalize(sched_stmt);
         shared_array<Value> sched_arr(sched_rows.size());
         for (size_t i = 0; i < sched_rows.size(); i++) sched_arr[i] = std::move(sched_rows[i]);
         val["cert_schedules"] = sched_arr.freeze();
@@ -365,17 +370,18 @@ void ClusterSyncPublisher::publishCertChange(uint64_t serial) {
         sync_source_->prototype_ = makeClusterSyncValue();
     }
 
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(certs_db_, SQL_SYNC_SELECT_CERT_BY_SERIAL, -1, &stmt, nullptr) != SQLITE_OK) {
+    sqlite3_stmt *stmt_raw = nullptr;
+    if (sqlite3_prepare_v2(certs_db_, SQL_SYNC_SELECT_CERT_BY_SERIAL, -1, &stmt_raw, nullptr) != SQLITE_OK) {
         log_err_printf(pvacmscluster, "Failed to query cert %" PRIu64 ": %s\n",
                        serial, sqlite3_errmsg(certs_db_));
         return;
     }
+    SqliteStmtGuard stmt_guard(stmt_raw);
+    sqlite3_stmt *stmt = stmt_guard.get();
     const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
     sqlite3_bind_int64(stmt, 1, db_serial);
 
     if (sqlite3_step(stmt) != SQLITE_ROW) {
-        sqlite3_finalize(stmt);
         log_warn_printf(pvacmscluster, "Cert %" PRIu64 " not found for incremental publish\n",
                         serial);
         return;
@@ -401,7 +407,6 @@ void ClusterSyncPublisher::publishCertChange(uint64_t serial) {
     update.status      = sqlite3_column_int(stmt, 11);
     update.status_date = sqlite3_column_int64(stmt, 12);
     update.san        = col_text(13);
-    sqlite3_finalize(stmt);
 
     appendToLog(std::move(update));
 

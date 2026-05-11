@@ -25,11 +25,14 @@
 #include <sqlite3.h>
 
 #include "pvacmsVersion.h"
+#include "sqlitestmtguard.h"
 
 DEFINE_LOGGER(pvacmscluster, "cms.certs.cluster");
 
 namespace cms {
 namespace cluster {
+
+using ::cms::detail::SqliteStmtGuard;
 
 namespace client = ::pvxs::client;
 
@@ -61,10 +64,12 @@ void insertSyncAuditRecord(sqlite3 *db, const std::string &action,
         "INSERT INTO audit(timestamp, action, operator, serial, detail) "
         "VALUES(:timestamp, :action, :operator, :serial, :detail)";
 
-    sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(db, SQL_INSERT_AUDIT, -1, &stmt, nullptr) != SQLITE_OK) {
+    sqlite3_stmt *stmt_raw = nullptr;
+    if (sqlite3_prepare_v2(db, SQL_INSERT_AUDIT, -1, &stmt_raw, nullptr) != SQLITE_OK) {
         return;
     }
+    SqliteStmtGuard stmt_guard(stmt_raw);
+    sqlite3_stmt *stmt = stmt_guard.get();
     sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":timestamp"),
                        static_cast<sqlite3_int64>(time(nullptr)));
     sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":action"),
@@ -76,7 +81,6 @@ void insertSyncAuditRecord(sqlite3 *db, const std::string &action,
     sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":detail"),
                       detail.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
 }
 
 }  // namespace
@@ -148,6 +152,8 @@ ClusterDiscovery::ClusterDiscovery(std::string node_id,
     join_worker_thread_->start();
     rejoin_watchdog_thread_.reset(new epicsThread( rejoin_watchdog_runnable_, "pvacms-rejoin-wd", epicsThreadGetStackSize(epicsThreadStackSmall), epicsThreadPriorityLow));
     rejoin_watchdog_thread_->start();
+    deferred_worker_thread_.reset(new epicsThread(deferred_worker_runnable_, "pvacms-deferred", epicsThreadGetStackSize(epicsThreadStackSmall), epicsThreadPriorityLow));
+    deferred_worker_thread_->start();
     startBeaconDiscovery();
 }
 
@@ -155,6 +161,7 @@ ClusterDiscovery::~ClusterDiscovery() {
     shutting_down_.store(true);
     join_worker_wakeup_.signal();
     rejoin_watchdog_wakeup_.signal();
+    deferred_wakeup_.signal();
     beacon_discovery_.reset();
     if (join_worker_thread_) {
         join_worker_thread_->exitWait();
@@ -163,6 +170,15 @@ ClusterDiscovery::~ClusterDiscovery() {
     if (rejoin_watchdog_thread_) {
         rejoin_watchdog_thread_->exitWait();
         rejoin_watchdog_thread_.reset();
+    }
+    if (deferred_worker_thread_) {
+        deferred_worker_thread_->exitWait();
+        deferred_worker_thread_.reset();
+    }
+    {
+        Guard G(deferred_lock_);
+        deferred_resubscribes_.clear();
+        deferred_rescan_pending_ = false;
     }
 
     // Detach the maps under the lock, then destroy the shared_ptr<Subscription>
@@ -225,12 +241,14 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                 result.revoked_skids.push_back(row["skid"].as<std::string>());
             }
 
-            sqlite3_stmt *upd_stmt;
-            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, &upd_stmt, nullptr) != SQLITE_OK) {
+            sqlite3_stmt *upd_stmt_raw = nullptr;
+            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, &upd_stmt_raw, nullptr) != SQLITE_OK) {
                 log_debug_printf(pvacmscluster, "Sync merge: SQL_SYNC_UPDATE_CERT prepare failed for serial=%" PRIu64 ": %s\n",
                                  serial, sqlite3_errmsg(certs_db));
                 continue;
             }
+            SqliteStmtGuard upd_guard(upd_stmt_raw);
+            sqlite3_stmt *upd_stmt = upd_guard.get();
 
             auto bind_text = [&](const char *param, const char *field) {
                 const auto s = row[field].as<std::string>();
@@ -265,13 +283,14 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             auto rc = sqlite3_step(upd_stmt);
             log_debug_printf(pvacmscluster, "Sync merge: UPDATE serial=%" PRIu64 " rc=%d changes=%d\n", serial, rc, sqlite3_changes(certs_db));
             insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id, serial, SB() << "status=" << remote_status);
-            sqlite3_finalize(upd_stmt);
             result.had_changes = true;
         } else {
             sqlite3_finalize(check_stmt);
-            sqlite3_stmt *ins_stmt;
-            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_INSERT_CERT, -1, &ins_stmt, nullptr) != SQLITE_OK)
+            sqlite3_stmt *ins_stmt_raw = nullptr;
+            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_INSERT_CERT, -1, &ins_stmt_raw, nullptr) != SQLITE_OK)
                 continue;
+            SqliteStmtGuard ins_guard(ins_stmt_raw);
+            sqlite3_stmt *ins_stmt = ins_guard.get();
 
             sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), db_serial);
             auto bind_text = [&](const char *param, const char *field) {
@@ -305,7 +324,6 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             }
             sqlite3_step(ins_stmt);
             insertSyncAuditRecord(certs_db, AUDIT_ACTION_SYNC, peer_node_id, serial, SB() << "status=" << remote_status);
-            sqlite3_finalize(ins_stmt);
             result.had_changes = true;
 
             if (remote_status == REVOKED) {
@@ -333,12 +351,14 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
         for (const auto &row : sched_arr) {
             auto serial = row["serial"].as<uint64_t>();
             const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
-            sqlite3_stmt *ins_stmt = nullptr;
+            sqlite3_stmt *ins_stmt_raw = nullptr;
             if (sqlite3_prepare_v2(certs_db,
                                    "INSERT INTO cert_schedules(serial, day_of_week, start_time, end_time) VALUES(?, ?, ?, ?)",
                                    -1,
-                                   &ins_stmt,
+                                   &ins_stmt_raw,
                                    nullptr) == SQLITE_OK) {
+                SqliteStmtGuard sched_guard(ins_stmt_raw);
+                sqlite3_stmt *ins_stmt = sched_guard.get();
                 sqlite3_bind_int64(ins_stmt, 1, db_serial);
                 auto txt = [&](const char *field) { return row[field].as<std::string>(); };
                 const auto day_of_week = txt("day_of_week");
@@ -348,7 +368,6 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                 sqlite3_bind_text(ins_stmt, 3, start_time.c_str(), -1, SQLITE_TRANSIENT);
                 sqlite3_bind_text(ins_stmt, 4, end_time.c_str(), -1, SQLITE_TRANSIENT);
                 sqlite3_step(ins_stmt);
-                sqlite3_finalize(ins_stmt);
                 insertSyncAuditRecord(certs_db, "SCHEDULE", peer_node_id,
                                       static_cast<uint64_t>(serial), "synced schedule");
             }
@@ -472,18 +491,7 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     reconcileMembers(peer_node_id, remote_members);
     peer_sync_members_[peer_node_id] = remote_members;
 
-    {
-        auto *self = this;
-        epicsThreadCreate("pvacms-rescan",
-            epicsThreadPriorityLow,
-            epicsThreadGetStackSize(epicsThreadStackSmall),
-            [](void *arg) {
-                auto *d = static_cast<ClusterDiscovery *>(arg);
-                if (d->shutting_down_.load()) return;
-                d->rescanForwarders();
-            },
-            self);
-    }
+    scheduleRescanForwarders();
 
     log_debug_printf(pvacmscluster, "Applied sync snapshot from %s (%zu certs)\n",
                      peer_node_id.c_str(), static_cast<size_t>(val["certs"].as<shared_array<const Value> >().size()));
@@ -576,23 +584,80 @@ void ClusterDiscovery::drainDeadSubscriptions() {
     }
 }
 
-// Forces a fresh Subscription if pvxs has not recovered the channel
-// itself within the holdoff. In cluster-gateway deployments a TCP
-// idle-timeout can leave the pvxs client's per-channel monitor wedged
-// in Connecting even after onNSCheck has rebuilt the underlying
-// socket, so no further notifies arrive.
-struct ResubscribeCtx {
-    ClusterDiscovery *discovery;
-    std::string node_id;
-    std::string sync_pv;
-    double holdoff_secs;
-};
+void ClusterDiscovery::scheduleRescanForwarders() {
+    {
+        Guard G(deferred_lock_);
+        if (deferred_rescan_pending_) return;
+        deferred_rescan_pending_ = true;
+    }
+    deferred_wakeup_.signal();
+}
 
-static void resubscribeAfterHoldoffEntry(void *arg) {
-    std::unique_ptr<ResubscribeCtx> ctx(static_cast<ResubscribeCtx *>(arg));
-    epicsThreadSleep(ctx->holdoff_secs);
-    if (!ctx->discovery) return;
-    ctx->discovery->resubscribeIfStillUnreachable(ctx->node_id, ctx->sync_pv);
+void ClusterDiscovery::scheduleResubscribe(const std::string &node_id,
+                                           const std::string &sync_pv,
+                                           double holdoff_secs) {
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(static_cast<int64_t>(holdoff_secs * 1000.0));
+    {
+        Guard G(deferred_lock_);
+        deferred_resubscribes_.push_back({node_id, sync_pv, deadline});
+    }
+    deferred_wakeup_.signal();
+}
+
+void ClusterDiscovery::deferredWorkerLoop() {
+    while (!shutting_down_.load()) {
+        bool do_rescan = false;
+        std::vector<DeferredResubscribe> ready;
+        std::chrono::steady_clock::time_point next_deadline =
+            std::chrono::steady_clock::time_point::max();
+        const auto now = std::chrono::steady_clock::now();
+
+        {
+            Guard G(deferred_lock_);
+            if (deferred_rescan_pending_) {
+                deferred_rescan_pending_ = false;
+                do_rescan = true;
+            }
+            auto it = deferred_resubscribes_.begin();
+            while (it != deferred_resubscribes_.end()) {
+                if (it->not_before <= now) {
+                    ready.push_back(std::move(*it));
+                    it = deferred_resubscribes_.erase(it);
+                } else {
+                    if (it->not_before < next_deadline) next_deadline = it->not_before;
+                    ++it;
+                }
+            }
+        }
+
+        if (do_rescan && !shutting_down_.load()) {
+            try {
+                rescanForwarders();
+            } catch (const std::exception &e) {
+                log_warn_printf(pvacmscluster, "Deferred rescanForwarders failed: %s\n", e.what());
+            }
+        }
+        for (auto &work : ready) {
+            if (shutting_down_.load()) break;
+            try {
+                resubscribeIfStillUnreachable(work.node_id, work.sync_pv);
+            } catch (const std::exception &e) {
+                log_warn_printf(pvacmscluster,
+                                "Deferred resubscribe of %s failed: %s\n",
+                                work.node_id.c_str(), e.what());
+            }
+        }
+
+        if (shutting_down_.load()) return;
+
+        if (next_deadline == std::chrono::steady_clock::time_point::max()) {
+            deferred_wakeup_.wait();
+        } else {
+            const auto wait_secs = std::chrono::duration<double>(next_deadline - now).count();
+            if (wait_secs > 0.0) deferred_wakeup_.wait(wait_secs);
+        }
+    }
 }
 
 void ClusterDiscovery::resubscribeIfStillUnreachable(const std::string &peer_node_id,
@@ -658,12 +723,7 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
         publishMemberConnectivity();
 
         auto sync_pv = pv_prefix_ + ":SYNC:" + issuer_id_ + ":" + peer_node_id;
-        auto *ctx = new ResubscribeCtx{this, peer_node_id, sync_pv, 30.0};
-        epicsThreadCreate("pvacms-resub",
-            epicsThreadPriorityLow,
-            epicsThreadGetStackSize(epicsThreadStackSmall),
-            resubscribeAfterHoldoffEntry,
-            ctx);
+        scheduleResubscribe(peer_node_id, sync_pv, 30.0);
     }
 }
 

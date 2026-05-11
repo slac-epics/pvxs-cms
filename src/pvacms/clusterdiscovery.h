@@ -192,6 +192,31 @@ private:
     std::unique_ptr<epicsThread> rejoin_watchdog_thread_;
     epicsEvent rejoin_watchdog_wakeup_;
 
+    // Deferred-work worker.  Runs `rescanForwarders` and time-delayed
+    // re-subscribe attempts off the pvxs monitor-callback thread so the
+    // callback thread is never blocked on a sleep or a blocking RPC.  The
+    // worker is joined in ~ClusterDiscovery before any state is torn down,
+    // which is what makes the deferred work safe across destruction.
+    struct DeferredResubscribe {
+        std::string node_id;
+        std::string sync_pv;
+        std::chrono::steady_clock::time_point not_before;
+    };
+    std::vector<DeferredResubscribe> deferred_resubscribes_;
+    bool deferred_rescan_pending_{false};
+    epicsMutex deferred_lock_;
+    epicsEvent deferred_wakeup_;
+    void deferredWorkerLoop();
+    struct DeferredWorkerRunnable : public epicsThreadRunable {
+        ClusterDiscovery *owner;
+        explicit DeferredWorkerRunnable(ClusterDiscovery *o) : owner(o) {}
+        void run() override { owner->deferredWorkerLoop(); }
+    };
+    DeferredWorkerRunnable deferred_worker_runnable_{this};
+    std::unique_ptr<epicsThread> deferred_worker_thread_;
+    void scheduleResubscribe(const std::string &node_id, const std::string &sync_pv, double holdoff_secs);
+    void scheduleRescanForwarders();
+
     std::map<std::string, std::shared_ptr<PeerConnectivity>> peer_connectivity_;
     void onConnectivityTimeout(const std::string &node_id);
     void publishMemberConnectivity();
