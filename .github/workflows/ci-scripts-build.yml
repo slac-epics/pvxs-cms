@@ -195,7 +195,15 @@ jobs:
         echo "C:/vcpkg/installed/x64-windows/bin" >> $GITHUB_PATH
 
     - name: Prepare and compile dependencies
-      run: python .ci/cue.py prepare
+      shell: bash
+      run: |
+        for attempt in 1 2 3 4 5; do
+          if python .ci/cue.py prepare; then exit 0; fi
+          echo "prepare attempt $attempt failed, retrying in $((attempt * 10))s"
+          sleep $((attempt * 10))
+        done
+        echo "prepare failed after 5 attempts"
+        exit 1
 
     - name: Build libevent
       if: runner.os != 'Windows'
@@ -328,13 +336,31 @@ jobs:
     - name: Automatic core dumper analysis
       uses: mdavidsaver/ci-core-dumper@master
     - name: Prepare and compile dependencies
-      run: python .ci/cue.py prepare
+      shell: bash
+      run: |
+        for attempt in 1 2 3 4 5; do
+          if python .ci/cue.py prepare; then exit 0; fi
+          echo "prepare attempt $attempt failed, retrying in $((attempt * 10))s"
+          sleep $((attempt * 10))
+        done
+        echo "prepare failed after 5 attempts"
+        exit 1
 
     - name: Clone pvxs-tls dependency
+      shell: bash
       run: |
         PVXS_DIR=${CACHEDIR}/pvxs-tls
         if [ ! -d "$PVXS_DIR" ]; then
-          git clone --depth 5 --recursive --branch dev https://github.com/slac-epics/pvxs-tls.git "$PVXS_DIR"
+          for attempt in 1 2 3 4 5; do
+            if git clone --depth 5 --recursive --branch dev https://github.com/slac-epics/pvxs-tls.git "$PVXS_DIR"; then break; fi
+            echo "clone attempt $attempt failed, retrying in $((attempt * 10))s"
+            rm -rf "$PVXS_DIR"
+            sleep $((attempt * 10))
+          done
+          if [ ! -d "$PVXS_DIR" ]; then
+            echo "clone failed after 5 attempts"
+            exit 1
+          fi
         fi
         echo '-include $(TOP)/../RELEASE.local' > "$PVXS_DIR/configure/RELEASE"
 
