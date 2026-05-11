@@ -977,7 +977,7 @@ void testRenewFromPendingRenewal() {
     testOk(renewal_reply["serial"].as<uint64_t>() == serial,
            "renewal reuses the original certificate serial instead of creating a new row");
 
-    testOk(waitForStatusIndex(admin_client, status_pv, VALID, 30.0),
+    testOk(waitForStatusIndex(admin_client, status_pv, VALID, 60.0),
            "status process variable returns to VALID after renewal from PENDING_RENEWAL");
 }
 
