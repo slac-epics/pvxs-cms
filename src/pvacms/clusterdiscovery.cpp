@@ -400,12 +400,18 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
 
     auto peer_seq_it = peer_last_sequence_.find(peer_node_id);
     if (update_type == SYNC_INCREMENTAL && peer_seq_it != peer_last_sequence_.end()) {
-        if (sequence != peer_seq_it->second + 1) {
+        // ClusterSyncPublisher::sendToSubscriber batches every update_log_
+        // entry since the subscriber's last sequence into one incremental
+        // message and stamps it with updates.back().sequence — so a forward
+        // jump (sequence > last+1) is normal: the message carries every
+        // missed cert row. Only resync on a backwards/duplicate sequence,
+        // which indicates the publisher restarted or our state is stale.
+        if (sequence <= peer_seq_it->second) {
             log_warn_printf(pvacmscluster,
-                "Sequence gap from %s: expected %" PRId64 ", got %" PRId64 " — requesting resync\n",
+                "Stale sequence from %s: got %" PRId64 ", already at %" PRId64 " — requesting resync\n",
                 peer_node_id.c_str(),
-                peer_seq_it->second + 1,
-                sequence);
+                sequence,
+                peer_seq_it->second);
 
             auto peer_sync_pv = pv_prefix_ + ":SYNC:" + issuer_id_ + ":" + peer_node_id;
             try {
@@ -465,7 +471,19 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     }
     reconcileMembers(peer_node_id, remote_members);
     peer_sync_members_[peer_node_id] = remote_members;
-    rescanForwarders();
+
+    {
+        auto *self = this;
+        epicsThreadCreate("pvacms-rescan",
+            epicsThreadPriorityLow,
+            epicsThreadGetStackSize(epicsThreadStackSmall),
+            [](void *arg) {
+                auto *d = static_cast<ClusterDiscovery *>(arg);
+                if (d->shutting_down_.load()) return;
+                d->rescanForwarders();
+            },
+            self);
+    }
 
     log_debug_printf(pvacmscluster, "Applied sync snapshot from %s (%zu certs)\n",
                      peer_node_id.c_str(), static_cast<size_t>(val["certs"].as<shared_array<const Value> >().size()));
@@ -558,12 +576,58 @@ void ClusterDiscovery::drainDeadSubscriptions() {
     }
 }
 
+// Forces a fresh Subscription if pvxs has not recovered the channel
+// itself within the holdoff. In cluster-gateway deployments a TCP
+// idle-timeout can leave the pvxs client's per-channel monitor wedged
+// in Connecting even after onNSCheck has rebuilt the underlying
+// socket, so no further notifies arrive.
+struct ResubscribeCtx {
+    ClusterDiscovery *discovery;
+    std::string node_id;
+    std::string sync_pv;
+    double holdoff_secs;
+};
+
+static void resubscribeAfterHoldoffEntry(void *arg) {
+    std::unique_ptr<ResubscribeCtx> ctx(static_cast<ResubscribeCtx *>(arg));
+    epicsThreadSleep(ctx->holdoff_secs);
+    if (!ctx->discovery) return;
+    ctx->discovery->resubscribeIfStillUnreachable(ctx->node_id, ctx->sync_pv);
+}
+
+void ClusterDiscovery::resubscribeIfStillUnreachable(const std::string &peer_node_id,
+                                                     const std::string &sync_pv) {
+    if (shutting_down_.load()) return;
+
+    std::shared_ptr<client::Subscription> stale;
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+        auto conn_it = peer_connectivity_.find(peer_node_id);
+        if (conn_it == peer_connectivity_.end()) return;
+        if (conn_it->second->state.load() != CONN_UNREACHABLE) return;
+
+        auto sub_it = subscriptions_.find(peer_node_id);
+        if (sub_it == subscriptions_.end()) return;
+        stale = std::move(sub_it->second);
+        subscriptions_.erase(sub_it);
+        peer_connectivity_.erase(peer_node_id);
+    }
+
+    {
+        Guard G(dead_subscriptions_lock_);
+        dead_subscriptions_.push_back(std::move(stale));
+    }
+
+    log_info_printf(pvacmscluster,
+                    "Peer %s still unreachable after pvxs reconnect window; recreating subscription\n",
+                    peer_node_id.c_str());
+    subscribeToMember(peer_node_id, sync_pv);
+}
+
 void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
     if (shutting_down_.load()) return;
 
-    // Treat TCP loss as transient: pvxs auto-reconnects.  Eviction on a
-    // gateway-flap-induced Disconnect would split-brain the cluster
-    // because the bounced peer is unaware it was evicted.
     bool was_forwarding = false;
     bool transitioned_to_unreachable = false;
     {
@@ -592,6 +656,14 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
                         "Peer %s TCP lost; awaiting auto-reconnect (membership preserved)\n",
                         peer_node_id.c_str());
         publishMemberConnectivity();
+
+        auto sync_pv = pv_prefix_ + ":SYNC:" + issuer_id_ + ":" + peer_node_id;
+        auto *ctx = new ResubscribeCtx{this, peer_node_id, sync_pv, 30.0};
+        epicsThreadCreate("pvacms-resub",
+            epicsThreadPriorityLow,
+            epicsThreadGetStackSize(epicsThreadStackSmall),
+            resubscribeAfterHoldoffEntry,
+            ctx);
     }
 }
 
@@ -949,6 +1021,14 @@ void ClusterDiscovery::onConnectivityTimeout(const std::string &node_id) {
     seekForwarder(node_id);
 }
 
+// Forward-RPC blocks the calling thread until accept/reject. When invoked
+// from handleSyncUpdate (which runs on the pvxs client monitor callback
+// thread), a long blocking wait freezes the monitor for that entire window
+// and any sync notifies published in the gap go unprocessed. 5s is the
+// intermediary's accept-RPC budget; longer than that means the path is
+// dead and forwarding wouldn't have worked anyway.
+static constexpr double kForwardRpcTimeoutSecs = 5.0;
+
 void ClusterDiscovery::seekForwarder(const std::string &unreachable_node_id) {
     if (active_forwarding_.count(unreachable_node_id))
         return;
@@ -998,7 +1078,7 @@ void ClusterDiscovery::seekForwarder(const std::string &unreachable_node_id) {
                 try {
                     client_ctx_.rpc(intermediary_sync_pv, req)
                         .exec()
-                        ->wait(double(discovery_timeout_secs_));
+                        ->wait(kForwardRpcTimeoutSecs);
                     active_forwarding_[unreachable_node_id] = {peer.first, intermediary_sync_pv};
                     log_info_printf(pvacmscluster,
                         "Forwarding of %s via %s established\n",

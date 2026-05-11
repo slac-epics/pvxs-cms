@@ -101,6 +101,14 @@ public:
     void handleDisconnect(const std::string &peer_node_id);
 
     /**
+     * @brief Re-creates a peer's sync subscription if it is still unreachable after the pvxs-internal
+     *        reconnect window has elapsed.
+     * @param peer_node_id Unique identifier of the node whose subscription is to be recreated.
+     * @param sync_pv PVAccess name of the peer's sync PV.
+     */
+    void resubscribeIfStillUnreachable(const std::string &peer_node_id, const std::string &sync_pv);
+
+    /**
      * @brief Clears all peer state and re-runs the join protocol on a background thread.
      *
      * Triggered when the node detects it has been evicted (self absent from a

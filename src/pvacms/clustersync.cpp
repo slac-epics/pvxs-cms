@@ -97,9 +97,7 @@ void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
         state.sequence = 0;
         state.needs_full_snapshot = true;
 
-        server::MonitorStat stats{};
-        sub_ptr->stats(stats);
-        sub_ptr->setWatermarks(0, stats.limitQueue);
+        sub_ptr->setWatermarks(0, 0);
 
         sub_ptr->onHighMark([this, sub_id]() {
             Guard G(lock_);
