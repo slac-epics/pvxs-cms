@@ -376,8 +376,15 @@ void makeStatusResponse(CertCtx<Tag> &cert_context,
                         ? cert_status_factory.createPVACertificateStatus(cert_context.cert.cert,
                                                                          status,
                                                                          now,
-                                                                         revocation_date.t)
-                        : cert_status_factory.createPVACertificateStatus(cert_context.cert.cert, status, now);
+                                                                         revocation_date.t,
+                                                                         CertDate{},
+                                                                         false)
+                        : cert_status_factory.createPVACertificateStatus(cert_context.cert.cert,
+                                                                         status,
+                                                                         now,
+                                                                         CertDate(std::time(nullptr)),
+                                                                         CertDate{},
+                                                                         false);
             }
         }
     } catch (std::exception &e) {
@@ -398,8 +405,10 @@ void createCertStatus(CertCtx<Tag> &cert_context,
     const auto status = cert_context.pending.front();
     cert_context.status =
         (status == REVOKED)
-            ? cert_status_factory.createPVACertificateStatus(cert_context.cert.cert, status, now, revocation_date.t)
-            : cert_status_factory.createPVACertificateStatus(cert_context.cert.cert, status, now);
+            ? cert_status_factory.createPVACertificateStatus(cert_context.cert.cert, status, now, revocation_date.t,
+                                                             CertDate{}, false)
+            : cert_status_factory.createPVACertificateStatus(cert_context.cert.cert, status, now,
+                                                             CertDate(std::time(nullptr)), CertDate{}, false);
 }
 
 template <typename Tag, typename SPV>
