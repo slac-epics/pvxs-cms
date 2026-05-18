@@ -30,7 +30,18 @@
 #include "configcms.h"
 #include "openssl.h"
 #include "ownedptr.h"
+#include "pvacmsruntime.h"
 #include "wildcardpv.h"
+
+namespace cms {
+struct StartupAbort;
+class ServerHandle;
+namespace detail {
+struct PreparedCmsState;
+ServerHandle prepareServerFromState(const ConfigCms &config,
+                                    PreparedCmsState &&state);
+}
+}
 
 #define SQL_CREATE_DB_FILE              \
     "BEGIN TRANSACTION; "               \
@@ -192,7 +203,8 @@
     "FROM certs "                       \
     "WHERE skid = :skid "
 
-// Get the certificate due to be renewed
+// Find an existing same-subject certificate to renew. renewal_due is a monitor
+// hint, not a precondition for renewal, so it is not part of this match.
 #define SQL_GET_RENEWED_CERT          \
     "SELECT serial"                   \
     "     , not_after "               \
@@ -206,7 +218,6 @@
     "  AND C = :C "                   \
     "  AND status IN (:status0, :status1, :status2, :status3) " \
     "  AND serial != :serial "        \
-    "  AND renewal_due != 0 "         \
     "LIMIT 1 "                        \
 
 #define SQL_TOUCH_CERT_STATUS         \
@@ -258,6 +269,19 @@
     "SET status = :status "           \
     "  , status_date = :status_date " \
     "  , renewal_due = 0 "            \
+    "WHERE serial = :serial "
+
+#define SQL_CERT_SET_STATUS_KEEP_RENEWAL_DUE \
+    "UPDATE certs "                         \
+    "SET status = :status "                 \
+    "  , status_date = :status_date "       \
+    "WHERE serial = :serial "
+
+#define SQL_CERT_SET_STATUS_FLAG_RENEWAL_DUE \
+    "UPDATE certs "                         \
+    "SET status = :status "                 \
+    "  , status_date = :status_date "       \
+    "  , renewal_due = 1 "                  \
     "WHERE serial = :serial "
 
 #define SQL_CERT_SET_STATUS_W_APPROVAL \
@@ -355,6 +379,19 @@ namespace cms {
     using cms::detail::ossl_shared_ptr;
     using cms::detail::sql_ptr;
     using cms::detail::ServerEv;
+
+struct StartupAbort : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+PvacmsRuntime &defaultRuntime();
+epicsMutex &getStatusPvLock();
+epicsMutex &getStatusUpdateLock();
+cluster::TokenBucket &getCreateCertificateRateLimiter();
+std::atomic<uint32_t> &getCreateCertificateInflightCount();
+std::atomic<uint64_t> &getCertsCreatedCounter();
+std::atomic<uint64_t> &getCertsRevokedCounter();
+CcrTimingTracker &getCcrTimingTracker();
 
 std::string sanToJson(const std::vector<SanEntry> &entries);
 std::vector<SanEntry> sanFromJson(const std::string &json);
@@ -465,12 +502,36 @@ class StatusMonitor {
     void setMetricsProto(const Value &proto) { metrics_proto_ = proto; }
     void setClusterMemberCount(std::function<uint32_t()> fn) { get_cluster_member_count_ = std::move(fn); }
     uint32_t getClusterMemberCount() const { return get_cluster_member_count_ ? get_cluster_member_count_() : 1u; }
+    bool isClusterMode() const { return config_.cluster_mode; }
     server::SharedPV *getHealthPV() const { return health_pv_; }
     server::SharedPV *getMetricsPV() const { return metrics_pv_; }
     Value cloneHealthValue() const { return health_proto_.cloneEmpty(); }
     Value cloneMetricsValue() const { return metrics_proto_.cloneEmpty(); }
     time_t getStartTime() const { return start_time_; }
 };
+
+namespace detail {
+struct PreparedCmsState {
+    pvxs::sql_ptr certs_db;
+    pvxs::ossl_ptr<EVP_PKEY> cert_auth_pkey;
+    pvxs::ossl_ptr<X509> cert_auth_cert;
+    pvxs::ossl_ptr<X509> cert_auth_root_cert;
+    pvxs::ossl_shared_ptr<STACK_OF(X509)> cert_auth_chain;
+    std::string our_issuer_id;
+    std::string our_node_id;
+    serial_number_t our_serial{0u};
+    bool is_initialising{false};
+
+    // Test-harness hook: when set, prepareServerFromState passes the constructed
+    // WildcardSource through this callback before installing it on the PVA Server.
+    // The returned shared_ptr is what gets registered as `__wildcard`. Production
+    // pvacms leaves this null and registers the source verbatim.
+    std::function<std::shared_ptr<pvxs::server::Source>(std::shared_ptr<pvxs::server::Source>)>
+        wrap_wildcard_source;
+};
+}  // namespace detail
+
+detail::PreparedCmsState prepareCmsState(const ConfigCms &config);
 
 void checkForDuplicates(const sql_ptr &certs_db, const CertFactory &cert_factory);
 
@@ -486,13 +547,20 @@ void createServerCertificate(const ConfigCms &config, sql_ptr &certs_db, const o
 void ensureServerCertificateExists(const ConfigCms &config, sql_ptr &certs_db, const ossl_ptr<X509> &cert_auth_cert, const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                                    const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_cert_chain);
 
+void insertLoadedCertIfMissing(const ConfigCms &config,
+                               sql_ptr &certs_db,
+                               const ossl_ptr<X509> &cert,
+                               const ossl_shared_ptr<STACK_OF(X509)> &chain,
+                               const std::string &expected_issuer_id,
+                               bool is_ca);
+
 void ensureValidityCompatible(const CertFactory &cert_factory);
 
 uint64_t generateSerial();
 
 std::tuple<certstatus_t, time_t> getCertificateStatus(const sql_ptr &certs_db, uint64_t serial);
 void getWorstCertificateStatus(const sql_ptr &certs_db, uint64_t serial, certstatus_t &worst_status_so_far, time_t &worst_status_time_so_far);
-DbCert getCertificateValidity(const sql_ptr &certs_db, uint64_t serial);
+DbCert getDbCert(const sql_ptr &certs_db, uint64_t serial);
 std::string getCertificateSkid(const sql_ptr &certs_db, uint64_t serial);
 bool isNodeCertRevoked(const sql_ptr &certs_db, const std::string &node_id);
 
@@ -501,6 +569,12 @@ std::string extractCountryCode(const std::string &locale_str);
 std::string getCountryCode();
 
 Value getCreatePrototype();
+Value getIssuerValue(const std::string &issuer_id,
+                     const ossl_ptr<X509> &issuer_cert,
+                     const ossl_shared_ptr<STACK_OF(X509)> &issuer_chain);
+Value getRootValue(const std::string &issuer_id, const ossl_ptr<X509> &root_cert);
+Value makeHealthValue();
+Value makeMetricsValue();
 
 time_t getNotAfterTimeFromCert(const X509 *cert);
 
@@ -518,7 +592,24 @@ void createDefaultAdminACF(const ConfigCms &config, const CertData &cert_data);
 void createAdminClientCert(const ConfigCms &config, sql_ptr &certs_db, const ossl_ptr<EVP_PKEY> &cert_auth_pkey, const ossl_ptr<X509> &cert_auth_cert,
                            const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_cert_chain, const std::string &admin_name = "admin");
 
-void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file);
+void addUserToAdminACF(const ConfigCms &config, const std::string &admin_name);
+
+void getOrCreateCertAuthCertificate(const ConfigCms &config,
+                                    sql_ptr &certs_db,
+                                    ossl_ptr<X509> &cert_auth_cert,
+                                    ossl_ptr<EVP_PKEY> &cert_auth_pkey,
+                                    ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+                                    ossl_ptr<X509> &cert_auth_root_cert,
+                                    bool &is_initialising);
+
+std::map<const std::string, std::unique_ptr<pvxs::client::Config>> getAuthNConfigMap();
+
+int readParameters(int argc, char *argv[], const char *program_name,
+                   ConfigCms &config,
+                   std::map<const std::string, std::unique_ptr<pvxs::client::Config>> &authn_config_map,
+                   bool &verbose, std::string &admin_name, std::string &admin_name_ensure);
+
+void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file, bool quiet = false);
 
 bool performBackup(sqlite3 *src_db, const std::string &dest_path);
 
@@ -530,9 +621,15 @@ bool runSelfTests(const sql_ptr &certs_db, const ossl_ptr<X509> &cert_auth_cert,
                   const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                   const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain);
 
-int64_t onCreateCertificate(ConfigCms &config, sql_ptr &certs_db, const server::SharedPV &pv, std::unique_ptr<server::ExecOp> &&op, Value &&args,
-                         const ossl_ptr<EVP_PKEY> &cert_auth_pkey, const ossl_ptr<X509> &cert_auth_cert, const ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
-                         const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain, std::string issuer_id);
+int64_t onCreateCertificate(ConfigCms &config,
+                            sql_ptr &certs_db,
+                            server::WildcardPV &shared_status_pv,
+                            std::unique_ptr<server::ExecOp> &&op,
+                            Value &&args,
+                            const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
+                            const ossl_ptr<X509> &cert_auth_cert,
+                            const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+                            std::string issuer_id);
 
 bool getPriorApprovalStatus(const sql_ptr &certs_db, const std::string &name, const std::string &country, const std::string &organization,
                             const std::string &organization_unit);

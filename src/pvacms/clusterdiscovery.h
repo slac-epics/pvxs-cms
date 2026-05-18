@@ -8,12 +8,14 @@
 #define PVXS_CLUSTERDISCOVERY_H_
 
 #include <atomic>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
+#include <epicsEvent.h>
 #include <epicsMutex.h>
 #include <epicsThread.h>
 
@@ -60,7 +62,6 @@ public:
                      std::string issuer_id,
                      std::string pv_prefix,
                      uint32_t discovery_timeout_secs,
-                     bool skip_peer_identity_check,
                      sqlite3 *certs_db,
                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                      const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key,
@@ -68,6 +69,8 @@ public:
                      ClusterSyncPublisher &sync_publisher,
                      ClusterController &controller,
                      const client::Context& client_ctx);
+
+    ~ClusterDiscovery();
 
     enum class JoinResult { Joined, NotFound, Revoked };
 
@@ -98,11 +101,19 @@ public:
     void handleDisconnect(const std::string &peer_node_id);
 
     /**
+     * @brief Re-creates a peer's sync subscription if it is still unreachable after the pvxs-internal
+     *        reconnect window has elapsed.
+     * @param peer_node_id Unique identifier of the node whose subscription is to be recreated.
+     * @param sync_pv PVAccess name of the peer's sync PV.
+     */
+    void resubscribeIfStillUnreachable(const std::string &peer_node_id, const std::string &sync_pv);
+
+    /**
      * @brief Clears all peer state and re-runs the join protocol on a background thread.
      *
      * Triggered when the node detects it has been evicted (self absent from a
-     * peer's membership list) or when all peers disconnect.  Guarded by an
-     * atomic flag to prevent concurrent rejoin attempts.
+     * peer's membership list) or when startup/watchdog logic needs a full
+     * membership reset before rejoining.
      */
     void rejoinCluster();
 
@@ -117,7 +128,6 @@ private:
     std::string issuer_id_;
     std::string pv_prefix_;
     uint32_t discovery_timeout_secs_;
-    bool skip_peer_identity_check_;
     sqlite3 *certs_db_;
     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pub_key_;
@@ -126,13 +136,86 @@ private:
     ClusterController &controller_;
     client::Context client_ctx_;
 
-    std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
-    std::map<std::string, std::string> peer_cert_ids_;
+    // Serializes all mutating access to the peer-tracking maps below.
+    // Never held across blocking RPC; long async paths check shutting_down_.
+    // Order: status_update_lock_ -> state_lock_ -> dead_subscriptions_lock_.
+    mutable epicsMutex state_lock_;
 
-    std::atomic<bool> rejoin_in_progress_{false};
+    // Set true at the start of ~ClusterDiscovery.  Async paths bail without
+    // touching state once it is observed true.
+    std::atomic<bool> shutting_down_{false};
+
+    std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
+
+    // Deferred-destruction list for Subscriptions whose handleDisconnect
+    // fires from inside the tcp_loop event callback for that same Subscription.
+    // Synchronously destroying ~Subscription on the tcp_loop self-deadlocks
+    // (cancel() dispatches to tcp_loop and waits). We move the shared_ptr here
+    // instead, leaving subscriptions_[node_id] free for immediate reconnection,
+    // and drain this list from non-tcp_loop contexts (subscribeToMember entry,
+    // joinCluster entry, ~ClusterDiscovery).
+    std::vector<std::shared_ptr<client::Subscription>> dead_subscriptions_;
+    epicsMutex dead_subscriptions_lock_;
+    void drainDeadSubscriptions();
+
+    std::atomic<bool> pending_full_rejoin_{false};
+    std::atomic<bool> pending_discovery_refresh_{false};
     std::set<std::string> acknowledged_by_;
     void doRejoin();
-    friend void rejoinThreadEntry(void *arg);
+    void doDiscoveryRefresh();
+    void startBeaconDiscovery();
+    void handleBeaconEvent(const client::Discovered &evt);
+    void scheduleDiscoveryRefresh(const std::string &reason);
+
+    // Single background worker for all join and rejoin work.  This keeps
+    // discovery callbacks non-blocking while ensuring there is never more
+    // than one concurrent joinCluster() execution.
+    void joinWorkerLoop();
+    struct JoinWorkerRunnable : public epicsThreadRunable {
+        ClusterDiscovery *owner;
+        explicit JoinWorkerRunnable(ClusterDiscovery *o) : owner(o) {}
+        void run() override { owner->joinWorkerLoop(); }
+    };
+    JoinWorkerRunnable join_worker_runnable_{this};
+    std::unique_ptr<epicsThread> join_worker_thread_;
+    epicsEvent join_worker_wakeup_;
+
+    // Periodic background watchdog: re-attempts join while this PVACMS
+    // remains a sole-node cluster, in case startup raced peer-readiness.
+    void rejoinWatchdogLoop();
+    struct RejoinWatchdogRunnable : public epicsThreadRunable {
+        ClusterDiscovery *owner;
+        explicit RejoinWatchdogRunnable(ClusterDiscovery *o) : owner(o) {}
+        void run() override { owner->rejoinWatchdogLoop(); }
+    };
+    RejoinWatchdogRunnable rejoin_watchdog_runnable_{this};
+    std::unique_ptr<epicsThread> rejoin_watchdog_thread_;
+    epicsEvent rejoin_watchdog_wakeup_;
+
+    // Deferred-work worker.  Runs `rescanForwarders` and time-delayed
+    // re-subscribe attempts off the pvxs monitor-callback thread so the
+    // callback thread is never blocked on a sleep or a blocking RPC.  The
+    // worker is joined in ~ClusterDiscovery before any state is torn down,
+    // which is what makes the deferred work safe across destruction.
+    struct DeferredResubscribe {
+        std::string node_id;
+        std::string sync_pv;
+        std::chrono::steady_clock::time_point not_before;
+    };
+    std::vector<DeferredResubscribe> deferred_resubscribes_;
+    bool deferred_rescan_pending_{false};
+    epicsMutex deferred_lock_;
+    epicsEvent deferred_wakeup_;
+    void deferredWorkerLoop();
+    struct DeferredWorkerRunnable : public epicsThreadRunable {
+        ClusterDiscovery *owner;
+        explicit DeferredWorkerRunnable(ClusterDiscovery *o) : owner(o) {}
+        void run() override { owner->deferredWorkerLoop(); }
+    };
+    DeferredWorkerRunnable deferred_worker_runnable_{this};
+    std::unique_ptr<epicsThread> deferred_worker_thread_;
+    void scheduleResubscribe(const std::string &node_id, const std::string &sync_pv, double holdoff_secs);
+    void scheduleRescanForwarders();
 
     std::map<std::string, std::shared_ptr<PeerConnectivity>> peer_connectivity_;
     void onConnectivityTimeout(const std::string &node_id);
@@ -148,6 +231,11 @@ private:
     void seekForwarder(const std::string &unreachable_node_id);
     void cancelForwarding(const std::string &node_id);
     void rescanForwarders();
+
+    std::shared_ptr<client::Operation> beacon_discovery_;
+    epicsMutex beacon_refresh_lock_;
+    std::chrono::steady_clock::time_point last_beacon_refresh_{};
+    static constexpr int64_t kBeaconRefreshCooldownSecs = 5;
 
     std::atomic<int64_t> global_high_water_mark_{0};
     std::map<std::string, int64_t> peer_last_sequence_;

@@ -17,6 +17,9 @@ RUN apt-get update && \
             libevent-dev \
             libsqlite3-dev \
             libcurl4-openssl-dev \
+            libkrb5-dev \
+            libgssapi-krb5-2 \
+            libldap2-dev \
             pkg-config
 
 # Set up RELEASE.local

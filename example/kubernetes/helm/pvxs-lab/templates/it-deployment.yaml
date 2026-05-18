@@ -33,7 +33,6 @@ spec:
                 --cluster-mode \
                 --cluster-discovery-timeout 30 \
                 --cluster-bidi-timeout 30 \
-                --cluster-skip-peer-identity-check \
                 --cert-auth-keychain /etc/pvacms/cert_auth.p12 \
                 --acf /etc/pvacms/pvacms.acf \
                 -v"

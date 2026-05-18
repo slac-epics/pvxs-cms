@@ -127,7 +127,6 @@ export EPICS_PVACMS_CLUSTER_NAME_SERVERS="gateway1:5075,gateway2:5075"
 | `--cluster-pv-prefix`                | `EPICS_PVACMS_CLUSTER_PV_PREFIX`         | `CERT:CLUSTER` | PV prefix for cluster channels           |
 | `--cluster-discovery-timeout`        | `EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT` | `10`           | Seconds to wait for cluster discovery    |
 | `--cluster-bidi-timeout`             | `EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT`      | `5`            | Bidirectional connectivity check timeout |
-| `--cluster-skip-peer-identity-check` | —                                        | off            | Skip TLS peer identity verification      |
 | —                                    | `EPICS_PVACMS_CLUSTER_NAME_SERVERS`      | —              | TCP name servers for gateway topologies  |
 
 ## Configuration Reference

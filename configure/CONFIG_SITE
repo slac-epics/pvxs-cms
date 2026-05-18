@@ -38,10 +38,21 @@ CHECK_RELEASE = YES
 # set to NO to disable handling of $SSLKEYLOGFILE
 PVXS_ENABLE_SSLKEYLOGFILE ?= YES
 
-# Uncomment the appropriate line or include in your private $(TOP)/../CONFIG_SITE.local
-# PVXS_ENABLE_PVACMS = YES
-# PVXS_ENABLE_KRB_AUTH = YES
-# PVXS_ENABLE_LDAP_AUTH = YES
+# PVXS_ENABLE_PVACMS gates the CMS server, all auth tools, and the test suite
+# that exercises them. Default YES on host builds (sqlite/openssl/krb/ldap
+# normally available), NO on cross builds (where these dependencies often
+# aren't).
+ifeq ($(BUILD_CLASS),CROSS)
+PVXS_ENABLE_PVACMS ?= NO
+else
+PVXS_ENABLE_PVACMS ?= YES
+endif
+
+# Companion flags: krb/ldap auth tools and the in-process test harness binaries.
+# All three are subordinate to PVXS_ENABLE_PVACMS=YES.
+PVXS_ENABLE_KRB_AUTH ?= $(PVXS_ENABLE_PVACMS)
+PVXS_ENABLE_LDAP_AUTH ?= $(PVXS_ENABLE_PVACMS)
+PVXS_CMS_BUILD_TEST_HARNESS ?= $(PVXS_ENABLE_PVACMS)
 
 # These allow developers to override the CONFIG_SITE variable
 # settings without having to modify the configure/CONFIG_SITE

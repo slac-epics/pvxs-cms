@@ -453,18 +453,16 @@ acknowledged this node no longer includes it, the node triggers a rejoin.  The
 detection is per-peer to avoid false eviction from stale snapshots during
 initial join.
 
-### Access Control (ACF)
+### Authentication
 
-The default ACF file restricts cluster PV access via `UAG(CMS_CLUSTER)`:
+Cluster join requests and sync snapshots are authenticated by **CA-signed
+payload verification**.  Every join request and every sync snapshot
+carries a signature produced with the cluster CA's private key; the
+receiving node verifies that signature against the same CA's public key
+(`clusterVerify` in `clusterdiscovery.cpp` and `clusterctrl.cpp`).
 
-- **`UAG(CMS_CLUSTER)`** contains the PVACMS service identity (matching
-  `config.pvacms_name`, default `"PVACMS Service"`).
-- **`ASG(CLUSTER)`** requires `UAG(CMS_CLUSTER)`, `METHOD(x509)`,
-  `AUTHORITY(CMS_AUTH)`, and `PROTOCOL(TLS)` for both READ and WRITE.
-
-The CTRL PV RPC handler enforces CLUSTER ASG rules at runtime using
-`SecurityClient.update(as_cluster_mem, ASL1, credentials)` and rejects join
-requests from clients that do not satisfy `canWrite()`.
+Possession of the CA private key is the trust boundary.
+Cluster control and sync RPCs therefore work over plaintext PVA.
 
 ### Sync Loop Prevention
 
@@ -573,32 +571,11 @@ subscribers that fall behind the bounded update log.
 | `--cluster-pv-prefix`                | `EPICS_PVACMS_CLUSTER_PV_PREFIX`         | `CERT:CLUSTER` | Prefix for cluster PV names                                      |
 | `--cluster-discovery-timeout`        | `EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT` | `10`           | Seconds to wait for cluster discovery before bootstrapping       |
 | `--cluster-bidi-timeout`             | `EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT`      | `5`            | Seconds to wait for bidirectional connectivity check during join |
-| `--cluster-skip-peer-identity-check` | —                                        | off            | Skip TLS peer identity verification for sync and forwarding RPCs |
 
 ### Gateway-Mediated Topologies
 
-When cluster nodes communicate through PVA gateways, TLS connections are
-terminated at each gateway.  The receiving node sees the gateway's credentials
-rather than the originating peer's TLS certificate.  This breaks two identity
-checks:
-
-1. **Sync snapshot identity**: Normally, a node verifies the TLS certificate of
-   the peer sending SYNC data before accepting snapshots.  Through a gateway the
-   connection may be TCP, so the TLS identity may be absent.
-2. **Forwarding RPC authentication**: The intermediary forwarding mechanism
-   requires TLS x509 authentication from the requesting peer.  Through a gateway
-   the credentials are the gateway's, not the requester's.
-
-The `--cluster-skip-peer-identity-check` flag relaxes both checks.  When
-enabled:
-- SYNC snapshots are accepted from peers without TLS identity verification
-  (the CA-key signature on each snapshot is still verified)
-- Forwarding RPCs are accepted from non-TLS connections
-- TCP connections automatically populate the peer identity cache
-
-This flag should be set on any node that participates in gateway-mediated cluster
-communication (both sides of the gateway chain).  Nodes that communicate only
-via direct TLS connections do not need it.
+Cluster traffic works transparently through PVA gateways and over plaintext
+TCP because authentication is by **CA-signed payload**.
 
 ## Source Files
 

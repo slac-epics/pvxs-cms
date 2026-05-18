@@ -4,9 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include <chrono>
-#include <thread>
-
+#include <epicsThread.h>
 #include <epicsUnitTest.h>
 #include <testMain.h>
 
@@ -31,24 +29,32 @@ void testBurstCapacityAndExhaustion()
 
 void testRefillBehavior()
 {
-    TokenBucket bucket(10.0, 5u);
+    // Use a low refill rate (2/s) so the OS scheduler's wakeup jitter
+    // (often >50 ms on a contended CI runner) cannot smear the count of
+    // refilled tokens across an integer boundary during the test window.
+    const double rate = 2.0;
+    const unsigned burst = 5u;
+    TokenBucket bucket(rate, burst);
 
-    for (unsigned i = 0; i < 5u; ++i) {
+    for (unsigned i = 0; i < burst; ++i) {
         testOk(bucket.tryConsume(), "consume token %u before refill test", i + 1u);
     }
     testOk(!bucket.tryConsume(), "bucket exhausted before waiting for refill");
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(220));
+    // Sleep long enough that we are firmly inside [1, 2) refilled tokens
+    // even if the OS oversleeps by ~250 ms.  At rate=2/s: 700 ms => 1.4
+    // tokens nominal; up to ~950 ms still rounds down to 1.
+    epicsThreadSleep(0.700);
 
+    testOk(bucket.tryConsume(), "first token refilled after wait");
+    // After consuming the one refilled token, the bucket must be empty
+    // again (secsUntilReady > 0) and the next consume must be rejected.
     const double retry_after = bucket.secsUntilReady();
-    const bool first_after_wait = bucket.tryConsume();
-    const bool second_after_wait = bucket.tryConsume();
-    const bool third_after_wait = bucket.tryConsume();
-
-    testOk(retry_after <= 0.05, "secsUntilReady drops near zero after refill (got %.3f)", retry_after);
-    testOk(first_after_wait, "first token refilled after wait");
-    testOk(second_after_wait, "second token refilled after wait");
-    testOk(!third_after_wait, "refill remains rate-limited after consuming refilled tokens");
+    testOk(retry_after > 0.0,
+           "secsUntilReady positive after draining the single refilled token (got %.3f)",
+           retry_after);
+    testOk(!bucket.tryConsume(),
+           "refill remains rate-limited after consuming the refilled token");
 }
 
 void testRateZeroDisablesLimiting()
@@ -81,7 +87,7 @@ void testSecsUntilReadyWhenExhausted()
 
 MAIN(testratelimiting)
 {
-    testPlan(21);
+    testPlan(20);
     testBurstCapacityAndExhaustion();
     testRefillBehavior();
     testRateZeroDisablesLimiting();

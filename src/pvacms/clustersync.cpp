@@ -6,6 +6,7 @@
 
 #include "clustersync.h"
 
+#include <cinttypes>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -18,11 +19,14 @@
 #include <sqlite3.h>
 
 #include "pvacmsVersion.h"
+#include "sqlitestmtguard.h"
 
 DEFINE_LOGGER(pvacmscluster, "cms.certs.cluster");
 
 namespace cms {
 namespace cluster {
+
+using ::cms::detail::SqliteStmtGuard;
 
 namespace members = ::pvxs::members;
 namespace server = ::pvxs::server;
@@ -96,9 +100,7 @@ void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
         state.sequence = 0;
         state.needs_full_snapshot = true;
 
-        server::MonitorStat stats{};
-        sub_ptr->stats(stats);
-        sub_ptr->setWatermarks(0, stats.limitQueue);
+        sub_ptr->setWatermarks(0, 0);
 
         sub_ptr->onHighMark([this, sub_id]() {
             Guard G(lock_);
@@ -116,6 +118,9 @@ void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
         sub_ptr->onStart([this, sub_id](bool start) {
             if (!start)
                 return;
+            // sendToSubscriber reads certs_db, which requires status_update_lock_.
+            // Acquire it BEFORE lock_ to match the order taken by doPublish.
+            Guard SG(publisher_.status_update_lock_);
             Guard G(lock_);
             auto it = subscribers_.find(sub_id);
             if (it == subscribers_.end())
@@ -126,14 +131,14 @@ void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
         setup->onClose([this, sub_id](const std::string &) {
             Guard G(lock_);
             subscribers_.erase(sub_id);
-            log_debug_printf(pvacmscluster, "Sync subscriber %llu disconnected\n",
-                             static_cast<unsigned long long>(sub_id));
+            log_debug_printf(pvacmscluster, "Sync subscriber %" PRIu64 " disconnected\n",
+                             sub_id);
         });
 
         subscribers_.emplace(sub_id, std::move(state));
 
-        log_debug_printf(pvacmscluster, "New sync subscriber %llu from %s\n",
-                         static_cast<unsigned long long>(sub_id), sub_ptr->peerName().c_str());
+        log_debug_printf(pvacmscluster, "New sync subscriber %" PRIu64 " from %s\n",
+                         sub_id, sub_ptr->peerName().c_str());
     });
 }
 
@@ -161,10 +166,12 @@ Value serializeCertsTable(sqlite3 *certs_db,
     }
     val["members"] = members_arr.freeze();
 
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_CERTS, -1, &stmt, nullptr) != SQLITE_OK) {
+    sqlite3_stmt *stmt_raw = nullptr;
+    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_CERTS, -1, &stmt_raw, nullptr) != SQLITE_OK) {
         throw std::runtime_error(std::string("Failed to query certs: ") + sqlite3_errmsg(certs_db));
     }
+    SqliteStmtGuard stmt_guard(stmt_raw);
+    sqlite3_stmt *stmt = stmt_guard.get();
 
     std::vector<Value> cert_rows;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -189,14 +196,15 @@ Value serializeCertsTable(sqlite3 *certs_db,
         row["san"] = col_text(13);
         cert_rows.push_back(std::move(row));
     }
-    sqlite3_finalize(stmt);
 
     shared_array<Value> certs_arr(cert_rows.size());
     for (size_t i = 0; i < cert_rows.size(); i++) certs_arr[i] = std::move(cert_rows[i]);
     val["certs"] = certs_arr.freeze();
 
-    sqlite3_stmt *sched_stmt;
-    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_SCHEDULES, -1, &sched_stmt, nullptr) == SQLITE_OK) {
+    sqlite3_stmt *sched_stmt_raw = nullptr;
+    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_SCHEDULES, -1, &sched_stmt_raw, nullptr) == SQLITE_OK) {
+        SqliteStmtGuard sched_guard(sched_stmt_raw);
+        sqlite3_stmt *sched_stmt = sched_guard.get();
         std::vector<Value> sched_rows;
         while (sqlite3_step(sched_stmt) == SQLITE_ROW) {
             auto row = val["cert_schedules"].allocMember();
@@ -210,7 +218,6 @@ Value serializeCertsTable(sqlite3 *certs_db,
             row["end_time"] = txt(3);
             sched_rows.push_back(std::move(row));
         }
-        sqlite3_finalize(sched_stmt);
         shared_array<Value> sched_arr(sched_rows.size());
         for (size_t i = 0; i < sched_rows.size(); i++) sched_arr[i] = std::move(sched_rows[i]);
         val["cert_schedules"] = sched_arr.freeze();
@@ -353,7 +360,7 @@ void ClusterSyncPublisher::sendToSubscriber(SubscriberState &sub) {
     }
 }
 
-void ClusterSyncPublisher::publishCertChange(int64_t serial) {
+void ClusterSyncPublisher::publishCertChange(uint64_t serial) {
     if (!enabled_ || sync_ingestion_in_progress.load())
         return;
 
@@ -363,18 +370,20 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
         sync_source_->prototype_ = makeClusterSyncValue();
     }
 
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(certs_db_, SQL_SYNC_SELECT_CERT_BY_SERIAL, -1, &stmt, nullptr) != SQLITE_OK) {
-        log_err_printf(pvacmscluster, "Failed to query cert %lld: %s\n",
-                       static_cast<long long>(serial), sqlite3_errmsg(certs_db_));
+    sqlite3_stmt *stmt_raw = nullptr;
+    if (sqlite3_prepare_v2(certs_db_, SQL_SYNC_SELECT_CERT_BY_SERIAL, -1, &stmt_raw, nullptr) != SQLITE_OK) {
+        log_err_printf(pvacmscluster, "Failed to query cert %" PRIu64 ": %s\n",
+                       serial, sqlite3_errmsg(certs_db_));
         return;
     }
-    sqlite3_bind_int64(stmt, 1, serial);
+    SqliteStmtGuard stmt_guard(stmt_raw);
+    sqlite3_stmt *stmt = stmt_guard.get();
+    const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
+    sqlite3_bind_int64(stmt, 1, db_serial);
 
     if (sqlite3_step(stmt) != SQLITE_ROW) {
-        sqlite3_finalize(stmt);
-        log_warn_printf(pvacmscluster, "Cert %lld not found for incremental publish\n",
-                        static_cast<long long>(serial));
+        log_warn_printf(pvacmscluster, "Cert %" PRIu64 " not found for incremental publish\n",
+                        serial);
         return;
     }
 
@@ -384,7 +393,7 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
     };
 
     CertUpdate update;
-    update.serial      = sqlite3_column_int64(stmt, 0);
+    update.serial      = static_cast<uint64_t>(sqlite3_column_int64(stmt, 0));
     update.skid        = col_text(1);
     update.cn          = col_text(2);
     update.o           = col_text(3);
@@ -398,13 +407,12 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
     update.status      = sqlite3_column_int(stmt, 11);
     update.status_date = sqlite3_column_int64(stmt, 12);
     update.san        = col_text(13);
-    sqlite3_finalize(stmt);
 
     appendToLog(std::move(update));
 
-    log_debug_printf(pvacmscluster, "Published incremental cert change (serial=%lld, seq=%lld) to %zu subscribers\n",
-                     static_cast<long long>(serial),
-                     static_cast<long long>(next_sequence_ - 1),
+    log_debug_printf(pvacmscluster, "Published incremental cert change (serial=%" PRIu64 ", seq=%" PRId64 ") to %zu subscribers\n",
+                     serial,
+                     next_sequence_ - 1,
                      sync_source_->subscribers_.size());
 }
 
@@ -424,6 +432,11 @@ void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, 
 
     Guard G(status_update_lock_);
 
+    // Recheck after acquiring lock: setEnabled(false) may have been called
+    // while we were blocked, in which case we must NOT publish a snapshot.
+    if (!enabled_)
+        return;
+
     if (!sync_source_->prototype_) {
         sync_source_->prototype_ = makeClusterSyncValue();
     }
@@ -437,8 +450,8 @@ void ClusterSyncPublisher::doPublish(const std::vector<ClusterMember> &members, 
     }
     dispatchToSubscribers();
 
-    log_debug_printf(pvacmscluster, "Dispatched sync update (seq=%lld) to %zu subscribers (members_changed=%d, certs_changed=%d)\n",
-                     static_cast<long long>(seq), sync_source_->subscribers_.size(), members_changed, certs_changed);
+    log_debug_printf(pvacmscluster, "Dispatched sync update (seq=%" PRId64 ") to %zu subscribers (members_changed=%d, certs_changed=%d)\n",
+                     seq, sync_source_->subscribers_.size(), members_changed, certs_changed);
 }
 
 std::string ClusterSyncPublisher::getSyncPvName() const {
@@ -448,11 +461,6 @@ std::string ClusterSyncPublisher::getSyncPvName() const {
 void ClusterSyncPublisher::handleForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args) {
     try {
         const auto creds = op->credentials();
-        bool is_tls_cluster_member = creds->isTLS && creds->method == "x509" && creds->issuer_id == issuer_id_;
-        if (!is_tls_cluster_member && !skip_peer_identity_check) {
-            op->error("Not authenticated as cluster member");
-            return;
-        }
 
         auto target_node_id = args["node_id"].as<std::string>();
         if (target_node_id.empty()) {
@@ -485,13 +493,6 @@ void ClusterSyncPublisher::handleForwardRpc(std::unique_ptr<server::ExecOp> &&op
 
 void ClusterSyncPublisher::handleCancelForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args) {
     try {
-        const auto creds = op->credentials();
-        bool is_tls_cluster_member = creds->isTLS && creds->method == "x509" && creds->issuer_id == issuer_id_;
-        if (!is_tls_cluster_member && !skip_peer_identity_check) {
-            op->error("Not authenticated as cluster member");
-            return;
-        }
-
         auto target_node_id = args["node_id"].as<std::string>();
         if (target_node_id.empty()) {
             op->error("Missing node_id");

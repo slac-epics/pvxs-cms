@@ -65,16 +65,13 @@ SRC_DIRS += $(AUTHN_DIR)
 SRC_DIRS += $(PVACMS_DIR)
 
 # PVXS_ENABLE_PVACMS: gate CMS-server build + sqlite3 dependency.
-# Default YES; set to NO in EXTRA or CONFIG_SITE.local to disable.
-# Default to NO for cross-compilation (sqlite/krb/ldap often unavailable)
-ifeq ($(BUILD_CLASS),CROSS)
-PVXS_ENABLE_PVACMS ?= NO
-else
-PVXS_ENABLE_PVACMS ?= YES
-endif
+# Default is set in $(TOP)/configure/CONFIG_SITE so test/Makefile sees the same value.
+# Override in EXTRA, CONFIG_SITE.local, or via the command line.
 PVXS_ENABLE_PVACMS_YES = -DPVXS_ENABLE_PVACMS
 USR_CPPFLAGS += $(PVXS_ENABLE_PVACMS_$(PVXS_ENABLE_PVACMS))
 USR_CPPFLAGS += -DPVXS_ENABLE_EXPERT_API
+
+INC += cms/cms.h
 
 # SSL key log file support (debugging aid)
 PVXS_ENABLE_SSLKEYLOGFILE ?= YES
