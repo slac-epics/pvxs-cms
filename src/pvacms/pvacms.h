@@ -203,7 +203,8 @@ ServerHandle prepareServerFromState(const ConfigCms &config,
     "FROM certs "                       \
     "WHERE skid = :skid "
 
-// Get the certificate due to be renewed
+// Find an existing same-subject certificate to renew. renewal_due is a monitor
+// hint, not a precondition for renewal, so it is not part of this match.
 #define SQL_GET_RENEWED_CERT          \
     "SELECT serial"                   \
     "     , not_after "               \
@@ -217,7 +218,6 @@ ServerHandle prepareServerFromState(const ConfigCms &config,
     "  AND C = :C "                   \
     "  AND status IN (:status0, :status1, :status2, :status3) " \
     "  AND serial != :serial "        \
-    "  AND renewal_due != 0 "         \
     "LIMIT 1 "                        \
 
 #define SQL_TOUCH_CERT_STATUS         \
@@ -275,6 +275,13 @@ ServerHandle prepareServerFromState(const ConfigCms &config,
     "UPDATE certs "                         \
     "SET status = :status "                 \
     "  , status_date = :status_date "       \
+    "WHERE serial = :serial "
+
+#define SQL_CERT_SET_STATUS_FLAG_RENEWAL_DUE \
+    "UPDATE certs "                         \
+    "SET status = :status "                 \
+    "  , status_date = :status_date "       \
+    "  , renewal_due = 1 "                  \
     "WHERE serial = :serial "
 
 #define SQL_CERT_SET_STATUS_W_APPROVAL \

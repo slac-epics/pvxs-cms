@@ -886,8 +886,16 @@ void testRenewFromPendingRenewal() {
     const auto db_path = harness.pkiFixture().dir() + "/certs.db";
 
     auto admin_client = harness.cmsAdminClientConfig().build();
-    auto initial_status = admin_client.get(status_pv).exec()->wait(5.0);
-    testOk(initial_status["value.index"].as<int32_t>() == VALID,
+    int32_t initial_status_index = -1;
+    try {
+        auto initial_status = admin_client.get(status_pv).exec()->wait(5.0);
+        initial_status_index = initial_status["value.index"].as<int32_t>();
+    } catch (const std::exception &e) {
+        testFail("initial GET of %s failed: %s", status_pv.c_str(), errorText(e).c_str());
+        testSkip(7, "skipping remaining assertions because initial GET threw");
+        return;
+    }
+    testOk(initial_status_index == VALID,
            "registered client certificate starts VALID");
 
     const auto renew_by = std::time(nullptr) + 4;
@@ -901,6 +909,10 @@ void testRenewFromPendingRenewal() {
                                                 6.0);
     testOk(saw_renewal_due,
            "monitor sets renewal_due while certificate remains VALID");
+    if (!saw_renewal_due) {
+        testSkip(6, "aborting: cert never reached (VALID, renewal_due=1)");
+        return;
+    }
 
     const bool saw_pending_renewal = cms::test::waitForCertRecord(db_path,
                                                     serial,
@@ -910,6 +922,10 @@ void testRenewFromPendingRenewal() {
                                                     8.0);
     testOk(saw_pending_renewal,
            "monitor changes status to PENDING_RENEWAL after renew_by passes");
+    if (!saw_pending_renewal) {
+        testSkip(5, "aborting: cert never reached (PENDING_RENEWAL, renewal_due=1)");
+        return;
+    }
 
     auto mailbox_pv = pvxs::server::SharedPV::buildReadonly();
     mailbox_pv.open(pvxs::nt::NTScalar{pvxs::TypeCode::Int32}.create()
@@ -952,19 +968,36 @@ void testRenewFromPendingRenewal() {
                                           now + 3600,
                                           renewal_key_pair->public_key);
 
-    testOk(waitForStatusIndex(admin_client, status_pv, PENDING_RENEWAL, 5.0),
+    const bool status_pv_pending_renewal = waitForStatusIndex(admin_client, status_pv, PENDING_RENEWAL, 5.0);
+    testOk(status_pv_pending_renewal,
            "status process variable remains PENDING_RENEWAL before renewal RPC");
+    if (!status_pv_pending_renewal) {
+        testSkip(3, "aborting: status PV did not reach PENDING_RENEWAL");
+        return;
+    }
 
     bool renewal_with_pending_cert_succeeded = false;
     std::string pending_cert_renewal_error;
+    pvxs::Value unexpected_tls_renewal_reply;
     try {
-        original_client_config.build().rpc(create_pv, renewal_arg).exec()->wait(5.0);
+        unexpected_tls_renewal_reply = original_client_config.build().rpc(create_pv, renewal_arg).exec()->wait(5.0);
         renewal_with_pending_cert_succeeded = true;
     } catch (const std::exception &e) {
         pending_cert_renewal_error = errorText(e);
     }
     testOk(!renewal_with_pending_cert_succeeded,
            "renewal RPC using the PENDING_RENEWAL client certificate is rejected");
+    if (renewal_with_pending_cert_succeeded) {
+        try {
+            const auto leaked_serial = unexpected_tls_renewal_reply["serial"].as<uint64_t>();
+            testDiag("TLS renewal unexpectedly succeeded; reply serial=%llu (original serial=%llu)",
+                     static_cast<unsigned long long>(leaked_serial),
+                     static_cast<unsigned long long>(serial));
+        } catch (const std::exception &e) {
+            testDiag("TLS renewal unexpectedly succeeded; reply did not contain 'serial': %s",
+                     errorText(e).c_str());
+        }
+    }
     if (!pending_cert_renewal_error.empty()) {
         testDiag("renewal RPC from PENDING_RENEWAL client failed as expected: %s",
                  pending_cert_renewal_error.c_str());
@@ -973,9 +1006,20 @@ void testRenewFromPendingRenewal() {
     auto renewal_client_config = original_client_config;
     renewal_client_config.tls_disabled = true;
     auto renewal_client = renewal_client_config.build();
-    auto renewal_reply = renewal_client.rpc(create_pv, renewal_arg).exec()->wait(10.0);
-    testOk(renewal_reply["serial"].as<uint64_t>() == serial,
-           "renewal reuses the original certificate serial instead of creating a new row");
+    pvxs::Value renewal_reply;
+    try {
+        renewal_reply = renewal_client.rpc(create_pv, renewal_arg).exec()->wait(10.0);
+    } catch (const std::exception &e) {
+        testFail("plain-TCP renewal RPC failed: %s", errorText(e).c_str());
+        testSkip(2, "skipping remaining assertions because renewal RPC threw");
+        return;
+    }
+    try {
+        testOk(renewal_reply["serial"].as<uint64_t>() == serial,
+               "renewal reuses the original certificate serial instead of creating a new row");
+    } catch (const std::exception &e) {
+        testFail("renewal reply missing or malformed 'serial' field: %s", errorText(e).c_str());
+    }
 
     testOk(waitForStatusIndex(admin_client, status_pv, VALID, 60.0),
            "status process variable returns to VALID after renewal from PENDING_RENEWAL");

@@ -102,6 +102,7 @@ DEFINE_LOGGER(pvacmsmonitor, "cms");
 namespace cms {
 
 enum ApprovalUpdateMode {
+    APPROVAL_FLAG_RENEWAL_DUE = -3,
     APPROVAL_KEEP_RENEWAL_DUE = -2,
     APPROVAL_UNCHANGED = -1,
 };
@@ -1214,7 +1215,8 @@ void updateCertificateStatus(const sql_ptr &certs_db,
 
     sqlite3_stmt *sql_statement = nullptr;
     int sql_status;
-    std::string sql(approval_status == APPROVAL_KEEP_RENEWAL_DUE ? SQL_CERT_SET_STATUS_KEEP_RENEWAL_DUE
+    std::string sql(approval_status == APPROVAL_FLAG_RENEWAL_DUE ? SQL_CERT_SET_STATUS_FLAG_RENEWAL_DUE
+                    : approval_status == APPROVAL_KEEP_RENEWAL_DUE ? SQL_CERT_SET_STATUS_KEEP_RENEWAL_DUE
                     : approval_status == APPROVAL_UNCHANGED ? SQL_CERT_SET_STATUS
                                                             : SQL_CERT_SET_STATUS_W_APPROVAL);
     sql += getValidStatusesClause(valid_status);
@@ -3631,7 +3633,7 @@ bool postUpdateToNextCertToNeedRenewal(const CertStatusFactory &cert_status_crea
             const uint64_t serial = *reinterpret_cast<uint64_t *>(&db_serial);
             try {
                 const std::string pv_name(getCertStatusURI(cert_pv_prefix, issuer_id, serial));
-                updateCertificateStatus(certs_db, serial, PENDING_RENEWAL, APPROVAL_KEEP_RENEWAL_DUE, {VALID, PENDING_APPROVAL, PENDING});
+                updateCertificateStatus(certs_db, serial, PENDING_RENEWAL, APPROVAL_FLAG_RENEWAL_DUE, {VALID, PENDING_APPROVAL, PENDING});
                 const auto status_date = std::time(nullptr);
                 const auto db_cert = getDbCert(certs_db, serial);
                 const auto cert_status = cert_status_creator.createPVACertificateStatus(
