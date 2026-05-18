@@ -32,12 +32,37 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.target_ref || github.ref }}
 
+      - name: Resolve matching pvxs-tls branch
+        id: pvxs_ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="${{ inputs.target_ref || github.ref_name }}"
+          REF="${REF#refs/heads/}"
+          REF="${REF#refs/tags/}"
+          case "$REF" in
+            main) PVXS_REF="tls" ;;
+            *)    PVXS_REF="$REF" ;;
+          esac
+          echo "pvxs_ref=$PVXS_REF" >> "$GITHUB_OUTPUT"
+          echo "Reading pvxs version from slac-epics/pvxs-tls@$PVXS_REF"
+
+      - name: Sparse-checkout pvxs-tls version file
+        uses: actions/checkout@v4
+        with:
+          repository: slac-epics/pvxs-tls
+          ref: ${{ steps.pvxs_ref.outputs.pvxs_ref }}
+          path: pvxs-tls
+          sparse-checkout: |
+            configure/CONFIG_PVXS_VERSION
+          sparse-checkout-cone-mode: false
+
       - name: Compute tag
         id: vars
         shell: bash
         run: |
           set -euo pipefail
-          CFG="configure/CONFIG_PVXS_VERSION"
+          CFG="pvxs-tls/configure/CONFIG_PVXS_VERSION"
           [[ -f "$CFG" ]] || { echo "Missing $CFG"; exit 1; }
 
           get_var() {
