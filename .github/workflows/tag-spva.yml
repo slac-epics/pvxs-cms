@@ -40,8 +40,11 @@ jobs:
           REF="${{ inputs.target_ref || github.ref_name }}"
           REF="${REF#refs/heads/}"
           REF="${REF#refs/tags/}"
+          # slac-epics/pvxs-tls release branch was renamed from `tls` to
+          # `main` on 2026-05. pvxs-cms branch names now mirror pvxs:
+          # main <-> main, dev <-> dev.
           case "$REF" in
-            main) PVXS_REF="tls" ;;
+            main) PVXS_REF="main" ;;
             *)    PVXS_REF="$REF" ;;
           esac
           echo "pvxs_ref=$PVXS_REF" >> "$GITHUB_OUTPUT"
