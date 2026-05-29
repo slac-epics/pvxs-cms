@@ -957,7 +957,7 @@ int64_t onCreateCertificate(ConfigCms &config,
         auto reply(getCreatePrototype());
         auto now(time(nullptr));
         setValue<uint32_t>(reply, "value.index", VALID);
-        setValue<uint64_t>(reply, "timeStamp.secondsPastEpoch", now - POSIX_TIME_AT_EPICS_EPOCH);
+        setValue<uint64_t>(reply, "timeStamp.secondsPastEpoch", CertDate::toEpicsEpoch(now));
         setValue<std::string>(reply, "state", CERT_STATE(VALID));
         setValue<uint64_t>(reply, "serial", serial);
         setValue<std::string>(reply, "issuer", issuer_id);
@@ -1149,14 +1149,14 @@ int64_t onCreateCertificate(ConfigCms &config,
         ///////////////////////////////////////////////
         // Construct and return the reply
         reply["value.index"] = state;
-        reply["timeStamp.secondsPastEpoch"] = now - POSIX_TIME_AT_EPICS_EPOCH;
+        reply["timeStamp.secondsPastEpoch"] = CertDate::toEpicsEpoch(now);
         reply["state"] = CERT_STATE(state);
         reply["serial"] = serial;
         reply["issuer"] = issuer_id;
         reply["cert_id"] = cert_id;
         reply["status_pv"] = status_pv;
         reply["expiration"] = expiration;
-        if (has_renew_by) reply["renew_by"] = renew_by - POSIX_TIME_AT_EPICS_EPOCH;
+        if (has_renew_by) reply["renew_by"] = CertDate::toEpicsEpoch(renew_by);
         if (!pem_string.empty()) reply["cert"] = pem_string;
         // Log the certificate info
         const auto org_val = ccr["organization"];
@@ -2363,12 +2363,11 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
     const auto now = time(nullptr);
     setValue<uint64_t>(status_value, "serial", serial);
     setValue<uint32_t>(status_value, "value.index", cert_status.status.i);
-    setValue<time_t>(status_value, "timeStamp.secondsPastEpoch", now - POSIX_TIME_AT_EPICS_EPOCH);
+    setValue<time_t>(status_value, "timeStamp.secondsPastEpoch", CertDate::toEpicsEpoch(now));
     setValue<std::string>(status_value, "state", cert_status.status.s);
-    setValue<time_t>(status_value, "renew_by",
-                     cert_status.renew_by.t > 0 ? cert_status.renew_by.t - POSIX_TIME_AT_EPICS_EPOCH : 0);
+    setValue<time_t>(status_value, "renew_by", CertDate::toEpicsEpoch(cert_status.renew_by.t));
     setValue<bool>(status_value, "renewal_due", cert_status.renewal_due);
-    setValue<time_t>(status_value, "ocsp_status.timeStamp.secondsPastEpoch", now - POSIX_TIME_AT_EPICS_EPOCH);
+    setValue<time_t>(status_value, "ocsp_status.timeStamp.secondsPastEpoch", CertDate::toEpicsEpoch(now));
     setValue<uint32_t>(status_value, "ocsp_status.value.index", cert_status.ocsp_status.i);
     // Get ocsp info if specified
     if (cert_status.ocsp_bytes.empty()) {

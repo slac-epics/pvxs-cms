@@ -21,6 +21,12 @@ namespace certs {
 
 using namespace members;
 
+time_t renewByFromCcrReply(const Value& reply) {
+    const auto renew_by_val = reply["renew_by"];
+    if (!renew_by_val) return 0;
+    return CertDate::fromEpicsEpoch(renew_by_val.as<uint64_t>());
+}
+
 /**
  * @brief Create a certificate
  *
@@ -61,14 +67,13 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     log_debug_printf(auth_log, "%s\n", value["issuer"].as<std::string>().c_str());
     log_debug_printf(auth_log, "%s\n", value["cert_id"].as<std::string>().c_str());
     log_debug_printf(auth_log, "%s\n", value["status_pv"].as<std::string>().c_str());
-    const auto renew_by_val = value["renew_by"];
     const CertDate expiration_date(value["expiration"].as<time_t>());
     log_debug_printf(auth_log, "Expires On: %s\n", expiration_date.s.c_str() );
-    if (renew_by_val) {
-        const auto renew_by_t = renew_by_val.as<time_t>() - POSIX_TIME_AT_EPICS_EPOCH;
+    const auto renew_by_t = renewByFromCcrReply(value);
+    if (renew_by_t != 0) {
         const CertDate renew_by(renew_by_t);
         log_debug_printf(auth_log, "Renew By: %s\n", renew_by.s.c_str() );
-        return {renew_by.t, pem_string};
+        return {renew_by_t, pem_string};
     }
     return {0, pem_string};
 }
