@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <ctime>
 #include <string>
 
 #include <epicsTime.h>
@@ -1334,10 +1335,35 @@ void testIncrementalIngestion() {
     sqlite3_finalize(stmt);
 }
 
+/**
+ * @brief Round-trip contract for the renew_by EPICS-epoch wire conversion.
+ *
+ * Exercises the REAL shared functions used by both sides: the server encodes a
+ * Unix time_t with CertDate::toEpicsEpoch (pvacms.cpp) and the client decodes it
+ * with CertDate::fromEpicsEpoch (ccrmanager.cpp). The pair is the single source
+ * of truth, so breaking either side breaks this test.
+ */
+void testRenewByEpochRoundTrip() {
+    testDiag("Renew-by EPICS-epoch encode/decode round-trip contract");
+
+    // Contract: a Unix time_t encoded by the server (toEpicsEpoch) and decoded by the
+    // client (fromEpicsEpoch) must round-trip back to the original. Guards against drift
+    // on EITHER side and against the historical double-subtraction (~1986) bug.
+    const std::time_t T = std::time(nullptr) + 365*24*3600;   // near future
+    const uint64_t wire = CertDate::toEpicsEpoch(T);          // server-side encode
+    const std::time_t decoded = CertDate::fromEpicsEpoch(wire); // client-side decode
+    testEq(decoded, T);                                       // exact round-trip
+    testOk(wire < (uint64_t)T, "wire value is EPICS-epoch (< Unix time)"); // 631152000 less
+    testOk(decoded > std::time(nullptr), "decoded renew_by is in the future, not ~1986");
+    // unset semantics
+    testEq(CertDate::toEpicsEpoch((std::time_t)0), (uint64_t)0);
+    testEq(CertDate::fromEpicsEpoch(0), (std::time_t)0);
+}
+
 }  // namespace
 
 MAIN(testcluster) {
-    testPlan(159);
+    testPlan(164);
     testSetup();
     logger_config_env();
 
@@ -1475,6 +1501,11 @@ MAIN(testcluster) {
         testIncrementalIngestion();
     } catch (std::exception &e) {
         testFail("testIncrementalIngestion failed: %s", e.what());
+    }
+    try {
+        testRenewByEpochRoundTrip();
+    } catch (std::exception &e) {
+        testFail("testRenewByEpochRoundTrip failed: %s", e.what());
     }
 
     return testDone();

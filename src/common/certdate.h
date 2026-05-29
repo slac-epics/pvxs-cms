@@ -12,6 +12,8 @@
 #ifndef CERTDATE_H
 #define CERTDATE_H
 
+#include <epicsTime.h>
+
 #include "ownedptr.h"
 
 #define CERT_TIME_FORMAT "%a %b %d %H:%M:%S %Y UTC"
@@ -105,6 +107,56 @@ struct CertDate {
         throw CertTimeParseException("Failed to format status date");
     }
 
+   public:
+    /**
+     * @brief Convert a Unix time_t to EPICS-epoch seconds for the wire.
+     *
+     * PVA timestamps and cert renew_by/status fields travel in seconds since the
+     * EPICS epoch (1990-01-01). This is the single source of truth for that encoding;
+     * both PVACMS (encode) and clients (decode via fromEpicsEpoch) must use this pair.
+     * A non-positive time_t maps to 0 (meaning "unset").
+     *
+     * Delegates the epoch arithmetic to EPICS Base's epicsTimeFromTime_t / epicsTimeToTime_t
+     * (the canonical converter); the 0 => 0 "unset" mapping is preserved here because the
+     * Base functions do not special-case 0.
+     *
+     * @param unix_time a Unix time_t (seconds since 1970)
+     * @return seconds since the EPICS epoch, or 0 if unix_time <= 0
+     */
+    static uint64_t toEpicsEpoch(const std::time_t unix_time) {
+        // Preserve "unset" => 0; epicsTimeFromTime_t would map 0 to a 1990-dated value.
+        if (unix_time <= 0) return 0;
+        // Delegate the actual epoch arithmetic to EPICS Base (the canonical converter)
+        // rather than duplicating the +/- POSIX_TIME_AT_EPICS_EPOCH constant here.
+        epicsTimeStamp ts;
+        epicsTimeFromTime_t(&ts, unix_time);
+        return ts.secPastEpoch;
+    }
+
+    /**
+     * @brief Convert EPICS-epoch seconds from the wire back to a Unix time_t.
+     *
+     * Inverse of toEpicsEpoch(). A zero wire value maps to 0 ("unset").
+     *
+     * Delegates the epoch arithmetic to EPICS Base's epicsTimeFromTime_t / epicsTimeToTime_t
+     * (the canonical converter); the 0 => 0 "unset" mapping is preserved here because the
+     * Base functions do not special-case 0.
+     *
+     * @param epics_epoch_secs seconds since the EPICS epoch (1990-01-01)
+     * @return the corresponding Unix time_t, or 0 if epics_epoch_secs == 0
+     */
+    static std::time_t fromEpicsEpoch(const uint64_t epics_epoch_secs) {
+        // Preserve "unset" => 0; epicsTimeToTime_t would map 0 to 1990.
+        if (epics_epoch_secs == 0) return 0;
+        epicsTimeStamp ts;
+        ts.secPastEpoch = static_cast<epicsUInt32>(epics_epoch_secs);
+        ts.nsec = 0;
+        time_t out = 0;
+        epicsTimeToTime_t(&out, &ts);
+        return out;
+    }
+
+   private:
     /**
      * @brief Convert the given string to a time_t value.
      *

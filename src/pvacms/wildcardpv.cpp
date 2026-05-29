@@ -6,8 +6,10 @@
 
 #include "wildcardpv.h"
 
+#include <iomanip>
 #include <map>
 #include <set>
+#include <sstream>
 
 #include <epicsGuard.h>
 #include <epicsMutex.h>
@@ -19,6 +21,7 @@
 #include <pvxs/sharedpv.h>
 
 #include "utilpvt.h"
+#include "certdate.h"
 
 typedef epicsGuard<epicsMutex> Guard;
 typedef epicsGuardRelease<epicsMutex> UnGuard;
@@ -102,7 +105,7 @@ WildcardPV WildcardPV::buildMailbox() {
             // use current time
             epicsTimeStamp now;
             if (!epicsTimeGetCurrent(&now)) {
-                ts["secondsPastEpoch"] = now.secPastEpoch + POSIX_TIME_AT_EPICS_EPOCH;
+                ts["secondsPastEpoch"] = certs::CertDate::fromEpicsEpoch(now.secPastEpoch);
                 ts["nanoseconds"] = now.nsec;
             }
         }
