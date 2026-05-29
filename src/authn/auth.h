@@ -466,6 +466,31 @@ CertData getCertificate(bool &retrieved_credentials,
     return cert_data;
 }
 
+enum class DaemonStartupDecision { MintNew, ReuseAndMonitor, ExitNonRenewable };
+
+/** Is the certificate's renew_by usable, i.e. renewable?
+ *  Renewable means: renewable = non-zero renew_by strictly before the cert's not_after.
+ *  Both arguments must be Unix time_t in the same epoch. A renew_by on or after not_after
+ *  is NOT usable, because the cert cannot be renewed once it has expired.
+ *  Pure (no I/O) so it can be unit-tested without a certificate. */
+inline bool usableRenewBy(const time_t renew_by_unix, const time_t not_after) {
+    return (renew_by_unix != 0) && (renew_by_unix < not_after);
+}
+
+/** Decide what daemon-mode startup should do with an existing keychain cert.
+ *  Pure (no I/O) so it can be unit-tested.
+ *  has_usable_renew_by means "has a USABLE renew_by": renewable = non-zero renew_by strictly
+ *  before the cert's not_after (see usableRenewBy). */
+inline DaemonStartupDecision daemonStartupDecision(const bool have_valid_cert, const bool force,
+                                                   const bool has_status_ext, const bool status_reachable,
+                                                   const certstatus_t status, const bool has_usable_renew_by) {
+    if (force || !have_valid_cert) return DaemonStartupDecision::MintNew;
+    if (!has_status_ext) return DaemonStartupDecision::ExitNonRenewable;   // no online status => not renewable
+    if (status_reachable && (status == REVOKED || status == EXPIRED)) return DaemonStartupDecision::MintNew;
+    if (status_reachable && !has_usable_renew_by) return DaemonStartupDecision::ExitNonRenewable;
+    return DaemonStartupDecision::ReuseAndMonitor; // VALID/PENDING*/renew-now-via-monitor, incl. unreachable
+}
+
 /**
  * @brief Run the authenticator
  *
@@ -522,11 +547,52 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
             auto new_cert_data = IdFileFactory::create(tls_keychain_file, tls_keychain_pwd)->getCertDataFromFile();
             const auto now = time(nullptr);
             const auto not_after_time =
-                (!cert_data.cert) ? 0 : CertFactory::getNotAfterTimeFromCert(new_cert_data.cert);
+                (!new_cert_data.cert) ? 0 : CertFactory::getNotAfterTimeFromCert(new_cert_data.cert);
             if (not_after_time > now) {
                 cert_data = std::move(new_cert_data);
             }
         } catch (std::exception &) {}
+
+        if (daemon_mode && cert_data.cert && !force) {
+            // Bounded, reuse the pvxcert one-shot status pattern (NEVER hang).
+            bool has_status_ext = true, status_reachable = false, has_usable_renew_by = false;
+            certstatus_t status = UNKNOWN;
+            std::string status_pv;
+            try {
+                status_pv = CmsStatusManager::getStatusPvFromCert(cert_data.cert);
+            } catch (const CertStatusNoExtensionException&) {
+                has_status_ext = false;
+            }
+            if (has_status_ext) {
+                try {
+                    auto sclient_config = client::Config::fromEnv();
+                    sclient_config.tls_disabled = true;
+                    auto sclient = sclient_config.build();
+                    auto sval = sclient.get(status_pv).exec()->wait(config.getRequestTimeout());
+                    status_reachable = true;
+                    status = (certstatus_t)sval["value.index"].template as<uint32_t>();
+                    // renew_by is published in EPICS-epoch seconds; the cert's not_after is Unix
+                    // time_t. Decode the wire value to Unix so both sides share one epoch, then a
+                    // renew_by on or after not_after is treated as not-renewable.
+                    const time_t cert_not_after = CertFactory::getNotAfterTimeFromCert(cert_data.cert);
+                    const time_t renew_by_unix = CertDate::fromEpicsEpoch(sval["renew_by"].template as<uint64_t>());
+                    has_usable_renew_by = usableRenewBy(renew_by_unix, cert_not_after);
+                } catch (const std::exception&) {
+                    status_reachable = false; // unreachable/timeout => reuse + monitor
+                }
+            }
+            switch (daemonStartupDecision(true, force, has_status_ext, status_reachable, status, has_usable_renew_by)) {
+                case DaemonStartupDecision::ExitNonRenewable:
+                    log_warn_printf(auth, "%s: certificate is not renewable (no renew-by); daemon not started\n",
+                                    tls_keychain_file.c_str());
+                    return 15;
+                case DaemonStartupDecision::MintNew:
+                    cert_data = CertData{}; // force the existing :531 mint path to run
+                    break;
+                case DaemonStartupDecision::ReuseAndMonitor:
+                    break; // fall through: :531 sees cert_data.cert set => skips mint; :544 starts daemon
+            }
+        }
 
         if (!cert_data.cert || force) {
             cert_data = getCertificate(retrieved_credentials,
