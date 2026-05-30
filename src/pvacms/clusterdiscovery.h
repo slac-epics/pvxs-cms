@@ -228,6 +228,14 @@ private:
     };
     std::map<std::string, ActiveForwarding> active_forwarding_;
     std::map<std::string, std::vector<ClusterMember>> peer_sync_members_;
+
+    // Members we count only because a directly-connected peer (the middle
+    // node) advertised them and forwards their sync data — we have no direct
+    // subscription of our own.  Keyed by the relayed member's node_id, value
+    // is the middle node that relays it.  When that middle node disconnects we
+    // drop the relayed member so membership does not retain ghosts.  Guarded
+    // by state_lock_.
+    std::map<std::string, std::string> relayed_via_;
     void seekForwarder(const std::string &unreachable_node_id);
     void cancelForwarding(const std::string &node_id);
     void rescanForwarders();

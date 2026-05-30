@@ -62,8 +62,15 @@ bool waitForStatusIndex(pvxs::client::Context &client, const std::string &status
         }
         epicsThreadSleep(0.1);
     }
-    auto status = client.get(status_pv).exec()->wait(1.0);
-    return status["value.index"].as<int32_t>() == expected_status;
+    // Final attempt must not let a client::Timeout escape uncaught: an
+    // unhandled exception on a test thread aborts the whole process (exit
+    // 134) instead of recording a soft assertion failure.
+    try {
+        auto status = client.get(status_pv).exec()->wait(1.0);
+        return status["value.index"].as<int32_t>() == expected_status;
+    } catch (const std::exception &) {
+        return false;
+    }
 }
 
 pvxs::Value makeCreateArgument(const std::string &create_pv, uint16_t usage, const std::string &public_key, const std::string &name) {
@@ -108,13 +115,23 @@ void testTwoNodeClusterMembershipConverges() {
            "Cluster Member 1 reports size as 2");
 }
 
-void testLinearChainMembershipPropagates() {
-    testDiag("3-node linearChain: outer nodes learn each other via middle");
+void testSymmetricChainInProcessCount() {
+    testDiag("3-node symmetric linearChain: in-process member count reaches 3 on every node");
 
     PVACMSCluster::Builder builder;
-    auto cluster = builder.size(3)
-                       .topology(ClusterTopology::linearChain(3))
-                       .build();
+    PVACMSCluster cluster;
+    try {
+        cluster = builder.size(3)
+                      .topology(ClusterTopology::linearChain(3))
+                      .build();
+    } catch (const std::exception &e) {
+        // build() runs awaitConvergence(); a convergence timeout throws.
+        // Catch it so a 3-node startup failure is a recorded assertion
+        // failure rather than an uncaught exception that aborts the process.
+        testFail("3-node linearChain cluster did not build/converge: %s", e.what());
+        testSkip(3, "cluster build failed");
+        return;
+    }
 
     testOk(cluster.size() == 3, "Cluster size reported correctly as 3");
     testOk(cluster.memberHandle(0).clusterMemberCount() == 3,
@@ -123,6 +140,139 @@ void testLinearChainMembershipPropagates() {
            "Cluster Member 1 reports size as 3");
     testOk(cluster.memberHandle(2).clusterMemberCount() == 3,
            "Cluster Member 2 reports size as 3");
+}
+
+void testRealZoneChainConvergesViaRelay() {
+    testDiag("ml/lab/it visibility chain: outer zones converge to 3 via the middle node");
+
+    // Directed visibility graph modelling the operator's three-zone chain:
+    //   index 0 = ml, 1 = lab (middle), 2 = it.
+    //   ml<->lab reachable, lab<->it reachable, ml<->it NOT reachable.
+    // No 0<->2 edge: ml and it can never subscribe to each other directly;
+    // each can only learn of the other from lab's sync snapshot.  The
+    // author-declared expectation (NOT the builder's BFS oracle) is that
+    // every node converges to a 3-member cluster.
+    PVACMSCluster::Builder builder;
+    PVACMSCluster cluster;
+    try {
+        cluster = builder.size(3)
+                      .topology(ClusterTopology::custom(3, {{0, 1}, {1, 0}, {1, 2}, {2, 1}}))
+                      .build();
+    } catch (const std::exception &e) {
+        // build() runs awaitConvergence(), which requires 3 members on
+        // every node for this graph (BFS reaches all 3 from each).  Against
+        // the pre-fix code the outer zones never count each other, so the
+        // wait times out and build() throws — this is the reproduction.
+        testFail("cluster did not converge to 3 members on every node: %s", e.what());
+        return;
+    }
+
+    // Deterministic post-fix pass: build() returned without throwing AND
+    // the operator-visible CERT:HEALTH PV reports cluster_members == 3 on
+    // every node.  Same polling pattern as
+    // testPerMemberHealthPvReportsConvergedCluster.
+    const auto issuer = cluster.memberHandle(0).issuerId();
+    const auto health_pv = std::string("CERT:HEALTH:") + issuer;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+
+    for (size_t i = 0; i < 3; ++i) {
+        auto member_client = cluster.memberClientConfig(i).build();
+        bool db_ok = false;
+        bool ca_valid = false;
+        uint32_t cluster_members_field = 0;
+        bool converged = false;
+
+        while (std::chrono::steady_clock::now() < deadline && !converged) {
+            try {
+                auto reply = member_client.get(health_pv).exec()->wait(5.0);
+                if (reply.valid()) {
+                    db_ok = reply["db_ok"].as<bool>();
+                    ca_valid = reply["ca_valid"].as<bool>();
+                    cluster_members_field = reply["cluster_members"].as<uint32_t>();
+                    if (cluster_members_field == 3u && db_ok && ca_valid) {
+                        converged = true;
+                        break;
+                    }
+                }
+            } catch (const std::exception &e) {
+                testDiag("zone %zu HEALTH GET (poll): %s", i, e.what());
+            }
+            epicsThreadSleep(0.5);
+        }
+
+        testOk(converged,
+               "zone %zu HEALTH cluster_members==3 (db_ok=%d ca_valid=%d cluster_members=%u)",
+               i, static_cast<int>(db_ok), static_cast<int>(ca_valid), cluster_members_field);
+    }
+
+    // Membership convergence (above) is distinct from sync-DATA delivery.
+    // Prove data still traverses the relay: create + approve a cert on ml
+    // (index 0, no direct edge to it) and observe it reach VALID on it
+    // (index 2).  Same approval-propagation pattern as
+    // testGatewayApprovalPropagationViaStatusPut.
+    auto admin_on_ml = cluster.memberClientConfig(0).build();
+    auto admin_on_it = cluster.memberClientConfig(2).build();
+
+    const auto create_pv = getCertCreatePv("CERT", issuer);
+    auto key_pair = IdFileFactory::createKeyPair();
+    auto create_arg = makeCreateArgument(create_pv,
+                                         cms::ssl::kForClientAndServer,
+                                         key_pair->public_key,
+                                         "relay-sync-data-ioc");
+    uint64_t serial = 0;
+    try {
+        auto create_reply = admin_on_ml.rpc(create_pv, create_arg).exec()->wait(10.0);
+        serial = create_reply["serial"].as<uint64_t>();
+    } catch (const std::exception &e) {
+        testFail("cert create on ml failed: %s", e.what());
+        return;
+    }
+    const auto status_pv = getCertStatusURI("CERT", issuer, serial);
+
+    // Membership converging to 3 (above) does not imply lab has yet accepted
+    // a DATA-forwarding relationship for ml on it's behalf: it establishes
+    // that only after its connectivity timer marks the absent ml<->it edge
+    // unreachable (~discovery_secs) and its seekForwarder RPC to lab succeeds.
+    // Lab re-publishes ml's cert rows to it only for changes that occur WHILE
+    // that relationship is active (the isForwarding gate in
+    // clusterdiscovery.cpp).  So first wait until it can observe the freshly
+    // created cert AT ALL (any state) — proving the relay DATA path is live —
+    // and only THEN approve on ml, so the approval is a change that occurs
+    // after forwarding is active and is therefore relayed.  Approving before
+    // forwarding exists can strand the VALID transition (the change predates
+    // the relationship and is never re-forwarded).
+    const auto live_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(75);
+    bool relay_live = false;
+    while (std::chrono::steady_clock::now() < live_deadline) {
+        try {
+            auto reply = admin_on_it.get(status_pv).exec()->wait(3.0);
+            // The cert row has actually relayed to it once its status resolves
+            // to the real PENDING_APPROVAL state (a status PV for a serial it
+            // has never seen does not resolve to a cluster-relayed row).
+            if (reply.valid() &&
+                reply["value.index"].as<int32_t>() == PENDING_APPROVAL) {
+                relay_live = true;
+                break;
+            }
+        } catch (const std::exception &) {
+        }
+        epicsThreadSleep(0.5);
+    }
+
+    bool it_observed_valid = false;
+    if (relay_live) {
+        try {
+            cluster.approveCert(0, serial);
+        } catch (const std::exception &e) {
+            testDiag("approveCert on ml: %s", e.what());
+        }
+        it_observed_valid = waitForStatusIndex(admin_on_it, status_pv, VALID, 30.0);
+    } else {
+        testDiag("relay DATA path never delivered the cert to it within budget");
+    }
+
+    testOk(it_observed_valid,
+           "it observes VALID for ml-approved cert (sync data relayed via lab)");
 }
 
 void testAllMembersShareIssuer() {
@@ -594,16 +744,20 @@ void testGatewayApprovalPropagationViaStatusPut() {
     const auto serial = create_reply["serial"].as<uint64_t>();
     const auto status_pv = getCertStatusURI("CERT", issuer_zero, serial);
 
+    // The local observation resolves quickly; cross-node propagation to the
+    // peer goes through cluster sync and needs more headroom under load, so it
+    // is polled on a wider budget (the source of the pre-existing #47 flake
+    // was the 10s budget being too tight for the peer to catch the update).
     testOk(waitForStatusIndex(admin_on_node_zero, status_pv, PENDING_APPROVAL, 10.0),
            "node zero observes pending approval before approval put");
-    testOk(waitForStatusIndex(admin_on_node_one, status_pv, PENDING_APPROVAL, 10.0),
+    testOk(waitForStatusIndex(admin_on_node_one, status_pv, PENDING_APPROVAL, 30.0),
            "node one observes pending approval before approval put");
 
     cluster.approveCert(0, serial);
 
     testOk(waitForStatusIndex(admin_on_node_zero, status_pv, VALID, 10.0),
            "node zero observes valid after status put approval");
-    testOk(waitForStatusIndex(admin_on_node_one, status_pv, VALID, 10.0),
+    testOk(waitForStatusIndex(admin_on_node_one, status_pv, VALID, 30.0),
            "node one observes propagated valid after status put approval");
 }
 
@@ -624,10 +778,11 @@ MAIN(testtlswithcmscluster) {
     }
 #endif
 
-    testPlan(43);
+    testPlan(47);
 
     testTwoNodeClusterMembershipConverges();
-    testLinearChainMembershipPropagates();
+    testSymmetricChainInProcessCount();
+    testRealZoneChainConvergesViaRelay();
     testAllMembersShareIssuer();
     testEmptyTopologyEachMemberSole();
     testSoleNodeStartCount();

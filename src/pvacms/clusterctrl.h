@@ -152,6 +152,11 @@ public:
     /** @brief Optional callback invoked whenever cluster membership changes; receives the updated member list. */
     std::function<void(const std::vector<ClusterMember>&)> on_membership_changed;
 
+    /** @brief Optional callback invoked after the membership list is published, so observers
+     *  (e.g. the HEALTH PV) can refresh derived state promptly instead of waiting for the
+     *  next periodic cycle.  Takes no arguments; the current count is read via getMembers(). */
+    std::function<void()> on_members_posted;
+
     /** @brief Optional callback to check if a joining node's cert is revoked. Receives the node_id (SKID prefix).
      *  Returns true if the node's cert is revoked. */
     std::function<bool(const std::string& node_id)> is_node_revoked;

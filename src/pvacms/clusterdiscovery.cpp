@@ -196,6 +196,7 @@ ClusterDiscovery::~ClusterDiscovery() {
         active_forwarding_.clear();
         peer_sync_members_.clear();
         peer_last_sequence_.clear();
+        relayed_via_.clear();
     }
     subs_to_destroy.clear();
     drainDeadSubscriptions();
@@ -535,6 +536,9 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
                     auto it = peer_connectivity_.find(node_id);
                     if (it != peer_connectivity_.end()) {
                         int prev = it->second->state.exchange(CONN_CONNECTED);
+                        // We now hold a live subscription to this peer, so it is
+                        // no longer merely relayed via a middle node.
+                        relayed_via_.erase(node_id);
                         if (prev == CONN_UNREACHABLE) {
                             log_info_printf(pvacmscluster, "Peer %s now reachable (was unreachable)\n",
                                             node_id.c_str());
@@ -695,6 +699,7 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
 
     bool was_forwarding = false;
     bool transitioned_to_unreachable = false;
+    std::vector<std::pair<std::string, std::shared_ptr<client::Subscription>>> orphaned_relayed;
     {
         Guard G(state_lock_);
         if (shutting_down_.load()) return;
@@ -708,6 +713,49 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
         }
 
         was_forwarding = sync_publisher_.isForwarding(peer_node_id);
+
+        // Teardown the relay: members we counted only because peer_node_id (the
+        // middle node) advertised and forwarded them lose their data path now
+        // that the middle node is gone.  Collect them for removal so membership
+        // does not retain ghosts; detach their (never-connected) subscription
+        // handles under the lock and destroy them outside it.
+        for (auto it = relayed_via_.begin(); it != relayed_via_.end();) {
+            if (it->second == peer_node_id) {
+                const std::string relayed_id = it->first;
+                std::shared_ptr<client::Subscription> sub;
+                auto sub_it = subscriptions_.find(relayed_id);
+                if (sub_it != subscriptions_.end()) {
+                    sub = std::move(sub_it->second);
+                    subscriptions_.erase(sub_it);
+                }
+                // Cancel the relayed peer's connectivity timer before dropping
+                // the map entry: the detached conn-timer thread holds its own
+                // ref to PeerConnectivity and would otherwise dereference a
+                // freed ClusterDiscovery after teardown (use-after-free).
+                auto conn_it = peer_connectivity_.find(relayed_id);
+                if (conn_it != peer_connectivity_.end()) {
+                    conn_it->second->cancelled.store(true);
+                    peer_connectivity_.erase(conn_it);
+                }
+                orphaned_relayed.emplace_back(relayed_id, std::move(sub));
+                it = relayed_via_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    for (auto &entry : orphaned_relayed) {
+        log_info_printf(pvacmscluster,
+                        "Relay via %s lost; dropping relayed member %s\n",
+                        peer_node_id.c_str(), entry.first.c_str());
+        controller_.removeMember(entry.first);
+    }
+    if (!orphaned_relayed.empty()) {
+        Guard G(dead_subscriptions_lock_);
+        for (auto &entry : orphaned_relayed) {
+            if (entry.second) dead_subscriptions_.push_back(std::move(entry.second));
+        }
     }
 
     if (was_forwarding) {
@@ -758,21 +806,44 @@ void ClusterDiscovery::reconcileMembers(const std::string &sender_node_id,
         }
     }
 
+    // A member learned from a directly-connected peer that we cannot reach
+    // ourselves is a RELAYED member: the middle node (sender_node_id) forwards
+    // its sync data to us, so we count it as a member without holding our own
+    // live subscription.  Record the relay so handleDisconnect can drop it if
+    // the middle node goes away (no membership ghosts).
+    bool sender_is_connected = false;
+    if (!sender_node_id.empty() && sender_node_id != node_id_) {
+        Guard G(state_lock_);
+        sender_is_connected = isPeerConnected(sender_node_id);
+    }
+
     for (const auto &m : remote_members) {
         if (shutting_down_.load()) return;
         if (m.node_id == node_id_) continue;
         bool already_subscribed;
+        bool directly_connected;
         {
             Guard G(state_lock_);
             already_subscribed = subscriptions_.count(m.node_id) > 0;
+            directly_connected = isPeerConnected(m.node_id);
         }
+
+        // Maintain the relay bookkeeping for members we don't directly reach.
+        if (sender_is_connected && m.node_id != sender_node_id && !directly_connected) {
+            Guard G(state_lock_);
+            relayed_via_[m.node_id] = sender_node_id;
+        }
+
         if (!already_subscribed) {
             log_info_printf(pvacmscluster, "Discovered new member %s via peer sync\n", m.node_id.c_str());
             subscribeToMember(m.node_id, m.sync_pv);
-            // Only add to membership if subscribe actually succeeded -
-            // otherwise we'd recurse via on_membership_changed forever
-            // (subscriptions_.count(m.node_id) stays 0, addMember fires
-            // on_membership_changed, which calls back into us).
+            // subscribeToMember stores the subscription handle even before it
+            // connects, so subscriptions_.count(m.node_id) is now >0 whether or
+            // not the peer is directly reachable.  Adding the member here is the
+            // relay-membership path: a transitively-reachable node still counts.
+            // Re-checking the count keeps the "add once" discipline that stops
+            // the on_membership_changed -> reconcileMembers recursion from
+            // looping (the recursive call sees already_subscribed and skips).
             bool subscribed_now;
             {
                 Guard G(state_lock_);
@@ -831,6 +902,7 @@ void ClusterDiscovery::doRejoin() {
         peer_connectivity_.clear();
         active_forwarding_.clear();
         peer_sync_members_.clear();
+        relayed_via_.clear();
     }
     subs_to_destroy.clear();
 
@@ -1130,6 +1202,52 @@ void ClusterDiscovery::seekForwarder(const std::string &unreachable_node_id) {
         }
     }
 
+    // Fallback: the peer_sync_members_ scan above can transiently fail to
+    // name an intermediary when the would-be middle node momentarily reports
+    // the unreachable peer as disconnected in the snapshot we hold.  We
+    // already recorded which directly-connected node relays this member in
+    // relayed_via_ (set by reconcileMembers); use it so data forwarding still
+    // establishes instead of being abandoned until the next connectivity
+    // event.  Without this, a single stale snapshot can leave relayed sync
+    // DATA permanently undelivered even though membership relay succeeded.
+    auto relay_it = relayed_via_.find(unreachable_node_id);
+    if (relay_it != relayed_via_.end()) {
+        const std::string &middle = relay_it->second;
+        auto conn_it = peer_connectivity_.find(middle);
+        if (conn_it != peer_connectivity_.end() &&
+            conn_it->second->state.load() == CONN_CONNECTED) {
+            std::string middle_sync_pv;
+            for (const auto &cm : controller_.getMembers()) {
+                if (cm.node_id == middle) {
+                    middle_sync_pv = cm.sync_pv;
+                    break;
+                }
+            }
+            if (!middle_sync_pv.empty()) {
+                auto req = TypeDef(TypeCode::Struct, {
+                    members::String("operation"),
+                    members::String("node_id"),
+                }).create();
+                req["operation"] = "forward";
+                req["node_id"] = unreachable_node_id;
+                try {
+                    client_ctx_.rpc(middle_sync_pv, req)
+                        .exec()
+                        ->wait(kForwardRpcTimeoutSecs);
+                    active_forwarding_[unreachable_node_id] = {middle, middle_sync_pv};
+                    log_info_printf(pvacmscluster,
+                        "Forwarding of %s via recorded relay %s established\n",
+                        unreachable_node_id.c_str(), middle.c_str());
+                    return;
+                } catch (const std::exception &e) {
+                    log_warn_printf(pvacmscluster,
+                        "Forward request to recorded relay %s for %s failed: %s\n",
+                        middle.c_str(), unreachable_node_id.c_str(), e.what());
+                }
+            }
+        }
+    }
+
     log_warn_printf(pvacmscluster, "No intermediary available for unreachable peer %s\n",
                     unreachable_node_id.c_str());
 }
@@ -1167,6 +1285,19 @@ void ClusterDiscovery::rescanForwarders() {
         if (active_forwarding_.count(conn_kv.first))
             continue;
         seekForwarder(conn_kv.first);
+    }
+
+    // Also seek a forwarder for every relayed member that does not yet have an
+    // active one, even if its own connectivity timer has not transitioned it
+    // to UNREACHABLE.  A relayed member (recorded in relayed_via_) is by
+    // definition one we cannot reach directly, so it needs a data forwarder;
+    // relying solely on the connectivity-timeout path leaves a window where a
+    // relayed member's sync DATA is never forwarded if the timeout's single
+    // seekForwarder attempt raced cluster settling.
+    for (const auto &kv : relayed_via_) {
+        if (active_forwarding_.count(kv.first))
+            continue;
+        seekForwarder(kv.first);
     }
 }
 
