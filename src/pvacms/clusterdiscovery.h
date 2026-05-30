@@ -145,6 +145,14 @@ private:
     // touching state once it is observed true.
     std::atomic<bool> shutting_down_{false};
 
+    // Number of detached "pvacms-conn" connectivity-timer threads that exist
+    // but have not yet finished touching ClusterDiscovery state.  Incremented
+    // before epicsThreadCreate, decremented when the timer body returns.  The
+    // destructor sets shutting_down_ then spins until this reaches zero so no
+    // detached timer can iterate the peer maps while/after they are destroyed
+    // (the named worker threads are exitWait-joined; these are not joinable).
+    std::atomic<int> outstanding_conn_timers_{0};
+
     std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
 
     // Deferred-destruction list for Subscriptions whose handleDisconnect
