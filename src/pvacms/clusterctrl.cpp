@@ -235,6 +235,8 @@ void ClusterController::initAsSoleNode(const std::string &node_id, const std::st
     members_ = {{node_id, sync_pv, PVACMS_MAJOR_VERSION, PVACMS_MINOR_VERSION, PVACMS_MAINTENANCE_VERSION, true}};
     rebuildNodeSkids();
     postCtrlValue();
+    if (on_members_posted)
+        on_members_posted();
     log_info_printf(pvacmscluster, "Bootstrapped sole-node cluster %s (node %s)\n",
                     issuer_id_.c_str(), node_id.c_str());
 }
@@ -295,6 +297,8 @@ void ClusterController::addMember(const ClusterMember &member) {
         rebuildNodeSkids();
         postCtrlValue();
         sync_publisher_.publishSnapshot(members_);
+        if (on_members_posted)
+            on_members_posted();
     }
     if (on_membership_changed)
         on_membership_changed(members_);
@@ -315,6 +319,8 @@ void ClusterController::removeMember(const std::string &node_id) {
     postCtrlValue();
     log_info_printf(pvacmscluster, "Removed node %s from cluster %s\n",
                     node_id.c_str(), issuer_id_.c_str());
+    if (on_members_posted)
+        on_members_posted();
     if (on_membership_changed)
         on_membership_changed(members_);
 }
@@ -328,6 +334,8 @@ void ClusterController::updateMembership(const std::vector<ClusterMember> &membe
     members_ = members;
     rebuildNodeSkids();
     postCtrlValue();
+    if (on_members_posted)
+        on_members_posted();
 }
 
 /**

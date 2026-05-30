@@ -531,6 +531,15 @@ bool ClusterSyncPublisher::isForwarding(const std::string &forwardee_node_id) co
 
 void ClusterSyncPublisher::handleResyncRpc(std::unique_ptr<server::ExecOp> &&op) {
     try {
+        // dispatchToSubscribers -> sendToSubscriber -> serializeCertsTable
+        // prepares statements on certs_db_.  That database handle is not safe
+        // for concurrent use, so every path that reaches it must hold
+        // status_update_lock_ and acquire it BEFORE sync_source_->lock_ (the
+        // order doPublish and the onStart subscriber callback use).  Omitting
+        // it here let a resync RPC run sqlite3_prepare_v2 on certs_db_ at the
+        // same time as a concurrent publish, corrupting the parser and
+        // crashing in libsqlite3 (SEGV/BUS in sqlite3DbMallocRawNNTyped).
+        Guard SG(status_update_lock_);
         Guard G(sync_source_->lock_);
         for (auto &kv : sync_source_->subscribers_) {
             kv.second.needs_full_snapshot = true;

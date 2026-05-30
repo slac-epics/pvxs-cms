@@ -335,16 +335,7 @@ void buildAndStartMember(PVACMSCluster::Impl &impl, size_t i, const ConfigCms &c
 
 }  // namespace
 
-PVACMSCluster PVACMSCluster::Builder::build() {
-    initOnce();
-
-    if (std::getenv("EPICS_PVACMS_CLUSTER_NAME_SERVERS")) {
-        unsetenv("EPICS_PVACMS_CLUSTER_NAME_SERVERS");
-    }
-    if (std::getenv("EPICS_PVA_NAME_SERVERS")) {
-        unsetenv("EPICS_PVA_NAME_SERVERS");
-    }
-
+PVACMSCluster PVACMSCluster::Builder::buildOnce() {
     PVACMSCluster cluster;
     cluster.impl_.reset(new Impl(pvt_->n));
     auto &impl = *cluster.impl_;
@@ -354,7 +345,9 @@ PVACMSCluster PVACMSCluster::Builder::build() {
     impl.discovery_secs = pvt_->discovery_secs;
     impl.bidi_secs = pvt_->bidi_secs;
     impl.interface_addr = pvt_->ipv6 ? "::1" : "127.0.0.1";
-    impl.topology = pvt_->topology_set ? std::move(pvt_->topology)
+    // Copy (not move) the topology: build() may retry, so the Builder must
+    // remain reusable across attempts.
+    impl.topology = pvt_->topology_set ? pvt_->topology
                                         : ClusterTopology::fullMesh(pvt_->n);
 
     if (pvt_->external_pki) {
@@ -420,10 +413,20 @@ PVACMSCluster PVACMSCluster::Builder::build() {
             running_ptr->store(false);
         });
 
-        if (!waitForMemberReady(impl.member_addrs[i], impl.fixture().adminP12Path(), 60.0)) {
-            log_warn_printf(cluster_log,
-                            "member %zu did not answer CERT:ISSUER within 60 seconds; continuing startup\n",
-                            i);
+        // A member must answer CERT:ISSUER on its own listener before the
+        // next member starts; otherwise a peer's sync client retries a dead
+        // loopback address and convergence cannot complete.  If a member is
+        // not ready in time, throw so the whole attempt is torn down and
+        // retried on fresh ports rather than continuing into a state that
+        // hangs awaitConvergence().  No mid-build same-port rebuild is
+        // attempted: stopping/rebuilding a member while its worker is
+        // mid-publishSnapshot races database teardown.
+        if (!waitForMemberReady(impl.member_addrs[i], impl.fixture().adminP12Path(), 30.0)) {
+            std::ostringstream os;
+            os << "PVACMSCluster: member " << i
+               << " did not become reachable on " << impl.member_addrs[i]
+               << " within 30s";
+            throw std::runtime_error(os.str());
         }
 
         if (i + 1 < pvt_->n) {
@@ -434,6 +437,44 @@ PVACMSCluster PVACMSCluster::Builder::build() {
     cluster.awaitConvergence();
 
     return cluster;
+}
+
+PVACMSCluster PVACMSCluster::Builder::build() {
+    initOnce();
+
+    if (std::getenv("EPICS_PVACMS_CLUSTER_NAME_SERVERS")) {
+        unsetenv("EPICS_PVACMS_CLUSTER_NAME_SERVERS");
+    }
+    if (std::getenv("EPICS_PVA_NAME_SERVERS")) {
+        unsetenv("EPICS_PVA_NAME_SERVERS");
+    }
+
+    // Bring-up on macOS loopback is intermittently racy: a member's TLS
+    // listener can fail to answer in time, or the partial cluster can fail to
+    // converge, roughly 1 build in 10.  A fresh attempt on new ephemeral
+    // ports almost always succeeds, so retry the entire bring-up a bounded
+    // number of times.  Each failed attempt's PVACMSCluster is destroyed
+    // (stopping every started member and joining its worker) before the next,
+    // so there is no orphaned listener for a peer to retry against.  Only a
+    // persistent failure across all attempts propagates, as a deterministic
+    // throw rather than a hang.
+    static const int kMaxBuildAttempts = 3;
+    std::string last_error;
+    for (int attempt = 1; attempt <= kMaxBuildAttempts; ++attempt) {
+        try {
+            return buildOnce();
+        } catch (const std::exception &e) {
+            last_error = e.what();
+            if (attempt < kMaxBuildAttempts) {
+                log_warn_printf(cluster_log,
+                                "cluster build attempt %d/%d failed: %s (retrying on fresh ports)\n",
+                                attempt, kMaxBuildAttempts, e.what());
+            }
+        }
+    }
+    throw std::runtime_error("PVACMSCluster: build failed after " +
+                             std::to_string(kMaxBuildAttempts) +
+                             " attempts; last error: " + last_error);
 }
 
 void PVACMSCluster::restartMember(const size_t i) {
@@ -612,6 +653,14 @@ void PVACMSCluster::awaitConvergence() {
     // knob.  Local runs still complete in ~1s and are not affected.
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(16 * impl_->discovery_secs);
 
+    // Bound per-member restarts so a member whose worker keeps dying cannot
+    // make this loop spin forever.  Without a cap the restart branch below
+    // re-enters every iteration and the deadline is never reached, which is
+    // the dominant cause of the suite hanging (process never terminates)
+    // instead of failing deterministically.
+    static const size_t kMaxRestartsPerMember = 3;
+    std::vector<size_t> restart_count(n, 0);
+
     while (true) {
         bool all_converged = true;
         size_t laggard = 0;
@@ -621,10 +670,18 @@ void PVACMSCluster::awaitConvergence() {
         for (size_t i = 0; i < n; ++i) {
             if (!impl_->handles[i]) continue;
             if (!impl_->running[i]->load()) {
+                if (restart_count[i] >= kMaxRestartsPerMember) {
+                    std::ostringstream os;
+                    os << "PVACMSCluster::awaitConvergence: member " << i
+                       << " worker exited and did not stay running after "
+                       << kMaxRestartsPerMember << " restarts";
+                    throw std::runtime_error(os.str());
+                }
                 log_warn_printf(cluster_log,
-                                "PVACMSCluster::awaitConvergence: member %zu is not running, restarting\n",
-                                i);
+                                "PVACMSCluster::awaitConvergence: member %zu is not running, restarting (%zu/%zu)\n",
+                                i, restart_count[i] + 1, kMaxRestartsPerMember);
                 restartMember(i);
+                ++restart_count[i];
                 restarted_dead_member = true;
                 all_converged = false;
                 break;
@@ -643,11 +700,10 @@ void PVACMSCluster::awaitConvergence() {
                 break;
             }
         }
-        if (restarted_dead_member) {
-            epicsThreadSleep(0.1);
-            continue;
-        }
         if (all_converged) return;
+        // The deadline is checked on every iteration (including after a
+        // restart) so the wait is strictly bounded regardless of which path
+        // prevented convergence.
         if (std::chrono::steady_clock::now() >= deadline) {
             std::ostringstream os;
             os << "PVACMSCluster::awaitConvergence: member " << laggard
@@ -656,7 +712,7 @@ void PVACMSCluster::awaitConvergence() {
                << " members, observed " << laggard_actual << ")";
             throw std::runtime_error(os.str());
         }
-        epicsThreadSleep(0.05);
+        epicsThreadSleep(restarted_dead_member ? 0.1 : 0.05);
     }
 }
 

@@ -145,6 +145,14 @@ private:
     // touching state once it is observed true.
     std::atomic<bool> shutting_down_{false};
 
+    // Number of detached "pvacms-conn" connectivity-timer threads that exist
+    // but have not yet finished touching ClusterDiscovery state.  Incremented
+    // before epicsThreadCreate, decremented when the timer body returns.  The
+    // destructor sets shutting_down_ then spins until this reaches zero so no
+    // detached timer can iterate the peer maps while/after they are destroyed
+    // (the named worker threads are exitWait-joined; these are not joinable).
+    std::atomic<int> outstanding_conn_timers_{0};
+
     std::map<std::string, std::shared_ptr<client::Subscription>> subscriptions_;
 
     // Deferred-destruction list for Subscriptions whose handleDisconnect
@@ -228,6 +236,14 @@ private:
     };
     std::map<std::string, ActiveForwarding> active_forwarding_;
     std::map<std::string, std::vector<ClusterMember>> peer_sync_members_;
+
+    // Members we count only because a directly-connected peer (the middle
+    // node) advertised them and forwards their sync data — we have no direct
+    // subscription of our own.  Keyed by the relayed member's node_id, value
+    // is the middle node that relays it.  When that middle node disconnects we
+    // drop the relayed member so membership does not retain ghosts.  Guarded
+    // by state_lock_.
+    std::map<std::string, std::string> relayed_via_;
     void seekForwarder(const std::string &unreachable_node_id);
     void cancelForwarding(const std::string &node_id);
     void rescanForwarders();

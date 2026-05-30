@@ -458,6 +458,10 @@ class PVXS_CMS_TEST_API PVACMSCluster::Builder {
     PVACMSCluster build();
 
    private:
+    // One bring-up attempt; build() retries this on a transient loopback
+    // bring-up failure (member never reachable / cluster never converges).
+    PVACMSCluster buildOnce();
+
     struct Pvt;
     std::unique_ptr<Pvt> pvt_;
 };

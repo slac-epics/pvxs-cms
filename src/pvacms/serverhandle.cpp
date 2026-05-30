@@ -304,6 +304,12 @@ ServerHandle::Pvt::Pvt(const ConfigCms &config,
         status_monitor.setClusterMemberCount([this]() -> uint32_t {
             return static_cast<uint32_t>(cluster_ctrl.getMembers().size());
         });
+        // Refresh the operator-visible HEALTH cluster_members field as soon as
+        // membership changes (including transitively-relayed members), rather
+        // than waiting for the next periodic monitor cycle.
+        cluster_ctrl.on_members_posted = [this]() {
+            status_monitor.postClusterMembersHealth();
+        };
     }
 }
 
@@ -953,6 +959,7 @@ void ServerHandle::Pvt::stop()
     cluster_sync.is_peer_connected = std::function<bool(const std::string&)>{};
     cluster_ctrl.verify_bidirectional = std::function<bool(const std::string&, uint32_t)>{};
     cluster_ctrl.is_node_revoked = std::function<bool(const std::string&)>{};
+    cluster_ctrl.on_members_posted = std::function<void()>{};
     cluster_sync.setEnabled(false);
     if (cluster_discovery) {
         cluster_discovery->on_node_cert_revoked = std::function<void(const std::string&)>{};

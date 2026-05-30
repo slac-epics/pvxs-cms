@@ -759,7 +759,16 @@ Value makeMetricsValue() {
  */
 void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file, bool quiet) {
     log_debug_printf(pvacms, "Attempting to open certificate database file: %s\n", db_file.c_str());
-    if (sqlite3_open(db_file.c_str(), certs_db.acquire()) != SQLITE_OK) {
+    // SQLITE_OPEN_FULLMUTEX puts the connection in serialized threading mode:
+    // the single handle is shared by the PVA server threads (read/status
+    // handlers) and the cluster sync/discovery worker threads, which prepare
+    // and step statements on it concurrently.  Without serialized mode that
+    // races inside libsqlite3 and corrupts the parser/allocator, crashing
+    // with SEGV/BUS in sqlite3DbMallocRawNNTyped / sqlite3WhereBegin.  The
+    // default mode depends on how the linked libsqlite3 was compiled, so it
+    // is requested explicitly rather than relied upon.
+    const int open_flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
+    if (sqlite3_open_v2(db_file.c_str(), certs_db.acquire(), open_flags, nullptr) != SQLITE_OK) {
         throw std::runtime_error(SB() << "Can't open certs db file for writing: " << sqlite3_errmsg(certs_db.get()));
     }
     log_debug_printf(pvacms, "Opened certificate database file: %s\n", db_file.c_str());

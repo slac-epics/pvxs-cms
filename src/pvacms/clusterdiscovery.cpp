@@ -98,12 +98,30 @@ struct ConnTimerCtx {
 
 void connTimerEntry(void *arg) {
     auto ctx = std::unique_ptr<ConnTimerCtx>(static_cast<ConnTimerCtx *>(arg));
-    epicsThreadSleep(static_cast<double>(ctx->timeout_secs));
+    // Balance the increment done before epicsThreadCreate so the destructor
+    // can wait this detached thread out before destroying the peer maps.
+    struct TimerGuard {
+        std::atomic<int> &count;
+        ~TimerGuard() { count.fetch_sub(1); }
+    } timer_guard{ctx->discovery->outstanding_conn_timers_};
+
+    // Sleep the timeout in short slices so ~ClusterDiscovery (which waits this
+    // detached thread out) is not blocked for the full timeout during teardown.
+    const double slice = 0.1;
+    double remaining = static_cast<double>(ctx->timeout_secs);
+    while (remaining > 0.0) {
+        if (ctx->discovery->shutting_down_.load() || ctx->state->cancelled.load()) return;
+        const double s = remaining < slice ? remaining : slice;
+        epicsThreadSleep(s);
+        remaining -= s;
+    }
+    if (ctx->discovery->shutting_down_.load()) return;
     if (ctx->state->cancelled.load()) return;
     int expected = ClusterDiscovery::CONN_PENDING;
     if (!ctx->state->state.compare_exchange_strong(expected, ClusterDiscovery::CONN_UNREACHABLE))
         return;
     if (ctx->state->cancelled.load()) return;
+    if (ctx->discovery->shutting_down_.load()) return;
     ctx->discovery->onConnectivityTimeout(ctx->node_id);
 }
 
@@ -181,6 +199,23 @@ ClusterDiscovery::~ClusterDiscovery() {
         deferred_rescan_pending_ = false;
     }
 
+    // Cancel every peer's connectivity timer under the lock so any detached
+    // "pvacms-conn" thread that wakes from its sleep observes cancelled/
+    // shutting_down_ and returns without touching state.
+    {
+        Guard G(state_lock_);
+        for (auto &kv : peer_connectivity_) kv.second->cancelled.store(true);
+    }
+    // The named worker threads are exitWait-joined above, but the conn-timers
+    // are detached and not joinable.  Wait them out before destroying the maps
+    // they iterate (peer_connectivity_/peer_sync_members_/active_forwarding_/
+    // relayed_via_/subscriptions_) — otherwise a timer mid-iteration crashes in
+    // std::_Rb_tree_increment when the map is cleared underneath it.  Each
+    // timer rechecks shutting_down_ on wake, so this drains within one sleep.
+    while (outstanding_conn_timers_.load() > 0) {
+        epicsThreadSleep(0.01);
+    }
+
     // Detach the maps under the lock, then destroy the shared_ptr<Subscription>
     // entries OUTSIDE the lock.  ~Subscription dispatches cancel() to the
     // tcp_loop and waits; if the tcp_loop is concurrently running our event
@@ -191,11 +226,11 @@ ClusterDiscovery::~ClusterDiscovery() {
         Guard G(state_lock_);
         subs_to_destroy.swap(subscriptions_);
         acknowledged_by_.clear();
-        for (auto &kv : peer_connectivity_) kv.second->cancelled.store(true);
         peer_connectivity_.clear();
         active_forwarding_.clear();
         peer_sync_members_.clear();
         peer_last_sequence_.clear();
+        relayed_via_.clear();
     }
     subs_to_destroy.clear();
     drainDeadSubscriptions();
@@ -417,35 +452,44 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
     const auto update_type = val["update_type"].as<int32_t>();
     const auto sequence = val["sequence"].as<int64_t>();
 
-    auto peer_seq_it = peer_last_sequence_.find(peer_node_id);
-    if (update_type == SYNC_INCREMENTAL && peer_seq_it != peer_last_sequence_.end()) {
+    // Read the last-seen sequence and record this one under state_lock_; the
+    // peer_last_sequence_ map is also torn down by ~ClusterDiscovery.
+    bool needs_resync = false;
+    int64_t last_sequence = 0;
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+        auto peer_seq_it = peer_last_sequence_.find(peer_node_id);
+        if (update_type == SYNC_INCREMENTAL && peer_seq_it != peer_last_sequence_.end()) {
+            last_sequence = peer_seq_it->second;
+            needs_resync = (sequence <= last_sequence);
+        }
+        peer_last_sequence_[peer_node_id] = sequence;
+    }
+
+    if (needs_resync) {
         // ClusterSyncPublisher::sendToSubscriber batches every update_log_
         // entry since the subscriber's last sequence into one incremental
         // message and stamps it with updates.back().sequence — so a forward
         // jump (sequence > last+1) is normal: the message carries every
         // missed cert row. Only resync on a backwards/duplicate sequence,
         // which indicates the publisher restarted or our state is stale.
-        if (sequence <= peer_seq_it->second) {
-            log_warn_printf(pvacmscluster,
-                "Stale sequence from %s: got %" PRId64 ", already at %" PRId64 " — requesting resync\n",
-                peer_node_id.c_str(),
-                sequence,
-                peer_seq_it->second);
+        log_warn_printf(pvacmscluster,
+            "Stale sequence from %s: got %" PRId64 ", already at %" PRId64 " — requesting resync\n",
+            peer_node_id.c_str(), sequence, last_sequence);
 
-            auto peer_sync_pv = pv_prefix_ + ":SYNC:" + issuer_id_ + ":" + peer_node_id;
-            try {
-                auto req = TypeDef(TypeCode::Struct, {
-                    members::String("operation"),
-                }).create();
-                req["operation"] = "resync";
-                client_ctx_.rpc(peer_sync_pv, req).exec()->wait(5.0);
-            } catch (const std::exception &e) {
-                log_warn_printf(pvacmscluster, "Resync request to %s failed: %s\n",
-                                peer_node_id.c_str(), e.what());
-            }
+        auto peer_sync_pv = pv_prefix_ + ":SYNC:" + issuer_id_ + ":" + peer_node_id;
+        try {
+            auto req = TypeDef(TypeCode::Struct, {
+                members::String("operation"),
+            }).create();
+            req["operation"] = "resync";
+            client_ctx_.rpc(peer_sync_pv, req).exec()->wait(5.0);
+        } catch (const std::exception &e) {
+            log_warn_printf(pvacmscluster, "Resync request to %s failed: %s\n",
+                            peer_node_id.c_str(), e.what());
         }
     }
-    peer_last_sequence_[peer_node_id] = sequence;
 
     sync_publisher_.sync_ingestion_in_progress.store(true);
     SyncMergeResult merge_result;
@@ -489,7 +533,11 @@ void ClusterDiscovery::handleSyncUpdate(const std::string &peer_node_id, Value &
         remote_members.push_back(std::move(member));
     }
     reconcileMembers(peer_node_id, remote_members);
-    peer_sync_members_[peer_node_id] = remote_members;
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+        peer_sync_members_[peer_node_id] = std::move(remote_members);
+    }
 
     scheduleRescanForwarders();
 
@@ -530,17 +578,26 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
                     break;
                 } catch (client::Connected &) {
                     if (shutting_down_.load()) return;
-                    Guard G(state_lock_);
-                    if (shutting_down_.load()) return;
-                    auto it = peer_connectivity_.find(node_id);
-                    if (it != peer_connectivity_.end()) {
-                        int prev = it->second->state.exchange(CONN_CONNECTED);
-                        if (prev == CONN_UNREACHABLE) {
-                            log_info_printf(pvacmscluster, "Peer %s now reachable (was unreachable)\n",
-                                            node_id.c_str());
-                            cancelForwarding(node_id);
-                            publishMemberConnectivity();
+                    bool reachable_restored = false;
+                    {
+                        Guard G(state_lock_);
+                        if (shutting_down_.load()) return;
+                        auto it = peer_connectivity_.find(node_id);
+                        if (it != peer_connectivity_.end()) {
+                            int prev = it->second->state.exchange(CONN_CONNECTED);
+                            // We now hold a live subscription to this peer, so it
+                            // is no longer merely relayed via a middle node.
+                            relayed_via_.erase(node_id);
+                            reachable_restored = (prev == CONN_UNREACHABLE);
                         }
+                    }
+                    // cancelForwarding/publishMemberConnectivity take state_lock_
+                    // and issue blocking RPCs, so call them outside the lock.
+                    if (reachable_restored) {
+                        log_info_printf(pvacmscluster, "Peer %s now reachable (was unreachable)\n",
+                                        node_id.c_str());
+                        cancelForwarding(node_id);
+                        publishMemberConnectivity();
                     }
                     // continue loop to drain any data queued after Connected
                 } catch (client::Disconnect &) {
@@ -565,11 +622,19 @@ void ClusterDiscovery::subscribeToMember(const std::string &node_id, const std::
 
     if (shutting_down_.load()) return;
     auto *timer_ctx = new ConnTimerCtx{this, node_id, conn_state, discovery_timeout_secs_};
-    epicsThreadCreate("pvacms-conn",
-        epicsThreadPriorityLow,
-        epicsThreadGetStackSize(epicsThreadStackSmall),
-        connTimerEntry,
-        timer_ctx);
+    // Register the timer before creating it so ~ClusterDiscovery cannot finish
+    // clearing the peer maps while this detached thread is still in flight.
+    outstanding_conn_timers_.fetch_add(1);
+    if (!epicsThreadCreate("pvacms-conn",
+            epicsThreadPriorityLow,
+            epicsThreadGetStackSize(epicsThreadStackSmall),
+            connTimerEntry,
+            timer_ctx)) {
+        // Thread never started: connTimerEntry will not run, so undo the
+        // registration and reclaim the context here.
+        outstanding_conn_timers_.fetch_sub(1);
+        delete timer_ctx;
+    }
 }
 
 /**
@@ -695,6 +760,7 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
 
     bool was_forwarding = false;
     bool transitioned_to_unreachable = false;
+    std::vector<std::pair<std::string, std::shared_ptr<client::Subscription>>> orphaned_relayed;
     {
         Guard G(state_lock_);
         if (shutting_down_.load()) return;
@@ -708,6 +774,49 @@ void ClusterDiscovery::handleDisconnect(const std::string &peer_node_id) {
         }
 
         was_forwarding = sync_publisher_.isForwarding(peer_node_id);
+
+        // Teardown the relay: members we counted only because peer_node_id (the
+        // middle node) advertised and forwarded them lose their data path now
+        // that the middle node is gone.  Collect them for removal so membership
+        // does not retain ghosts; detach their (never-connected) subscription
+        // handles under the lock and destroy them outside it.
+        for (auto it = relayed_via_.begin(); it != relayed_via_.end();) {
+            if (it->second == peer_node_id) {
+                const std::string relayed_id = it->first;
+                std::shared_ptr<client::Subscription> sub;
+                auto sub_it = subscriptions_.find(relayed_id);
+                if (sub_it != subscriptions_.end()) {
+                    sub = std::move(sub_it->second);
+                    subscriptions_.erase(sub_it);
+                }
+                // Cancel the relayed peer's connectivity timer before dropping
+                // the map entry: the detached conn-timer thread holds its own
+                // ref to PeerConnectivity and would otherwise dereference a
+                // freed ClusterDiscovery after teardown (use-after-free).
+                auto conn_it = peer_connectivity_.find(relayed_id);
+                if (conn_it != peer_connectivity_.end()) {
+                    conn_it->second->cancelled.store(true);
+                    peer_connectivity_.erase(conn_it);
+                }
+                orphaned_relayed.emplace_back(relayed_id, std::move(sub));
+                it = relayed_via_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    for (auto &entry : orphaned_relayed) {
+        log_info_printf(pvacmscluster,
+                        "Relay via %s lost; dropping relayed member %s\n",
+                        peer_node_id.c_str(), entry.first.c_str());
+        controller_.removeMember(entry.first);
+    }
+    if (!orphaned_relayed.empty()) {
+        Guard G(dead_subscriptions_lock_);
+        for (auto &entry : orphaned_relayed) {
+            if (entry.second) dead_subscriptions_.push_back(std::move(entry.second));
+        }
     }
 
     if (was_forwarding) {
@@ -758,21 +867,44 @@ void ClusterDiscovery::reconcileMembers(const std::string &sender_node_id,
         }
     }
 
+    // A member learned from a directly-connected peer that we cannot reach
+    // ourselves is a RELAYED member: the middle node (sender_node_id) forwards
+    // its sync data to us, so we count it as a member without holding our own
+    // live subscription.  Record the relay so handleDisconnect can drop it if
+    // the middle node goes away (no membership ghosts).
+    bool sender_is_connected = false;
+    if (!sender_node_id.empty() && sender_node_id != node_id_) {
+        Guard G(state_lock_);
+        sender_is_connected = isPeerConnected(sender_node_id);
+    }
+
     for (const auto &m : remote_members) {
         if (shutting_down_.load()) return;
         if (m.node_id == node_id_) continue;
         bool already_subscribed;
+        bool directly_connected;
         {
             Guard G(state_lock_);
             already_subscribed = subscriptions_.count(m.node_id) > 0;
+            directly_connected = isPeerConnected(m.node_id);
         }
+
+        // Maintain the relay bookkeeping for members we don't directly reach.
+        if (sender_is_connected && m.node_id != sender_node_id && !directly_connected) {
+            Guard G(state_lock_);
+            relayed_via_[m.node_id] = sender_node_id;
+        }
+
         if (!already_subscribed) {
             log_info_printf(pvacmscluster, "Discovered new member %s via peer sync\n", m.node_id.c_str());
             subscribeToMember(m.node_id, m.sync_pv);
-            // Only add to membership if subscribe actually succeeded -
-            // otherwise we'd recurse via on_membership_changed forever
-            // (subscriptions_.count(m.node_id) stays 0, addMember fires
-            // on_membership_changed, which calls back into us).
+            // subscribeToMember stores the subscription handle even before it
+            // connects, so subscriptions_.count(m.node_id) is now >0 whether or
+            // not the peer is directly reachable.  Adding the member here is the
+            // relay-membership path: a transitively-reachable node still counts.
+            // Re-checking the count keeps the "add once" discipline that stops
+            // the on_membership_changed -> reconcileMembers recursion from
+            // looping (the recursive call sees already_subscribed and skips).
             bool subscribed_now;
             {
                 Guard G(state_lock_);
@@ -831,6 +963,7 @@ void ClusterDiscovery::doRejoin() {
         peer_connectivity_.clear();
         active_forwarding_.clear();
         peer_sync_members_.clear();
+        relayed_via_.clear();
     }
     subs_to_destroy.clear();
 
@@ -1066,81 +1199,136 @@ void ClusterDiscovery::onConnectivityTimeout(const std::string &node_id) {
 // dead and forwarding wouldn't have worked anyway.
 static constexpr double kForwardRpcTimeoutSecs = 5.0;
 
+// Caller must NOT hold state_lock_.  The discovery maps are read under
+// state_lock_ to assemble an ordered list of candidate intermediaries; the
+// (blocking) forward RPCs then run outside the lock, and a success is recorded
+// back into active_forwarding_ under the lock.  Early-returns on shutting_down_
+// so a worker/timer thread never walks the maps while ~ClusterDiscovery is
+// destroying them.
 void ClusterDiscovery::seekForwarder(const std::string &unreachable_node_id) {
-    if (active_forwarding_.count(unreachable_node_id))
-        return;
+    if (shutting_down_.load()) return;
 
-    for (const auto &peer : peer_sync_members_) {
-        if (peer.first == unreachable_node_id)
-            continue;
-        auto conn_it = peer_connectivity_.find(peer.first);
-        if (conn_it == peer_connectivity_.end() || conn_it->second->state.load() != CONN_CONNECTED)
-            continue;
+    // A candidate intermediary: the node we ask to forward, and its sync PV.
+    struct Candidate {
+        std::string intermediary_node_id;
+        std::string intermediary_sync_pv;
+    };
+    std::vector<Candidate> candidates;
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+        if (active_forwarding_.count(unreachable_node_id))
+            return;
 
-        for (const auto &m : peer.second) {
-            if (m.node_id == unreachable_node_id && m.connected) {
-                log_info_printf(pvacmscluster,
-                    "Requesting forwarding of %s via intermediary %s\n",
-                    unreachable_node_id.c_str(), peer.first.c_str());
+        const auto members = controller_.getMembers();
+        auto sync_pv_for = [&](const std::vector<ClusterMember> &advertised,
+                               const std::string &node) -> std::string {
+            for (const auto &pm : advertised) {
+                if (pm.node_id == node) return pm.sync_pv;
+            }
+            for (const auto &cm : members) {
+                if (cm.node_id == node) return cm.sync_pv;
+            }
+            return std::string();
+        };
 
-                auto req = TypeDef(TypeCode::Struct, {
-                    members::String("operation"),
-                    members::String("node_id"),
-                }).create();
-                req["operation"] = "forward";
-                req["node_id"] = unreachable_node_id;
+        for (const auto &peer : peer_sync_members_) {
+            if (peer.first == unreachable_node_id)
+                continue;
+            auto conn_it = peer_connectivity_.find(peer.first);
+            if (conn_it == peer_connectivity_.end() || conn_it->second->state.load() != CONN_CONNECTED)
+                continue;
 
-                std::string intermediary_sync_pv;
-                for (const auto &pm : peer.second) {
-                    if (pm.node_id == peer.first) {
-                        intermediary_sync_pv = pm.sync_pv;
-                        break;
-                    }
-                }
-                if (intermediary_sync_pv.empty()) {
-                    auto subs_it = subscriptions_.find(peer.first);
-                    if (subs_it == subscriptions_.end())
+            for (const auto &m : peer.second) {
+                if (m.node_id == unreachable_node_id && m.connected) {
+                    std::string sync_pv = sync_pv_for(peer.second, peer.first);
+                    if (sync_pv.empty() && !subscriptions_.count(peer.first))
                         continue;
-                    auto members = controller_.getMembers();
-                    for (const auto &cm : members) {
-                        if (cm.node_id == peer.first) {
-                            intermediary_sync_pv = cm.sync_pv;
-                            break;
-                        }
-                    }
-                }
-                if (intermediary_sync_pv.empty())
-                    continue;
-
-                try {
-                    client_ctx_.rpc(intermediary_sync_pv, req)
-                        .exec()
-                        ->wait(kForwardRpcTimeoutSecs);
-                    active_forwarding_[unreachable_node_id] = {peer.first, intermediary_sync_pv};
-                    log_info_printf(pvacmscluster,
-                        "Forwarding of %s via %s established\n",
-                        unreachable_node_id.c_str(), peer.first.c_str());
-                    return;
-                } catch (const std::exception &e) {
-                    log_warn_printf(pvacmscluster,
-                        "Forward request to %s for %s failed: %s\n",
-                        peer.first.c_str(), unreachable_node_id.c_str(), e.what());
+                    if (!sync_pv.empty())
+                        candidates.push_back({peer.first, sync_pv});
+                    break;
                 }
             }
         }
+
+        // Fallback: the peer_sync_members_ scan above can transiently fail to
+        // name an intermediary when the would-be middle node momentarily
+        // reports the unreachable peer as disconnected in the snapshot we hold.
+        // We already recorded which directly-connected node relays this member
+        // in relayed_via_ (set by reconcileMembers); use it so data forwarding
+        // still establishes instead of being abandoned until the next
+        // connectivity event.  Without this, a single stale snapshot can leave
+        // relayed sync DATA permanently undelivered even though membership
+        // relay succeeded.
+        auto relay_it = relayed_via_.find(unreachable_node_id);
+        if (relay_it != relayed_via_.end()) {
+            const std::string &middle = relay_it->second;
+            auto conn_it = peer_connectivity_.find(middle);
+            if (conn_it != peer_connectivity_.end() &&
+                conn_it->second->state.load() == CONN_CONNECTED) {
+                std::string middle_sync_pv;
+                for (const auto &cm : members) {
+                    if (cm.node_id == middle) { middle_sync_pv = cm.sync_pv; break; }
+                }
+                if (!middle_sync_pv.empty())
+                    candidates.push_back({middle, middle_sync_pv});
+            }
+        }
+    }
+
+    auto req = TypeDef(TypeCode::Struct, {
+        members::String("operation"),
+        members::String("node_id"),
+    }).create();
+    req["operation"] = "forward";
+    req["node_id"] = unreachable_node_id;
+
+    for (const auto &cand : candidates) {
+        if (shutting_down_.load()) return;
+        log_info_printf(pvacmscluster,
+            "Requesting forwarding of %s via intermediary %s\n",
+            unreachable_node_id.c_str(), cand.intermediary_node_id.c_str());
+        try {
+            client_ctx_.rpc(cand.intermediary_sync_pv, req)
+                .exec()
+                ->wait(kForwardRpcTimeoutSecs);
+        } catch (const std::exception &e) {
+            log_warn_printf(pvacmscluster,
+                "Forward request to %s for %s failed: %s\n",
+                cand.intermediary_node_id.c_str(), unreachable_node_id.c_str(), e.what());
+            continue;
+        }
+        {
+            Guard G(state_lock_);
+            if (shutting_down_.load()) return;
+            active_forwarding_[unreachable_node_id] = {cand.intermediary_node_id, cand.intermediary_sync_pv};
+        }
+        log_info_printf(pvacmscluster,
+            "Forwarding of %s via %s established\n",
+            unreachable_node_id.c_str(), cand.intermediary_node_id.c_str());
+        return;
     }
 
     log_warn_printf(pvacmscluster, "No intermediary available for unreachable peer %s\n",
                     unreachable_node_id.c_str());
 }
 
+// Caller must NOT hold state_lock_.  Removes the active_forwarding_ entry under
+// the lock, then issues the (blocking) cancel-forward RPC outside the lock so
+// state_lock_ is never held across a blocking RPC.
 void ClusterDiscovery::cancelForwarding(const std::string &node_id) {
-    auto it = active_forwarding_.find(node_id);
-    if (it == active_forwarding_.end())
-        return;
+    ActiveForwarding fwd;
+    {
+        Guard G(state_lock_);
+        auto it = active_forwarding_.find(node_id);
+        if (it == active_forwarding_.end())
+            return;
+        fwd = it->second;
+        active_forwarding_.erase(it);
+    }
 
     log_info_printf(pvacmscluster, "Cancelling forwarding of %s via %s (direct connectivity restored)\n",
-                    node_id.c_str(), it->second.intermediary_node_id.c_str());
+                    node_id.c_str(), fwd.intermediary_node_id.c_str());
 
     auto req = TypeDef(TypeCode::Struct, {
         members::String("operation"),
@@ -1150,40 +1338,78 @@ void ClusterDiscovery::cancelForwarding(const std::string &node_id) {
     req["node_id"] = node_id;
 
     try {
-        client_ctx_.rpc(it->second.intermediary_sync_pv, req)
+        client_ctx_.rpc(fwd.intermediary_sync_pv, req)
             .exec()
             ->wait(double(discovery_timeout_secs_));
     } catch (const std::exception &e) {
         log_warn_printf(pvacmscluster, "Cancel-forward RPC to %s failed: %s\n",
-                        it->second.intermediary_node_id.c_str(), e.what());
+                        fwd.intermediary_node_id.c_str(), e.what());
     }
-    active_forwarding_.erase(it);
 }
 
+// Caller must NOT hold state_lock_.  Collects the set of peers that still need
+// a data forwarder under the lock, then calls seekForwarder (which re-takes the
+// lock and issues blocking RPCs) for each outside the lock.  Early-returns on
+// shutting_down_ so the deferred worker never walks the maps during teardown.
 void ClusterDiscovery::rescanForwarders() {
-    for (auto &conn_kv : peer_connectivity_) {
-        if (conn_kv.second->state.load() != CONN_UNREACHABLE)
-            continue;
-        if (active_forwarding_.count(conn_kv.first))
-            continue;
-        seekForwarder(conn_kv.first);
+    if (shutting_down_.load()) return;
+
+    std::vector<std::string> targets;
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+        for (auto &conn_kv : peer_connectivity_) {
+            if (conn_kv.second->state.load() != CONN_UNREACHABLE)
+                continue;
+            if (active_forwarding_.count(conn_kv.first))
+                continue;
+            targets.push_back(conn_kv.first);
+        }
+
+        // Also seek a forwarder for every relayed member that does not yet have
+        // an active one, even if its own connectivity timer has not
+        // transitioned it to UNREACHABLE.  A relayed member (recorded in
+        // relayed_via_) is by definition one we cannot reach directly, so it
+        // needs a data forwarder; relying solely on the connectivity-timeout
+        // path leaves a window where a relayed member's sync DATA is never
+        // forwarded if the timeout's single seekForwarder attempt raced cluster
+        // settling.
+        for (const auto &kv : relayed_via_) {
+            if (active_forwarding_.count(kv.first))
+                continue;
+            targets.push_back(kv.first);
+        }
+    }
+
+    for (const auto &target : targets) {
+        if (shutting_down_.load()) return;
+        seekForwarder(target);
     }
 }
 
+// Caller MUST hold state_lock_: reads the peer_connectivity_ map.
 bool ClusterDiscovery::isPeerConnected(const std::string &node_id) const {
     auto it = peer_connectivity_.find(node_id);
     return it != peer_connectivity_.end() && it->second->state.load() == CONN_CONNECTED;
 }
 
+// Caller must NOT hold state_lock_ (this acquires it to read peer_connectivity_,
+// then publishes outside the lock).  Early-returns once shutting_down_ so it
+// never reads peer_connectivity_ while ~ClusterDiscovery destroys it.
 void ClusterDiscovery::publishMemberConnectivity() {
+    if (shutting_down_.load()) return;
     auto members = controller_.getMembers();
-    for (auto &m : members) {
-        if (m.node_id == node_id_) {
-            m.connected = true;
-        } else {
-            auto it = peer_connectivity_.find(m.node_id);
-            m.connected = (it != peer_connectivity_.end() &&
-                           it->second->state.load() == CONN_CONNECTED);
+    {
+        Guard G(state_lock_);
+        if (shutting_down_.load()) return;
+        for (auto &m : members) {
+            if (m.node_id == node_id_) {
+                m.connected = true;
+            } else {
+                auto it = peer_connectivity_.find(m.node_id);
+                m.connected = (it != peer_connectivity_.end() &&
+                               it->second->state.load() == CONN_CONNECTED);
+            }
         }
     }
     sync_publisher_.publishSnapshot(members);

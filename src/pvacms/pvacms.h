@@ -17,6 +17,8 @@
 #include <iostream>
 #include <vector>
 
+#include <epicsTime.h>
+
 #include <openssl/evp.h>
 #include <openssl/ocsp.h>
 #include <openssl/pem.h>
@@ -502,6 +504,33 @@ class StatusMonitor {
     void setMetricsProto(const Value &proto) { metrics_proto_ = proto; }
     void setClusterMemberCount(std::function<uint32_t()> fn) { get_cluster_member_count_ = std::move(fn); }
     uint32_t getClusterMemberCount() const { return get_cluster_member_count_ ? get_cluster_member_count_() : 1u; }
+
+    /**
+     * @brief Immediately publish the live cluster member count on the HEALTH PV.
+     *
+     * The periodic monitor refreshes HEALTH only once per monitor cycle (up to
+     * monitor_interval_max_secs apart).  Membership converges asynchronously
+     * via cluster discovery — including transitively-relayed members learned
+     * after the first HEALTH post — so without this an operator's CERT:HEALTH
+     * GET can report a stale cluster_members value for up to a full cycle.
+     * Invoked from the membership-changed path so the operator-visible count
+     * tracks the in-process membership promptly.  No-op outside cluster mode
+     * or before the HEALTH PV is open.
+     */
+    void postClusterMembersHealth() const {
+        if (!config_.cluster_mode || !health_pv_ || !health_pv_->isOpen() || !health_proto_) return;
+        try {
+            auto value = health_proto_.cloneEmpty();
+            value["cluster_members"] = getClusterMemberCount();
+            const time_t now_time = time(nullptr);
+            value["timeStamp.secondsPastEpoch"] = static_cast<int64_t>(now_time - POSIX_TIME_AT_EPICS_EPOCH);
+            value["timeStamp.nanoseconds"] = static_cast<int32_t>(0);
+            value["timeStamp.userTag"] = static_cast<int32_t>(0);
+            health_pv_->post(value);
+        } catch (const std::exception &) {
+            // Best-effort refresh; the next periodic cycle re-posts in full.
+        }
+    }
     bool isClusterMode() const { return config_.cluster_mode; }
     server::SharedPV *getHealthPV() const { return health_pv_; }
     server::SharedPV *getMetricsPV() const { return metrics_pv_; }
