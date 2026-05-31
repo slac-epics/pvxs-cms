@@ -63,10 +63,16 @@ bool waitForMemberReady(const std::string &addr, const std::string &admin_p12, d
     cfg.tls_keychain_file = admin_p12;
     sanitizeLoopbackOnly(cfg);
 
+    // Build the client context once and reuse it for all polling iterations.
+    // Rebuilding inside the loop creates and destroys an evbase worker thread
+    // on every iteration (~300 times over a 30s budget), racing with concurrent
+    // cluster startup threads and triggering evbase use-after-free crashes.
+    auto client = cfg.build();
+
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(timeout_secs * 1000.0));
     while (std::chrono::steady_clock::now() < deadline) {
         try {
-            auto reply = cfg.build().get("CERT:ISSUER").exec()->wait(1.0);
+            auto reply = client.get("CERT:ISSUER").exec()->wait(1.0);
             auto issuer = reply["issuer"].as<std::string>();
             if (!issuer.empty()) return true;
         } catch (const std::exception &) { }
