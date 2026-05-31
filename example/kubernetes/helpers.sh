@@ -212,6 +212,33 @@ function gw_kind_status {
 # Existing helpers — work on both Docker Desktop K8s and Kind
 # ---------------------------------------------------------------------------
 
+# Build the foundation images: epics-base:latest and pvxs:latest.
+# These are the base layers consumed by cms_build_images.
+# Runs pvxs/example/docker/build.sh which invokes both build_docker.sh scripts
+# in order (epics-base → pvxs).  All arguments (e.g. --no-cache) are forwarded.
+# Requires: PVXS_CMS to be set in the environment.
+function spva_build_images {
+    local _pwd="${PWD}"
+    trap 'cd "${_pwd}"' INT TERM EXIT
+    cd "${PVXS_CMS}/../pvxs/example/docker"
+    ./build.sh "$@"
+    trap - INT TERM EXIT
+    cd "${_pwd}"
+}
+
+# Build the pvxs-cms image (pvxs-cms:dev) which sits on top of pvxs:latest.
+# Runs pvxs-cms/example/docker/build.sh.
+# All arguments (e.g. --no-cache) are forwarded.
+# Requires: PVXS_CMS to be set in the environment.
+function cms_build_images {
+    local _pwd="${PWD}"
+    trap 'cd "${_pwd}"' INT TERM EXIT
+    cd "${PVXS_CMS}/example/docker"
+    ./build.sh "$@"
+    trap - INT TERM EXIT
+    cd "${_pwd}"
+}
+
 function gw_build_images {
     local _pwd="${PWD}"
     trap 'cd "${_pwd}"' INT TERM EXIT
