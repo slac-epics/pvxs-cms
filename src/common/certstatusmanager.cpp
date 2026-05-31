@@ -200,25 +200,31 @@ cert_status_ptr<CmsStatusManager> CmsStatusManager::subscribe(const client::Cont
     try {
         cert_status_ptr<CmsStatusManager> cert_status_manager(new CmsStatusManager(client));
         cert_status_manager->callback_ref = std::move(fn);
-        std::weak_ptr<CmsStatusManager> weak_cert_status_manager(cert_status_manager);
+
+        // The monitor-event lambda must NEVER hold a strong ref to the manager: it runs on
+        // the client event-loop worker thread, and if the manager's external owner drops its
+        // handle mid-callback a transient strong ref would make the worker the last owner.
+        // The manager (and its by-value client::Context -> evbase) would then be destroyed on
+        // its own worker thread -> evbase self-join -> log_crit -> abort under
+        // _PVXS_ABORT_ON_CRIT.  Capture only a weak_ptr to the callback and bail if expired.
+        std::weak_ptr<StatusCallback> weak_callback(cert_status_manager->callback_ref);
 
         log_debug_printf(status, "Subscribing to status: %s\n", status_pv.c_str());
         auto sub = cert_status_manager->client_.monitor(status_pv)
                        .maskConnected(true)
                        .maskDisconnected(true)
-                       .event([trusted_store_ptr, weak_cert_status_manager](client::Subscription &s) {
+                       .event([trusted_store_ptr, weak_callback](client::Subscription &s) {
                            try {
-                               const auto csm = weak_cert_status_manager.lock();
-                               if (!csm) return;
+                               const auto cb = weak_callback.lock();
+                               if (!cb) return;
                                const auto update = s.pop();
                                if (update) {
                                    try {
                                        auto status_update{PVACertificateStatus(update, trusted_store_ptr)};
                                        log_debug_printf(status, "Status subscription %s received: %s\n", s.name().c_str(), status_update.status.s.c_str());
-                                       csm->status_ = std::make_shared<CertificateStatus>(status_update);
-                                       log_debug_printf(status, "Calling (*csm->callback_ref)(status_update)%s\n", "");
-                                       (*csm->callback_ref)(status_update);
-                                       log_debug_printf(status, "Called (*csm->callback_ref)(status_update)%s\n", "");
+                                       log_debug_printf(status, "Calling (*cb)(status_update)%s\n", "");
+                                       (*cb)(status_update);
+                                       log_debug_printf(status, "Called (*cb)(status_update)%s\n", "");
                                    } catch (OCSPParseException &e) {
                                        log_debug_printf(status, "Ignoring invalid %s status update: %s\n", s.name().c_str(), e.what());
                                    } catch (std::invalid_argument &e) {

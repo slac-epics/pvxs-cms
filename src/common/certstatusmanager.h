@@ -207,11 +207,9 @@ class CmsStatusManager {
 
     void subscribe(std::shared_ptr<client::Subscription> &sub) { sub_ = sub; }
 
-    std::shared_ptr<StatusCallback> callback_ref{};  // Option placeholder for ref to callback if used
+    std::shared_ptr<StatusCallback> callback_ref{};  // co-owned by the monitor lambda via weak_ptr
     client::Context client_;
     std::shared_ptr<client::Subscription> sub_;
-    std::shared_ptr<CertificateStatus> status_;
-    std::shared_ptr<PVACertificateStatus> pva_status_;
     time_t manager_start_time_{time(nullptr)};
 
     /**
