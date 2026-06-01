@@ -100,6 +100,12 @@ jobs:
 
           TAG="${PREFIX}-${PVXS_VER}-${LABEL}.${DATE}"
 
+          REF_NAME="${{ inputs.target_ref || github.ref_name }}"
+          REF_NAME="${REF_NAME#refs/heads/}"
+          if [[ "$REF_NAME" == "dev" ]]; then
+            TAG="${TAG}-dev"
+          fi
+
           SHA="$(git rev-parse HEAD)"
           echo "pvxs_ver=$PVXS_VER" >> "$GITHUB_OUTPUT"
           echo "date=$DATE"         >> "$GITHUB_OUTPUT"
