@@ -180,6 +180,7 @@ struct SubscriberState {
     std::unique_ptr<server::MonitorControlOp> op;
     int64_t sequence{0};
     bool needs_full_snapshot{true};
+    bool started{false};
     std::deque<Value> pending;  ///< Updates queued due to back-pressure.
 };
 

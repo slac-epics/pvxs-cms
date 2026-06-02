@@ -46,6 +46,7 @@ using cms::cert::CertCreationRequest;
 using cms::cert::IdFileFactory;
 using cms::cert::PENDING_APPROVAL;
 using cms::cert::VALID;
+using cms::cert::REVOKED;
 using cms::cert::getCertCreatePv;
 using cms::cert::getCertStatusURI;
 namespace members = pvxs::members;
@@ -761,6 +762,58 @@ void testGatewayApprovalPropagationViaStatusPut() {
            "node one observes propagated valid after status put approval");
 }
 
+void testSyncSubscriberObservesChangeAcrossStartWindow() {
+    testDiag("SYNC subscriber started around a REVOKE still observes it (defer-not-drop of a security-critical update)");
+
+    PVACMSCluster::Builder builder;
+    auto cluster = builder.size(2).build();
+
+    auto admin_on_node_zero = cluster.memberClientConfig(0).build();
+    auto admin_on_node_one = cluster.memberClientConfig(1).build();
+
+    const auto issuer = cluster.memberIssuerId(0);
+
+    // Precondition: establish a VALID cert replicated cluster-wide.  Create on
+    // node 0, approve it, and confirm node 1 has converged to VALID via cluster
+    // sync before we touch the START window.
+    const auto create_pv = getCertCreatePv("CERT", issuer);
+    auto key_pair = IdFileFactory::createKeyPair();
+    auto create_arg = makeCreateArgument(create_pv,
+                                         cms::ssl::kForClientAndServer,
+                                         key_pair->public_key,
+                                         "cluster-startwindow-ioc");
+    uint64_t serial = 0;
+    try {
+        auto create_reply = admin_on_node_zero.rpc(create_pv, create_arg).exec()->wait(10.0);
+        serial = create_reply["serial"].as<uint64_t>();
+    } catch (const std::exception &e) {
+        testFail("cert create on node 0 failed: %s", e.what());
+        testSkip(2, "cert create failed");
+        return;
+    }
+    const auto status_pv = getCertStatusURI("CERT", issuer, serial);
+
+    cluster.approveCert(0, serial);
+    testOk(waitForStatusIndex(admin_on_node_zero, status_pv, VALID, 10.0),
+           "node zero observes VALID after approval (precondition)");
+    testOk(waitForStatusIndex(admin_on_node_one, status_pv, VALID, 30.0),
+           "node one observes replicated VALID before the start-window revoke (precondition)");
+
+    // START window, defer-not-drop of a REVOKE: revoke on node 0 and then, as
+    // close as the harness allows, bring up a brand-new node-1 client whose
+    // status subscription starts right around/after that revoke.  The revoke
+    // update is thus produced near the moment a SYNC subscriber connects/starts.
+    // If SyncSource dropped updates produced before a monitor's onStart fired,
+    // this fresh subscriber would stay stuck at VALID and never see REVOKED.
+    // The fix must DEFER (not drop) that update, so the fresh observation must
+    // still converge to REVOKED.  REVOKED is security-critical: silently
+    // dropping it would leave a peer trusting a revoked certificate.
+    cluster.revokeCert(0, serial);
+    auto fresh_client = cluster.memberClientConfig(1).build();
+    testOk(waitForStatusIndex(fresh_client, status_pv, REVOKED, 30.0),
+           "fresh node-1 subscriber observes REVOKED across the start window (update deferred, not dropped)");
+}
+
 }  // namespace
 
 MAIN(testtlswithcmscluster) {
@@ -778,7 +831,7 @@ MAIN(testtlswithcmscluster) {
     }
 #endif
 
-    testPlan(47);
+    testPlan(50);
 
     testTwoNodeClusterMembershipConverges();
     testSymmetricChainInProcessCount();
@@ -801,6 +854,7 @@ MAIN(testtlswithcmscluster) {
     testAdminClientSurvivesMemberLoss();
     testSurvivorRecoversAfterPeerRestart();
     testGatewayApprovalPropagationViaStatusPut();
+    testSyncSubscriberObservesChangeAcrossStartWindow();
 
     return testDone();
 }
