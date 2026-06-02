@@ -125,6 +125,7 @@ void SyncSource::onCreate(std::unique_ptr<server::ChannelControl> &&chan) {
             auto it = subscribers_.find(sub_id);
             if (it == subscribers_.end())
                 return;
+            it->second.started = true;
             publisher_.sendToSubscriber(it->second);
         });
 
@@ -274,6 +275,9 @@ void ClusterSyncPublisher::dispatchToSubscribers() {
 void ClusterSyncPublisher::sendToSubscriber(SubscriberState &sub) {
     // Caller must hold sync_source_->lock_
     if (!sub.op)
+        return;
+
+    if (!sub.started)
         return;
 
     // If there are pending back-pressure retries, don't add more
