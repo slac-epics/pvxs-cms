@@ -46,41 +46,66 @@ void setEcho(const bool enable) {
 }  // namespace
 
 enum CertAction { STATUS, APPROVE, DENY, REVOKE };
-std::string actionToString(const CertAction &action) {
-    return action == STATUS ? "Get Status" : action == APPROVE ? "Approve" : action == REVOKE ? "Revoke" : "Deny";
+const char* actionToString(const CertAction &action) {
+    return action == STATUS ? "Get Status"
+         : action == APPROVE ? "Approve"
+         : action == REVOKE ? "Revoke"
+         : "Deny";
 }
-int readParameters(const int argc, char *argv[], const char *program_name, client::Config &conf, bool &approve, bool &revoke, bool &deny, bool &debug,
-                   bool &password_flag, bool &verbose, std::string &cert_file, std::string &issuer_serial_string, std::string &cert_pv_prefix) {
+
+struct cliparams {
+    const int argc;
+    const char* const* argv;
+    std::string cert_file;
+    std::string issuer_serial_string;
+    std::string cert_pv_prefix{"CERT:STATUS:"};
+    bool approve = false;
+    bool revoke = false;
+    bool deny = false;
+    bool password_flag = false;
+    bool debug = false;
+    bool verbose = false;
+
+    cliparams(int argc, char *argv[])
+        :argc(argc)
+        ,argv(argv)
+    {}
+};
+
+int readParameters(cliparams& params, client::Config &conf) {
+    if(params.argc<=0)
+        return 42;
+    auto program_name = params.argv[0];
     bool show_version{false}, help{false};
 
     // Argument configuration
     CLI::App app{"Certificate Management Utility for PVXS"};
-    app.set_help_flag("", "");  // deactivate built-in help
+    app.set_help_flag("", "");  // deactivate built-in help TODO: done't!
 
     // Add a positional argument
-    app.add_option("cert_id", issuer_serial_string)->required(false);
+    app.add_option("cert_id", params.issuer_serial_string)->required(false);
 
     // Define flags
     app.add_flag("-h,--help", help);
-    app.add_flag("-v,--verbose", verbose);
-    app.add_flag("-d,--debug", debug);
-    app.add_flag("-p,--password", password_flag);
+    app.add_flag("-v,--verbose", params.verbose);
+    app.add_flag("-d,--debug", params.debug);
+    app.add_flag("-p,--password", params.password_flag);
     app.add_flag("-V,--version", show_version);
 
     // Define options
     double timeout = conf.getRequestTimeout();
     app.add_option("-w,--timeout", timeout);
-    app.add_option("-f,--file", cert_file, "The keychain file to read if no Certificate ID specified");
-    app.add_option("--cert-pv-prefix", cert_pv_prefix,
+    app.add_option("-f,--file", params.cert_file, "The keychain file to read if no Certificate ID specified");
+    app.add_option("--cert-pv-prefix", params.cert_pv_prefix,
                    "Status PV name prefix for the <issuer>:<serial> form (default CERT:STATUS:). "
                    "Ignored when -f/--file is given (the full status PV is read from the certificate).");
 
     // Action flags in a mutually exclusive group
-    app.add_flag("-A,--approve", approve);
-    app.add_flag("-R,--revoke", revoke);
-    app.add_flag("-D,--deny", deny);
+    app.add_flag("-A,--approve", params.approve);
+    app.add_flag("-R,--revoke", params.revoke);
+    app.add_flag("-D,--deny", params.deny);
 
-    CLI11_PARSE(app, argc, argv);
+    CLI11_PARSE(app, params.argc, params.argv);
 
     conf.setRequestTimeout(timeout);
 
@@ -120,11 +145,10 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "  (-d | --debug)                             Debug mode: Shorthand for $PVXS_LOG=\"pvxs.*=DEBUG\"\n"
                   << "  (-v | --verbose)                           Verbose mode\n"
                   << std::endl;
-        exit(0);
     }
 
     if (show_version) {
-        if (argc > 2) {
+        if (params.argc > 2) {
             std::cerr << "Error: -V option cannot be used with any other options.\n";
             exit(10);
         }
@@ -139,31 +163,28 @@ int main(int argc, char *argv[]) {
     try {
         logger_config_env();
         auto conf = client::Config::fromEnv();
-        auto program_name = argv[0];
 
         // Variables to store options
         CertAction action{STATUS};
-        bool approve{false}, revoke{false}, deny{false}, debug{false}, password_flag{false}, verbose{false};
-        std::string cert_file, password, issuer_serial_string;
-        std::string cert_pv_prefix{"CERT:STATUS:"};
+        std::string password;
 
-        auto parse_result =
-            readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, cert_file, issuer_serial_string, cert_pv_prefix);
-        if (parse_result) exit(parse_result);
+        cliparams params(argc, argv);
+        if (auto err = readParameters(params, conf))
+            return err;
 
-        if (password_flag && cert_file.empty()) {
+        if (params.password_flag && params.cert_file.empty()) {
             log_err_printf(certslog, "Error: -p must only be used with -f.%s", "\n");
             return 1;
         }
 
-        if (!cert_file.empty() && (approve || revoke || deny)) {
+        if (!params.cert_file.empty() && (params.approve || params.revoke || params.deny)) {
             log_err_printf(certslog, "Error: -I, -A, -R, or -D cannot be used with -f.%s", "\n");
             return 2;
         }
 
         // Handle the flags after parsing
-        if (debug) logger_level_set("pvxs.*", Level::Debug);
-        if (password_flag) {
+        if (params.debug) logger_level_set("pvxs.*", Level::Debug);
+        if (params.password_flag) {
             std::cout << "Enter password: ";
 #if !defined(_WIN32) && !defined(_MSC_VER)
             setEcho(false);
@@ -175,11 +196,11 @@ int main(int argc, char *argv[]) {
             std::cout << std::endl;
         }
 
-        if (approve) {
+        if (params.approve) {
             action = APPROVE;
-        } else if (revoke)
+        } else if (params.revoke)
             action = REVOKE;
-        else if (deny) {
+        else if (params.deny) {
             action = DENY;
         } else {
             conf.tls_disabled = true;
@@ -187,7 +208,7 @@ int main(int argc, char *argv[]) {
 
         auto client = conf.build();
 
-        if (verbose) std::cout << "Effective config\n" << conf;
+        if (params.verbose) std::cout << "Effective config\n" << conf;
 
         std::list<std::shared_ptr<client::Operation>> ops;
 
@@ -195,9 +216,9 @@ int main(int argc, char *argv[]) {
 
         std::string cert_id;
 
-        if (!cert_file.empty()) {
+        if (!params.cert_file.empty()) {
             try {
-                auto cert_data = certs::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
+                auto cert_data = certs::IdFileFactory::create(params.cert_file, password)->getCertDataFromFile();
                 if (cert_data.cert == nullptr) {
                     throw std::runtime_error("Failed to read certificate from file");
                 }
@@ -220,7 +241,7 @@ int main(int argc, char *argv[]) {
                 return 0;
             }
         } else {
-            cert_id = cert_pv_prefix + issuer_serial_string;
+            cert_id = params.cert_pv_prefix + params.issuer_serial_string;
         }
 
         try {
