@@ -2843,6 +2843,7 @@ struct cliparams {
     authn_config_map_t authn_config_map;
     bool verbose = false;
     std::string admin_name;
+    std::string command;
 
     cliparams(int argc, char *argv[])
         :argc(argc)
@@ -2871,6 +2872,8 @@ int readParameters(cliparams& params,
     app.add_flag("-v,--verbose", params.verbose, "Make more noise");
     app.add_flag("-V,--version", show_version, "Print version and exit.");
 
+    app.add_option("--run-while", params.command,
+                   "Execute command with CMS running, shutdown on exit");
     app.add_option("-c,--cert-auth-keychain",
                    config.cert_auth_keychain_file,
                    "Specify Certificate Authority keychain file location");
@@ -3018,6 +3021,7 @@ int readParameters(cliparams& params,
                "file, and exit\n"
             << std::endl
             << "options:\n"
+            << "  --run-while <cmd>                          Execute <cmd> with server running, CMS exits with <cmd>\n"
             << "  (-c | --cert-auth-keychain) <cert_auth_keychain>\n"
             << "                                             Specify Certificate Authority keychain file location. "
                "Default "
@@ -3625,6 +3629,7 @@ int main(int argc, char *argv[]) {
         auto len = BIO_get_mem_data(io.get(), &data);
         auto subject_string = std::string(data, len);
 
+        int code = 0;
         try {
             std::cout << "+=======================================+======================================="
                       << std::endl;
@@ -3650,7 +3655,11 @@ int main(int argc, char *argv[]) {
             std::cout << "| PVACMS [" << our_issuer_id << "] Service Running     |" << std::endl;
             std::cout << "+=======================================+======================================="
                       << std::endl;
-            pva_server.run();
+            if(params.command.empty()) {
+                pva_server.run();
+            } else {
+                code = system(params.command.c_str());
+            }
             std::cout << "\n+=======================================+======================================="
                       << std::endl;
             std::cout << "| PVACMS [" << our_issuer_id << "] Service Exiting     |" << std::endl;
@@ -3660,7 +3669,7 @@ int main(int argc, char *argv[]) {
             log_err_printf(pvacms, "PVACMS error: %s\n", e.what());
         }
 
-        return 0;
+        return code;
     } catch (std::exception &e) {
         log_err_printf(pvacms, "PVACMS Error: %s\n", e.what());
         return 1;
