@@ -2822,8 +2822,10 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
     return {};
 }
 
-std::map<const std::string, std::unique_ptr<client::Config>> getAuthNConfigMap() {
-    std::map<const std::string, std::unique_ptr<client::Config>> authn_config_map;
+using authn_config_map_t = std::map<const std::string, std::unique_ptr<client::Config>>;
+
+authn_config_map_t getAuthNConfigMap() {
+    authn_config_map_t authn_config_map;
 
     for (auto &authn_entry : AuthRegistry::getRegistry()) {
         auto &auth = authn_entry.second;
@@ -2835,13 +2837,23 @@ std::map<const std::string, std::unique_ptr<client::Config>> getAuthNConfigMap()
     return authn_config_map;
 }
 
-int readParameters(int argc,
-                   char *argv[],
-                   const char *program_name,
-                   ConfigCms &config,
-                   std::map<const std::string, std::unique_ptr<client::Config>> &authn_config_map,
-                   bool &verbose,
-                   std::string &admin_name) {
+struct cliparams {
+    const int argc;
+    const char *const * const argv;
+    authn_config_map_t authn_config_map;
+    bool verbose = false;
+    std::string admin_name;
+
+    cliparams(int argc, char *argv[])
+        :argc(argc)
+        ,argv(argv)
+    {}
+};
+
+int readParameters(cliparams& params,
+                   ConfigCms &config)
+{
+    auto program_name = params.argv[0];
     std::string cert_auth_password_file, pvacms_password_file, admin_password_file;
     bool show_version{false}, help{false};
     bool create_client_cert_in_valid_state{false}, create_server_cert_in_valid_state{false},
@@ -2853,10 +2865,10 @@ int readParameters(int argc,
     CLI::App app{"PVACMS - Certificate Management Service"};
 
     // Define options
-    app.set_help_flag("", "");  // deactivate built-in help
+    app.set_help_flag("", "");  // deactivate built-in help.  TODO: don't!
 
     app.add_flag("-h,--help", help);
-    app.add_flag("-v,--verbose", verbose, "Make more noise");
+    app.add_flag("-v,--verbose", params.verbose, "Make more noise");
     app.add_flag("-V,--version", show_version, "Print version and exit.");
 
     app.add_option("-c,--cert-auth-keychain",
@@ -2898,7 +2910,7 @@ int readParameters(int argc,
     app.add_option("-a,--admin-keychain",
                    config.admin_keychain_file,
                    "Specify PVACMS admin user's keychain file location");
-    app.add_option("--admin-keychain-new", admin_name, "Generate a new admin keychain and exit.");
+    app.add_option("--admin-keychain-new", params.admin_name, "Generate a new admin keychain and exit.");
     app.add_option("--admin-keychain-pwd",
                    admin_password_file,
                    "Specify PVACMS admin user's keychain password file location");
@@ -2973,9 +2985,9 @@ int readParameters(int argc,
                  "Skip TLS peer identity verification for cluster sync (for gateway-mediated topologies)");
     // Add any parameters for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry())
-        authn_entry.second->addOptions(app, authn_config_map);
+        authn_entry.second->addOptions(app, params.authn_config_map);
 
-    CLI11_PARSE(app, argc, argv);
+    CLI11_PARSE(app, params.argc, params.argv);
 
     if (help) {
         std::string authn_help, authn_options;
@@ -3078,7 +3090,7 @@ int readParameters(int argc,
     }
 
     if (show_version) {
-        if (argc > 2) {
+        if (params.argc > 2) {
             std::cerr << "Error: -V option cannot be used with any other options.\n";
             exit(10);
         }
@@ -3086,10 +3098,11 @@ int readParameters(int argc,
         exit(0);
     }
 
+    // TODO: either eliminate CLI11, or use it consistently!
     // New admin can only be specified with --acf and/or --admin-keychain-pwd, and/or --admin-keychain-pwd
-    if (!admin_name.empty()) {
-        for (auto arg = 1; arg < argc; ++arg) {
-            const std::string option = argv[arg];
+    if (!params.admin_name.empty()) {
+        for (auto arg = 1; arg < params.argc; ++arg) {
+            const std::string option = params.argv[arg];
             if (option == "-a" || option == "--admin-keychain" || option == "--admin-keychain-pwd" ||
                 option == "--acf" || option == "--admin-keychain-new") {
                 arg++;
@@ -3173,21 +3186,23 @@ int readParameters(int argc,
 }  // namespace pvxs
 
 int main(int argc, char *argv[]) {
+    if(argc<=0)
+        return 42;
     using namespace pvxs::certs;
     using namespace pvxs::server;
 
     try {
         // Get config
+        cliparams params{argc, argv};
         auto config = ConfigCms::forCms();
         // And, get all configured authn configs
-        auto authn_config_map = getAuthNConfigMap();
+        params.authn_config_map = getAuthNConfigMap();
 
         pvxs::sql_ptr certs_db;
-        auto program_name = argv[0];
-        bool verbose = false;
-        std::string cert_auth_password_file, pvacms_password_file, admin_password_file, admin_name;
+        bool verbose = params.verbose;
+        std::string cert_auth_password_file, pvacms_password_file, admin_password_file;
 
-        auto parse_result = readParameters(argc, argv, program_name, config, authn_config_map, verbose, admin_name);
+        auto parse_result = readParameters(params, config);
         if (parse_result)
             exit(parse_result);
 
@@ -3216,11 +3231,11 @@ int main(int argc, char *argv[]) {
                                        is_initialising);
         auto our_issuer_id = CertStatus::getSkId(cert_auth_cert);
 
-        if (!admin_name.empty()) {
+        if (!params.admin_name.empty()) {
             try {
-                createAdminClientCert(config, certs_db, cert_auth_pkey, cert_auth_cert, cert_auth_chain, admin_name);
-                addUserToAdminACF(config, admin_name);
-                log_warn_printf(pvacms, "Admin user \"%s\" has been added to list of administrators of this PVACMS.  Restart the PVACMS for it to take effect\n", admin_name.c_str());
+                createAdminClientCert(config, certs_db, cert_auth_pkey, cert_auth_cert, cert_auth_chain, params.admin_name);
+                addUserToAdminACF(config, params.admin_name);
+                log_warn_printf(pvacms, "Admin user \"%s\" has been added to list of administrators of this PVACMS.  Restart the PVACMS for it to take effect\n", params.admin_name.c_str());
             } catch (const std::runtime_error &e) {
                 if (!is_initialising)
                     throw std::runtime_error(std::string("Error creating admin user certificate: ") + e.what());
