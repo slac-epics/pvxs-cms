@@ -4,6 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <list>
@@ -57,7 +58,7 @@ struct cliparams {
     const int argc;
     const char* const* argv;
     std::string cert_file;
-    std::string issuer_serial_string;
+    std::string cert_status_pv;
     std::string cert_pv_prefix{"CERT:STATUS:"};
     bool approve = false;
     bool revoke = false;
@@ -83,7 +84,7 @@ int readParameters(cliparams& params, client::Config &conf) {
     app.set_help_flag("", "");  // deactivate built-in help TODO: done't!
 
     // Add a positional argument
-    app.add_option("cert_id", params.issuer_serial_string)->required(false);
+    app.add_option("cert_id_or_pv", params.cert_status_pv)->required(false);
 
     // Define flags
     app.add_flag("-h,--help", help);
@@ -114,9 +115,11 @@ int readParameters(cliparams& params, client::Config &conf) {
                   << std::endl
                   << "Gets the STATUS of a certificate, REVOKES a certificate, or APPROVES or DENIES a pending certificate approval.\n"
                   << std::endl
-                  << "  Get certificate status from serial number: The certificate ID is specified as <issuer>:<serial>, \n"
-                  << "  where <issuer> is the first 8 hex digits of the subject key identifier of the issuer and <serial>\n"
-                  << "  is the serial number of the certificate. e.g. 27975e6b:7246297371190731775.\n"
+                  << "  A certificate is identified one of two ways:\n"
+                  << "    <issuer>:<serial>  one colon,  e.g. 27975e6b:7246297371190731775\n"
+                  << "                       status PV = <prefix> + <issuer>:<serial>  (see --cert-pv-prefix)\n"
+                  << "    <status_pv>        two+ colons, e.g. MYCMS:27975e6b:7246297371190731775\n"
+                  << "                       used exactly as given\n"
                   << std::endl
                   << "  Get certificate status from keychain file: The keychain file must be a PKCS#12 file.\n"
                   << std::endl
@@ -125,13 +128,13 @@ int readParameters(cliparams& params, client::Config &conf) {
                   << "  REVOCATION of a certificate: Can only be made by an administrator.\n"
                   << std::endl
                   << "usage:\n"
-                  << "  " << program_name << " [options] <cert_id> Get certificate status\n"
+                  << "  " << program_name << " [options] <cert_id_or_pv>  Get certificate status\n"
                   << "  " << program_name << " [file_options] [options] (-f | --file) <cert_file>\n"
                   << "                                             Get certificate information from the specified cert file\n"
-                  << "  " << program_name << " [options] (-A | --approve) <cert_id>\n"
+                  << "  " << program_name << " [options] (-A | --approve) <cert_id_or_pv>\n"
                   << "                                             APPROVE pending certificate approval request (ADMIN ONLY)\n"
-                  << "  " << program_name << " [options] (-D | --deny) <cert_id>  DENY pending certificate approval request (ADMIN ONLY)\n"
-                  << "  " << program_name << " [options] (-R | --revoke) <cert_id>\n"
+                  << "  " << program_name << " [options] (-D | --deny) <cert_id_or_pv>  DENY pending certificate approval request (ADMIN ONLY)\n"
+                  << "  " << program_name << " [options] (-R | --revoke) <cert_id_or_pv>\n"
                   << "                                             REVOKE certificate (ADMIN ONLY)\n"
                   << "  " << program_name << " (-h | --help)                      Show this help message and exit\n"
                   << "  " << program_name << " (-V | --version)                   Print version and exit\n"
@@ -141,7 +144,7 @@ int readParameters(cliparams& params, client::Config &conf) {
                   << "\n"
                   << "options:\n"
                   << "  (-w | --timeout) <timout_secs>             Operation timeout in seconds.  Default 5.0s\n"
-                  << "  (--cert-pv-prefix) <prefix>                Status PV prefix for the <cert_id> form.  Default CERT:STATUS:\n"
+                  << "  (--cert-pv-prefix) <prefix>                Status PV prefix for the <issuer>:<serial> form.  Default CERT:STATUS:\n"
                   << "  (-d | --debug)                             Debug mode: Shorthand for $PVXS_LOG=\"pvxs.*=DEBUG\"\n"
                   << "  (-v | --verbose)                           Verbose mode\n"
                   << std::endl;
@@ -241,7 +244,10 @@ int main(int argc, char *argv[]) {
                 return 0;
             }
         } else {
-            cert_id = params.cert_pv_prefix + params.issuer_serial_string;
+            // one colon: <issuer>:<serial>, expanded with the prefix.  More: full status PV, used verbatim.
+            const auto ncolons = std::count(params.cert_status_pv.begin(), params.cert_status_pv.end(), ':');
+            cert_id = ncolons >= 2 ? params.cert_status_pv
+                                   : params.cert_pv_prefix + params.cert_status_pv;
         }
 
         try {
