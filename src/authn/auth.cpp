@@ -149,7 +149,7 @@ struct RenewalManager {
         try {
             auto status_pv_name = CmsStatusManager::getStatusPvFromCert(cert_data.cert);
 
-            std::cout << "Monitoring certificate status on " << status_pv_name << " for renewal" << std::endl;
+            std::cerr << "Monitoring certificate status on " << status_pv_name << " for renewal" << std::endl;
             sub = client.monitor(status_pv_name)
                 .event([this, status_pv_name](client::Subscription& s) {
                     this->onStatusUpdate(s, status_pv_name);
@@ -173,16 +173,16 @@ struct RenewalManager {
             while(auto update = s.pop()) {
                 auto renewal_due_value = update["renewal_due"];
                 if (renewal_due_value && renewal_due_value.as<bool>()) {
-                    std::cout << "Renewal due for cert on " << pv_name << ". Requesting new certificate." << std::endl;
+                    std::cerr << "Renewal due for cert on " << pv_name << ". Requesting new certificate." << std::endl;
                     try {
                         cert_data = renew_fn(); // Renew and update our copy of CertData
                         const CertDate renew_by = cert_data.renew_by;
                         if (renew_by.t) {
                             config_pv_value["renew_by"] = renew_by.s;
                             config_pv.post(config_pv_value);
-                            std::cout << "Certificate renewed successfully until " << renew_by.s << std::endl;
+                            std::cerr << "Certificate renewed successfully until " << renew_by.s << std::endl;
                         } else
-                            std::cout << "Certificate renewed successfully " << std::endl;
+                            std::cerr << "Certificate renewed successfully " << std::endl;
                     } catch (const std::exception& e) {
                         log_err_printf(config, "Certificate renewal failed: %s. Will retry after next status update (or manual intervention).\n", e.what());
                     }
@@ -232,7 +232,7 @@ void Auth::runAuthNDaemon(const ConfigAuthN &authn_config, bool for_client, Cert
 
     const std::string pv_name = getConfigURI(authn_config.getCertPvPrefix(), issuer_id, skid);
     config_server_.addPV(pv_name, renewal_manager->config_pv);
-    std::cout << "Cert Config info available on: " << pv_name << std::endl;
+    std::cerr << "Cert Config info available on: " << pv_name << std::endl;
 
     // This blocks forever, running the config server.
     // The renewal logic runs in the background on client threads.

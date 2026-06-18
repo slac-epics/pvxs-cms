@@ -217,7 +217,7 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
             // Attempt to write the certificate and private key to a cert file protected by the configured password
             auto file_factory = IdFileFactory::create(tls_keychain_file, tls_keychain_pwd, nullptr, nullptr, nullptr, p12_pem_string);
             file_factory->writeIdentityFile();
-            std::cout << "Trust Anchor retrieved"<< std::endl;
+            std::cerr << "Trust Anchor retrieved"<< std::endl;
             return -1;
         }
         std::cerr << "Failed to retrieve Trust Anchor" << std::endl;
