@@ -14,7 +14,7 @@
 PVXPERF_DIR = $(TOOLS_DIR)/pvxperf
 
 # Default to YES; older bases should override to NO.
-PVXS_ENABLE_PVXPERF ?= YES
+PVXS_ENABLE_PVXPERF ?= NO
 
 # pvxperf uses fork/exec (POSIX-only) - skip on Windows and cross targets
 ifneq ($(OS_CLASS),WIN32)
