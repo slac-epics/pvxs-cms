@@ -265,6 +265,14 @@ int main(int argc, char *argv[]) {
             return 0;
         }
 
+        if(params.only_status_pv) {
+            if(cert_id.empty())
+                return 1;
+            else
+                std::cout<<cert_id<<std::endl;
+            return 0;
+        }
+
         try {
             if (action != STATUS) {
                 std::cout << actionToString(action) << " ==> " << cert_id;
