@@ -62,6 +62,7 @@ struct cliparams {
     bool deny = false;
     bool password_flag = false;
     bool debug = false;
+    bool only_status_pv = false;
     bool verbose = false;
 
     cliparams(int argc, char *argv[])
@@ -86,6 +87,7 @@ int readParameters(cliparams& params, client::Config &conf) {
     // Define flags
     app.add_flag("-h,--help", help);
     app.add_flag("-v,--verbose", params.verbose);
+    app.add_flag("--status-pv", params.only_status_pv);
     app.add_flag("-d,--debug", params.debug);
     app.add_flag("-p,--password", params.password_flag);
     app.add_flag("-V,--version", show_version);
@@ -136,6 +138,7 @@ int readParameters(cliparams& params, client::Config &conf) {
                   << "  (-w | --timeout) <timout_secs>             Operation timeout in seconds.  Default 5.0s\n"
                   << "  (-d | --debug)                             Debug mode: Shorthand for $PVXS_LOG=\"pvxs.*=DEBUG\"\n"
                   << "  (-v | --verbose)                           Verbose mode\n"
+                  << "  (--status-pv)                              Print only certificate status PV name.  Use with -f\n"
                   << std::endl;
     }
 
@@ -172,7 +175,7 @@ int main(int argc, char *argv[]) {
         // Handle the flags after parsing
         if (params.debug) logger_level_set("pvxs.*", Level::Debug);
         if (params.password_flag) {
-            std::cout << "Enter password: ";
+            std::cerr << "Enter password: ";
 #if !defined(_WIN32) && !defined(_MSC_VER)
             setEcho(false);
 #endif
@@ -180,7 +183,7 @@ int main(int argc, char *argv[]) {
 #if !defined(_WIN32) && !defined(_MSC_VER)
             setEcho(true);
 #endif
-            std::cout << std::endl;
+            std::cerr << std::endl;
         }
 
         if (params.approve) {
@@ -195,7 +198,7 @@ int main(int argc, char *argv[]) {
 
         auto client = conf.build();
 
-        if (params.verbose) std::cout << "Effective config\n" << conf;
+        if (params.verbose) std::cerr << "Effective config\n" << conf;
 
         std::list<std::shared_ptr<client::Operation>> ops;
 
@@ -215,20 +218,31 @@ int main(int argc, char *argv[]) {
                 } catch (...) {
                 }
 
-                std::cout << "Certificate Details: " << std::endl
-                          << "============================================" << std::endl
-                          << ossl::ShowX509{cert_data.cert.get()} << std::endl
-                          << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
-                          << std::endl;
+                if(!params.only_status_pv)
+                    std::cout << "Certificate Details: " << std::endl
+                              << "============================================" << std::endl
+                              << ossl::ShowX509{cert_data.cert.get()} << std::endl
+                              << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
+                              << std::endl;
                 cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
             } catch (std::exception &e) {
-                std::cout << "Online Certificate Status: " << std::endl
+                std::cerr << "Online Certificate Status: " << std::endl
                           << "============================================" << std::endl
                           << "Not configured: " << e.what() << std::endl;
+                if(params.only_status_pv)
+                    return 1;
                 return 0;
             }
         } else {
             cert_id = params.cert_status_pv;
+        }
+
+        if(params.only_status_pv) {
+            if(cert_id.empty())
+                return 1;
+            else
+                std::cout<<cert_id<<std::endl;
+            return 0;
         }
 
         try {
