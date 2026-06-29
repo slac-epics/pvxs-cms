@@ -1973,7 +1973,7 @@ static void insertLoadedCertIfMissing(const ConfigCms &config,
         return;
     }
 
-    // Expected prefix: CERT:STATUS:<issuer>:<serial>
+    // Expected prefix: <getCertStatusPvBase(prefix)>:<issuer>:<serial>  (prefix from config, default CERT)
     const auto expected_prefix = getCertStatusPvBase(config.getCertPvPrefix()) + ":";
     if (status_uri.rfind(expected_prefix, 0) != 0) {
         throw std::runtime_error(SB() << "Loaded certificate status URI has wrong prefix. Expected '" << expected_prefix << "*' got '" << status_uri << "'");

@@ -44,6 +44,7 @@
 #include "ownedptr.h"
 #include "openssl.h"
 #include "opensslgbl.h"
+#include "testcertprefix.h"
 
 constexpr std::uint64_t TEST_FIRST_SERIAL = 9876543210;
 
@@ -476,7 +477,7 @@ struct CertCreator {
 
         if ( add_status_extension) {
             const auto issuer_id = pvxs::certs::CertStatus::getSkId(root ? root : issuer);
-            addCustomExtensionByNid(cert, pvxs::ossl::NID_SPvaCertStatusURI, getCertStatusURI("CERT", issuer_id, serial));
+            addCustomExtensionByNid(cert, pvxs::ossl::NID_SPvaCertStatusURI, getCertStatusURI(TEST_CERT_PV_PREFIX, issuer_id, serial));
         }
 
         auto nbytes(X509_sign(cert.get(), ikey, sig));
