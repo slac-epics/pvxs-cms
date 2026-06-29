@@ -1361,29 +1361,18 @@ void testRenewByEpochRoundTrip() {
     testEq(CertDate::fromEpicsEpoch(0), (std::time_t)0);
 }
 
-void testDaemonStartupDecision() {
-    testDiag("Daemon-mode startup decision (pure, no I/O)");
+void testCertStatusAction() {
+    testDiag("Daemon-mode monitor status action (pure, no I/O)");
 
-    using D = DaemonStartupDecision;
-    // args: have_valid_cert, force, has_status_ext, status_reachable, status, has_renew_by
-    testEq((int)daemonStartupDecision(true,  true,  true,  true,  VALID,           true),
-           (int)D::MintNew);            // force => MintNew
-    testEq((int)daemonStartupDecision(false, false, true,  true,  VALID,           true),
-           (int)D::MintNew);            // no valid cert => MintNew
-    testEq((int)daemonStartupDecision(true,  false, false, false, UNKNOWN,         false),
-           (int)D::ExitNonRenewable);   // no status ext => ExitNonRenewable
-    testEq((int)daemonStartupDecision(true,  false, true,  true,  REVOKED,         true),
-           (int)D::MintNew);            // reachable + REVOKED => MintNew
-    testEq((int)daemonStartupDecision(true,  false, true,  true,  EXPIRED,         true),
-           (int)D::MintNew);            // reachable + EXPIRED => MintNew
-    testEq((int)daemonStartupDecision(true,  false, true,  true,  VALID,           true),
-           (int)D::ReuseAndMonitor);    // reachable + VALID + renew_by => ReuseAndMonitor
-    testEq((int)daemonStartupDecision(true,  false, true,  true,  VALID,           false),
-           (int)D::ExitNonRenewable);   // reachable + VALID + !renew_by => ExitNonRenewable
-    testEq((int)daemonStartupDecision(true,  false, true,  false, VALID,           false),
-           (int)D::ReuseAndMonitor);    // unreachable + VALID => ReuseAndMonitor
-    testEq((int)daemonStartupDecision(true,  false, true,  true,  PENDING_RENEWAL, true),
-           (int)D::ReuseAndMonitor);    // reachable + PENDING_RENEWAL + renew_by => ReuseAndMonitor
+    using A = CertStatusAction;
+    // args: status, has_usable_renew_by
+    testEq((int)certStatusAction(VALID,           true),  (int)A::None);             // valid + renewable => keep monitoring
+    testEq((int)certStatusAction(PENDING_RENEWAL, true),  (int)A::None);             // pending renewal + renewable => keep monitoring
+    testEq((int)certStatusAction(REVOKED,         true),  (int)A::MintNew);          // revoked => re-mint
+    testEq((int)certStatusAction(EXPIRED,         true),  (int)A::MintNew);          // expired => re-mint
+    testEq((int)certStatusAction(REVOKED,         false), (int)A::MintNew);          // revoked takes precedence over !renew_by
+    testEq((int)certStatusAction(VALID,           false), (int)A::ExitNonRenewable); // valid but never renewable => stop
+    testEq((int)certStatusAction(PENDING_RENEWAL, false), (int)A::ExitNonRenewable); // not revoked/expired + !renew_by => stop
 
     // usableRenewBy: renewable iff non-zero renew_by strictly before the cert's not_after.
     testEq(usableRenewBy((std::time_t)0,    (std::time_t)2000), false); // unset renew_by => not usable
@@ -1391,19 +1380,17 @@ void testDaemonStartupDecision() {
     testEq(usableRenewBy((std::time_t)2000, (std::time_t)2000), false); // == not_after => not usable
     testEq(usableRenewBy((std::time_t)3000, (std::time_t)2000), false); // after not_after => not usable
 
-    // Integrated: the caller-side predicate feeds the decision function.
-    testEq((int)daemonStartupDecision(true,  false, true,  true,  VALID,
-                                      usableRenewBy((std::time_t)2000, (std::time_t)2000)),
-           (int)D::ExitNonRenewable);   // reachable + VALID + renew_by on/after expiry => ExitNonRenewable
-    testEq((int)daemonStartupDecision(true,  false, true,  true,  VALID,
-                                      usableRenewBy((std::time_t)1000, (std::time_t)2000)),
-           (int)D::ReuseAndMonitor);    // reachable + VALID + usable renew_by => ReuseAndMonitor
+    // Integrated: the renew-by predicate feeds the action function.
+    testEq((int)certStatusAction(VALID, usableRenewBy((std::time_t)2000, (std::time_t)2000)),
+           (int)A::ExitNonRenewable);   // VALID + renew_by on/after expiry => stop daemon
+    testEq((int)certStatusAction(VALID, usableRenewBy((std::time_t)1000, (std::time_t)2000)),
+           (int)A::None);               // VALID + usable renew_by => keep monitoring
 }
 
 }  // namespace
 
 MAIN(testcluster) {
-    testPlan(179);
+    testPlan(177);
     testSetup();
     logger_config_env();
 
@@ -1548,9 +1535,9 @@ MAIN(testcluster) {
         testFail("testRenewByEpochRoundTrip failed: %s", e.what());
     }
     try {
-        testDaemonStartupDecision();
+        testCertStatusAction();
     } catch (std::exception &e) {
-        testFail("testDaemonStartupDecision failed: %s", e.what());
+        testFail("testCertStatusAction failed: %s", e.what());
     }
 
     return testDone();

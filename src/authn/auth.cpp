@@ -129,6 +129,8 @@ struct RenewalManager {
     Value config_pv_value;
     client::Context client;
     std::shared_ptr<client::Subscription> sub;
+    server::Server* config_server{nullptr}; // set by runAuthNDaemon; used to break run() on exit
+    int exit_code{0};                        // result propagated out of runAuthNDaemon
 
     RenewalManager(CertData&& cert, const std::function<CertData()>&& fn)
         : cert_data(std::move(cert)), renew_fn(std::move(fn)), config_pv(server::SharedPV::buildMailbox()) {
@@ -140,8 +142,12 @@ struct RenewalManager {
     /**
      * @brief Start the monitor for the certificate status.
      *
-     * This function starts the monitor for the certificate status.
-     * It will subscribe to the status PV and call the on_status_update function when the status is updated.
+     * Subscribes to the certificate's status PV. Each update is handled by onStatusUpdate,
+     * which evaluates the live status (including the very first/initial update) and acts on
+     * it: revoked/expired certs are re-minted, a cert that can never be renewed in time stops
+     * the daemon, and a renewal_due flag triggers renewal. Connect/disconnect events from the
+     * PVACMS are handled here too: a disconnect is benign (the cert is reused until the CMS
+     * comes back), so the daemon keeps running and the subscription reconnects on its own.
      */
     void startMonitor() {
         sub.reset();
@@ -151,6 +157,8 @@ struct RenewalManager {
 
             std::cout << "Monitoring certificate status on " << status_pv_name << " for renewal" << std::endl;
             sub = client.monitor(status_pv_name)
+                .maskConnected(false)
+                .maskDisconnected(false)
                 .event([this, status_pv_name](client::Subscription& s) {
                     this->onStatusUpdate(s, status_pv_name);
                 })
@@ -163,14 +171,31 @@ struct RenewalManager {
     }
 
     /**
+     * @brief Stop the daemon with the given exit code.
+     *
+     * Records the exit code and breaks the blocking config_server_.run() in runAuthNDaemon so
+     * the process returns that code (used to avoid a process-manager restart loop on a
+     * permanently non-renewable certificate).
+     *
+     * @param code Exit code to return.
+     */
+    void stopDaemon(const int code) {
+        exit_code = code;
+        if (config_server) config_server->interrupt();
+    }
+
+    /**
      * @brief On status update callback.
      *
-     * This function is called when the status of the certificate is updated.
-     * It will check if the certificate needs to be renewed and if so, it will renew it.
+     * Called for each status update (and connect/disconnect event) from the CMS. On every
+     * update it first evaluates the live status of the held certificate, then, if still
+     * healthy, renews when the CMS flags renewal_due.
      */
     void onStatusUpdate(client::Subscription& s, const std::string& pv_name) {
         try {
             while(auto update = s.pop()) {
+                if (handleStatus(update, pv_name)) return; // daemon stopping or monitor restarted
+
                 auto renewal_due_value = update["renewal_due"];
                 if (renewal_due_value && renewal_due_value.as<bool>()) {
                     std::cout << "Renewal due for cert on " << pv_name << ". Requesting new certificate." << std::endl;
@@ -188,9 +213,63 @@ struct RenewalManager {
                     }
                 }
             }
+        } catch (client::Connected& conn) {
+            log_debug_printf(config, "Connected to certificate status PV %s\n", pv_name.c_str());
+        } catch (client::Disconnect& disconn) {
+            // Benign: keep reusing the current cert and let the subscription reconnect.
+            std::cout << "Disconnected from certificate status PV " << pv_name
+                      << "; reusing current certificate until PVACMS returns" << std::endl;
         } catch(std::exception& e) {
              log_err_printf(config, "Error in renewal subscription callback: %s\n", e.what());
         }
+    }
+
+    /**
+     * @brief Evaluate a status update against the held certificate.
+     *
+     * Mirrors the (formerly startup-time) checks, now driven by the live monitor on the first
+     * and every subsequent update: a REVOKED/EXPIRED cert is re-minted (and the monitor moved
+     * to the new cert's status PV); a cert with no usable renew-by date (it can never be
+     * renewed before it expires) stops the daemon with exit code 15 so process managers do not
+     * restart-loop. Returns true if the caller should stop processing this batch (the daemon is
+     * stopping, or the monitor was restarted onto a different PV).
+     */
+    bool handleStatus(const Value& update, const std::string& pv_name) {
+        const auto status_index = update["value.index"];
+        if (!status_index) return false; // not a status value (e.g. a bare connect notification)
+        const auto status = static_cast<certstatus_t>(status_index.as<uint32_t>());
+
+        // renew_by is published in EPICS-epoch seconds; the cert's not_after is Unix time_t.
+        // Decode the wire value to Unix so both share one epoch; a renew_by on or after
+        // not_after is treated as not-renewable.
+        const time_t cert_not_after = CertFactory::getNotAfterTimeFromCert(cert_data.cert);
+        const time_t renew_by_unix = CertDate::fromEpicsEpoch(update["renew_by"].as<uint64_t>());
+        const bool has_usable_renew_by = usableRenewBy(renew_by_unix, cert_not_after);
+
+        switch (certStatusAction(status, has_usable_renew_by)) {
+            case CertStatusAction::MintNew:
+                std::cout << "Certificate on " << pv_name
+                          << " is revoked or expired. Requesting a new certificate." << std::endl;
+                try {
+                    cert_data = renew_fn(); // mint a fresh cert (new serial/status PV)
+                    const CertDate renew_by = cert_data.renew_by;
+                    if (renew_by.t) {
+                        config_pv_value["renew_by"] = renew_by.s;
+                        config_pv.post(config_pv_value);
+                    }
+                    startMonitor(); // re-point the subscription at the new cert's status PV
+                } catch (const std::exception& e) {
+                    log_err_printf(config, "Certificate re-mint failed: %s. Will retry on next status update.\n", e.what());
+                }
+                return true; // either restarted onto a new PV, or will retry next update
+            case CertStatusAction::ExitNonRenewable:
+                log_err_printf(config, "%s: certificate is not renewable (no usable renew-by); stopping daemon\n", pv_name.c_str());
+                stopDaemon(15);
+                return true;
+            case CertStatusAction::None:
+                return false;
+        }
+        return false;
     }
 };
 } // namespace
@@ -202,19 +281,15 @@ struct RenewalManager {
  * It will also maintain a PV that will publish configuration information.
  *
  * @param authn_config The Authenticator's configuration
- * @param for_client Whether the daemon is for a client or server
  * @param cert_data The certificate data (contains cert, cert_auth_chain, and key)
  * @param fn The function to call to get the next certificate
  */
-void Auth::runAuthNDaemon(const ConfigAuthN &authn_config, bool for_client, CertData &&cert_data, const std::function<CertData()> &&fn) {
-    auto issuer_id = CertStatus::getIssuerId(cert_data.cert_auth_chain);
+int Auth::runAuthNDaemon(const ConfigAuthN &authn_config, bool, CertData &&cert_data, const std::function<CertData()> &&fn) {
+    const auto issuer_id = CertStatus::getIssuerId(cert_data.cert_auth_chain);
     const std::string skid(CertStatus::getSkId(cert_data.cert));
 
     // The manager holds all state and logic for renewals and is kept alive by a shared_ptr.
     auto renewal_manager = std::make_shared<RenewalManager>(std::move(cert_data), std::move(fn));
-
-    // Start monitoring in the background on client worker threads.
-    renewal_manager->startMonitor();
 
     // Set up and run the config server
     auto config = server::Config::fromEnv();
@@ -225,6 +300,11 @@ void Auth::runAuthNDaemon(const ConfigAuthN &authn_config, bool for_client, Cert
 
     // Use a standard server, not ServerEv.
     config_server_ = server::Server(config);
+    // Give the monitor a handle so it can break run() if the certificate becomes non-renewable.
+    renewal_manager->config_server = &config_server_;
+
+    // Start monitoring in the background on client worker threads.
+    renewal_manager->startMonitor();
 
     renewal_manager->config_pv.onFirstConnect([&, renewal_manager](server::SharedPV &pv) {
         pv.post(renewal_manager->config_pv_value);
@@ -234,9 +314,10 @@ void Auth::runAuthNDaemon(const ConfigAuthN &authn_config, bool for_client, Cert
     config_server_.addPV(pv_name, renewal_manager->config_pv);
     std::cout << "Cert Config info available on: " << pv_name << std::endl;
 
-    // This blocks forever, running the config server.
-    // The renewal logic runs in the background on client threads.
+    // This blocks until interrupt() is called (e.g. by the monitor when the certificate is
+    // permanently non-renewable). The renewal logic runs in the background on client threads.
     config_server_.run();
+    return renewal_manager->exit_code;
 }
 
 std::string Auth::formatTimeDuration(time_t total_seconds) {
