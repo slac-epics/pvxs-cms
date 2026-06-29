@@ -2207,7 +2207,7 @@ void ensureValidityCompatible(const CertFactory &cert_factory) {
         throw std::runtime_error("Not before time is before issuer's not before time");
     }
     if (cert_factory.not_after_ > issuer_not_after) {
-        throw std::runtime_error("Not after time is after issuer's not after time");
+        throw std::runtime_error(SB() << "Not after time (" << CertDate(cert_factory.not_after_).s << ") is after issuer's not after time (" << CertDate(issuer_not_after).s << ")");
     }
 }
 
