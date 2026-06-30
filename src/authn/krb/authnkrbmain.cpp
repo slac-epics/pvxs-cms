@@ -8,6 +8,7 @@
 
 #include "authnkrb.h"
 #include "authregistry.h"
+#include "cmsversion.h"
 #include "configkrb.h"
 #include "openssl.h"
 #include "p12filefactory.h"
@@ -124,7 +125,7 @@ int readParameters(const int argc, char *argv[], ConfigKrb &config, bool &verbos
             std::cerr << "Error: -V option cannot be used with any other options.\n";
             return 10;
         }
-        std::cout << version_information;
+        std::cout << ::cms::version_information;
         exit(0);
     }
 

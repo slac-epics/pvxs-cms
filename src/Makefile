@@ -42,7 +42,9 @@ include $(TOP)/configure/CONFIG
 
 include $(TOP)/configure/CONFIG_PVACMS_VERSION
 
-COMMON_DIR     = $(TOP)/src/common
+# Note: do not name this COMMON_DIR — EPICS reserves COMMON_DIR for the per-arch
+# generated-header dir (../O.Common), which the GENVERSION rule below writes into.
+CMS_COMMON_DIR = $(TOP)/src/common
 AUTHN_DIR      = $(TOP)/src/authn
 AUTHN_STD_DIR  = $(AUTHN_DIR)/std
 CLI11_BUNDLE   = $(TOP)/bundle/CLI11
@@ -53,14 +55,19 @@ TOOLS_DIR      = $(TOP)/src/tools
 # Backwards-compat for existing authn Makefile fragments
 AUTHN = $(AUTHN_DIR)
 
-USR_CPPFLAGS += -I$(COMMON_DIR)
+USR_CPPFLAGS += -I$(CMS_COMMON_DIR)
 USR_CPPFLAGS += -I$(AUTHN_DIR)
 USR_CPPFLAGS += -I$(AUTHN_STD_DIR)
 USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
 USR_CPPFLAGS += -I$(PVACMS_DIR)
 
+# Generate a VCS revision header (pvxscmsVCS.h) from git describe, mirroring pvxs.
+# Written to $(COMMON_DIR) (../O.Common), which is on the default include path.
+GENVERSION      = pvxscmsVCS.h
+GENVERSIONMACRO = PVXS_CMS_VCS_VERSION
+
 # Source search path for pvacms and its shared sources
-SRC_DIRS += $(COMMON_DIR)
+SRC_DIRS += $(CMS_COMMON_DIR)
 SRC_DIRS += $(AUTHN_DIR)
 
 # PVXS_ENABLE_PVACMS: gate CMS-server build + sqlite3 dependency.
@@ -108,4 +115,13 @@ include $(TOOLS_DIR)/Makefile
 include $(TOP)/configure/RULES
 -include $(wildcard $(TOP)/cfg/RULES*)
 #----------------------------------------
+
+# Force the VCS header to be generated before cmsversion.cpp is scanned/compiled
+# (it is the only source that includes pvxscmsVCS.h). Mirrors pvxs/src/Makefile.
+cmsversion$(DEP): $(COMMON_DIR)/$(GENVERSION)
+
+ifndef GENVERSIONHEADER
+$(COMMON_DIR)/$(GENVERSION):
+	echo "/* genVersionHeader.pl missing */" > $@
+endif
 #  ADD RULES AFTER THIS LINE

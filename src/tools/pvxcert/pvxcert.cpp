@@ -22,6 +22,7 @@
 #include "certfactory.h"
 #include "certfilefactory.h"
 #include "certstatusmanager.h"
+#include "cmsversion.h"
 #include "openssl.h"
 
 using namespace pvxs;
@@ -127,7 +128,7 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
             std::cerr << "Error: -V option cannot be used with any other options.\n";
             exit(10);
         }
-        std::cout << version_information;
+        std::cout << ::cms::version_information;
         exit(0);
     }
 

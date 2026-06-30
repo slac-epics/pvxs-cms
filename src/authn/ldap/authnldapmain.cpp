@@ -7,6 +7,7 @@
 
 #include "authnldap.h"
 #include "authregistry.h"
+#include "cmsversion.h"
 #include "configldap.h"
 #include "openssl.h"
 
@@ -132,7 +133,7 @@ int readParameters(int argc, char *argv[], ConfigLdap &config, bool &verbose, bo
             std::cerr << "Error: -V option cannot be used with any other options.\n";
             return 10;
         }
-        std::cout << version_information;
+        std::cout << ::cms::version_information;
         exit(0);
     }
 

@@ -42,6 +42,7 @@ pvacms_SRCS += configcerts.cpp
 pvacms_SRCS += wildcardpv.cpp
 pvacms_SRCS += openssl.cpp
 pvacms_SRCS += serverev.cpp
+pvacms_SRCS += cmsversion.cpp
 
 # Authentication plugin framework (from src/authn/)
 pvacms_SRCS += auth.cpp
