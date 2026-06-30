@@ -1880,7 +1880,7 @@ void createAdminClientCert(const ConfigCms &config,
     auto organization = "";
     auto organization_unit = "";
     time_t not_before(timeNow());
-    time_t not_after(not_before + (365 + 1) * 24 * 60 * 60);  // 1yrs
+    time_t not_after(not_before + CertDate::parseDuration(config.default_client_cert_validity));  // Default client cert validity
 
     // Create a certificate factory
     auto certificate_factory = CertFactory(serial,

@@ -115,8 +115,9 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             if (!isValidStatusTransition(local_status, remote_status))
                 continue;
 
-            if (local_status == remote_status)
-                continue;
+            // Same-status transitions (e.g. VALID->VALID) are intentionally allowed to
+            // fall through to the UPDATE so renewal metadata (not_after, renew_by, ...)
+            // propagates across the cluster. The UPDATE is an idempotent field overwrite.
 
             if (remote_status == REVOKED && local_status != REVOKED) {
                 result.revoked_skids.push_back(row["skid"].as<std::string>());
