@@ -380,7 +380,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
  * @return The certificate data
  */
 template <typename ConfigT, typename AuthT>
-CertData getCertificate(bool &retrieved_credentials,
+CertData getCertificate(bool & /*retrieved_credentials*/,
                         ConfigT config,
                         uint16_t cert_usage,
                         const AuthT &authenticator,
@@ -396,7 +396,6 @@ CertData getCertificate(bool &retrieved_credentials,
 
         std::shared_ptr<KeyPair> key_pair;
         log_debug_printf(auth, "Credentials retrieved for: %s authenticator\n", authenticator.type_.c_str());
-        retrieved_credentials = true;
 
         // Get or create the key pair.  Store it in the keychain file if not already present
         try {
@@ -561,10 +560,10 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
         }
         return 0;
     } catch (std::exception &e) {
-        if (retrieved_credentials)
-            log_warn_printf(auth, "%s\n", e.what());
-        else
-            log_err_printf(auth, "%s\n", e.what());
+        // Any exception reaching here is a hard failure of the certificate
+        // request (e.g. PVACMS rejected the CCR, RPC/keychain failure). It must
+        // surface as an error, not a warning.
+        log_err_printf(auth, "%s\n", e.what());
         return -1;
     }
 }
