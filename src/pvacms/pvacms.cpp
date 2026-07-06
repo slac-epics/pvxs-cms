@@ -2872,7 +2872,7 @@ int readParameters(cliparams& params,
     app.add_flag("-v,--verbose", params.verbose, "Make more noise");
     app.add_flag("-V,--version", show_version, "Print version and exit.");
 
-    app.add_option("--run-while", params.command,
+    app.add_option("--run-script", params.command,
                    "Execute command with CMS running, shutdown on exit");
     app.add_option("-c,--cert-auth-keychain",
                    config.cert_auth_keychain_file,
@@ -3021,7 +3021,7 @@ int readParameters(cliparams& params,
                "file, and exit\n"
             << std::endl
             << "options:\n"
-            << "  --run-while <cmd>                          Execute <cmd> with server running, CMS exits with <cmd>\n"
+            << "  --run-script <cmd>                         Execute <cmd> with server running, CMS exits with <cmd>\n"
             << "  (-c | --cert-auth-keychain) <cert_auth_keychain>\n"
             << "                                             Specify Certificate Authority keychain file location. "
                "Default "
