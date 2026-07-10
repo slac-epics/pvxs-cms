@@ -41,6 +41,26 @@ class ConfigCms final : public Config {
     std::string getCertPvPrefix() const { return cert_pv_prefix; }
 
     /**
+     * @brief The request timeout, in seconds, for PVACMS client operations.
+     *
+     * PVACMS owns this because it drives its own client waits; it is not
+     * settable via an environment variable, only programmatically or from
+     * a command line tool.
+     */
+    double request_timeout{5.0};
+
+    /**
+     * @brief Set the request timeout
+     * @param timeout the request timeout in seconds
+     */
+    void setRequestTimeout(const double timeout) { request_timeout = timeout; }
+
+    /**
+     * @brief Get the request timeout
+     */
+    double getRequestTimeout() const { return request_timeout; }
+
+    /**
      * @brief Minutes that the ocsp status response will
      * be valid before a client must re-request an update
      */

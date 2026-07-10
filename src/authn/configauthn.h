@@ -49,6 +49,24 @@ class ConfigAuthN : public client::Config {
      */
     std::string getCertPvPrefix() const { return cert_pv_prefix; }
 
+    /**
+     * @brief The request timeout, in seconds, for authenticator client
+     * operations.  Not settable via an environment variable, only
+     * programmatically or from a command line tool.
+     */
+    double request_timeout{5.0};
+
+    /**
+     * @brief Set the request timeout
+     * @param timeout the request timeout in seconds
+     */
+    void setRequestTimeout(const double timeout) { request_timeout = timeout; }
+
+    /**
+     * @brief Get the request timeout
+     */
+    double getRequestTimeout() const { return request_timeout; }
+
 void fromAuthEnv(const std::map<std::string, std::string>& defs);
 static std::string getIPAddress();
 void updateDefs(defs_t& defs) const;

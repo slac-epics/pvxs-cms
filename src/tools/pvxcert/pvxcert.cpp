@@ -49,8 +49,9 @@ enum CertAction { STATUS, APPROVE, DENY, REVOKE };
 std::string actionToString(const CertAction &action) {
     return action == STATUS ? "Get Status" : action == APPROVE ? "Approve" : action == REVOKE ? "Revoke" : "Deny";
 }
-int readParameters(const int argc, char *argv[], const char *program_name, client::Config &conf, bool &approve, bool &revoke, bool &deny, bool &debug,
-                   bool &password_flag, bool &verbose, std::string &cert_file, std::string &issuer_serial_string, std::string &cert_pv_prefix) {
+int readParameters(const int argc, char *argv[], const char *program_name, bool &approve, bool &revoke, bool &deny, bool &debug,
+                   bool &password_flag, bool &verbose, std::string &cert_file, std::string &issuer_serial_string, std::string &cert_pv_prefix,
+                   double &timeout) {
     bool show_version{false}, help{false};
 
     // Argument configuration
@@ -68,7 +69,6 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     app.add_flag("-V,--version", show_version);
 
     // Define options
-    double timeout = conf.getRequestTimeout();
     app.add_option("-w,--timeout", timeout);
     app.add_option("-f,--file", cert_file, "The keychain file to read if no Certificate ID specified");
     app.add_option("--cert-pv-prefix", cert_pv_prefix,
@@ -81,8 +81,6 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     app.add_flag("-D,--deny", deny);
 
     CLI11_PARSE(app, argc, argv);
-
-    conf.setRequestTimeout(timeout);
 
     if (help) {
         std::cout << "Certificate management utility for PVXS\n"
@@ -146,9 +144,11 @@ int main(int argc, char *argv[]) {
         bool approve{false}, revoke{false}, deny{false}, debug{false}, password_flag{false}, verbose{false};
         std::string cert_file, password, issuer_serial_string;
         std::string cert_pv_prefix{"CERT:STATUS:"};
+        double timeout{5.0};
 
         auto parse_result =
-            readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, cert_file, issuer_serial_string, cert_pv_prefix);
+            readParameters(argc, argv, program_name, approve, revoke, deny, debug, password_flag, verbose, cert_file, issuer_serial_string, cert_pv_prefix,
+                           timeout);
         if (parse_result) exit(parse_result);
 
         if (password_flag && cert_file.empty()) {
@@ -230,16 +230,16 @@ int main(int argc, char *argv[]) {
             Value result;
             switch (action) {
                 case STATUS:
-                    result = client.get(cert_id).exec()->wait(conf.getRequestTimeout());
+                    result = client.get(cert_id).exec()->wait(timeout);
                     break;
                 case APPROVE:
-                    result = client.put(cert_id).set("state", "APPROVED").exec()->wait(conf.getRequestTimeout());
+                    result = client.put(cert_id).set("state", "APPROVED").exec()->wait(timeout);
                     break;
                 case DENY:
-                    result = client.put(cert_id).set("state", "DENIED").exec()->wait(conf.getRequestTimeout());
+                    result = client.put(cert_id).set("state", "DENIED").exec()->wait(timeout);
                     break;
                 case REVOKE:
-                    result = client.put(cert_id).set("state", "REVOKED").exec()->wait(conf.getRequestTimeout());
+                    result = client.put(cert_id).set("state", "REVOKED").exec()->wait(timeout);
                     break;
             }
             Indented I(std::cout);
