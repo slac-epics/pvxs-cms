@@ -21,6 +21,26 @@ class ConfigCms final : public Config {
     void updateDefs(defs_t& defs) const override;
 
     /**
+     * @brief The prefix to prepend to the URI for CREATE, STATUS, ROOT, etc PVs
+     * that this PVACMS publishes.  Default "CERT".
+     *
+     * PVACMS owns this because it originates these PVs; clients and servers
+     * derive the names from certificate extensions rather than configuration.
+     */
+    std::string cert_pv_prefix{"CERT"};
+
+    /**
+     * @brief Set the certificate PV prefix
+     * @param prefix the certificate PV prefix
+     */
+    void setCertPvPrefix(const std::string& prefix) { cert_pv_prefix = prefix; }
+
+    /**
+     * @brief Get the certificate PV prefix
+     */
+    std::string getCertPvPrefix() const { return cert_pv_prefix; }
+
+    /**
      * @brief Minutes that the ocsp status response will
      * be valid before a client must re-request an update
      */

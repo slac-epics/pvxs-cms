@@ -181,6 +181,11 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         }
     }
 
+    // EPICS_PVAS_CERT_PV_PREFIX / EPICS_PVA_CERT_PV_PREFIX
+    if (pickone({"EPICS_PVAS_CERT_PV_PREFIX", "EPICS_PVA_CERT_PV_PREFIX"})) {
+        cert_pv_prefix = pickone.val;
+    }
+
     // EPICS_PVACMS_REQUIRE_APPROVAL
     if (pickone({"EPICS_PVACMS_REQUIRE_APPROVAL"})) {
         cert_client_require_approval = cert_server_require_approval = cert_ioc_require_approval = parseTo<bool>(pickone.val);
@@ -292,6 +297,7 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     Config::updateDefs(defs);
     defs["EPICS_PVACMS_ACF"] = pvacms_acf_filename;
     defs["EPICS_PVACMS_DB"] = certs_db_filename;
+    if (!cert_pv_prefix.empty()) defs["EPICS_PVAS_CERT_PV_PREFIX"] = defs["EPICS_PVA_CERT_PV_PREFIX"] = cert_pv_prefix;
     defs["EPICS_CERT_AUTH_TLS_KEYCHAIN"] = cert_auth_keychain_file;
     defs["EPICS_ADMIN_TLS_KEYCHAIN"] = admin_keychain_file;
     defs["EPICS_CERT_AUTH_NAME"] = cert_auth_name;

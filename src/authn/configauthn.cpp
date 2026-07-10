@@ -93,6 +93,9 @@ void ConfigAuthN::fromAuthEnv(const std::map<std::string, std::string> &defs) {
     }
 
     if (pickone({"EPICS_PVA_AUTH_CERT_VALIDITY_MINS"})) cert_validity_mins = CertDate::parseDurationMins(pickone.val);
+
+    // EPICS_PVA_CERT_PV_PREFIX, EPICS_PVAS_CERT_PV_PREFIX
+    if (pickone({"EPICS_PVA_CERT_PV_PREFIX", "EPICS_PVAS_CERT_PV_PREFIX"})) cert_pv_prefix = pickone.val;
 }
 
 /**
@@ -118,6 +121,7 @@ void ConfigAuthN::updateDefs(defs_t &defs) const {
     defs["EPICS_PVA_AUTH_NAME"] = name;
     defs["EPICS_PVA_AUTH_ORGANIZATION"] = organization;
     defs["EPICS_PVA_AUTH_ORGANIZATIONAL_UNIT"] = organizational_unit;
+    if (!cert_pv_prefix.empty()) defs["EPICS_PVA_CERT_PV_PREFIX"] = defs["EPICS_PVAS_CERT_PV_PREFIX"] = cert_pv_prefix;
     if (!tls_srv_keychain_pwd.empty()) defs["EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE"] = "<password read>";
 }
 
