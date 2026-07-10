@@ -2844,7 +2844,7 @@ int readParameters(int argc,
                    std::map<const std::string, std::unique_ptr<client::Config>> &authn_config_map,
                    bool &verbose,
                    std::string &admin_name) {
-    std::string cert_auth_password_file, pvacms_password_file, admin_password_file;
+    std::string cert_auth_password, pvacms_password, admin_password;
     bool show_version{false}, help{false};
     bool create_client_cert_in_valid_state{false}, create_server_cert_in_valid_state{false},
         create_ioc_cert_in_valid_state{false}, create_all_certs_in_valid_state{false};
@@ -2865,8 +2865,8 @@ int readParameters(int argc,
                    config.cert_auth_keychain_file,
                    "Specify Certificate Authority keychain file location");
     app.add_option("--cert-auth-keychain-pwd",
-                   cert_auth_password_file,
-                   "Specify Certificate Authority keychain password file location");
+                   cert_auth_password,
+                   "Specify Certificate Authority keychain password");
     app.add_option("--cert-auth-name",
                    config.cert_auth_name,
                    "Specify the Certificate Authority's name. Used if we need to create a root certificate");
@@ -2883,7 +2883,7 @@ int readParameters(int argc,
     app.add_option("-d,--cert-db", config.certs_db_filename, "Specify cert db file location");
 
     app.add_option("-p,--pvacms-keychain", config.tls_keychain_file, "Specify PVACMS keychain file location");
-    app.add_option("--pvacms-keychain-pwd", pvacms_password_file, "Specify PVACMS keychain password file location");
+    app.add_option("--pvacms-keychain-pwd", pvacms_password, "Specify PVACMS keychain password");
     app.add_option("--pvacms-name",
                    config.pvacms_name,
                    "Specify the PVACMS name. Used if we need to create a PVACMS certificate");
@@ -2902,8 +2902,8 @@ int readParameters(int argc,
                    "Specify PVACMS admin user's keychain file location");
     app.add_option("--admin-keychain-new", admin_name, "Generate a new admin keychain and exit.");
     app.add_option("--admin-keychain-pwd",
-                   admin_password_file,
-                   "Specify PVACMS admin user's keychain password file location");
+                   admin_password,
+                   "Specify PVACMS admin user's keychain password");
     app.add_option("--acf", config.pvacms_acf_filename, "Admin Security Configuration File");
 
     app.add_flag("--client-dont-require-approval",
@@ -3113,18 +3113,12 @@ int readParameters(int argc,
         ensureDirectoryExists(config.admin_keychain_file);
     if (!config.certs_db_filename.empty())
         ensureDirectoryExists(config.certs_db_filename);
-    if (!cert_auth_password_file.empty()) {
-        ensureDirectoryExists(cert_auth_password_file);
-        config.cert_auth_keychain_pwd = getFileContents(cert_auth_password_file);
-    }
-    if (!pvacms_password_file.empty()) {
-        ensureDirectoryExists(pvacms_password_file);
-        config.setKeychainPassword(getFileContents(pvacms_password_file));
-    }
-    if (!admin_password_file.empty()) {
-        ensureDirectoryExists(admin_password_file);
-        config.admin_keychain_pwd = getFileContents(admin_password_file);
-    }
+    if (!cert_auth_password.empty())
+        config.cert_auth_keychain_pwd = cert_auth_password;
+    if (!pvacms_password.empty())
+        config.setKeychainPassword(pvacms_password);
+    if (!admin_password.empty())
+        config.admin_keychain_pwd = admin_password;
 
     if (create_all_certs_in_valid_state)
         config.cert_client_require_approval = config.cert_server_require_approval = config.cert_ioc_require_approval =
@@ -3186,7 +3180,7 @@ int main(int argc, char *argv[]) {
         pvxs::sql_ptr certs_db;
         auto program_name = argv[0];
         bool verbose = false;
-        std::string cert_auth_password_file, pvacms_password_file, admin_password_file, admin_name;
+        std::string admin_name;
 
         auto parse_result = readParameters(argc, argv, program_name, config, authn_config_map, verbose, admin_name);
         if (parse_result)

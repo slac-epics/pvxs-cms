@@ -16,6 +16,21 @@
 
 DEFINE_LOGGER(cert_cfg, "pvxs.certs.cfg");
 
+namespace {
+// Split a "<file>;<password>" keychain setting into its filename and optional
+// password. The password is everything after the first ';', if present.
+void splitKeychainSetting(const std::string &value, std::string &file, std::string &password) {
+    auto sep = value.find(';');
+    if (sep != std::string::npos) {
+        file = value.substr(0, sep);
+        password = value.substr(sep + 1);
+    } else {
+        file = value;
+        password.clear();
+    }
+}
+}  // namespace
+
 namespace pvxs {
 namespace certs {
 
@@ -69,27 +84,13 @@ ConfigCms ConfigCms::forCms() {
 
 void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
     PickOne pickone{defs, true};
-    PickOne pick_another_one{defs, true};
 
-    // EPICS_PVACMS_TLS_KEYCHAIN (default the private key to use the same file and password)
+    // EPICS_PVACMS_TLS_KEYCHAIN (with optional ";<password>" postfix)
     if (pickone({"EPICS_PVACMS_TLS_KEYCHAIN", "EPICS_PVAS_TLS_KEYCHAIN"})) {
-        ensureDirectoryExists(tls_keychain_file = pickone.val);
-
-        // EPICS_PVACMS_TLS_KEYCHAIN_PWD_FILE
-        std::string password_filename;
-        if (pickone.name == "EPICS_PVACMS_TLS_KEYCHAIN") {
-            pick_another_one({"EPICS_PVACMS_TLS_KEYCHAIN_PWD_FILE"});
-            password_filename = pick_another_one.val;
-        } else if (pickone.name == "EPICS_PVAS_TLS_KEYCHAIN") {
-            pick_another_one({"EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE"});
-            password_filename = pick_another_one.val;
-        }
-        ensureDirectoryExists(password_filename);
-        try {
-            setKeychainPassword(getFileContents(password_filename));
-        } catch (std::exception &e) {
-            log_err_printf(cert_cfg, "error reading password file: %s. %s", password_filename.c_str(), e.what());
-        }
+        std::string password;
+        splitKeychainSetting(pickone.val, tls_keychain_file, password);
+        ensureDirectoryExists(tls_keychain_file);
+        if (!password.empty()) setKeychainPassword(password);
     } else {
         std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "pvacms.p12";
         ensureDirectoryExists(tls_keychain_file = filename);
@@ -112,41 +113,22 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         certs_db_filename = filename;
     }
 
-    // EPICS_CERT_AUTH_TLS_KEYCHAIN
-
+    // EPICS_CERT_AUTH_TLS_KEYCHAIN (with optional ";<password>" postfix)
     if (pickone({"EPICS_CERT_AUTH_TLS_KEYCHAIN"})) {
-        ensureDirectoryExists(cert_auth_keychain_file = pickone.val);
-
-        // EPICS_CERT_AUTH_TLS_KEYCHAIN_PWD_FILE
-        if (pickone.name == "EPICS_CERT_AUTH_TLS_KEYCHAIN") {
-            pick_another_one({"EPICS_CERT_AUTH_TLS_KEYCHAIN_PWD_FILE"});
-            std::string password_filename = pick_another_one.val;
-            ensureDirectoryExists(password_filename);
-            try {
-                cert_auth_keychain_pwd = getFileContents(password_filename);
-            } catch (std::exception &e) {
-                log_err_printf(cert_cfg, "error reading password file: %s. %s", password_filename.c_str(), e.what());
-            }
-        }
+        std::string password;
+        splitKeychainSetting(pickone.val, cert_auth_keychain_file, password);
+        ensureDirectoryExists(cert_auth_keychain_file);
+        if (!password.empty()) cert_auth_keychain_pwd = password;
     } else {
         std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "cert_auth.p12";
         ensureDirectoryExists(cert_auth_keychain_file = filename);
     }
-    // EPICS_ADMIN_TLS_KEYCHAIN
+    // EPICS_ADMIN_TLS_KEYCHAIN (with optional ";<password>" postfix)
     if (pickone({"EPICS_ADMIN_TLS_KEYCHAIN"})) {
-        ensureDirectoryExists(admin_keychain_file = pickone.val);
-
-        // EPICS_ADMIN_TLS_KEYCHAIN_PWD_FILE
-        if (pickone.name == "EPICS_ADMIN_TLS_KEYCHAIN") {
-            pick_another_one({"EPICS_ADMIN_TLS_KEYCHAIN_PWD_FILE"});
-            std::string password_filename = pick_another_one.val;
-            ensureDirectoryExists(password_filename);
-            try {
-                admin_keychain_pwd = getFileContents(password_filename);
-            } catch (std::exception &e) {
-                log_err_printf(cert_cfg, "error reading password file: %s. %s", password_filename.c_str(), e.what());
-            }
-        }
+        std::string password;
+        splitKeychainSetting(pickone.val, admin_keychain_file, password);
+        ensureDirectoryExists(admin_keychain_file);
+        if (!password.empty()) admin_keychain_pwd = password;
     } else {
         std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "admin.p12";
         ensureDirectoryExists(admin_keychain_file = filename);
