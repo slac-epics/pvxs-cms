@@ -18,17 +18,6 @@ namespace certs {
 void ConfigLdap::fromLdapEnv(const std::map<std::string, std::string> &defs) {
     PickOne pickone{defs, true};
 
-    // EPICS_AUTH_LDAP_ACCOUNT_PWD_FILE
-    if (pickone({"EPICS_AUTH_LDAP_ACCOUNT_PWD_FILE"})) {
-        auto filepath = pickone.val;
-        ensureDirectoryExists(filepath);
-        try {
-            ldap_account_password = getFileContents(filepath);
-        } catch (std::exception &e) {
-            log_err_printf(cfg, "error reading password file: %s. %s", filepath.c_str(), e.what());
-        }
-    }
-
     // EPICS_AUTH_LDAP_HOST
     if (pickone({"EPICS_AUTH_LDAP_HOST"})) {
         ldap_host = pickone.val;
@@ -54,7 +43,6 @@ void ConfigLdap::fromLdapEnv(const std::map<std::string, std::string> &defs) {
  */
 void ConfigLdap::updateDefs(defs_t &defs) const {
     ConfigAuthN::updateDefs(defs);
-    if (!ldap_account_password.empty()) defs["EPICS_AUTH_LDAP_ACCOUNT_PWD_FILE"] = "<password read>";
     defs["EPICS_AUTH_LDAP_HOST"] = ldap_host;
     defs["EPICS_AUTH_LDAP_PORT"] = std::to_string(ldap_port);
 }
