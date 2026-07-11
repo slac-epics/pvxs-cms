@@ -200,10 +200,7 @@ struct RenewalManager {
  * @brief Run the authenticator daemon
  *
  * This Authenticator daemon will monitor the status of a certificate and renew it when indicated by the CMS.
- * It will also maintain a PV that will publish configuration information.
  *
- * @param authn_config The Authenticator's configuration
- * @param for_client Whether the daemon is for a client or server
  * @param cert_data The certificate data (contains cert, cert_auth_chain, and key)
  * @param fn The function to call to get the next certificate
  */
