@@ -368,6 +368,22 @@ std::string getCertificateSkid(const sql_ptr &certs_db, serial_number_t serial) 
     return skid;
 }
 
+std::string getCertificateCommonName(const sql_ptr &certs_db, serial_number_t serial) {
+    const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
+    sqlite3_stmt *stmt;
+    std::string common_name;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_CN_BY_SERIAL, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":serial"), db_serial);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const auto *text = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+            if (text)
+                common_name = text;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return common_name;
+}
+
 bool isNodeCertRevoked(const sql_ptr &certs_db, const std::string &node_id) {
     sqlite3_stmt *stmt;
     bool revoked = false;
@@ -3377,8 +3393,15 @@ int main(int argc, char *argv[]) {
             //   - both conditions are true (an administrator is revoking their own certificate), OR
             //   - both are false (a non-administrator is revoking a certificate that is not their own).
             const auto is_admin = securityClient.canWrite();
+            // "Own certificate" means the caller authenticated over TLS with an
+            // x509 certificate whose common name matches the common name recorded
+            // for the certificate being acted on.  The issuer is implied: only
+            // certificates issued by this PVACMS's own certificate authority can
+            // complete the TLS handshake and appear in the certs database.
             const auto is_own_cert =
-                (credentials.issuer_id == our_issuer_id && std::to_string(serial) == credentials.serial);
+                creds->isTLS && creds->method == "x509" &&
+                !creds->account.empty() &&
+                creds->account == getCertificateCommonName(certs_db, serial);
             const auto is_revoke = (state == "REVOKED");
 
             if (is_revoke && is_own_cert) {
