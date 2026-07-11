@@ -133,6 +133,17 @@ ParsedOCSPStatus CmsStatusManager::parse(const ossl_ptr<OCSP_RESPONSE> &ocsp_res
     // Verify OCSP response is signed by provided trusted root certificate authority
     verifyOCSPResponse(basic_response, trusted_store_ptr);
 
+    // PVACMS issues single-certificate OCSP responses, so exactly one SINGLERESP is
+    // expected. Reject empty or multi-entry responses rather than silently using index 0,
+    // which would pick an arbitrary entry when several are present.
+    const int response_count = OCSP_resp_count(basic_response.get());
+    if (response_count <= 0) {
+        throw OCSPParseException("No entries found in OCSP response");
+    }
+    if (response_count > 1) {
+        throw OCSPParseException(SB() << "OCSP response contains " << response_count << " entries; expected exactly one");
+    }
+
     OCSP_SINGLERESP *single_response = OCSP_resp_get0(basic_response.get(), 0);
     if (!single_response) {
         throw OCSPParseException("No entries found in OCSP response");
