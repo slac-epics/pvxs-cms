@@ -13,6 +13,8 @@
  * discards them when statically linking against libpvxs.a.
  */
 
+#include <array>
+
 #include "certstatus.h"
 
 #include "certstatusmanager.h"
@@ -27,6 +29,18 @@
 
 namespace pvxs {
 namespace certs {
+
+// Status-name tables, defined once here rather than duplicated into every
+// translation unit that includes certstatus.h.  Out-of-range indices return a
+// safe fallback rather than reading past the end of the array.
+const char* cert_state_name(std::size_t index) {
+    static const std::array<const char*, 7> names = CERT_STATES;
+    return index < names.size() ? names[index] : "UNKNOWN";
+}
+const char* ocsp_cert_state_name(std::size_t index) {
+    static const std::array<const char*, 3> names = OCSP_CERT_STATES;
+    return index < names.size() ? names[index] : "OCSP_CERTSTATUS_UNKNOWN";
+}
 
 PVXS_WEAK
 OCSPStatus::OCSPStatus(ocspcertstatus_t ocsp_status, const shared_array<const uint8_t> &ocsp_bytes, CertDate status_date, CertDate status_valid_until_time,

@@ -314,16 +314,10 @@ enum ocspcertstatus_t { OCSP_CERT_STATUS_LIST };
 #define CERT_STATES {CERT_STATUS_LIST}
 #define OCSP_CERT_STATES {OCSP_CERT_STATUS_LIST}
 
-// Gets status name based on index (use inline functions for MSVC compatibility)
-// Compound literals ((const char*[]){...}) are a GCC/Clang extension, not supported by MSVC.
-inline const char* cert_state_name(int index) {
-    static const char* const states[] = CERT_STATES;
-    return states[index];
-}
-inline const char* ocsp_cert_state_name(int index) {
-    static const char* const states[] = OCSP_CERT_STATES;
-    return states[index];
-}
+// Gets status name based on index (defined out-of-line in certstatus.cpp, with
+// bounds checking, to avoid duplicating the name tables in every translation unit)
+const char* cert_state_name(std::size_t index);
+const char* ocsp_cert_state_name(std::size_t index);
 #define CERT_STATE(index) cert_state_name(index)
 #define OCSP_CERT_STATE(index) ocsp_cert_state_name(index)
 
