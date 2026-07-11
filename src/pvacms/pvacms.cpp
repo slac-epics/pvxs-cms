@@ -1108,7 +1108,7 @@ int64_t onCreateCertificate(ConfigCms &config,
 
                 updateCertificateRenewalStatus(certs_db, original_certificate.serial, new_status, new_renewal_date);
                 postCertificateStatus(shared_status_pv, pv_name, original_certificate.serial, cert_status);
-                log_info_printf(pvacmsmonitor, "%s ==> %s\n", getCertId(issuer_id, original_certificate.serial).c_str(), cert_status.status.s.c_str());
+                log_info_printf(pvacmsmonitor, "%s ==> %s\n", getCertId(issuer_id, original_certificate.serial).c_str(), cert_status.status.s);
             } else { // VALID, PENDING_APPROVAL, PENDING
                 // Update the renew_by date if it's less than the new one but don't change status and post an update to listeners
                 if (original_certificate.renew_by < new_renewal_date) {
@@ -2381,7 +2381,7 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
         status_value["ocsp_response"] = ocsp_bytes.freeze();
     }
 
-    log_debug_printf(pvacms, "Posting Certificate Status: %s = %s\n", pv_name.c_str(), cert_status.status.s.c_str());
+    log_debug_printf(pvacms, "Posting Certificate Status: %s = %s\n", pv_name.c_str(), cert_status.status.s);
     if (was_open) {
         status_pv.post(pv_name, status_value);
     } else {

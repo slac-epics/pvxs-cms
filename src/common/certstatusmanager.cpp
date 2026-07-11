@@ -214,7 +214,7 @@ cert_status_ptr<CmsStatusManager> CmsStatusManager::subscribe(const client::Cont
                                if (update) {
                                    try {
                                        auto status_update{PVACertificateStatus(update, trusted_store_ptr)};
-                                       log_debug_printf(status, "Status subscription %s received: %s\n", s.name().c_str(), status_update.status.s.c_str());
+                                       log_debug_printf(status, "Status subscription %s received: %s\n", s.name().c_str(), status_update.status.s);
                                        csm->status_ = std::make_shared<CertificateStatus>(status_update);
                                        log_debug_printf(status, "Calling (*csm->callback_ref)(status_update)%s\n", "");
                                        (*csm->callback_ref)(status_update);
