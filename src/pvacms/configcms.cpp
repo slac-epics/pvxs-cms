@@ -6,10 +6,14 @@
 
 #include "configcms.h"
 
+#include <cstring>
+#include <ostream>
+
 #include <envDefs.h>
 #include <osiFileName.h>
 
 #include <pvxs/log.h>
+#include <pvxs/util.h>
 
 #include "authregistry.h"
 #include "configcerts.h"
@@ -275,7 +279,7 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
  *
  * @param defs the definitions to update with the PVACMS specific definitions
  */
-void ConfigCms::updateDefs(defs_t &defs) const {
+void ConfigCms::updateCmsDefs(defs_t &defs) const {
     Config::updateDefs(defs);
     defs["EPICS_PVACMS_ACF"] = pvacms_acf_filename;
     defs["EPICS_PVACMS_DB"] = certs_db_filename;
@@ -318,6 +322,26 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     // Add any defs for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry()) authn_entry.second->updateDefs(defs);
 }
+
+#define MATCHING_DEF(D) (pair.first.size() >= sizeof(D##prefix) - 1u && strncmp(pair.first.c_str(), D##prefix, sizeof(D##prefix) - 1u) == 0)
+std::ostream &operator<<(std::ostream &strm, const ConfigCms &conf) {
+    ConfigCms::defs_t defs;
+    conf.updateCmsDefs(defs);
+
+    for (const auto &pair : defs) {
+        static constexpr char prefix[] = "EPICS_PVAS_";
+        static constexpr char cert_auth_prefix[] = "EPICS_CERT_AUTH_";
+        static constexpr char pvacms_prefix[] = "EPICS_PVACMS_";
+        static constexpr char ocsp_prefix[] = "EPICS_OCSP_";
+        static constexpr char auth_prefix[] = "EPICS_AUTH_";
+
+        if (MATCHING_DEF() || MATCHING_DEF(cert_auth_) || MATCHING_DEF(pvacms_) || MATCHING_DEF(ocsp_) || MATCHING_DEF(auth_))
+            strm << pvxs::indent{} << pair.first << '=' << pair.second << '\n';
+    }
+
+    return strm;
+}
+#undef MATCHING_DEF
 
 }  // namespace certs
 }  // namespace pvxs

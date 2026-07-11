@@ -7,6 +7,8 @@
 #ifndef PVXS_CONFIGCMS_H_
 #define PVXS_CONFIGCMS_H_
 
+#include <iosfwd>
+
 #include <pvxs/config.h>
 #include <pvxs/server.h>
 
@@ -18,7 +20,11 @@ namespace certs {
 
 class ConfigCms final : public Config {
    public:
-    void updateDefs(defs_t& defs) const override;
+    //! Fill defs with the base server config plus the PVACMS-specific
+    //! definitions.  Not an override: the base updateDefs() is non-virtual, so
+    //! this is a distinctly-named method that the ConfigCms operator<< uses to
+    //! print the full effective config.
+    void updateCmsDefs(defs_t& defs) const;
 
     /**
      * @brief The prefix to prepend to the URI for CREATE, STATUS, ROOT, etc PVs
@@ -360,6 +366,10 @@ class ConfigCms final : public Config {
     static ConfigCms mockCms(int family=AF_INET);
     static ConfigCms forCms();
 };
+
+//! Print the full effective PVACMS configuration (base server config plus the
+//! PVACMS-specific definitions).
+std::ostream &operator<<(std::ostream &strm, const ConfigCms &conf);
 
 }  // namespace certs
 }  // namespace pvxs
