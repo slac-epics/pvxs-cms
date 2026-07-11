@@ -240,7 +240,6 @@ class Auth {
                     << ccr->credentials->organization_unit  // Organizational Unit
                     << ccr->credentials->not_before         // Not before
                     << ccr->credentials->not_after          // Not After
-                    << ccr->credentials->config_uri_base    // Config URL Base
                     << usage;                               // Usage
     }
 
@@ -254,49 +253,10 @@ class Auth {
                     << ccr["organization_unit"].as<std::string>()  // Organizational Unit
                     << ccr["not_before"].as<time_t>()              // Not before
                     << ccr["not_after"].as<time_t>()               // Not After
-                    << ccr["config_uri_base"].as<std::string>()    // Config URL Base
                     << ccr["usage"].as<uint16_t>();                // Usage
     }
 
  private:
-    server::Server config_server_{};
-    class ConfigMonitorParams {
-     public:
-        const ConfigAuthN &config_;
-        mutable ossl_ptr<X509> cert_{};
-        const std::function<CertData()> fn_{};
-        Value config_pv_value{getConfigurationPrototype()};
-
-        ConfigMonitorParams(const ConfigAuthN &config, ossl_ptr<X509> &cert, const std::function<CertData()> &&fn)
-            : config_(config), cert_(std::move(cert)), fn_(std::move(fn)) {}
-    };
-
-    static timeval configurationMonitor(std::shared_ptr<ConfigMonitorParams> config_monitor_params, server::SharedPV &pv);
-    static std::string formatTimeDuration(time_t total_seconds);
-
-    /**
-     * @brief The prototype of the data returned for a certificate configuration PV
-     *
-     * A serial number, issuer ID, the keychain file and how long before it expires.
-     * Each config change will update the serial number and expires_in value.
-     * Keychain and issuer will stay the same
-     *
-     * @return The prototype of the data returned for a certificate configuration PV
-     */
-    static Value getConfigurationPrototype() {
-        using namespace members;
-
-        auto value = TypeDef(TypeCode::Struct,
-                             {
-                                 Member(TypeCode::UInt64, "serial"),
-                                 Member(TypeCode::String, "issuer_id"),
-                                 Member(TypeCode::String, "keychain"),
-                                 Member(TypeCode::String, "renew_by"),
-                             })
-                         .create();
-        return value;
-    }
-
     /**
      * @brief Set a value in a Value object marking any changes to the field if the values changed and if not then
      * the field is unmarked.  Doesn't work for arrays or enums so you need to do that manually.
@@ -395,9 +355,6 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
     CertData cert_data;
 
     if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))) {
-        // If daemon mode, then add base uri to credentials
-        if (daemon_mode) credentials->config_uri_base = config.getCertPvPrefix();
-
         std::shared_ptr<KeyPair> key_pair;
         log_debug_printf(auth, "Credentials retrieved for: %s authenticator\n", authenticator.type_.c_str());
 

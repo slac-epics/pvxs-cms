@@ -201,16 +201,10 @@ int main(int argc, char *argv[]) {
                 if (cert_data.cert == nullptr) {
                     throw std::runtime_error("Failed to read certificate from file");
                 }
-                std::string config_id{};
-                try {
-                    config_id = certs::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
-                } catch (...) {
-                }
-
                 std::cout << "Certificate Details: " << std::endl
                           << "============================================" << std::endl
                           << ossl::ShowX509{cert_data.cert.get()} << std::endl
-                          << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
+                          << "--------------------------------------------\n"
                           << std::endl;
                 cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
             } catch (std::exception &e) {

@@ -193,23 +193,6 @@ inline std::string getCertStatusURI(const std::string &prefix, const std::string
 }
 
 /**
- * @brief Make the config URI for a certificate
- *
- * @param cert_pv_prefix the prefix for PVACMS PVs.  Default `CERT`
- * @param issuer_id the issuer ID (first 8 hex digits of the hex SKID)
- * @param skid Subject Key Identifier based on a public key used to re-generate Cert
- * @return the config URI
- */
-inline std::string getConfigURI(const std::string &cert_pv_prefix, const std::string& issuer_id, const std::string& skid) {
-    std::string pv = cert_pv_prefix;
-    pv += ":CONFIG:";
-    pv += issuer_id;
-    pv += ":";
-    pv += skid;
-    return pv;
-}
-
-/**
  * @brief Generates a serial number string as used in a certificate ID.
  *
  * Left pad with zeros in 20 characters

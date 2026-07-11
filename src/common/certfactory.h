@@ -66,7 +66,6 @@ class CertFactory {
     const ossl_shared_ptr<STACK_OF(X509)> certificate_chain_;
     CertStatusSubscription cert_status_subscription_required_;
     bool no_status_;
-    std::string cert_config_uri_base_;
     std::string skid_;
     certstatus_t initial_status_;
     bool allow_duplicates_{true};
@@ -115,59 +114,6 @@ class CertFactory {
           certificate_chain_(sk_X509_new_null()),
           cert_status_subscription_required_(cert_status_subscription_required),
           no_status_(no_status),
-          initial_status_(initial_status),
-          allow_duplicates_(allow_duplicates) {}
-
-    /**
-     * @brief Constructor for CertFactory
-     *
-     * @param serial the serial number
-     * @param key_pair the key pair
-     * @param name the name
-     * @param country the country
-     * @param org the organization
-     * @param org_unit the organizational unit
-     * @param not_before the not before time
-     * @param not_after the not after time
-     * @param renew_by the renew by date if specified
-     * @param usage the usage
-     * @param cert_pv_prefix the certificate management PV prefix for this factory
-     * @param cert_config_uri_base the configuration uri base, normally empty but if non-empty will result in the config uri extension being added to the
-     * certificate
-     * @param cert_status_subscription_required whether certificate status subscription is required
-     * @param no_status whether to disable status subscription for this certificate
-     * @param allow_duplicates will duplicate subject names be allowed
-     * @param issuer_certificate_ptr the issuer certificate
-     * @param issuer_pkey_ptr the issuer private key
-     * @param issuer_chain_ptr the issuer certificate chain
-     * @param initial_status the initial status
-     * @param issuer_certificate_ptr the issuer certificate optional
-     * @param issuer_pkey_ptr the issuer private key optional
-     * @param issuer_chain_ptr the issuer certificate chain optional
-     * @param initial_status the initial status - defaults to VALID
-     */
-    CertFactory(const uint64_t serial, const std::shared_ptr<KeyPair> &key_pair, const std::string &name, const std::string &country, const std::string &org,
-                const std::string &org_unit, const time_t not_before, const time_t not_after, const time_t renew_by, const uint16_t &usage, const std::string &cert_pv_prefix, const std::string &cert_config_uri_base,
-                const CertStatusSubscription cert_status_subscription_required = DEFAULT, const bool no_status = false, const bool allow_duplicates = false, X509 *issuer_certificate_ptr = nullptr, EVP_PKEY *issuer_pkey_ptr = nullptr,
-                STACK_OF(X509) *issuer_chain_ptr = nullptr, const certstatus_t initial_status = VALID)
-        : serial_(serial),
-          key_pair_(key_pair),
-          name_(name),
-          country_(country),
-          org_(org),
-          org_unit_(org_unit),
-          not_before_(not_before),
-          not_after_(not_after),
-          renew_by_(renew_by),
-          usage_(usage),
-          cert_pv_prefix_(cert_pv_prefix),
-          issuer_certificate_ptr_(issuer_certificate_ptr),
-          issuer_pkey_ptr_(issuer_pkey_ptr),
-          issuer_chain_ptr_(issuer_chain_ptr),
-          certificate_chain_(sk_X509_new_null()),
-          cert_status_subscription_required_(cert_status_subscription_required),
-          no_status_(no_status),
-          cert_config_uri_base_(cert_config_uri_base),
           initial_status_(initial_status),
           allow_duplicates_(allow_duplicates) {}
 

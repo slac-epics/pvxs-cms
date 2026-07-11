@@ -1081,14 +1081,11 @@ int64_t onCreateCertificate(ConfigCms &config,
             }
         }
 
-        // If config uri base provided then use it
-        auto config_uri_base = ccr["config_uri_base"].as<std::string>();
-
         // Create a certificate factory
         const auto not_before = getStructureValue<time_t>(ccr, "not_before");
         auto certificate_factory = CertFactory(serial, key_pair, name, country, organization, organization_unit,
                                                not_before, expiration, renew_by, usage,
-                                               config.getCertPvPrefix(), config_uri_base,
+                                               config.getCertPvPrefix(),
                                                config.cert_status_subscription, no_status,
                                                type != PVXS_DEFAULT_AUTH_TYPE,
                                                cert_auth_cert.get(),

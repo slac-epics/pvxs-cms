@@ -6,11 +6,14 @@
 
 #include "auth.h"
 
+#include <csignal>
 #include <chrono>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <thread>
+
+#include <epicsEvent.h>
 
 #include <pvxs/client.h>
 #include <pvxs/log.h>
@@ -89,9 +92,6 @@ std::shared_ptr<CertCreationRequest> Auth::createCertCreationRequest(const std::
 
         // Don't include any status checking extension.  This will disable any certificate renewal functionality
         if (config.no_status) cert_creation_request->ccr["no_status"] = config.no_status;
-
-        // Do we need to add a configuration uri to the certificate?
-        if (!credentials->config_uri_base.empty()) cert_creation_request->ccr["config_uri_base"] = credentials->config_uri_base;
     }
     return cert_creation_request;
 }
@@ -130,13 +130,11 @@ namespace {
 struct RenewalManager {
     CertData cert_data;
     std::function<CertData()> renew_fn;
-    server::SharedPV config_pv;
-    Value config_pv_value;
     client::Context client;
     std::shared_ptr<client::Subscription> sub;
 
     RenewalManager(CertData&& cert, const std::function<CertData()>&& fn)
-        : cert_data(std::move(cert)), renew_fn(std::move(fn)), config_pv(server::SharedPV::buildMailbox()) {
+        : cert_data(std::move(cert)), renew_fn(std::move(fn)) {
         auto client_config = client::Config::fromEnv();
         client_config.tls_disabled = true;
         client = client_config.build();
@@ -183,8 +181,6 @@ struct RenewalManager {
                         cert_data = renew_fn(); // Renew and update our copy of CertData
                         const CertDate renew_by = cert_data.renew_by;
                         if (renew_by.t) {
-                            config_pv_value["renew_by"] = renew_by.s;
-                            config_pv.post(config_pv_value);
                             std::cout << "Certificate renewed successfully until " << renew_by.s << std::endl;
                         } else
                             std::cout << "Certificate renewed successfully " << std::endl;
@@ -212,8 +208,8 @@ struct RenewalManager {
  * @param fn The function to call to get the next certificate
  */
 void Auth::runAuthNDaemon(const ConfigAuthN &authn_config, bool for_client, CertData &&cert_data, const std::function<CertData()> &&fn) {
-    auto issuer_id = CertStatus::getIssuerId(cert_data.cert_auth_chain);
-    const std::string skid(CertStatus::getSkId(cert_data.cert));
+    (void)authn_config;
+    (void)for_client;
 
     // The manager holds all state and logic for renewals and is kept alive by a shared_ptr.
     auto renewal_manager = std::make_shared<RenewalManager>(std::move(cert_data), std::move(fn));
@@ -221,77 +217,17 @@ void Auth::runAuthNDaemon(const ConfigAuthN &authn_config, bool for_client, Cert
     // Start monitoring in the background on client worker threads.
     renewal_manager->startMonitor();
 
-    // Set up and run the config server
-    auto config = server::Config::fromEnv();
-    config.tls_disabled = true;
+    std::cout << "Certificate renewal daemon running.  Press Ctrl-C to exit." << std::endl;
 
-    renewal_manager->config_pv_value = getConfigurationPrototype();
-    renewal_manager->config_pv.open(renewal_manager->config_pv_value);
-
-    // Use a standard server, not ServerEv.
-    config_server_ = server::Server(config);
-
-    renewal_manager->config_pv.onFirstConnect([&, renewal_manager](server::SharedPV &pv) {
-        pv.post(renewal_manager->config_pv_value);
-    });
-
-    const std::string pv_name = getConfigURI(authn_config.getCertPvPrefix(), issuer_id, skid);
-    config_server_.addPV(pv_name, renewal_manager->config_pv);
-    std::cout << "Cert Config info available on: " << pv_name << std::endl;
-
-    // This blocks forever, running the config server.
-    // The renewal logic runs in the background on client threads.
-    config_server_.run();
+    // The renewal logic runs in the background on client threads; block here
+    // until a termination signal is received.
+    static epicsEvent done;
+    const auto prev_int = signal(SIGINT, [](int) { done.signal(); });
+    const auto prev_term = signal(SIGTERM, [](int) { done.signal(); });
+    done.wait();
+    signal(SIGINT, prev_int);
+    signal(SIGTERM, prev_term);
 }
-
-std::string Auth::formatTimeDuration(time_t total_seconds) {
-    // Calculate days, hours, minutes, and seconds.
-    constexpr time_t seconds_per_day = 86400;
-    constexpr time_t seconds_per_hour = 3600;
-    constexpr time_t seconds_per_minute = 60;
-
-    const time_t days = total_seconds / seconds_per_day;
-    total_seconds %= seconds_per_day;
-    const time_t hours = total_seconds / seconds_per_hour;
-    total_seconds %= seconds_per_hour;
-    const time_t minutes = total_seconds / seconds_per_minute;
-    const time_t secs = total_seconds % seconds_per_minute;
-
-    // Build a vector of non-optional parts.
-    // According to the format, the days, hrs, and mins parts are only included if nonzero.
-    // Seconds are always displayed.
-    std::vector<std::string> parts;
-    if (days > 0) {
-        parts.push_back(std::to_string(days) + " days");
-    }
-    if (hours > 0) {
-        parts.push_back(std::to_string(hours) + " hrs");
-    }
-    if (minutes > 0) {
-        parts.push_back(std::to_string(minutes) + " mins");
-    }
-    if (parts.empty() || secs > 0) {
-        parts.push_back(std::to_string(secs) + " secs");
-    }
-
-    // Join the parts using the pattern:
-    //  - If only one part exists, return it.
-    //  - If two parts exist, join with " and ".
-    //  - If three or more parts exist, join with commas, but use " and " before the last part.
-    std::ostringstream oss;
-    for (size_t i = 0; i < parts.size(); ++i) {
-        if (i > 0) {
-            if (i == parts.size() - 1) {
-                oss << " and ";
-            } else {
-                oss << ", ";
-            }
-        }
-        oss << parts[i];
-    }
-    return oss.str();
-}
-
 
 }  // namespace certs
 }  // namespace pvxs

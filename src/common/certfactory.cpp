@@ -98,7 +98,6 @@ ossl_ptr<X509> CertFactory::create() {
     // 11. Add EPICS status, config subscription, and must-renew-by, extensions, if required and is not CMS itself
     if (!IS_USED_FOR_(usage_, ssl::kForCMS)) {
         const auto issuer_id = CertStatus::getSkId(issuer_certificate_ptr_);
-        const auto skid = CertStatus::getSkId(certificate);
 
         // Check if status subscription should be added based on configuration and no_status flag
         bool add_status_subscription = false;
@@ -112,10 +111,6 @@ ossl_ptr<X509> CertFactory::create() {
 
         if (add_status_subscription) {
             addCustomExtensionByNid(certificate, ossl::NID_SPvaCertStatusURI, getCertStatusURI(cert_pv_prefix_, issuer_id, serial_));
-        }
-
-        if (!cert_config_uri_base_.empty()) {
-            addCustomExtensionByNid(certificate, ossl::NID_SPvaCertConfigURI, getConfigURI(cert_pv_prefix_, issuer_id, skid));
         }
     }
 
