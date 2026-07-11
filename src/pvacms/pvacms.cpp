@@ -53,7 +53,7 @@
 #include <pvxs/server.h>
 #include <pvxs/sharedpv.h>
 #include <wildcardpv.h>
-#include <pvxs/credentials.h>
+#include "asauth.h"
 
 #include "auth.h"
 #include "authregistry.h"
@@ -3376,20 +3376,13 @@ int main(int argc, char *argv[]) {
             // Get credentials for this operation
             const auto creds = op->credentials();
 
-            pvxs::ioc::Credentials credentials(*creds);
-
-            // Get security client from channel
-            pvxs::ioc::SecurityClient securityClient;
-
-            static ASMember as_member;
-            securityClient.update(as_member.mem, ASL1, credentials);
-
             // Don't allow if:
             // - The new `state` is not `REVOKE` and the user is not an administrator, OR
             // - The new `state` is `REVOKE` and either:
             //   - both conditions are true (an administrator is revoking their own certificate), OR
             //   - both are false (a non-administrator is revoking a certificate that is not their own).
-            const auto is_admin = securityClient.canWrite();
+            static ASMember as_member;
+            const auto is_admin = clientCanPut(as_member.mem, ASL1, *creds);
             // "Own certificate" means the caller authenticated over TLS with an
             // x509 certificate whose common name matches the common name recorded
             // for the certificate being acted on.  The issuer is implied: only
