@@ -6,6 +6,11 @@
 
 #include "configauthn.h"
 
+#include <cstring>
+#include <ostream>
+
+#include <pvxs/util.h>
+
 #include "authnstd.h"
 #ifndef _WIN32
 #  include <ifaddrs.h>
@@ -208,6 +213,21 @@ std::string ConfigAuthN::getIPAddress() {
     return chosen_ip;
 #endif
 }
+
+#define MATCHING_DEF(D) (pair.first.size() >= sizeof(D##prefix) - 1u && strncmp(pair.first.c_str(), D##prefix, sizeof(D##prefix) - 1u) == 0)
+void printAuthNDefs(std::ostream& strm, const client::Config::defs_t& defs) {
+    for (const auto& pair : defs) {
+        static constexpr char prefix[] = "EPICS_PVAS_";
+        static constexpr char pva_prefix[] = "EPICS_PVA_";
+        static constexpr char cert_auth_prefix[] = "EPICS_CERT_AUTH_";
+        static constexpr char auth_prefix[] = "EPICS_AUTH_";
+        static constexpr char krb_prefix[] = "KRB5_";
+
+        if (MATCHING_DEF() || MATCHING_DEF(pva_) || MATCHING_DEF(cert_auth_) || MATCHING_DEF(auth_) || MATCHING_DEF(krb_))
+            strm << pvxs::indent{} << pair.first << '=' << pair.second << '\n';
+    }
+}
+#undef MATCHING_DEF
 
 }  // namespace certs
 }  // namespace pvxs

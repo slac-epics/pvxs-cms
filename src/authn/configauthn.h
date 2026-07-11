@@ -7,6 +7,9 @@
 #ifndef PVXS_CONFIGAUTHN_H_
 #define PVXS_CONFIGAUTHN_H_
 
+#include <iosfwd>
+#include <type_traits>
+
 #include <pvxs/client.h>
 #include <pvxs/config.h>
 
@@ -71,6 +74,22 @@ void fromAuthEnv(const std::map<std::string, std::string>& defs);
 static std::string getIPAddress();
 void updateDefs(defs_t& defs) const;
 };
+
+//! Print the authenticator-relevant subset of a definitions map to a stream.
+//! Shared by the operator<< of each concrete authenticator config type.
+void printAuthNDefs(std::ostream& strm, const client::Config::defs_t& defs);
+
+//! Print the full effective configuration for any authenticator config type.
+//! A function template (rather than a single ConfigAuthN overload) so that the
+//! concrete type's non-virtual updateDefs() is called and no derived-class
+//! definitions are sliced away.
+template <typename ConfigT, typename std::enable_if<std::is_base_of<ConfigAuthN, ConfigT>::value, int>::type = 0>
+std::ostream& operator<<(std::ostream& strm, const ConfigT& conf) {
+    client::Config::defs_t defs;
+    conf.updateDefs(defs);
+    printAuthNDefs(strm, defs);
+    return strm;
+}
 
 }  // namespace certs
 }  // namespace pvxs
