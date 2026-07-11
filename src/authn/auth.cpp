@@ -207,10 +207,7 @@ struct RenewalManager {
  * @param cert_data The certificate data (contains cert, cert_auth_chain, and key)
  * @param fn The function to call to get the next certificate
  */
-void Auth::runAuthNDaemon(const ConfigAuthN &authn_config, bool for_client, CertData &&cert_data, const std::function<CertData()> &&fn) {
-    (void)authn_config;
-    (void)for_client;
-
+void Auth::runAuthNDaemon(const ConfigAuthN &, bool, CertData &&cert_data, const std::function<CertData()> &&fn) {
     // The manager holds all state and logic for renewals and is kept alive by a shared_ptr.
     auto renewal_manager = std::make_shared<RenewalManager>(std::move(cert_data), std::move(fn));
 
