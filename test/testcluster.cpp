@@ -517,10 +517,10 @@ void testApplySyncNewCert() {
  * @param serial      Certificate serial number (primary key).
  * @param cn          Certificate Common Name.
  * @param status      Initial certificate status (e.g. VALID, PENDING_APPROVAL).
- * @param not_before  Not-before timestamp (EPICS epoch seconds).
- * @param not_after   Not-after (expiry) timestamp (EPICS epoch seconds).
- * @param renew_by    Renewal deadline timestamp (EPICS epoch seconds).
- * @param status_date Timestamp of the most recent status change (EPICS epoch seconds).
+ * @param not_before  Not-before timestamp (POSIX seconds).
+ * @param not_after   Not-after (expiry) timestamp (POSIX seconds).
+ * @param renew_by    Renewal deadline timestamp (POSIX seconds).
+ * @param status_date Timestamp of the most recent status change (POSIX seconds).
  */
 void insertCert(sqlite3 *db, int64_t serial, const std::string &cn, const certstatus_t status,
                 const int64_t not_before, const int64_t not_after, const int64_t renew_by, const int64_t status_date) {
@@ -681,7 +681,7 @@ void testJoinHandshake() {
 
     auto resp_ts = getTimeStamp(resp);
     epicsTimeStamp now_ts = epicsTime::getCurrent();
-    auto now = static_cast<int64_t>(now_ts.secPastEpoch);
+    auto now = static_cast<int64_t>(now_ts.secPastEpoch) + POSIX_TIME_AT_EPICS_EPOCH;
     testOk(std::abs(now - resp_ts) <= 30, "Join response timestamp within tolerance");
 
     auto resp_members = resp["members"].as<shared_array<const Value>>();
