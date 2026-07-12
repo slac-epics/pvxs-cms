@@ -5,6 +5,7 @@
  */
 
 #include "certfilefactory.h"
+#include "certdate.h"
 
 #include <fstream>
 #include <iomanip>
@@ -37,7 +38,7 @@ void IdFileFactory::backupFileIfExists(const std::string& filename) {
 
     file.close();
 
-    auto t = std::time(nullptr);
+    auto t = timeNow();
     auto tm = *std::localtime(&t);
 
     std::ostringstream oss;

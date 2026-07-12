@@ -12,6 +12,16 @@
 #ifndef CERTDATE_H
 #define CERTDATE_H
 
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+
+#include <epicsTime.h>
+
+#include <pvxs/log.h>
+
 #include "ownedptr.h"
 
 #define CERT_TIME_FORMAT "%a %b %d %H:%M:%S %Y UTC"
@@ -19,6 +29,25 @@
 DEFINE_LOGGER(certs_time, "pvxs.certs.date");
 namespace pvxs {
 namespace certs {
+
+/**
+ * @brief Current wall-clock time as POSIX seconds, from the EPICS time source.
+ *
+ * All "now" in pvxs-cms goes through this single wrapper so the clock can be
+ * overridden globally in tests via the epicsTimeGetCurrent() time provider.
+ * epicsTimeGetCurrent() yields EPICS-epoch seconds (since 1990); adding
+ * POSIX_TIME_AT_EPICS_EPOCH converts to POSIX seconds (since 1970). Falls back
+ * to std::time() only if the EPICS time source is unavailable.
+ *
+ * @return POSIX seconds since 1970-01-01 UTC.
+ */
+inline time_t timeNow() {
+    epicsTimeStamp ts;
+    if (epicsTimeGetCurrent(&ts) == epicsTimeOK) {
+        return static_cast<time_t>(ts.secPastEpoch) + POSIX_TIME_AT_EPICS_EPOCH;
+    }
+    return std::time(nullptr);
+}
 
 ///////////// OCSP RESPONSE ERRORS
 class CertTimeParseException final : public std::runtime_error {
@@ -251,7 +280,7 @@ struct CertDate {
      * @throws CertTimeParseException if the duration string is invalid
      */
     static int64_t parseDuration(const std::string &duration_str) {
-        const auto now = std::time(nullptr);
+        const auto now = timeNow();
 
         // String parts
         uint32_t years{0};   // 'y'
@@ -405,7 +434,7 @@ struct CertDate {
     const int64_t seconds = duration * 60;
 
     // Start from now
-    const auto now = std::time(nullptr);
+    const auto now = timeNow();
 
     // Try to represent this as calendar units (years, months, etc.)
     int years = 0, months = 0, days = 0, hours = 0, minutes = 0;

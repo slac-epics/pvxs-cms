@@ -823,7 +823,7 @@ struct OCSPStatus {
      * @return true if the OCSP status validity period has not expired
      */
     bool isStatusCurrent() const noexcept { // NOLINT(*-convert-member-functions-to-static)
-        const auto now(std::time(nullptr));
+        const auto now(timeNow());
         return status_valid_until_date.t > now;
     }
 
@@ -980,7 +980,7 @@ bool operator!=(certstatus_t& lhs, PVACertificateStatus& rhs);
 struct CertificateStatus {
     virtual ~CertificateStatus() = default;
     CertificateStatus()
-        : CertificateStatus(false, static_cast<PVACertStatus>(UNKNOWN), static_cast<OCSPCertStatus>(OCSP_CERTSTATUS_UNKNOWN), CertDate(std::time(nullptr)),
+        : CertificateStatus(false, static_cast<PVACertStatus>(UNKNOWN), static_cast<OCSPCertStatus>(OCSP_CERTSTATUS_UNKNOWN), CertDate(timeNow()),
                             CertDate(PERMANENTLY_VALID_STATUS), CertDate(static_cast<time_t>(0))) {}
 
     // Enable copying
@@ -1017,7 +1017,7 @@ struct CertificateStatus {
       * @return true if the status validity period has not expired
       */
      bool isStatusCurrent() const noexcept { // NOLINT(*-convert-member-functions-to-static)
-         const auto now(std::time(nullptr));
+         const auto now(timeNow());
          return status_valid_until_date.t > now;
      }
 
@@ -1127,13 +1127,13 @@ struct CertifiedCertificateStatus final : CertificateStatus {
 
 struct UnknownCertificateStatus final : CertificateStatus {
     UnknownCertificateStatus()
-        : CertificateStatus(false, static_cast<PVACertStatus>(UNKNOWN), static_cast<OCSPCertStatus>(OCSP_CERTSTATUS_UNKNOWN), CertDate(std::time(nullptr)),
+        : CertificateStatus(false, static_cast<PVACertStatus>(UNKNOWN), static_cast<OCSPCertStatus>(OCSP_CERTSTATUS_UNKNOWN), CertDate(timeNow()),
                             CertDate(PERMANENTLY_VALID_STATUS), CertDate(static_cast<time_t>(0))) {}
 };
 
 struct UnCertifiedCertificateStatus final : CertificateStatus {
     UnCertifiedCertificateStatus()
-        : CertificateStatus(false, static_cast<PVACertStatus>(VALID), static_cast<OCSPCertStatus>(OCSP_CERTSTATUS_GOOD), CertDate(std::time(nullptr)),
+        : CertificateStatus(false, static_cast<PVACertStatus>(VALID), static_cast<OCSPCertStatus>(OCSP_CERTSTATUS_GOOD), CertDate(timeNow()),
                             CertDate(PERMANENTLY_VALID_STATUS), CertDate(static_cast<time_t>(0))) {}
 };
 

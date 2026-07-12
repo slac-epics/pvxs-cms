@@ -285,7 +285,7 @@ class StatusMonitor {
           active_status_validity_(active_status_validity) {}
 
     std::vector<serial_number_t> getActiveSerials() const {
-        const auto cutoff{time(nullptr) - static_cast<uint64_t>(config_.getRequestTimeout())};
+        const auto cutoff{timeNow() - static_cast<uint64_t>(config_.getRequestTimeout())};
         std::vector<serial_number_t> result;
         Guard G(lock_);
         for (const auto &pair : active_status_validity_) {
