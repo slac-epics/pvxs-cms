@@ -96,7 +96,7 @@ jobs:
             extra: "CMD_CXXFLAGS=\"-analysis /std:c++20\" PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=NO PVXS_ENABLE_LDAP_AUTH=NO"
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         submodules: true
     - name: "apt-get install"
@@ -123,7 +123,7 @@ jobs:
 
     - name: "vcpkg cache (libevent + openssl)"
       if: runner.os == 'Windows'
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: c:/vcpkg-cache
         key: ${{ runner.os }}-vcpkg-v3
@@ -167,7 +167,7 @@ jobs:
       run: openssl version -a
 
     - name: Automatic core dumper analysis
-      uses: mdavidsaver/ci-core-dumper@master
+      uses: mdavidsaver/ci-core-dumper@cda67d63a56db36aca1126d8d00aa5f7ff1ee1db # master
 
     - name: Set Windows DLL paths
       if: runner.os == 'Windows'
@@ -234,7 +234,7 @@ jobs:
 
     - name: Upload tapfiles Artifact
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: tapfiles ${{ matrix.name }}
         path: '**/O.*/*.tap'
@@ -275,7 +275,7 @@ jobs:
             cross: "windows-x64-mingw"
             extra: "PVXS_ENABLE_PVACMS=NO PVXS_ENABLE_KRB_AUTH=YES PVXS_ENABLE_LDAP_AUTH=NO"
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         submodules: true
     - name: "apt-get install"
@@ -311,7 +311,7 @@ jobs:
     - name: Host Info
       run: openssl version -a
     - name: Automatic core dumper analysis
-      uses: mdavidsaver/ci-core-dumper@master
+      uses: mdavidsaver/ci-core-dumper@cda67d63a56db36aca1126d8d00aa5f7ff1ee1db # master
     - name: Prepare and compile dependencies
       run: python .ci/cue.py prepare
 
@@ -346,7 +346,7 @@ jobs:
         fi
     - name: Upload tapfiles Artifact
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: tapfiles ${{ matrix.name }}
         path: '**/O.*/*.tap'
