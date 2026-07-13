@@ -15,6 +15,7 @@
 
 #include <pvxs/client.h>
 #include <pvxs/data.h>
+#include <pvxs/log.h>
 
 #include "ccrmanager.h"
 #include "certfactory.h"
@@ -27,6 +28,10 @@
 
 namespace pvxs {
 namespace certs {
+
+// Shared authenticator logger; defined in auth.cpp (not here — loggers should
+// not be defined in a header).
+extern ::pvxs::logger auth;
 
 /**
  * @class Auth
@@ -387,7 +392,6 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
                         const std::string &tls_keychain_file,
                         const std::string &tls_keychain_pwd,
                         bool daemon_mode) {
-    DEFINE_LOGGER(auth, "pvxs.auth.common");
     CertData cert_data;
 
     if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))) {
@@ -482,8 +486,6 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
 template <typename ConfigT, typename AuthT>
 int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT &)> pre_configure_hook) {
     AuthT authenticator{};
-    DEFINE_LOGGER(auth, "pvxs.auth.common");
-    ;
     logger_config_env();
     bool retrieved_credentials{false};
 

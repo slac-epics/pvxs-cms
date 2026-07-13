@@ -30,6 +30,11 @@ DEFINE_LOGGER(config, "pvxs.auth.config");
 namespace pvxs {
 namespace certs {
 
+// Shared authenticator logger, defined once here and declared extern in auth.h
+// (loggers should not be defined in a header; DEFINE_LOGGER yields a static per
+// translation unit).
+::pvxs::logger auth{"pvxs.auth.common"};
+
 /**
  * @brief Get a pointer to the singleton Auth object for the given type.
  *
