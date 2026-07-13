@@ -227,7 +227,7 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
             auto file_factory = IdFileFactory::create(tls_keychain_file, tls_keychain_pwd, nullptr, nullptr, nullptr, p12_pem_string);
 
             // Verify the delivered authority is the one the operator specified, before writing.
-            verifyDeliveredIssuerId(file_factory->getCertData(nullptr).cert_auth_chain, config.issuer_id);
+            verifyDeliveredIssuerId(file_factory->getCertData(nullptr), config.issuer_id);
 
             // Attempt to write the certificate and private key to a cert file protected by the configured password
             file_factory->writeIdentityFile();
