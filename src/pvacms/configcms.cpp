@@ -241,6 +241,11 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         default_ioc_cert_validity = pickone.val;
     }
 
+    // EPICS_PVACMS_CERT_AUTH_VALIDITY
+    if (pickone({"EPICS_PVACMS_CERT_AUTH_VALIDITY"})) {
+        cert_auth_validity = pickone.val;
+    }
+
     // EPICS_PVACMS_CERTS_REQUIRE_SUBSCRIPTION
     if (pickone({"EPICS_PVACMS_CERTS_REQUIRE_SUBSCRIPTION"})) {
         cert_status_subscription = static_cast<CertStatusSubscription>(parseTo<int8_t>(pickone.val));
@@ -316,6 +321,7 @@ void ConfigCms::updateDefs(defs_t &defs) const {
         defs["EPICS_PVACMS_SERVER_CERT_VALIDITY"] = default_server_cert_validity;
         defs["EPICS_PVACMS_IOC_CERT_VALIDITY"] = default_ioc_cert_validity;
     }
+    defs["EPICS_PVACMS_CERT_AUTH_VALIDITY"] = cert_auth_validity;
     defs["EPICS_PVACMS_CERTS_REQUIRE_SUBSCRIPTION"] = (cert_status_subscription == DEFAULT) ? "DEFAULT" : (cert_status_subscription == YES) ? "YES" : "NO";
     defs["EPICS_PVACMS_CLUSTER_PV_PREFIX"] = cluster_pv_prefix;
     defs["EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT"] = std::to_string(cluster_discovery_timeout_secs);

@@ -2100,9 +2100,9 @@ CertData createCertAuthCertificate(const ConfigCms &config,
                                    const std::shared_ptr<KeyPair> &key_pair) {
     log_debug_printf(pvacms, "Creating certificate authority into: %s with %s\n", config.cert_auth_keychain_file.c_str(), (config.cert_auth_keychain_pwd.empty()?"no password":"pwd: *****"));
 
-    // Set validity to 4 yrs
+    // CA validity from config (EPICS_PVACMS_CERT_AUTH_VALIDITY / --cert-auth-validity; default 4y)
     const time_t not_before(timeNow());
-    const time_t not_after(not_before + (4 * 365 + 1) * 24 * 60 * 60);  // 4yrs
+    const time_t not_after(not_before + CertDate::parseDuration(config.cert_auth_validity));
 
     // Generate a new serial number
     const auto serial = generateSerial();
@@ -2908,6 +2908,10 @@ int readParameters(int argc,
                    cert_validity,
                    "Specify PVACMS default duration for all certificates");
 
+    app.add_option("--cert-auth-validity",
+                   config.cert_auth_validity,
+                   "Specify the validity period of the auto-provisioned certificate authority (CA) certificate.  Default 4y");
+
     app.add_flag("--disallow-custom-durations-client",
                  disallow_custom_durations_client,
                  "Disallow custom durations for client certificates");
@@ -3018,6 +3022,7 @@ int readParameters(int argc,
             << "        --cert_validity-server <duration>    Default duration for server certificates\n"
             << "        --cert_validity-ioc <duration>       Default duration for IOC certificates\n"
             << "        --cert_validity <duration>           Default duration for all certificates\n"
+            << "        --cert-auth-validity <duration>      Validity period of the auto-provisioned CA certificate (default 4y)\n"
             << "        --disallow-custom-durations-client   Disallow custom durations for client certificates\n"
             << "        --disallow-custom-durations-server   Disallow custom durations for server certificates\n"
             << "        --disallow-custom-durations-ioc      Disallow custom durations for IOC certificates\n"
