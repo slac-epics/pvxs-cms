@@ -1022,6 +1022,19 @@ int64_t onCreateCertificate(ConfigCms &config,
                 log_info_printf(pvacms, "Overriding requested expiration with default: %s\n", config.default_client_cert_validity.c_str());
         }
 
+        // Clamp the certificate's validity to the remaining lifetime of the issuing certificate
+        // authority: a certificate must never outlive its issuer (see #34). This covers both an
+        // explicit request and a configured default, and the case where cert_auth.p12 was supplied
+        // externally (site PKI) with an arbitrary remaining lifetime.
+        const time_t cert_auth_not_after = getNotAfterTimeFromCert(cert_auth_cert.get());
+        if (expiration > cert_auth_not_after) {
+            log_info_printf(pvacms, "Clamping certificate expiration to issuer CA not-after (%s)\n",
+                            CertDate(cert_auth_not_after).s.c_str());
+            expiration = std::min(expiration, cert_auth_not_after);
+            if (renew_by > 0)
+                renew_by = std::min(renew_by, expiration);
+        }
+
         auto has_renew_by = renew_by > 0 && renew_by != expiration;
 
         // If there's no status, then we can't support renew_by dates
