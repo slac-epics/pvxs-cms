@@ -49,7 +49,7 @@ std::string actionToString(const CertAction &action) {
     return action == STATUS ? "Get Status" : action == APPROVE ? "Approve" : action == REVOKE ? "Revoke" : "Deny";
 }
 int readParameters(const int argc, char *argv[], const char *program_name, client::Config &conf, bool &approve, bool &revoke, bool &deny, bool &debug,
-                   bool &password_flag, bool &verbose, std::string &cert_file, std::string &issuer_serial_string) {
+                   bool &password_flag, bool &verbose, std::string &cert_file, std::string &issuer_serial_string, std::string &cert_pv_prefix) {
     bool show_version{false}, help{false};
 
     // Argument configuration
@@ -70,6 +70,9 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     double timeout = conf.getRequestTimeout();
     app.add_option("-w,--timeout", timeout);
     app.add_option("-f,--file", cert_file, "The keychain file to read if no Certificate ID specified");
+    app.add_option("--cert-pv-prefix", cert_pv_prefix,
+                   "Status PV name prefix for the <issuer>:<serial> form (default CERT:STATUS:). "
+                   "Ignored when -f/--file is given (the full status PV is read from the certificate).");
 
     // Action flags in a mutually exclusive group
     app.add_flag("-A,--approve", approve);
@@ -112,6 +115,7 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "\n"
                   << "options:\n"
                   << "  (-w | --timeout) <timout_secs>             Operation timeout in seconds.  Default 5.0s\n"
+                  << "  (--cert-pv-prefix) <prefix>                Status PV prefix for the <cert_id> form.  Default CERT:STATUS:\n"
                   << "  (-d | --debug)                             Debug mode: Shorthand for $PVXS_LOG=\"pvxs.*=DEBUG\"\n"
                   << "  (-v | --verbose)                           Verbose mode\n"
                   << std::endl;
@@ -140,9 +144,10 @@ int main(int argc, char *argv[]) {
         CertAction action{STATUS};
         bool approve{false}, revoke{false}, deny{false}, debug{false}, password_flag{false}, verbose{false};
         std::string cert_file, password, issuer_serial_string;
+        std::string cert_pv_prefix{"CERT:STATUS:"};
 
         auto parse_result =
-            readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, cert_file, issuer_serial_string);
+            readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, cert_file, issuer_serial_string, cert_pv_prefix);
         if (parse_result) exit(parse_result);
 
         if (password_flag && cert_file.empty()) {
@@ -214,7 +219,7 @@ int main(int argc, char *argv[]) {
                 return 0;
             }
         } else {
-            cert_id = "CERT:STATUS:" + issuer_serial_string;
+            cert_id = cert_pv_prefix + issuer_serial_string;
         }
 
         try {

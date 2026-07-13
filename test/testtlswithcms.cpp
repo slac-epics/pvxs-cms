@@ -33,6 +33,7 @@
 #include "openssl.h"
 #include "opensslgbl.h"
 #include "serverev.h"
+#include "testcertprefix.h"
 #include "utilpvt.h"
 #include "wildcardpv.h"
 
@@ -91,7 +92,7 @@ struct Tester {
           source(server::WildcardSource::build())
     {
         // Set up the Mock PVACMS server certificate (does not contain custom status extension)
-        source->add(getCertStatusPv("CERT", issuer_id), status_pv);
+        source->add(getCertStatusPv(TEST_CERT_PV_PREFIX, issuer_id), status_pv);
         // Set up a mock source that counts actual certificate-status subscriptions
         const auto pvacms_mock = std::make_shared<server::MockSource>(source, [this](std::string const& pv_name) {
             auto it = cert_status_request_counters.find(pv_name);
