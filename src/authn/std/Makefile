@@ -15,6 +15,7 @@ authnstd_SRCS += p12filefactory.cpp
 authnstd_SRCS += auth.cpp
 authnstd_SRCS += configauthn.cpp
 authnstd_SRCS += ccrmanager.cpp
+authnstd_SRCS += cmsversion.cpp
 
 pvacms_SRCS += authnstd.cpp
 pvacms_SRCS += configstd.cpp

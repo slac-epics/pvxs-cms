@@ -15,6 +15,7 @@ authnkrb_SRCS += p12filefactory.cpp
 authnkrb_SRCS += auth.cpp
 authnkrb_SRCS += configauthn.cpp
 authnkrb_SRCS += ccrmanager.cpp
+authnkrb_SRCS += cmsversion.cpp
 
 pvacms_SRCS += authnkrb.cpp
 pvacms_SRCS += configkrb.cpp

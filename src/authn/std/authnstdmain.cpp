@@ -8,6 +8,7 @@
 
 #include "authnstd.h"
 #include "authregistry.h"
+#include "cmsversion.h"
 #include "configstd.h"
 #include "openssl.h"
 #include "p12filefactory.h"
@@ -135,7 +136,7 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
             std::cerr << "Error: -V option cannot be used with any other options.\n";
             return 10;
         }
-        std::cout << version_information;
+        std::cout << ::cms::version_information;
         exit(0);
     }
 

@@ -61,6 +61,7 @@
 #include "certfilefactory.h"
 #include "certstatus.h"
 #include "certstatusfactory.h"
+#include "cmsversion.h"
 #include "clusterctrl.h"
 #include "clusterdiscovery.h"
 #include "clustersync.h"
@@ -3147,7 +3148,7 @@ int readParameters(int argc,
             std::cerr << "Error: -V option cannot be used with any other options.\n";
             exit(10);
         }
-        std::cout << version_information;
+        std::cout << ::cms::version_information;
         exit(0);
     }
 
