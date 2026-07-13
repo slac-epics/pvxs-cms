@@ -539,6 +539,35 @@ struct CertStatus {
     static std::string getSkId(const std::string& pub_key) { return getFullSkId(pub_key).substr(0, 8); }
 
     /**
+     * @brief Get the full hex SKID (subject key identifier) computed from a certificate's key
+     *
+     * Computes the identifier from the certificate's public key, the way RFC 5280 defines it,
+     * rather than reading the subject key identifier extension. The extension is written by
+     * whoever made the certificate and can hold any value they like, so it must never be used
+     * to decide whether a certificate is the one expected. The key cannot be chosen to hash to
+     * a wanted value without solving for it.
+     *
+     * @param cert_ptr the certificate whose public key identifies it
+     * @return the full hex SKID (subject key identifier)
+     */
+    static std::string getFullSkId(const X509* cert_ptr) {
+        if (!cert_ptr) throw std::runtime_error("No certificate to identify");
+
+        unsigned char hash[EVP_MAX_MD_SIZE] = {0};
+        unsigned int hash_len = 0;
+        if (!X509_pubkey_digest(cert_ptr, EVP_sha1(), hash, &hash_len)) {
+            throw std::runtime_error("Failed to compute the subject key identifier from the public key");
+        }
+
+        std::ostringstream oss;
+        oss << std::hex << std::setfill('0');
+        for (unsigned int i = 0; i < hash_len; i++) {
+            oss << std::setw(2) << static_cast<unsigned int>(hash[i]);
+        }
+        return oss.str();
+    }
+
+    /**
      * @brief Get the full hex SKID (subject key identifier)
      *
      * Computes the SKID from the public key

@@ -419,6 +419,147 @@ template <typename ConfigT, typename AuthT>
 int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT &)> pre_configure_hook = nullptr);
 
 /**
+ * @brief Issuer ID (SKID of the issuing certificate authority) carried by parsed cert data.
+ *
+ * Handles both keychain shapes:
+ *  - an identity keychain: the leaf certificate plus its CA chain — the issuer is in the chain;
+ *  - a trust-anchor-only keychain: the CA certificate is the sole/main certificate with no chain
+ *    (as returned by `authnstd --trust-anchor`) — the issuer is that certificate itself.
+ *
+ * @throws std::runtime_error if no certificate authority can be identified.
+ */
+inline std::string certAuthorityIssuerId(const CertData &cert_data) {
+    if (cert_data.cert_auth_chain && sk_X509_num(cert_data.cert_auth_chain.get()) > 0) {
+        return CertStatus::getIssuerId(cert_data.cert_auth_chain);
+    }
+    if (cert_data.cert) {
+        // Trust-anchor keychain: the authority is the certificate itself.
+        return CertStatus::getSkId(cert_data.cert);
+    }
+    throw std::runtime_error("No certificate authority found to identify the issuer.");
+}
+
+/**
+ * @brief The identifier of the certificate authority in cert data, computed from its public key.
+ *
+ * Deciding whether an authority is the expected one must never rest on the subject key identifier
+ * extension: that is written by whoever produced the certificate, so an attacker substituting its
+ * own authority simply writes the expected value into it and passes. Computing the identifier from
+ * the public key removes that, because the attacker would have to find a key that hashes to the
+ * expected value rather than just assert it.
+ *
+ * Returns the whole identifier, not a prefix. How much of it is compared is decided by the caller,
+ * from how much they committed to in advance.
+ *
+ * @throws std::runtime_error if no certificate authority can be identified.
+ */
+inline std::string certAuthorityFullIssuerId(const CertData &cert_data) {
+    if (cert_data.cert_auth_chain && sk_X509_num(cert_data.cert_auth_chain.get()) > 0) {
+        return CertStatus::getFullSkId(CertStatus::getIssuerCa(cert_data.cert_auth_chain));
+    }
+    if (cert_data.cert) {
+        // Trust-anchor keychain: the authority is the certificate itself.
+        return CertStatus::getFullSkId(cert_data.cert.get());
+    }
+    throw std::runtime_error("No certificate authority found to identify the issuer.");
+}
+
+/**
+ * @brief Whether an authority's identifier is the one committed to.
+ *
+ * The comparison runs over as much of the identifier as was committed to in advance. Someone who
+ * pinned a certificate authority in a keychain has the whole thing and gets the whole thing
+ * compared. Someone who typed the published short form gets that many digits compared, which is
+ * all the form they used can carry; supplying more of it makes the check stronger.
+ *
+ * Compared without regard to case, since the identifier is written as hexadecimal either way.
+ */
+inline bool issuerIdIsExpected(const std::string &expected, const std::string &actual_full) {
+    if (expected.empty() || expected.size() > actual_full.size()) return false;
+    for (size_t i = 0; i < expected.size(); i++) {
+        if (std::tolower(static_cast<unsigned char>(expected[i]))
+            != std::tolower(static_cast<unsigned char>(actual_full[i]))) return false;
+    }
+    return true;
+}
+
+/**
+ * @brief Read the issuer ID of the certificate authority already trusted in a keychain file.
+ *
+ * If @p keychain_file exists and contains a certificate authority (a trust anchor downloaded by a
+ * previous `--trust-anchor` run, or an existing identity keychain's CA chain), returns the issuer
+ * ID pinned by that file. Returns an empty string if the file does not exist or carries no
+ * authority. Never throws for a missing/unreadable file.
+ *
+ * @param keychain_file the keychain (p12) file to inspect
+ * @param keychain_pwd the keychain password (may be empty)
+ * @return the pinned issuer ID, or empty string if none
+ */
+inline std::string getTrustedIssuerId(const std::string &keychain_file, const std::string &keychain_pwd) {
+    try {
+        return certAuthorityFullIssuerId(IdFileFactory::create(keychain_file, keychain_pwd)->getCertDataFromFile());
+    } catch (...) {
+        // No existing keychain / no trusted authority — nothing pinned.
+        return {};
+    }
+}
+
+/**
+ * @brief Resolve the issuer ID that the caller has committed to trust, for this request.
+ *
+ * Trust must be asserted out-of-band before a certificate is accepted, otherwise the initial
+ * exchange silently trusts whatever certificate authority answers — a man-in-the-middle could
+ * substitute its own authority and compromise all later operations (issue slac-epics/pvxs-cms#18).
+ *
+ * The expected issuer is resolved in priority order:
+ *  1. If the keychain file already pins a certificate authority (its issuer ID is available),
+ *     that pinned issuer is used — and, if `--issuer` was also given, the two must agree.
+ *  2. Otherwise the explicitly-supplied `config.issuer_id` (`--issuer` / `EPICS_PVA_AUTH_ISSUER`).
+ *
+ * @throws std::runtime_error if neither a pinned trust anchor nor an explicit issuer is available.
+ * @return the issuer ID to require of the delivered certificate authority
+ */
+inline std::string resolveExpectedIssuerId(const std::string &configured_issuer_id,
+                                           const std::string &keychain_file,
+                                           const std::string &keychain_pwd) {
+    const std::string pinned_issuer_id = getTrustedIssuerId(keychain_file, keychain_pwd);
+
+    if (!pinned_issuer_id.empty()) {
+        if (!configured_issuer_id.empty() && !issuerIdIsExpected(configured_issuer_id, pinned_issuer_id)) {
+            throw std::runtime_error(SB() << "Specified issuer '" << configured_issuer_id
+                                          << "' does not match the certificate authority already trusted in the keychain ('"
+                                          << pinned_issuer_id << "'). Refusing to change the trusted authority.");
+        }
+        return pinned_issuer_id;
+    }
+
+    if (configured_issuer_id.empty()) {
+        throw std::runtime_error(
+            "No trusted issuer available: specify the expected issuer with --issuer (or EPICS_PVA_AUTH_ISSUER), "
+            "or pre-provision a keychain containing the certificate authority to trust (authnstd --trust-anchor --issuer <id>). "
+            "This prevents silently trusting an authority delivered over an untrusted channel.");
+    }
+    return configured_issuer_id;
+}
+
+/**
+ * @brief Verify that the certificate authority in delivered cert data matches the expected issuer.
+ *
+ * Works for both an identity keychain (CA in the chain) and a trust-anchor keychain (CA is the
+ * certificate itself).
+ *
+ * @throws std::runtime_error if the delivered authority's issuer ID differs from @p expected_issuer_id.
+ */
+inline void verifyDeliveredIssuerId(const CertData &delivered, const std::string &expected_issuer_id) {
+    const std::string delivered_issuer_id = certAuthorityFullIssuerId(delivered);
+    if (!issuerIdIsExpected(expected_issuer_id, delivered_issuer_id)) {
+        throw std::runtime_error(SB() << "Delivered certificate authority issuer '" << delivered_issuer_id
+                                      << "' does not match the expected issuer '" << expected_issuer_id
+                                      << "'. Rejecting — the authority may have been substituted in transit.");
+    }
+}
+
+/**
  * @brief Get a certificate for the given authenticator
  *
  * This function gets a certificate for the given authenticator.
@@ -445,6 +586,11 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
     if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))) {
         // If daemon mode, then add base uri to credentials
         if (daemon_mode) credentials->config_uri_base = config.getCertPvPrefix();
+
+        // Resolve the issuer we are required to trust before accepting any certificate authority
+        // over the (initially untrusted) request channel. From a pre-pinned keychain if present,
+        // otherwise from --issuer / EPICS_PVA_AUTH_ISSUER; error if neither (issue #18).
+        const std::string expected_issuer_id = resolveExpectedIssuerId(config.issuer_id, tls_keychain_file, tls_keychain_pwd);
 
         std::shared_ptr<KeyPair> key_pair;
         log_debug_printf(auth, "Credentials retrieved for: %s authenticator\n", authenticator.type_.c_str());
@@ -496,10 +642,21 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
             auto file_factory =
                 IdFileFactory::create(tls_keychain_file, tls_keychain_pwd, key_pair, nullptr, nullptr, p12_pem_string);
             file_factory->writeIdentityFile();
-            std::cout << "Keychain file created   : " << tls_keychain_file << std::endl;
 
             // Read the certificate and private key back from the keychain file for info and verification
             cert_data = IdFileFactory::create(tls_keychain_file, tls_keychain_pwd)->getCertDataFromFile();
+
+            // Verify the delivered certificate authority matches the issuer we committed to trust.
+            // On mismatch, remove the just-written keychain so a substituted authority is never
+            // left trusted on disk, then fail (issue #18).
+            try {
+                verifyDeliveredIssuerId(cert_data, expected_issuer_id);
+            } catch (...) {
+                std::remove(tls_keychain_file.c_str());
+                throw;
+            }
+            std::cout << "Keychain file created   : " << tls_keychain_file << std::endl;
+
             const auto serial_number = CertStatusFactory::getSerialNumber(cert_data.cert);
             const auto issuer_id = CertStatus::getIssuerId(cert_data.cert_auth_chain);
 

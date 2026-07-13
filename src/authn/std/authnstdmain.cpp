@@ -205,6 +205,15 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
         const std::string tls_keychain_file = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_file : config.tls_keychain_file;
         const std::string tls_keychain_pwd = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_pwd : config.getKeychainPassword();
 
+        // Downloading a trust anchor bootstraps trust, so the operator must identify the expected
+        // issuer out-of-band. Require --issuer (or EPICS_PVA_AUTH_ISSUER) and verify the delivered
+        // authority matches it before storing, so a substituted authority is never trusted (#18).
+        if (config.issuer_id.empty()) {
+            std::cerr << "Refusing to download a trust anchor without --issuer (or EPICS_PVA_AUTH_ISSUER): "
+                         "the expected certificate authority must be identified to avoid trusting a substituted authority." << std::endl;
+            return 14;
+        }
+
         // Create a keychain file from a trust anchor
         AuthNStd authenticator{};
         auto credentials = authenticator.getCredentials(config, !IS_FOR_A_SERVER_(cert_usage));
@@ -215,8 +224,12 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
 
         // If the certificate was created successfully, write it to the keychain file
         if (!p12_pem_string.empty()) {
-            // Attempt to write the certificate and private key to a cert file protected by the configured password
             auto file_factory = IdFileFactory::create(tls_keychain_file, tls_keychain_pwd, nullptr, nullptr, nullptr, p12_pem_string);
+
+            // Verify the delivered authority is the one the operator specified, before writing.
+            verifyDeliveredIssuerId(file_factory->getCertData(nullptr), config.issuer_id);
+
+            // Attempt to write the certificate and private key to a cert file protected by the configured password
             file_factory->writeIdentityFile();
             std::cout << "Trust Anchor retrieved"<< std::endl;
             return -1;
