@@ -1348,9 +1348,9 @@ void testRenewByPosixRoundTrip() {
 
     auto proto = TypeDef(TypeCode::Struct, {Member(TypeCode::UInt64, "renew_by")}).create();
 
-    const time_t renew_by = time(nullptr) + 365 * 24 * 3600;  // one year out
-    proto["renew_by"] = static_cast<uint64_t>(renew_by);      // encode (as pvacms does)
-    const auto decoded = proto["renew_by"].as<time_t>();      // decode (as ccrmanager does)
+    const time_t renew_by = time(nullptr) + 365 * 24 * 3600;         // one year out
+    proto["renew_by"] = static_cast<uint64_t>(renew_by);             // encode (as pvacms does)
+    const auto decoded = static_cast<time_t>(proto["renew_by"].as<uint64_t>());  // decode (as ccrmanager does)
 
     testEq(decoded, renew_by);
     testOk(decoded > time(nullptr), "decoded renew_by is in the future, not ~1986");

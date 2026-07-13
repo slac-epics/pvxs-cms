@@ -36,17 +36,19 @@ namespace certs {
  * All "now" in pvxs-cms goes through this single wrapper so the clock can be
  * overridden globally in tests via the epicsTimeGetCurrent() time provider.
  * epicsTimeGetCurrent() yields EPICS-epoch seconds (since 1990); adding
- * POSIX_TIME_AT_EPICS_EPOCH converts to POSIX seconds (since 1970). Falls back
- * to std::time() only if the EPICS time source is unavailable.
+ * POSIX_TIME_AT_EPICS_EPOCH converts to POSIX seconds (since 1970). Throws if
+ * the EPICS time source is unavailable, rather than silently substituting a
+ * different clock.
  *
  * @return POSIX seconds since 1970-01-01 UTC.
+ * @throws std::runtime_error if epicsTimeGetCurrent() fails.
  */
 inline time_t timeNow() {
     epicsTimeStamp ts;
-    if (epicsTimeGetCurrent(&ts) == epicsTimeOK) {
-        return static_cast<time_t>(ts.secPastEpoch) + POSIX_TIME_AT_EPICS_EPOCH;
+    if (epicsTimeGetCurrent(&ts) != epicsTimeOK) {
+        throw std::runtime_error("certs::timeNow(): epicsTimeGetCurrent() failed");
     }
-    return std::time(nullptr);
+    return static_cast<time_t>(ts.secPastEpoch) + POSIX_TIME_AT_EPICS_EPOCH;
 }
 
 ///////////// OCSP RESPONSE ERRORS
