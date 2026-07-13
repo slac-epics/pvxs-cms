@@ -371,6 +371,83 @@ template <typename ConfigT, typename AuthT>
 int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT &)> pre_configure_hook = nullptr);
 
 /**
+ * @brief Read the issuer ID of the certificate authority already trusted in a keychain file.
+ *
+ * If @p keychain_file exists and contains a certificate-authority chain (e.g. a trust anchor
+ * downloaded by a previous `--trust-anchor` run, or an existing identity keychain), returns the
+ * issuer ID (SKID of the issuing CA) pinned by that file. Returns an empty string if the file
+ * does not exist or carries no CA chain. Never throws for a missing/unreadable file.
+ *
+ * @param keychain_file the keychain (p12) file to inspect
+ * @param keychain_pwd the keychain password (may be empty)
+ * @return the pinned issuer ID, or empty string if none
+ */
+inline std::string getTrustedIssuerId(const std::string &keychain_file, const std::string &keychain_pwd) {
+    try {
+        auto cert_data = IdFileFactory::create(keychain_file, keychain_pwd)->getCertDataFromFile();
+        if (cert_data.cert_auth_chain && sk_X509_num(cert_data.cert_auth_chain.get()) > 0) {
+            return CertStatus::getIssuerId(cert_data.cert_auth_chain);
+        }
+    } catch (...) {
+        // No existing keychain / no CA chain — nothing pinned.
+    }
+    return {};
+}
+
+/**
+ * @brief Resolve the issuer ID that the caller has committed to trust, for this request.
+ *
+ * Trust must be asserted out-of-band before a certificate is accepted, otherwise the initial
+ * exchange silently trusts whatever certificate authority answers — a man-in-the-middle could
+ * substitute its own authority and compromise all later operations (issue slac-epics/pvxs-cms#18).
+ *
+ * The expected issuer is resolved in priority order:
+ *  1. If the keychain file already pins a certificate authority (its issuer ID is available),
+ *     that pinned issuer is used — and, if `--issuer` was also given, the two must agree.
+ *  2. Otherwise the explicitly-supplied `config.issuer_id` (`--issuer` / `EPICS_PVA_AUTH_ISSUER`).
+ *
+ * @throws std::runtime_error if neither a pinned trust anchor nor an explicit issuer is available.
+ * @return the issuer ID to require of the delivered certificate authority
+ */
+inline std::string resolveExpectedIssuerId(const std::string &configured_issuer_id,
+                                           const std::string &keychain_file,
+                                           const std::string &keychain_pwd) {
+    const std::string pinned_issuer_id = getTrustedIssuerId(keychain_file, keychain_pwd);
+
+    if (!pinned_issuer_id.empty()) {
+        if (!configured_issuer_id.empty() && configured_issuer_id != pinned_issuer_id) {
+            throw std::runtime_error(SB() << "Specified issuer '" << configured_issuer_id
+                                          << "' does not match the certificate authority already trusted in the keychain ('"
+                                          << pinned_issuer_id << "'). Refusing to change the trusted authority.");
+        }
+        return pinned_issuer_id;
+    }
+
+    if (configured_issuer_id.empty()) {
+        throw std::runtime_error(
+            "No trusted issuer available: specify the expected issuer with --issuer (or EPICS_PVA_AUTH_ISSUER), "
+            "or pre-provision a keychain containing the certificate authority to trust (authnstd --trust-anchor --issuer <id>). "
+            "This prevents silently trusting an authority delivered over an untrusted channel.");
+    }
+    return configured_issuer_id;
+}
+
+/**
+ * @brief Verify that a delivered certificate-authority chain matches the expected issuer.
+ *
+ * @throws std::runtime_error if the delivered chain's issuer ID differs from @p expected_issuer_id.
+ */
+inline void verifyDeliveredIssuerId(const ossl_shared_ptr<STACK_OF(X509)> &delivered_chain,
+                                    const std::string &expected_issuer_id) {
+    const std::string delivered_issuer_id = CertStatus::getIssuerId(delivered_chain);
+    if (delivered_issuer_id != expected_issuer_id) {
+        throw std::runtime_error(SB() << "Delivered certificate authority issuer '" << delivered_issuer_id
+                                      << "' does not match the expected issuer '" << expected_issuer_id
+                                      << "'. Rejecting — the authority may have been substituted in transit.");
+    }
+}
+
+/**
  * @brief Get a certificate for the given authenticator
  *
  * This function gets a certificate for the given authenticator.
@@ -397,6 +474,11 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
     if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))) {
         // If daemon mode, then add base uri to credentials
         if (daemon_mode) credentials->config_uri_base = config.getCertPvPrefix();
+
+        // Resolve the issuer we are required to trust before accepting any certificate authority
+        // over the (initially untrusted) request channel. From a pre-pinned keychain if present,
+        // otherwise from --issuer / EPICS_PVA_AUTH_ISSUER; error if neither (issue #18).
+        const std::string expected_issuer_id = resolveExpectedIssuerId(config.issuer_id, tls_keychain_file, tls_keychain_pwd);
 
         std::shared_ptr<KeyPair> key_pair;
         log_debug_printf(auth, "Credentials retrieved for: %s authenticator\n", authenticator.type_.c_str());
@@ -432,10 +514,15 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
         if (!p12_pem_string.empty()) {
             log_debug_printf(auth, "Cert generated by PVACMS and successfully received: %s\n", p12_pem_string.c_str());
 
-            // Attempt to write the certificate and private key to a cert file protected by the configured password
-            auto file_factory =
+            // Verify the delivered certificate authority matches the issuer we committed to trust,
+            // BEFORE writing anything to disk. On mismatch this throws and no keychain is written,
+            // so a substituted authority is never persisted or trusted (issue #18).
+            auto received_factory =
                 IdFileFactory::create(tls_keychain_file, tls_keychain_pwd, key_pair, nullptr, nullptr, p12_pem_string);
-            file_factory->writeIdentityFile();
+            verifyDeliveredIssuerId(received_factory->getCertData(key_pair).cert_auth_chain, expected_issuer_id);
+
+            // Attempt to write the certificate and private key to a cert file protected by the configured password
+            received_factory->writeIdentityFile();
             std::cout << "Keychain file created   : " << tls_keychain_file << std::endl;
 
             // Read the certificate and private key back from the keychain file for info and verification
