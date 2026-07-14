@@ -2232,7 +2232,9 @@ void ensureValidityCompatible(const CertFactory &cert_factory) {
     }
     if (cert_factory.not_after_ > issuer_not_after) {
         throw std::runtime_error(SB() << "The requested certificate validity exceeds the validity of the issuing Certificate Authority: requested not-after "
-                                      << CertDate(cert_factory.not_after_).s << " is later than the issuer's not-after " << CertDate(issuer_not_after).s);
+                                      << CertDate(cert_factory.not_after_).s << " is later than the issuer's not-after " << CertDate(issuer_not_after).s
+                                      << ".  Extend the authority with --cert-auth-validity, or shorten the requested certificate validity with "
+                                         "--cert_validity (or --cert_validity-client / --cert_validity-server / --cert_validity-ioc)");
     }
 }
 
