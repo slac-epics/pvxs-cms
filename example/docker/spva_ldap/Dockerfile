@@ -40,14 +40,28 @@ RUN rm -rf /etc/ldap/slapd.d && \
 COPY epics-schema.ldif /tmp/epics-schema.ldif
 COPY epics-acl.ldif    /tmp/epics-acl.ldif
 
-# Start slapd in the background, wait for it to be ready, apply schema and ACL changes, then kill it.
-RUN /usr/sbin/slapd -h "ldap:/// ldapi:///" -u openldap & \
-    sleep 5 && \
-    ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/epics-schema.ldif && \
-    ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/epics-acl.ldif && \
-    pkill slapd && \
-    sleep 2 && \
-    rm -f /tmp/epics-schema.ldif /tmp/epics-acl.ldif
+# Start slapd in the background, poll until ldapi:/// responds, apply schema
+# and ACL changes, then shut it down cleanly. Polling (vs blind sleep) avoids
+# a startup race that fails under BuildKit on emulated aarch64.
+RUN set -e; \
+    echo "--- slapd config dir state ---"; \
+    ls -la /etc/ldap/slapd.d/ 2>&1 || echo "(slapd.d missing)"; \
+    mkdir -p /run/slapd && chown openldap:openldap /run/slapd; \
+    echo "--- starting slapd in foreground-debug mode briefly ---"; \
+    /usr/sbin/slapd -h "ldap:/// ldapi:///" -u openldap -d 256 >/tmp/slapd.log 2>&1 & \
+    SLAPD_PID=$!; \
+    for i in $(seq 1 60); do \
+        kill -0 $SLAPD_PID 2>/dev/null || { echo "--- slapd died, log: ---"; cat /tmp/slapd.log; exit 1; }; \
+        ldapsearch -Y EXTERNAL -H ldapi:/// -b cn=config -s base 1.1 >/dev/null 2>&1 && break; \
+        sleep 0.5; \
+    done; \
+    ldapsearch -Y EXTERNAL -H ldapi:/// -b cn=config -s base 1.1 >/dev/null || \
+        { echo "--- slapd unreachable after 30s, log: ---"; cat /tmp/slapd.log; kill $SLAPD_PID 2>/dev/null; exit 1; }; \
+    ldapadd    -Y EXTERNAL -H ldapi:/// -f /tmp/epics-schema.ldif; \
+    ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/epics-acl.ldif; \
+    kill $SLAPD_PID; \
+    wait $SLAPD_PID 2>/dev/null || true; \
+    rm -f /tmp/epics-schema.ldif /tmp/epics-acl.ldif /tmp/slapd.log
 
 # --- Load LDAP Data ---
 
