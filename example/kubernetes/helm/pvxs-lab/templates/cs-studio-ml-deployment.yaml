@@ -35,6 +35,7 @@ spec:
               subPath: krb5.conf
               readOnly: true
           env:
+          {{- include "pvxs-lab.issuerEnv" (dict "ctx" . "key" "ML_ISSUER") | nindent 12 }}
             - name: EPICS_AUTH_KRB_REALM
               value: "EPICS.ORG"
             - name: EPICS_PVA_AUTO_ADDR_LIST

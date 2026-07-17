@@ -33,6 +33,7 @@ spec:
               protocol: TCP
             {{- end }}
           env:
+          {{- include "pvxs-lab.issuerEnv" (dict "ctx" . "key" "LAB_ISSUER") | nindent 12 }}
             - name: EPICS_PVA_AUTO_ADDR_LIST
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST

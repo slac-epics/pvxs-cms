@@ -71,6 +71,7 @@ spec:
               containerPort: 5276
               protocol: TCP
           env:
+          {{- include "pvxs-lab.issuerEnv" (dict "ctx" . "key" "LAB_ISSUER") | nindent 12 }}
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: "/home/gateway/.config/pva/1.5/gateway.p12"
             - name: EPICS_PVAS_TLS_KEYCHAIN

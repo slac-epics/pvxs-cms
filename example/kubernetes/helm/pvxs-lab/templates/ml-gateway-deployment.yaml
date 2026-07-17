@@ -56,6 +56,7 @@ spec:
               containerPort: {{ .Values.ports.pvaUdp }}
               protocol: UDP
           env:
+          {{- include "pvxs-lab.issuerEnv" (dict "ctx" . "key" "ML_ISSUER") | nindent 12 }}
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: "/home/gateway/.config/pva/1.5/gateway.p12"
             - name: EPICS_PVAS_TLS_KEYCHAIN
