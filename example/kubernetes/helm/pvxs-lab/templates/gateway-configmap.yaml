@@ -11,5 +11,3 @@ data:
   {{ .Values.gateway.mlPvlist | nindent 4 }}
   internet.pvlist: |
   {{ .Values.gateway.internetPvlist | nindent 4 }}
-  cross-zone.pvlist: |
-  {{ .Values.gateway.crossZonePvlist | nindent 4 }}

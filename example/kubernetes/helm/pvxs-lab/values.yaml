@@ -116,19 +116,6 @@ mlGateway:
           "pvlist": "internet.pvlist"
         },
         {
-          "name": "cross-zone",
-          "clients": ["ml-local"],
-          "statusprefix": "GW:STS:",
-          "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.mlService" . }}",
-          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12",
-          "serverport": "5175",
-          "EPICS_PVAS_TLS_PORT": "5176",
-          "bcastport": "5176",
-          "access": "gateway.acf",
-          "pvlist": "cross-zone.pvlist"
-        },
-        {
           "name": "downstream_status",
           "clients": [],
           "interface": ["127.0.0.1"],
@@ -138,11 +125,15 @@ mlGateway:
       ]
     }
 
+  # ML gateway forwards ML PVs, and - keyed by the ML department issuer id - the ML
+  # cert CREATE/STATUS PVs to the ML PVACMS. Naming the issuer (rather than a wildcard)
+  # means only the requests this gateway can actually serve are claimed, so a client
+  # reaching both gateways from the Internet routes straight to the right one.
+  # __ML_ISSUER__ is substituted at pod start from the issuer-ids ConfigMap.
   internetPvlist: |
     ml:.* ALLOW
-
-  crossZonePvlist: |
-    CERT:CLUSTER(?::.*)? ALLOW CERT_CLUSTER
+    CERT:CREATE:__ML_ISSUER__(?::.*)? ALLOW CERT_CREATE
+    CERT:STATUS:__ML_ISSUER__(?::.*)? ALLOW CERT_STATUS
 
 testioc:
   replicas: 1
@@ -214,19 +205,6 @@ gateway:
           "pvlist": "internet.pvlist"
         },
         {
-          "name": "cross-zone",
-          "clients": ["local"],
-          "statusprefix": "GW:STS:",
-          "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.pvacmsService" . }}",
-          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway{{ if .Values.gateway.separate_server_keychain }}{{ "S" }}{{ end }}.p12",
-          "serverport": "5175",
-          "EPICS_PVAS_TLS_PORT": "5176",
-          "bcastport": "5176",
-          "access": "gateway.acf",
-          "pvlist": "cross-zone.pvlist"
-        },
-        {
           "name": "downstream_status",
           "clients": [],
           "interface": ["127.0.0.1"],
@@ -236,13 +214,16 @@ gateway:
       ]
     }
 
+  # Lab gateway forwards the lab IOC PVs, and - keyed by the Controls (Lab) department
+  # issuer id - the Lab cert CREATE/STATUS PVs to the Lab (idm) PVACMS. Naming the
+  # issuer avoids a wrong-gateway round-trip from the Internet (see mlGateway note).
+  # __LAB_ISSUER__ is substituted at pod start from the issuer-ids ConfigMap.
   internetPvlist: |
     test:.* ALLOW
     tst:.* ALLOW
     test:spec ALLOW SPECIAL
-    CERT:CLUSTER(?::.*)? DENY
-    CERT:CREATE(?::.*)? ALLOW CERT_CREATE
-    CERT:STATUS(?::.*)? ALLOW CERT_STATUS
+    CERT:CREATE:__LAB_ISSUER__(?::.*)? ALLOW CERT_CREATE
+    CERT:STATUS:__LAB_ISSUER__(?::.*)? ALLOW CERT_STATUS
     CERT:HEALTH(?::.*)? ALLOW
     CERT:METRICS(?::.*)? ALLOW
 
@@ -250,9 +231,6 @@ gateway:
     test:.* ALLOW
     tst:.* ALLOW
     test:spec ALLOW SPECIAL
-
-  crossZonePvlist: |
-    CERT:CLUSTER(?::.*)? ALLOW CERT_CLUSTER
 
   debug:
     enabled: false
