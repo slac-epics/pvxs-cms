@@ -77,6 +77,30 @@ spec:
             - name: PVXS_LOG
               value: {{ .Values.ml.debug.logLevel | quote }}
             {{- end }}
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/bash
+                  - -lc
+                  - |
+                    set -euo pipefail
+                    # Copy the ML PVACMS's generated admin keychain to the (inherited)
+                    # admin user so `su - admin` can approve ML-department certs locally.
+                    src=/home/idm/.config/pva/1.5/admin.p12
+                    dst=/home/admin/.config/pva/1.5/client.p12
+                    mkdir -p "$(dirname "$dst")"
+                    for i in {1..60}; do
+                      if [ -s "$src" ]; then
+                        cp -f "$src" "$dst"
+                        chown admin:admin "$dst" || true
+                        chmod 0600 "$dst" || true
+                        exit 0
+                      fi
+                      sleep 0.5
+                    done
+                    echo "admin.p12 not found after timeout" >&2
+                    exit 1
       volumes:
         - name: pva-config
           {{- if .Values.ml.persistence.enabled }}
