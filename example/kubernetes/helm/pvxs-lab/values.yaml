@@ -8,9 +8,6 @@ images:
   internet:
     name: "internet"
     tag: "latest"
-  it:
-    name: "idm"
-    tag: "latest"
   testioc:
     name: "testioc"
     tag: "latest"
@@ -58,16 +55,6 @@ idm:
 
 internet:
   replicas: 1
-  persistence:
-    enabled: true
-    size: 64Mi
-    storageClassName: ""
-
-it:
-  replicas: 1
-  debug:
-    enabled: false
-    logLevel: "pvxs.*=INFO"
   persistence:
     enabled: true
     size: 64Mi

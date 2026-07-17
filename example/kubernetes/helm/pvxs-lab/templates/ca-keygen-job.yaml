@@ -19,6 +19,11 @@ spec:
       serviceAccountName: {{ include "pvxs-lab.fullname" . }}-ca-keygen
       restartPolicy: OnFailure
       initContainers:
+        # Mint the federated hierarchy:
+        #   cert_auth.p12         facility Root, cert only (trust anchor for every pod)
+        #   lab_intermediate.p12  Controls (Lab) intermediate: cert + key + root chain
+        #   ml_intermediate.p12   ML intermediate: cert + key + root chain
+        #   issuer_ids.env        LAB_ISSUER=<hex> and ML_ISSUER=<hex>
         - name: gen-certs
           image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.idm.name "tag" .Values.images.idm.tag) | quote }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
@@ -27,27 +32,66 @@ spec:
             - |
               set -euo pipefail
               mkdir -p /certs
-              /opt/epics/pvxs-cms/test/O.$(/opt/epics/epics-base/startup/EpicsHostArch)/gen_test_certs -O /certs
-              ls -la /certs/cert_auth.p12
+              /opt/epics/pvxs-cms/test/O.$(/opt/epics/epics-base/startup/EpicsHostArch)/gen_lab_certs -O /certs
+              echo "=== generated ==="
+              ls -la /certs
+              cat /certs/issuer_ids.env
           volumeMounts:
             - name: certs
               mountPath: /certs
       containers:
-        - name: create-secret
+        # Package the certs into Secrets and the issuer ids into a ConfigMap. All are
+        # created by this pre-install hook, which Helm blocks on to completion before any
+        # consumer pod starts - so no consumer needs to poll.
+        - name: create-resources
           image: bitnami/kubectl:latest
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
             - |
               set -eu
-              if kubectl get secret {{ include "pvxs-lab.fullname" . }}-ca-keychain \
-                   -n {{ .Release.Namespace }} > /dev/null 2>&1; then
-                echo "Secret {{ include "pvxs-lab.fullname" . }}-ca-keychain already exists, skipping update"
+              NS={{ .Release.Namespace }}
+              REL={{ include "pvxs-lab.fullname" . }}
+
+              # -- Trust anchor: the facility Root (cert only), mounted into every pod --
+              # Guard: never overwrite an existing CA (it is the trust anchor).
+              if kubectl get secret ${REL}-ca-keychain -n ${NS} >/dev/null 2>&1; then
+                echo "Secret ${REL}-ca-keychain already exists, skipping"
               else
-                kubectl create secret generic {{ include "pvxs-lab.fullname" . }}-ca-keychain \
-                  --from-file=cert_auth.p12=/certs/cert_auth.p12 \
-                  -n {{ .Release.Namespace }}
-                echo "Secret {{ include "pvxs-lab.fullname" . }}-ca-keychain created"
+                kubectl create secret generic ${REL}-ca-keychain \
+                  --from-file=cert_auth.p12=/certs/cert_auth.p12 -n ${NS}
+                echo "Secret ${REL}-ca-keychain created"
+              fi
+
+              # -- Per-department intermediate keychains (cert + key + root chain) --
+              if kubectl get secret ${REL}-lab-intermediate -n ${NS} >/dev/null 2>&1; then
+                echo "Secret ${REL}-lab-intermediate already exists, skipping"
+              else
+                kubectl create secret generic ${REL}-lab-intermediate \
+                  --from-file=cert_auth.p12=/certs/lab_intermediate.p12 -n ${NS}
+                echo "Secret ${REL}-lab-intermediate created"
+              fi
+              if kubectl get secret ${REL}-ml-intermediate -n ${NS} >/dev/null 2>&1; then
+                echo "Secret ${REL}-ml-intermediate already exists, skipping"
+              else
+                kubectl create secret generic ${REL}-ml-intermediate \
+                  --from-file=cert_auth.p12=/certs/ml_intermediate.p12 -n ${NS}
+                echo "Secret ${REL}-ml-intermediate created"
+              fi
+
+              # -- Issuer-id ConfigMap: consumed by the gateway pvlists (status routing) and
+              #    the client EPICS_PVA_AUTH_ISSUER env. Guarded like the CA secrets so the
+              #    published issuer ids stay consistent with the persisted intermediate certs
+              #    (gen_lab_certs uses fresh keys each run, so a fresh CM on upgrade would not
+              #    match the persisted secrets).
+              if kubectl get configmap ${REL}-issuer-ids -n ${NS} >/dev/null 2>&1; then
+                echo "ConfigMap ${REL}-issuer-ids already exists, skipping"
+              else
+                . /certs/issuer_ids.env
+                kubectl create configmap ${REL}-issuer-ids \
+                  --from-literal=LAB_ISSUER="${LAB_ISSUER}" \
+                  --from-literal=ML_ISSUER="${ML_ISSUER}" -n ${NS}
+                echo "ConfigMap ${REL}-issuer-ids created: LAB_ISSUER=${LAB_ISSUER} ML_ISSUER=${ML_ISSUER}"
               fi
           volumeMounts:
             - name: certs

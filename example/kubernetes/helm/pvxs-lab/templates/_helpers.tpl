@@ -41,9 +41,6 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "pvxs-lab.internetService" -}}
 {{ include "pvxs-lab.fullname" . }}-internet
 {{- end -}}
-{{- define "pvxs-lab.itService" -}}
-{{ include "pvxs-lab.fullname" . }}-it
-{{- end -}}
 {{- define "pvxs-lab.mlService" -}}
 {{ include "pvxs-lab.fullname" . }}-ml
 {{- end -}}
