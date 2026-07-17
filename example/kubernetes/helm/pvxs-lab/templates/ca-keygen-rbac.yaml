@@ -22,7 +22,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation
 rules:
   - apiGroups: [""]
-    resources: ["secrets"]
+    resources: ["secrets", "configmaps"]
     verbs: ["get", "create", "update", "patch"]
 
 ---

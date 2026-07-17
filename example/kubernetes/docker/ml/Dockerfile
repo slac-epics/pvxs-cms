@@ -24,6 +24,6 @@ RUN echo "source ~/.mlsystem_bashrc"   >> /home/mlsystem/.bashrc
 # Remove inherited KDC supervisor configs — only idm should run the KDC
 RUN rm -f /etc/supervisor/conf.d/kadmind.conf /etc/supervisor/conf.d/krb5kdc.conf
 
-COPY pvacms-cluster-supervisor.conf /etc/supervisor/conf.d/pvacms.conf
+COPY pvacms-supervisor.conf /etc/supervisor/conf.d/pvacms.conf
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

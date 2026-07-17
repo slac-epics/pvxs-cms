@@ -71,15 +71,11 @@ spec:
             - name: EPICS_PVA_AUTO_ADDR_LIST
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST
-              value: '127.0.0.1 {{ include "pvxs-lab.itService" . }} {{ include "pvxs-lab.testiocService" . }} {{ include "pvxs-lab.tstiocService" . }}'
+              value: '127.0.0.1 {{ include "pvxs-lab.testiocService" . }} {{ include "pvxs-lab.tstiocService" . }}'
             - name: EPICS_PVA_NAME_SERVERS
               value: '{{ include "pvxs-lab.mlGatewayService" . }}:5075'
-            - name: EPICS_PVACMS_CLUSTER_NAME_SERVERS
-              value: '{{ include "pvxs-lab.mlGatewayService" . }}-xgw:5175'
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: /home/idm/.config/pva/1.5/pvacms.p12
-            - name: PVACMS_EXTRA_ARGS
-              value: "--cluster-mode --cluster-discovery-timeout 30 --cluster-bidi-timeout 30 --cert-auth-keychain /etc/pvacms/cert_auth.p12 --acf /etc/pvacms/pvacms.acf"
             - name: PVXS_LOG
               value: {{ .Values.idm.debug.logLevel | quote }}
             - name: KADMIN_ADMIN_SERVER
@@ -137,7 +133,8 @@ spec:
           {{- end }}
         - name: ca-keychain
           secret:
-            secretName: {{ include "pvxs-lab.fullname" . }}-ca-keychain
+            # LAB (control-systems) department PVACMS signs with the Controls intermediate.
+            secretName: {{ include "pvxs-lab.fullname" . }}-lab-intermediate
         - name: pvacms-acf
           configMap:
             name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf

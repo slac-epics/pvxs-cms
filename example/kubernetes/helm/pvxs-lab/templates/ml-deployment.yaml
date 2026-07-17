@@ -67,18 +67,12 @@ spec:
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST
               value: "127.0.0.1"
-            - name: EPICS_PVACMS_CLUSTER_NAME_SERVERS
-              value: '{{ include "pvxs-lab.gatewayService" . }}-xgw:5175'
             - name: EPICS_PVAS_AUTO_BEACON_ADDR_LIST
               value: "NO"
             - name: EPICS_PVAS_BEACON_ADDR_LIST
               value: '{{ include "pvxs-lab.mlGatewayService" . }}:5076'
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: /home/idm/.config/pva/1.5/pvacms.p12
-            - name: EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT
-              value: "90"
-            - name: EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT
-              value: "30"
             {{- if .Values.ml.debug.enabled }}
             - name: PVXS_LOG
               value: {{ .Values.ml.debug.logLevel | quote }}
@@ -100,7 +94,8 @@ spec:
           {{- end }}
         - name: ca-keychain
           secret:
-            secretName: {{ include "pvxs-lab.fullname" . }}-ca-keychain
+            # ML department PVACMS signs with the ML intermediate.
+            secretName: {{ include "pvxs-lab.fullname" . }}-ml-intermediate
         - name: pvacms-acf
           configMap:
             name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf
