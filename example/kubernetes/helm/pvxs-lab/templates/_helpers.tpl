@@ -59,3 +59,16 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "pvxs-lab.csStudioInternetService" -}}
 {{ include "pvxs-lab.fullname" . }}-cs-studio-internet
 {{- end -}}
+
+{{/*
+EPICS_PVA_AUTH_ISSUER env sourced from the issuer-ids ConfigMap, so authnstd/authnkrb
+target the department's own PVACMS via its CERT:CREATE:<issuer> PV. Pass the ConfigMap
+key ("LAB_ISSUER" or "ML_ISSUER") as the argument via a dict: {"ctx": ., "key": "LAB_ISSUER"}.
+*/}}
+{{- define "pvxs-lab.issuerEnv" -}}
+- name: EPICS_PVA_AUTH_ISSUER
+  valueFrom:
+    configMapKeyRef:
+      name: {{ include "pvxs-lab.fullname" .ctx }}-issuer-ids
+      key: {{ .key }}
+{{- end -}}
