@@ -1,6 +1,7 @@
+# Default placeholder pvlist baked into the gateway image. The real per-gateway
+# pvlist (internet.pvlist / ml.pvlist, with the department issuer id substituted)
+# is supplied at deploy time by the helm ConfigMap and overwrites gateway.conf, so
+# this file is NOT used by the deployed lab. Kept minimal to avoid confusion.
 test:.* ALLOW
-tst:.* ALLOW
-test:spec ALLOW SPECIAL
 CERT:CREATE(?::.*)? ALLOW CERT_CREATE
 CERT:STATUS(?::.*)? ALLOW CERT_STATUS
-CERT:CLUSTER(?::.*)? ALLOW
