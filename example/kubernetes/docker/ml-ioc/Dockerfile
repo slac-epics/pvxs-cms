@@ -12,11 +12,14 @@ RUN useradd -m -s /bin/bash mlioc && echo "mlioc:secret" | chpasswd
 
 COPY mlioc_bashrc /home/mlioc/.mlioc_bashrc
 COPY mlioc.db     /home/mlioc/mlioc.db
+COPY mlioc.acf    /home/mlioc/mlioc.acf
 
 RUN chown mlioc:mlioc /home/mlioc/.mlioc_bashrc && \
     chmod 644         /home/mlioc/.mlioc_bashrc && \
     chown mlioc:mlioc /home/mlioc/mlioc.db      && \
-    chmod 644         /home/mlioc/mlioc.db
+    chmod 644         /home/mlioc/mlioc.db       && \
+    chown mlioc:mlioc /home/mlioc/mlioc.acf      && \
+    chmod 644         /home/mlioc/mlioc.acf
 
 RUN echo "source ~/.mlioc_bashrc" >> /home/mlioc/.bashrc
 

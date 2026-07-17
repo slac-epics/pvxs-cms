@@ -1,31 +1,35 @@
-AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority")
+# Lab (control-systems department) IOC access control (tst: PVs).
+# Same per-department authorisation as testioc, without the test:spec SPECIAL PV.
+# See testioc.acf for the full explanation.
+#   READ  open to everyone (anonymous, any zone).
+#   WRITE own zone (lab guests + operators, AUTH_LAB); cross-zone operators (AUTH_ML).
 
-UAG(USERS) {
+AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority") {
+    AUTHORITY(AUTH_LAB, "EPICS Controls Intermediate CA")
+    AUTHORITY(AUTH_ML,  "EPICS ML Intermediate CA")
+}
+
+UAG(OPERATORS) {
     "gateway",
     "operator"
 }
 
-UAG(SPECIAL_USERS) {
-    "gateway",
-    "operator"
-}
-
-ASG(SPECIAL) {
-    RULE(1,WRITE,TRAPWRITE) {
-        UAG(SPECIAL_USERS)
-        AUTHORITY(EPICS_CA)
-        PROTOCOL(TLS)
-        METHOD(X509)
-    }
+UAG(GUESTS) {
+    "guest"
 }
 
 ASG(DEFAULT) {
-    RULE(0,READ)
+    RULE(1,READ)
     RULE(1,WRITE,TRAPWRITE) {
-        UAG(USERS)
-        AUTHORITY(EPICS_CA)
+        UAG(OPERATORS,GUESTS)
+        AUTHORITY(AUTH_LAB)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(OPERATORS)
+        AUTHORITY(AUTH_ML)
         PROTOCOL(TLS)
         METHOD(X509)
     }
 }
-
