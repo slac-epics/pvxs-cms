@@ -1,0 +1,41 @@
+# ML department IOC access control (ml: PVs).
+# Per-department authorisation mirror of the lab IOCs, with the ML intermediate
+# as the own-zone authority. See testioc.acf for the full explanation.
+#   READ  open to everyone (anonymous, any zone).
+#   WRITE own zone (ml guests + operators, AUTH_ML); cross-zone operators (AUTH_LAB).
+#   No test:spec SPECIAL PV in the ML zone.
+
+AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority") {
+    AUTHORITY(AUTH_LAB, "EPICS Controls Intermediate CA")
+    AUTHORITY(AUTH_ML,  "EPICS ML Intermediate CA")
+}
+
+UAG(OPERATORS) {
+    "gateway",
+    "operator",
+    "mloperator"
+}
+
+UAG(GUESTS) {
+    "guest",
+    "mlsystem"
+}
+
+ASG(DEFAULT) {
+    # READ open to anyone, including anonymous, in any zone.
+    RULE(1,READ)
+    # WRITE own zone: ml guests and operators (certs issued by the ML intermediate).
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(OPERATORS,GUESTS)
+        AUTHORITY(AUTH_ML)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    # WRITE cross-zone: operators only (certs issued by the Lab intermediate).
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(OPERATORS)
+        AUTHORITY(AUTH_LAB)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
