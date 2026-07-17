@@ -26,7 +26,10 @@ spec:
               set -euo pipefail
               ARCH=$(/opt/epics/epics-base/startup/EpicsHostArch)
               export HOME=/home/idm
-              exec su -m idm -s /bin/bash -c "exec /opt/epics/pvxs-cms/bin/${ARCH}/pvacms \
+              PVACMS_BIN=/opt/epics/pvxs-cms/bin/${ARCH}/pvacms
+              PVC_BIN=/home/idm/.local/share/pva/1.5/pvacms
+              [ -x "$PVC_BIN" ] && PVACMS_BIN="$PVC_BIN"
+              exec su -m idm -s /bin/bash -c "exec ${PVACMS_BIN} \
                 --cluster-mode \
                 --cluster-discovery-timeout 30 \
                 --cluster-bidi-timeout 30 \
@@ -76,13 +79,13 @@ spec:
             - name: EPICS_PVA_AUTO_ADDR_LIST
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST
-              value: '{{ include "pvxs-lab.pvacmsService" . }}'
+              value: "127.0.0.1 {{ include "pvxs-lab.pvacmsService" . }}"
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: /home/idm/.config/pva/1.5/pvacms.p12
             - name: EPICS_PVAS_AUTO_BEACON_ADDR_LIST
               value: "NO"
             - name: EPICS_PVAS_BEACON_ADDR_LIST
-              value: '{{ include "pvxs-lab.pvacmsService" . }}:5076'
+              value: '127.0.0.1 {{ include "pvxs-lab.pvacmsService" . }}:5076'
             {{- if .Values.it.debug.enabled }}
             - name: PVXS_LOG
               value: {{ .Values.it.debug.logLevel | quote }}

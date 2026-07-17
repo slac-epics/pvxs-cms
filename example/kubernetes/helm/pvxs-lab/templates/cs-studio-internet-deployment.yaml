@@ -20,7 +20,14 @@ spec:
         - name: cs-studio-internet
           image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.csStudio.name "tag" .Values.images.csStudio.tag) | quote }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -euo pipefail
+              # Internet zone: use internet-specific bashrc that routes through the gateway
+              cp /home/operator/.internet_operator_bashrc /home/operator/.operator_bashrc
+              cp /home/guest/.internet_guest_bashrc /home/guest/.guest_bashrc
+              exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
           env:
             - name: EPICS_AUTH_KRB_REALM
               value: "EPICS.ORG"
