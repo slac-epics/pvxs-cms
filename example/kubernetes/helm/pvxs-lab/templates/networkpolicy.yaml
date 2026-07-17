@@ -1,9 +1,13 @@
 # NETWORK ZONE ISOLATION. Strategy: ingress access control only
 #
-# 1-a) Lab PVACMS & KDC ingress:
-#          Allow EVERYTHING from lab, lab-iocs, it, gateway.
+# Federated, non-clustered lab. Each gateway forwards to its own co-zone PVACMS
+# (for the department's CERT:CREATE/STATUS PVs); there is no cross-zone PVACMS
+# cluster sync, so no xgw (5175) ingress rules.
+#
+# 1-a) Lab (idm) PVACMS & KDC ingress:
+#          Allow EVERYTHING from lab-zone peers + the lab gateway (the lab gateway
+#          forwards CERT:* to this PVACMS).
 #          Allow KDC (88/UDP, 749/TCP) from internet and ml zones.
-#          Allow cross-zone PVACMS replication (5175/TCP) from ml-gateway.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -15,13 +19,13 @@ spec:
       release: {{ .Release.Name }}
   policyTypes: ["Ingress"]
   ingress:
-    # Rule 1: full access from lab-zone peers + it + gateway
+    # Rule 1: full access from lab-zone peers + the lab gateway
     - from:
         - podSelector:
             matchExpressions:
               - key: app
                 operator: In
-                values: ["lab", "cs-studio-lab", "it", "gateway", "testioc", "tstioc"]
+                values: ["lab", "cs-studio-lab", "gateway", "testioc", "tstioc"]
             matchLabels:
               release: {{ .Release.Name }}
 
@@ -40,20 +44,10 @@ spec:
         - protocol: TCP
           port: 749
 
-    # Rule 3: cross-zone PVACMS sync from ml-gateway
-    - from:
-        - podSelector:
-            matchLabels:
-              app: ml-gateway
-              release: {{ .Release.Name }}
-      ports:
-        - protocol: TCP
-          port: 5175
-
 ---
 # 1-b) ML PVACMS ingress:
-#          Allow EVERYTHING from ml, ml-ioc, and ml-gateway
-#          Allow cross-zone PVACMS replication (5175/TCP) from gateway.
+#          Allow EVERYTHING from ml-zone peers + the ml-gateway (the ml-gateway
+#          forwards CERT:* to this PVACMS).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -74,49 +68,9 @@ spec:
                 values: ["ml", "cs-studio-ml", "ml-gateway", "ml-ioc"]
             matchLabels:
               release: {{ .Release.Name }}
-    # Rule 2: cross-zone PVACMS sync from ml-gateway
-    - from:
-        - podSelector:
-            matchLabels:
-              app: gateway
-              release: {{ .Release.Name }}
-      ports:
-        - protocol: TCP
-          port: 5175
 
 ---
-# 1-c) IT PVACMS ingress: allow ONLY from idm, and lab
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: {{ include "pvxs-lab.fullname" . }}-it-pvacms-ingress
-spec:
-  podSelector:
-    matchLabels:
-      app: it
-      release: {{ .Release.Name }}
-  policyTypes: ["Ingress"]
-  ingress:
-    - from:
-        - podSelector:
-            matchExpressions:
-              - key: app
-                operator: In
-                values: ["idm", "lab", "cs-studio-lab", "testioc", "tstioc"]
-            matchLabels:
-              release: {{ .Release.Name }}
-    # Rule 3: cross-zone PVACMS sync from ml-gateway
-    - from:
-        - podSelector:
-            matchLabels:
-              app: ml-gateway
-              release: {{ .Release.Name }}
-      ports:
-        - protocol: TCP
-          port: 5175
-
----
-# 2-a) Lab IOC ingress: allow ONLY from lab, and gateway (not IT)
+# 2-a) Lab IOC ingress: allow ONLY from lab, and the lab gateway
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -163,7 +117,8 @@ spec:
               release: {{ .Release.Name }}
 
 ---
-# 3-a) Lab Gateway ingress: allow from all non-lab, and non-gateway pods
+# 3-a) Lab Gateway ingress: allow from all non-lab, non-gateway pods
+#      (ML and Internet clients reach lab IOCs / the Lab CERT:* PVs via this gateway)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -180,12 +135,13 @@ spec:
             matchExpressions:
               - key: app
                 operator: NotIn
-                values: ["lab", "cs-studio-lab", "idm", "gateway", "testioc", "tstioc", "it", "ml-gateway"]
+                values: ["lab", "cs-studio-lab", "idm", "gateway", "testioc", "tstioc", "ml-gateway"]
             matchLabels:
               release: {{ .Release.Name }}
 
 ---
-# 3-b) ML Gateway ingress: allow from all non-ML, and non-gateway pods
+# 3-b) ML Gateway ingress: allow from all non-ML, non-gateway pods
+#      (Lab and Internet clients reach ml IOCs / the ML CERT:* PVs via this gateway)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -205,4 +161,3 @@ spec:
                 values: ["ml", "cs-studio-ml", "ml-gateway", "ml-ioc", "gateway"]
             matchLabels:
               release: {{ .Release.Name }}
-
