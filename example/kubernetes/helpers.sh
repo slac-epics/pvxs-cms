@@ -305,7 +305,6 @@ function gw_deploy {
     local -a tag_overrides=(
         --set "images.idm.tag=${tag}"
         --set "images.internet.tag=${tag}"
-        --set "images.it.tag=${tag}"
         --set "images.testioc.tag=${tag}"
         --set "images.tstioc.tag=${tag}"
         --set "images.ml.tag=${tag}"
@@ -331,7 +330,7 @@ function gw_undeploy {
 
 
 function go_in_to {
-  if [[ "$1" == "lab" ||  "$1" == "idm" ||  "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "it" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" || "$1" == "cs-studio-lab" || "$1" == "cs-studio-ml" || "$1" == "cs-studio-internet" ]] ; then
+  if [[ "$1" == "lab" ||  "$1" == "idm" ||  "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" || "$1" == "cs-studio-lab" || "$1" == "cs-studio-ml" || "$1" == "cs-studio-internet" ]] ; then
    kubectl -n pvxs-lab exec -it deploy/pvxs-lab-$1 -- /bin/bash
   else
    echo "No such lab system: $1"
@@ -344,8 +343,6 @@ function login_to_lab {
   kubectl -n pvxs-lab exec -it deploy/pvxs-lab-lab -- su - $1
  elif [[ "$1" == "admin" || "$1" == "idm" ]] ;  then
   kubectl -n pvxs-lab exec -it deploy/pvxs-lab-idm -- su - $1
- elif [[ "$1" == "it" ]] ; then
-  kubectl -n pvxs-lab exec -it deploy/pvxs-lab-it -- su - idm
  elif [[ "$1" == "testioc" ]] ; then
   kubectl -n pvxs-lab exec -it deploy/pvxs-lab-testioc -- su - $1
  elif [[ "$1" == "tstioc" ]] ; then
@@ -406,11 +403,11 @@ function gw_cp {
   local dst=${4:-./${src:t}}
 
   case "${sys}:${user}" in
-    (gateway:gateway|idm:idm|testioc:testioc|tstioc:tstioc|idm:admin|lab:guest|lab:operator|internet:guest|internet:operator|it:idm|it:admin|ml:mloperator|ml:mlsystem|ml-ioc:mlioc|ml-gateway:gateway)
+    (gateway:gateway|idm:idm|testioc:testioc|tstioc:tstioc|idm:admin|lab:guest|lab:operator|internet:guest|internet:operator|ml:mloperator|ml:mlsystem|ml-ioc:mlioc|ml-gateway:gateway)
       ;;
     (*)
       echo "usage: gw_cp <sys> <user> <src> [dest]"
-      echo "sys: gateway|idm|testioc|tstioc|lab|internet|it|ml|ml-ioc|ml-gateway"
+      echo "sys: gateway|idm|testioc|tstioc|lab|internet|ml|ml-ioc|ml-gateway"
       echo "user: gateway|idm|testioc|tstioc|admin|guest|operator|mloperator|mlsystem|mlioc"
       return 1
       ;;
@@ -439,11 +436,11 @@ function gw_cp_in {
   local dst=$4
 
   case "${sys}:${user}" in
-    (gateway:gateway|idm:idm|testioc:testioc|tstioc:tstioc|idm:admin|lab:guest|lab:operator|internet:guest|internet:operator|it:idm|it:admin|ml:mloperator|ml:mlsystem|ml-ioc:mlioc|ml-gateway:gateway)
+    (gateway:gateway|idm:idm|testioc:testioc|tstioc:tstioc|idm:admin|lab:guest|lab:operator|internet:guest|internet:operator|ml:mloperator|ml:mlsystem|ml-ioc:mlioc|ml-gateway:gateway)
       ;;
     (*)
       echo "usage: gw_cp <sys> <user> <src> [dest]"
-      echo "sys: gateway|idm|testioc|tstioc|lab|internet|it|ml|ml-ioc|ml-gateway"
+      echo "sys: gateway|idm|testioc|tstioc|lab|internet|ml|ml-ioc|ml-gateway"
       echo "user: gateway|idm|testioc|tstioc|admin|guest|operator|mloperator|mlsystem|mlioc"
       return 1
       ;;
@@ -456,7 +453,7 @@ function gw_cp_in {
 }
 
 function gw_log {
-  if [[ "$1" == "lab" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "it" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" || "$1" == "cs-studio-lab" || "$1" == "cs-studio-ml" || "$1" == "cs-studio-internet" ]] ; then
+  if [[ "$1" == "lab" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" || "$1" == "cs-studio-lab" || "$1" == "cs-studio-ml" || "$1" == "cs-studio-internet" ]] ; then
    kubectl logs -n pvxs-lab deployment/pvxs-lab-$1  -f
   else
    echo "No such lab system: $1"
@@ -597,16 +594,31 @@ function go_tls() {
         CHANGES+=1
     }
 
+    # Federated lab: a cert must be approved on the PVACMS that ISSUED it (there is
+    # no cluster sync). Lab-department certs are issued by the Lab (idm) PVACMS and
+    # approved there; ML-department certs are issued by the ML PVACMS and approved on
+    # the ml pod via a local admin (the ml pod runs an admin user). Pass the approving
+    # node: "idm" (default) or "ml".
     _tls_approve_all() {
+        local node=${1:-idm}
         if (( ${#CERT_IDS_TO_APPROVE[@]} == 0 )); then return 0; fi
         local id
         for id in "${CERT_IDS_TO_APPROVE[@]}"; do
-            echo "  [approve] $id"
-            _tls_exec idm admin "pvxcert --approve $id" || {
-                echo "  [retry after sync delay] $id"
-                sleep 5
-                _tls_exec idm admin "pvxcert --approve $id"
-            }
+            echo "  [approve on $node] $id"
+            if [[ "$node" == "ml" ]]; then
+                # Approve on the ML PVACMS directly (localhost) as the admin user.
+                kubectl -n $NS exec deploy/pvxs-lab-ml -- bash -c \
+                    "su - admin -c 'source ~/.admin_bashrc 2>/dev/null; export EPICS_PVA_NAME_SERVERS=localhost:5075; pvxcert --approve $id'" || {
+                        echo "  [retry] $id on ml"; sleep 3
+                        kubectl -n $NS exec deploy/pvxs-lab-ml -- bash -c \
+                            "su - admin -c 'source ~/.admin_bashrc 2>/dev/null; export EPICS_PVA_NAME_SERVERS=localhost:5075; pvxcert --approve $id'"
+                    }
+            else
+                _tls_exec idm admin "pvxcert --approve $id" || {
+                    echo "  [retry] $id on idm"; sleep 3
+                    _tls_exec idm admin "pvxcert --approve $id"
+                }
+            fi
         done
         CERT_IDS_TO_APPROVE=()
     }
@@ -621,9 +633,11 @@ function go_tls() {
     # -----------------------------------------------------------------------
     echo "\n=== Step 2: Kerberos client certs (ML zone) ==="
     # -----------------------------------------------------------------------
+    # ML-zone client pods target the ML PVACMS (EPICS_PVA_AUTH_ISSUER=ML issuer),
+    # so their certs are issued by - and approved on - the ML PVACMS.
     _tls_ensure_krb_cert cs-studio-ml mloperator "mloperator@EPICS.ORG"
     _tls_ensure_krb_cert cs-studio-ml mlsystem  "mlsystem@EPICS.ORG"
-    _tls_approve_all
+    _tls_approve_all ml
 
     # -----------------------------------------------------------------------
     echo "\n=== Step 3: Standard client certs (internet zone) ==="
@@ -636,10 +650,13 @@ function go_tls() {
     echo "\n=== Step 4: IOC server certs ==="
     # -----------------------------------------------------------------------
     local pre_ioc=$CHANGES
+    # Lab IOCs: issued by / approved on the Lab (idm) PVACMS.
     _tls_ensure_std_cert testioc testioc "-u server"
     _tls_ensure_std_cert tstioc  tstioc  "-u server"
+    _tls_approve_all idm
+    # ML IOC: issued by / approved on the ML PVACMS.
     _tls_ensure_std_cert ml-ioc  mlioc   "-u server"
-    _tls_approve_all
+    _tls_approve_all ml
 
     if (( CHANGES > pre_ioc )); then
         echo "  [restart] testioc, tstioc, ml-ioc"
@@ -651,38 +668,18 @@ function go_tls() {
     fi
 
     # -----------------------------------------------------------------------
-    echo "\n=== Step 5: Gateway certs (create ALL, approve ALL via lab admin, wait for sync, restart ALL) ==="
+    echo "\n=== Step 5: Gateway certs (each approved on its own department's PVACMS, restart ALL) ==="
     # -----------------------------------------------------------------------
+    # No cluster sync in the federated lab: the lab gateway cert is issued by /
+    # approved on the Lab (idm) PVACMS; the ml-gateway cert is issued by / approved
+    # on the ML PVACMS. Each is valid on its own CMS immediately (no sync wait).
     local pre_gw=$CHANGES
     _tls_ensure_std_cert gateway    gateway "-u ioc"
+    _tls_approve_all idm
     _tls_ensure_std_cert ml-gateway gateway "-u ioc -n ml-gateway"
-    _tls_approve_all
+    _tls_approve_all ml
 
     if (( CHANGES > pre_gw )); then
-        local ml_gw_id
-        ml_gw_id=$(_tls_exec ml-gateway gateway "pvxcert -f \\\${EPICS_PVAS_TLS_KEYCHAIN:-~/.config/pva/1.5/server.p12} 2>&1" | awk '/^Certificate ID/ {sub(/^Certificate ID *: */, ""); print; exit}')
-        if [[ -n "$ml_gw_id" ]]; then
-            echo "  [verify] checking ml-gateway cert ($ml_gw_id) synced to ml PVACMS..."
-            local -i attempts=0
-            while (( attempts < 10 )); do
-                local ml_status
-                ml_status=$(kubectl -n $NS exec deploy/pvxs-lab-ml -c ml -- bash -c \
-                    "su - admin -c 'source ~/.admin_bashrc 2>/dev/null; export EPICS_PVA_NAME_SERVERS=localhost:5075; pvxcert $ml_gw_id 2>&1'" 2>&1 \
-                    | awk '/^Status/ {sub(/^Status *: */, ""); print; exit}')
-                if [[ "$ml_status" == "VALID" ]]; then
-                    echo "  [synced] ml-gateway cert VALID on ml PVACMS"
-                    break
-                fi
-                (( attempts += 1 ))
-                sleep 1
-            done
-            if (( attempts >= 10 )); then
-                echo "  [ERROR] ml-gateway cert not VALID on ml PVACMS after 10s — cluster sync may be broken"
-                echo "  ml PVACMS reports: ${ml_status:-no response}"
-                return 1
-            fi
-        fi
-
         echo "  [restart] gateway, ml-gateway"
         kubectl -n $NS exec deploy/pvxs-lab-gateway    -c gateway    -- supervisorctl restart gateway
         kubectl -n $NS exec deploy/pvxs-lab-ml-gateway -c ml-gateway -- supervisorctl restart gateway
