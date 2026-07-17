@@ -44,3 +44,7 @@ spec:
       protocol: UDP
       port: 5176
       targetPort: xgw-udp
+    - name: xgw-tls
+      protocol: TCP
+      port: 5176
+      targetPort: xgw-tls

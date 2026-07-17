@@ -20,7 +20,9 @@ spec:
         - name: cs-studio-lab
           image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.csStudio.name "tag" .Values.images.csStudio.tag) | quote }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+          command: ["/bin/bash", "-lc"]
+          args:
+            - exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
           volumeMounts:
             - name: pva-config
               mountPath: /home/operator/.config/pva/1.5
