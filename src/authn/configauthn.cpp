@@ -99,6 +99,8 @@ void ConfigAuthN::fromAuthEnv(const std::map<std::string, std::string> &defs) {
             tls_srv_keychain_file = pickone.val;
             tls_srv_keychain_pwd = getKeychainPassword();
         }
+        if (pickone.val.find(';') == std::string::npos)
+            tls_srv_keychain_pwd.clear();
         ensureDirectoryExists(tls_srv_keychain_file);
     } else {
         const std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "server.p12";

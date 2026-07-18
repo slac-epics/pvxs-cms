@@ -94,7 +94,7 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         std::string password;
         splitKeychainSetting(pickone.val, tls_keychain_file, password);
         ensureDirectoryExists(tls_keychain_file);
-        if (!password.empty()) setKeychainPassword(password);
+        setKeychainPassword(password);
     } else {
         std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "pvacms.p12";
         ensureDirectoryExists(tls_keychain_file = filename);
@@ -122,7 +122,7 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         std::string password;
         splitKeychainSetting(pickone.val, cert_auth_keychain_file, password);
         ensureDirectoryExists(cert_auth_keychain_file);
-        if (!password.empty()) cert_auth_keychain_pwd = password;
+        cert_auth_keychain_pwd = password;
     } else {
         std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "cert_auth.p12";
         ensureDirectoryExists(cert_auth_keychain_file = filename);
@@ -132,7 +132,7 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         std::string password;
         splitKeychainSetting(pickone.val, admin_keychain_file, password);
         ensureDirectoryExists(admin_keychain_file);
-        if (!password.empty()) admin_keychain_pwd = password;
+        admin_keychain_pwd = password;
     } else {
         std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "admin.p12";
         ensureDirectoryExists(admin_keychain_file = filename);

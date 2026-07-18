@@ -14,6 +14,7 @@
 #include <string>
 
 #include <epicsUnitTest.h>
+#include <envDefs.h>
 #include <testMain.h>
 
 #include <pvxs/client.h>
@@ -690,6 +691,45 @@ struct Tester {
     }
 };
 
+void testKeychainConfiguration()
+{
+    testShow() << __func__;
+
+    ConfigCms conf;
+    epicsEnvSet("EPICS_PVACMS_TLS_KEYCHAIN", "pvacms.p12;cms;password");
+    epicsEnvSet("EPICS_CERT_AUTH_TLS_KEYCHAIN", "cert-auth.p12;ca;password");
+    epicsEnvSet("EPICS_ADMIN_TLS_KEYCHAIN", "admin.p12;admin;password");
+    ConfigCms::defs_t defs;
+    conf.applyCmsEnv({});
+    testEq(conf.tls_keychain_file, "pvacms.p12");
+    testEq(conf.getKeychainPassword(), "cms;password");
+    testEq(conf.cert_auth_keychain_file, "cert-auth.p12");
+    testEq(conf.cert_auth_keychain_pwd, "ca;password");
+    testEq(conf.admin_keychain_file, "admin.p12");
+    testEq(conf.admin_keychain_pwd, "admin;password");
+
+    defs.clear();
+    conf.updateCmsDefs(defs);
+    testEq(defs["EPICS_PVAS_TLS_KEYCHAIN"], "pvacms.p12;<password read>");
+    testEq(defs["EPICS_CERT_AUTH_TLS_KEYCHAIN"], "cert-auth.p12");
+    testEq(defs["EPICS_ADMIN_TLS_KEYCHAIN"], "admin.p12");
+    testTrue(defs.find("EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE") == defs.end());
+    testTrue(defs.find("EPICS_CERT_AUTH_TLS_KEYCHAIN_PWD_FILE") == defs.end());
+    testTrue(defs.find("EPICS_ADMIN_TLS_KEYCHAIN_PWD_FILE") == defs.end());
+
+    epicsEnvSet("EPICS_PVACMS_TLS_KEYCHAIN", "pvacms.p12");
+    epicsEnvSet("EPICS_CERT_AUTH_TLS_KEYCHAIN", "cert-auth.p12");
+    epicsEnvSet("EPICS_ADMIN_TLS_KEYCHAIN", "admin.p12");
+    conf.applyCmsEnv({});
+    testEq(conf.getKeychainPassword(), "");
+    testEq(conf.cert_auth_keychain_pwd, "");
+    testEq(conf.admin_keychain_pwd, "");
+
+    epicsEnvUnset("EPICS_PVACMS_TLS_KEYCHAIN");
+    epicsEnvUnset("EPICS_CERT_AUTH_TLS_KEYCHAIN");
+    epicsEnvUnset("EPICS_ADMIN_TLS_KEYCHAIN");
+}
+
 }  // namespace
 
 /**
@@ -697,9 +737,10 @@ struct Tester {
  * @return test runner status (non-zero for errors)
  */
 MAIN(testtlswithcms) {
-    testPlan(134);
+    testPlan(149);
     testSetup();
     logger_config_env();
+    testKeychainConfiguration();
     const auto tester = new Tester();
 
     tester->createCertStatuses();
