@@ -102,7 +102,7 @@ mlGateway:
       ],
       "servers": [
         {
-          "name": "internet",
+          "name": "gateway",
           "clients": ["ml-local"],
           "acf_client": "ml-local",
           "statusprefix": "GW:STS:",
@@ -113,7 +113,7 @@ mlGateway:
           "EPICS_PVAS_TLS_PORT": "5076",
           "bcastport": "5076",
           "access": "gateway.acf",
-          "pvlist": "internet.pvlist"
+          "pvlist": "gateway.pvlist"
         },
         {
           "name": "downstream_status",
@@ -130,7 +130,7 @@ mlGateway:
   # means only the requests this gateway can actually serve are claimed, so a client
   # reaching both gateways from the Internet routes straight to the right one.
   # __ML_ISSUER__ is substituted at pod start from the issuer-ids ConfigMap.
-  internetPvlist: |
+  gatewayPvlist: |
     ml:.* ALLOW
     CERT:CREATE:__ML_ISSUER__(?::.*)? ALLOW CERT_CREATE
     CERT:STATUS:__ML_ISSUER__(?::.*)? ALLOW CERT_STATUS
@@ -177,7 +177,7 @@ gateway:
       ],
       "servers": [
         {
-          "name": "ml",
+          "name": "gateway",
           "clients": ["local"],
           "acf_client": "local",
           "statusprefix": "GW:STS:",
@@ -188,21 +188,7 @@ gateway:
           "EPICS_PVAS_TLS_PORT": "5076",
           "bcastport": "5076",
           "access": "gateway.acf",
-          "pvlist": "ml.pvlist"
-        },
-        {
-          "name": "internet",
-          "clients": ["local"],
-          "acf_client": "local",
-          "statusprefix": "GW:STS:",
-          "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.pvacmsService" . }}",
-          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway{{ if .Values.gateway.separate_server_keychain }}{{ "S" }}{{ end }}.p12",
-          "serverport": "5275",
-          "EPICS_PVAS_TLS_PORT": "5276",
-          "bcastport": "5276",
-          "access": "gateway.acf",
-          "pvlist": "internet.pvlist"
+          "pvlist": "gateway.pvlist"
         },
         {
           "name": "downstream_status",
@@ -214,23 +200,16 @@ gateway:
       ]
     }
 
-  # Lab gateway forwards the lab IOC PVs, and - keyed by the Controls (Lab) department
-  # issuer id - the Lab cert CREATE/STATUS PVs to the Lab (idm) PVACMS. Naming the
-  # issuer avoids a wrong-gateway round-trip from the Internet (see mlGateway note).
+  # The lab gateway serves NON-lab clients (ML + Internet) that want lab PVs. One
+  # server, one gateway.pvlist: the lab IOC PVs plus - keyed by the Controls (Lab)
+  # department issuer id - the Lab cert CREATE/STATUS PVs to the Lab (idm) PVACMS.
   # __LAB_ISSUER__ is substituted at pod start from the issuer-ids ConfigMap.
-  internetPvlist: |
+  gatewayPvlist: |
     test:.* ALLOW
     tst:.* ALLOW
     test:spec ALLOW SPECIAL
     CERT:CREATE:__LAB_ISSUER__(?::.*)? ALLOW CERT_CREATE
     CERT:STATUS:__LAB_ISSUER__(?::.*)? ALLOW CERT_STATUS
-    CERT:HEALTH(?::.*)? ALLOW
-    CERT:METRICS(?::.*)? ALLOW
-
-  mlPvlist: |
-    test:.* ALLOW
-    tst:.* ALLOW
-    test:spec ALLOW SPECIAL
 
   debug:
     enabled: false
