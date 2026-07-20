@@ -71,6 +71,7 @@ spec:
               value: {{ .Values.gateway.debug.logLevel | quote }}
             {{- end }}
           volumeMounts:
+            {{- include "pvxs-lab.issuerMount" (dict "ctx" . "key" "LAB_ISSUER") | nindent 12 }}
             - name: gw-conf
               mountPath: /home/gateway/gateway.conf
               subPath: gateway.conf
@@ -80,6 +81,7 @@ spec:
             - name: pva-config
               mountPath: /home/gateway/.config/pva/1.5
       volumes:
+        {{- include "pvxs-lab.issuerVolume" (dict "ctx" . "key" "LAB_ISSUER") | nindent 8 }}
         - name: gw-conf-src
           configMap:
             name: {{ include "pvxs-lab.fullname" . }}-gateway-conf

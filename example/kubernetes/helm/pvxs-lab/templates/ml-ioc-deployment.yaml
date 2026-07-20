@@ -43,9 +43,11 @@ spec:
               value: {{ .Values.mlIoc.debug.logLevel | quote }}
             {{- end }}
           volumeMounts:
+            {{- include "pvxs-lab.issuerMount" (dict "ctx" . "key" "ML_ISSUER") | nindent 12 }}
             - name: pva-config
               mountPath: /home/mlioc/.config/pva/1.5
       volumes:
+        {{- include "pvxs-lab.issuerVolume" (dict "ctx" . "key" "ML_ISSUER") | nindent 8 }}
         - name: pva-config
           {{- if .Values.mlIoc.persistence.enabled }}
           persistentVolumeClaim:

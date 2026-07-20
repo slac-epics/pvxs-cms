@@ -38,6 +38,7 @@ spec:
             - name: KADMIN_ADMIN_SERVER
               value: '{{ include "pvxs-lab.fullname" . }}-idm:{{ .Values.idm.service.tcpPort }}'
           volumeMounts:
+            {{- include "pvxs-lab.issuerMount" (dict "ctx" . "key" "LAB_ISSUER") | nindent 12 }}
             - name: pva-config
               mountPath: /home/operator/.config/pva/1.5
               subPath: operator
@@ -52,6 +53,7 @@ spec:
             - name: novnc
               containerPort: 8080
       volumes:
+        {{- include "pvxs-lab.issuerVolume" (dict "ctx" . "key" "LAB_ISSUER") | nindent 8 }}
         - name: pva-config
           {{- if .Values.csStudioInternet.persistence.enabled }}
           persistentVolumeClaim:

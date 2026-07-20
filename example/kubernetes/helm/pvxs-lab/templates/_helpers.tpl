@@ -72,3 +72,26 @@ key ("LAB_ISSUER" or "ML_ISSUER") as the argument via a dict: {"ctx": ., "key": 
       name: {{ include "pvxs-lab.fullname" .ctx }}-issuer-ids
       key: {{ .key }}
 {{- end -}}
+
+{{/*
+Issuer as a file at /etc/epics/issuer, so interactive login shells (su - <user>,
+which reset the environment) recover EPICS_PVA_AUTH_ISSUER via /etc/profile.d/epics-issuer.sh
+in the lab_base image. Two parts, both taking {"ctx": ., "key": "LAB_ISSUER"|"ML_ISSUER"}:
+  issuerVolume - the ConfigMap volume, placed under `volumes:`
+  issuerMount  - the volumeMount, placed under a container's `volumeMounts:`
+*/}}
+{{- define "pvxs-lab.issuerVolume" -}}
+- name: issuer-id
+  configMap:
+    name: {{ include "pvxs-lab.fullname" .ctx }}-issuer-ids
+    items:
+      - key: {{ .key }}
+        path: issuer
+{{- end -}}
+
+{{- define "pvxs-lab.issuerMount" -}}
+- name: issuer-id
+  mountPath: /etc/epics/issuer
+  subPath: issuer
+  readOnly: true
+{{- end -}}
