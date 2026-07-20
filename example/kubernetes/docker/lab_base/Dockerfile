@@ -52,6 +52,11 @@ COPY krb5.conf /etc/krb5.conf
 COPY supervisord.conf /etc/supervisor/supervisord.conf
 COPY display-supervisor.conf /etc/supervisor/conf.d/display.conf
 
+# Export the department certificate issuer to every interactive login shell,
+# read from the per-deployment /etc/epics/issuer file mounted by the chart.
+COPY epics-issuer.sh /etc/profile.d/epics-issuer.sh
+RUN chmod 644 /etc/profile.d/epics-issuer.sh
+
 EXPOSE 8080 5900
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

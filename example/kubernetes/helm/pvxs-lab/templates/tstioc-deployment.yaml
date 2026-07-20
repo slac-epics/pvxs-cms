@@ -43,6 +43,7 @@ spec:
               value: {{ .Values.tstioc.debug.logLevel | quote }}
             {{- end }}
           volumeMounts:
+            {{- include "pvxs-lab.issuerMount" (dict "ctx" . "key" "LAB_ISSUER") | nindent 12 }}
             - name: pva-config
               mountPath: /home/tstioc/.config/pva/1.5
             - name: krb5-conf
@@ -50,6 +51,7 @@ spec:
               subPath: krb5.conf
               readOnly: true
       volumes:
+        {{- include "pvxs-lab.issuerVolume" (dict "ctx" . "key" "LAB_ISSUER") | nindent 8 }}
         - name: pva-config
           {{- if .Values.tstioc.persistence.enabled }}
           persistentVolumeClaim:

@@ -24,6 +24,7 @@ spec:
           args:
             - exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
           volumeMounts:
+            {{- include "pvxs-lab.issuerMount" (dict "ctx" . "key" "ML_ISSUER") | nindent 12 }}
             - name: pva-config
               mountPath: /home/mloperator/.config/pva/1.5
               subPath: mloperator
@@ -46,6 +47,7 @@ spec:
             - name: novnc
               containerPort: 8080
       volumes:
+        {{- include "pvxs-lab.issuerVolume" (dict "ctx" . "key" "ML_ISSUER") | nindent 8 }}
         - name: pva-config
           {{- if .Values.csStudioMl.persistence.enabled }}
           persistentVolumeClaim:
