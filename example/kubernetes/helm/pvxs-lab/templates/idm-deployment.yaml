@@ -96,26 +96,25 @@ spec:
                   - /bin/bash
                   - -lc
                   - |
-                    set -euo pipefail
-
+                    # Copy the pvacms-generated admin keychain to the admin user's
+                    # client cert. This is a convenience; it MUST NOT fail the pod
+                    # (idm runs the KDC that the whole lab depends on), so a slow or
+                    # missing admin.p12 exits 0 with a warning rather than crash-looping.
                     src=/home/idm/.config/pva/1.5/admin.p12
                     dst=/home/admin/.config/pva/1.5/client.p12
+                    mkdir -p "$(dirname "$dst")" || true
 
-                    mkdir -p "$(dirname "$dst")"
-
-                    # Wait for pvacms to generate admin.p12
-                    for i in {1..60}; do
+                    # Wait up to 120s for pvacms to bootstrap admin.p12
+                    for i in $(seq 1 240); do
                       if [ -s "$src" ]; then
-                        cp -f "$src" "$dst"
-                        chown admin:admin "$dst" || true
-                        chmod 0600 "$dst" || true
+                        cp -f "$src" "$dst" && chown admin:admin "$dst" 2>/dev/null; chmod 0600 "$dst" 2>/dev/null
+                        echo "admin.p12 copied to admin client cert"
                         exit 0
                       fi
                       sleep 0.5
                     done
-
-                    echo "admin.p12 not found after timeout" >&2
-                    exit 1
+                    echo "WARN: admin.p12 not present after 120s; admin user cert not provisioned yet" >&2
+                    exit 0
       volumes:
         - name: pva-config
           {{- if .Values.idm.persistence.enabled }}
