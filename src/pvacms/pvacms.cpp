@@ -31,6 +31,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <set>
 #include <thread>
 #include <tuple>
 #include <vector>
@@ -3043,6 +3044,11 @@ int readParameters(int argc,
                "${XDG_CONFIG_HOME}/pva/1.5/admin.p12\n"
             << "        --admin-keychain-pwd <file>          Specify location of file containing Admin User's keychain "
                "file password\n"
+            << "  (-c | --cert-auth-keychain) <cert_auth_keychain>\n"
+            << "                                             Certificate Authority keychain used to sign the admin "
+               "keychain\n"
+            << "        --cert-auth-keychain-pwd <file>      Specify location of file containing Certificate Authority "
+               "keychain password\n"
             << authn_help << std::endl;
         exit(0);
     }
@@ -3056,16 +3062,25 @@ int readParameters(int argc,
         exit(0);
     }
 
-    // New admin can only be specified with --acf and/or --admin-keychain-pwd, and/or --admin-keychain-pwd
+    // --admin-keychain-new (generate an admin keychain and exit) may only be combined
+    // with the options needed to place/sign it: the admin keychain (-a) and its
+    // password, the ACF, and the signing certificate authority (-c) and its password.
+    // Value-taking options consume the following argv entry; flags (e.g. -v) do not.
     if (!admin_name.empty()) {
+        static const std::set<std::string> value_opts = {
+            "-a", "--admin-keychain", "--admin-keychain-pwd", "--admin-keychain-new",
+            "--acf", "-c", "--cert-auth-keychain", "--cert-auth-keychain-pwd"};
+        static const std::set<std::string> flag_opts = {"-v", "--verbose"};
         for (auto arg = 1; arg < argc; ++arg) {
             const std::string option = argv[arg];
-            if (option == "-a" || option == "--admin-keychain" || option == "--admin-keychain-pwd" ||
-                option == "--acf" || option == "--admin-keychain-new") {
-                arg++;
+            if (value_opts.count(option)) {
+                arg++;  // skip this option's value
+            } else if (flag_opts.count(option)) {
+                // flag with no value
             } else {
-                std::cerr << "Error: --admin-keychain-new option cannot be used with any options other than -a, "
-                             "--admin-keychain, --admin-keychain-pwd, or --acf.\n";
+                std::cerr << "Error: --admin-keychain-new option cannot be used with any options other than "
+                             "-a/--admin-keychain, --admin-keychain-pwd, --acf, -c/--cert-auth-keychain, or "
+                             "--cert-auth-keychain-pwd.\n";
                 exit(11);
             }
         }
