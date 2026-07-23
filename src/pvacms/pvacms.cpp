@@ -1895,6 +1895,17 @@ void createAdminClientCert(const ConfigCms &config,
     time_t not_before(timeNow());
     time_t not_after(not_before + CertDate::parseDuration(config.default_client_cert_validity));  // Default client cert validity
 
+    // Clamp the admin certificate's validity to the remaining lifetime of the issuing certificate
+    // authority: a certificate must never outlive its issuer (see #33).  This covers bootstrap
+    // with a freshly created self-signed certificate authority whose lifetime is shorter than
+    // the configured default client certificate validity.
+    const time_t cert_auth_not_after = getNotAfterTimeFromCert(cert_auth_cert.get());
+    if (not_after > cert_auth_not_after) {
+        log_info_printf(pvacms, "Clamping admin certificate expiration to issuer CA not-after (%s)\n",
+                        CertDate(cert_auth_not_after).s.c_str());
+        not_after = cert_auth_not_after;
+    }
+
     // Create a certificate factory
     auto certificate_factory = CertFactory(serial,
                                            key_pair,
@@ -2220,7 +2231,8 @@ void ensureValidityCompatible(const CertFactory &cert_factory) {
         throw std::runtime_error("Not before time is before issuer's not before time");
     }
     if (cert_factory.not_after_ > issuer_not_after) {
-        throw std::runtime_error(SB() << "The requested certificate validity exceeds the validity of the issuing Certificate Authority.  Use '--time <time>' to limit the requested certificate validity");
+        throw std::runtime_error(SB() << "The requested certificate validity exceeds the validity of the issuing Certificate Authority: requested not-after "
+                                      << CertDate(cert_factory.not_after_).s << " is later than the issuer's not-after " << CertDate(issuer_not_after).s);
     }
 }
 
