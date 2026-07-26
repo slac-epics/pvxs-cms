@@ -284,12 +284,13 @@ class StatusMonitor {
           cert_auth_cert_chain_(cert_auth_chain),
           active_status_validity_(active_status_validity) {}
 
+    // Serials whose posted status has expired or expires within the request timeout
     std::vector<serial_number_t> getActiveSerials() const {
-        const auto cutoff{timeNow() - static_cast<uint64_t>(config_.getRequestTimeout())};
+        const auto cutoff{timeNow() + static_cast<time_t>(config_.getRequestTimeout())};
         std::vector<serial_number_t> result;
         Guard G(lock_);
         for (const auto &pair : active_status_validity_) {
-            if (static_cast<uint64_t>(pair.second) > cutoff) {
+            if (pair.second < cutoff) {
                 result.push_back(pair.first);
             }
         }
