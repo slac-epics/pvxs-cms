@@ -3096,8 +3096,7 @@ int readParameters(int argc,
                 option == "--acf" || option == "--admin-keychain-new" || option == "--cert-pv-prefix") {
                 arg++;
             } else {
-                std::cerr << "Error: --admin-keychain-new option cannot be used with any options other than -a, "
-                             "--admin-keychain, --admin-keychain-pwd, --acf, or --cert-pv-prefix.\n";
+                std::cerr << "Error: --admin-keychain-new can only be combined with the admin options (see --help).\n";
                 exit(11);
             }
         }
