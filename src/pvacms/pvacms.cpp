@@ -3088,7 +3088,7 @@ int readParameters(int argc,
         exit(0);
     }
 
-    // --admin-keychain-new may only be combined with the admin options and --cert-pv-prefix
+    // --admin-keychain-new may only be combined with the admin options
     if (!admin_name.empty()) {
         for (auto arg = 1; arg < argc; ++arg) {
             const std::string option = argv[arg];
