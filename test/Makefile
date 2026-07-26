@@ -24,6 +24,7 @@ USR_CPPFLAGS += -I$(CLI11_BUNDLE)/include
 
 USR_CPPFLAGS += -I$(TOP)/certs -I$(TOP)/bundle/CLI11/include
 USR_CPPFLAGS += -DPVXS_ENABLE_EXPERT_API
+USR_CPPFLAGS += -DPVXS_ENABLE_PVACMS
 
 SRC_DIRS += $(COMMON_DIR)
 SRC_DIRS += $(AUTHN_DIR)
@@ -62,6 +63,12 @@ testtlswithcms_SRCS += testtlswithcms.cpp
 TESTS += testtlswithcmsandstapling
 TESTPROD_HOST += testtlswithcmsandstapling
 testtlswithcmsandstapling_SRCS += testtlswithcmsandstapling.cpp
+
+# Test certificate status monitor refresh selection
+TESTS += teststatusmonitor
+TESTPROD_HOST += teststatusmonitor
+teststatusmonitor_SRCS += teststatusmonitor.cpp
+teststatusmonitor_SYS_LIBS += sqlite3
 
 # Test TLS status operations
 TESTS += testtlsstatus
