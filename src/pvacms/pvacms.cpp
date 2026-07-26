@@ -443,34 +443,6 @@ std::string getValidStatusesClause(const std::vector<certstatus_t> &valid_status
 }
 
 /**
- * @brief Generates a SQL clause for filtering valid certificate serials
- *
- * It will generate an IN clause for the supplied serials
- *
- * @param serials The vector of serial numbers to filter
- * @return The SQL clause for filtering valid certificate serials
- */
-std::string getSelectedSerials(const std::vector<serial_number_t> &serials) {
-    const auto n_serials = serials.size();
-    if (n_serials > 0) {
-        bool first = true;
-        auto serials_clauses = SB();
-        serials_clauses << " serial IN (";
-        for (auto serial : serials) {
-            int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
-            if (!first)
-                serials_clauses << ", ";
-            else
-                first = false;
-            serials_clauses << db_serial;
-        }
-        serials_clauses << ")";
-        return serials_clauses.str();
-    }
-    return "";
-}
-
-/**
  * Binds the valid certificate status clauses to the given SQLite statement.
  *
  * @param sql_statement The SQLite statement to bind the clauses to.
@@ -2796,69 +2768,6 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
 }
 
 /**
- * @brief Post an update to the all certificates whose statuses are becoming invalid
- *
- * This function will post an update to the all certificates whose statuses are becoming invalid.
- * Certificates that are becoming invalid are those that are in the VALID, PENDING, or PENDING_APPROVAL state,
- * and the status validity time is now nearly up.  We use the timeout value (default 5 seconds) to determine
- * "nearly up".
- *
- * It uses the set of active serials that are updated every time a connection is opened or closed.
- * So only certificates that are currently active will be updated.
- *
- * @param cert_status_creator The certificate status creator
- * @param status_monitor_params The status monitor parameters
- */
-bool postUpdatesToExpiredStatuses(const CertStatusFactory &cert_status_creator,
-                                   const StatusMonitor &status_monitor_params) {
-    bool changed = false;
-    auto const serials = status_monitor_params.getActiveSerials();
-    if (serials.empty())
-        return false;
-
-    sqlite3_stmt *stmt;
-    std::string validity_sql(SQL_CERT_BECOMING_INVALID);
-    validity_sql += getSelectedSerials(serials);
-    const std::vector<certstatus_t> validity_status{VALID, PENDING, PENDING_APPROVAL};
-    validity_sql += getValidStatusesClause(validity_status);
-    if (sqlite3_prepare_v2(status_monitor_params.certs_db_.get(), validity_sql.c_str(), -1, &stmt, nullptr) ==
-        SQLITE_OK) {
-        bindValidStatusClauses(stmt, validity_status);
-
-        // For each status in this state
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            int64_t db_serial = sqlite3_column_int64(stmt, 0);
-            int status = sqlite3_column_int(stmt, 1);
-            uint64_t serial = *reinterpret_cast<uint64_t *>(&db_serial);
-            try {
-                const std::string pv_name(getCertStatusURI(status_monitor_params.config_.getCertPvPrefix(),
-                                                           status_monitor_params.issuer_id_,
-                                                           serial));
-                auto status_date = timeNow();
-                const auto db_cert = getCertificateValidity(status_monitor_params.certs_db_, serial);
-                auto cert_status = cert_status_creator.createPVACertificateStatus(
-                    serial, static_cast<certstatus_t>(status), status_date,
-                    CertDate(timeNow()), CertDate(db_cert.renew_by), false);
-                postCertificateStatus(status_monitor_params.status_pv_, pv_name, serial, cert_status);
-                status_monitor_params.setValidity(serial, cert_status.status_valid_until_date.t);
-                log_debug_printf(pvacmsmonitor,
-                                 "%s ==> \u21BA \n",
-                                 getCertId(status_monitor_params.issuer_id_, serial).c_str());
-                changed = true;
-            } catch (const std::runtime_error &e) {
-                log_err_printf(pvacmsmonitor, "PVACMS Certificate Monitor Error: %s\n", e.what());
-            }
-        }
-        sqlite3_finalize(stmt);
-    } else {
-        log_err_printf(pvacmsmonitor,
-                       "PVACMS Certificate Monitor Error: %s\n",
-                       sqlite3_errmsg(status_monitor_params.certs_db_.get()));
-    }
-    return changed;
-}
-
-/**
  * @brief The main loop for the certificate monitor.
  *
  * This function will post an update to the next certificate that is becoming valid,
@@ -2878,10 +2787,6 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
     postUpdateToNextCertBecomingValid(cert_status_creator, status_monitor_params);
     postUpdateToNextCertToExpire(cert_status_creator, status_monitor_params);
     postUpdateToNextCertToNeedRenewal(cert_status_creator, status_monitor_params);
-
-    if (!status_monitor_params.active_status_validity_.empty()) {
-        postUpdatesToExpiredStatuses(cert_status_creator, status_monitor_params);
-    }
 
     postUpdatesToNextCertStatusToBecomeInvalid(cert_status_creator, status_monitor_params);
 
@@ -3242,7 +3147,6 @@ int main(int argc, char *argv[]) {
     using namespace pvxs::server;
 
     try {
-        std::map<serial_number_t, time_t> active_status_validity;
         // Get config
         auto config = ConfigCms::forCms();
         // And, get all configured authn configs
@@ -3384,10 +3288,9 @@ int main(int argc, char *argv[]) {
                                   &cert_auth_pkey,
                                   &cert_auth_cert,
                                   &cert_auth_chain,
-                                  &our_issuer_id,
-                                  &active_status_validity](WildcardPV &pv,
-                                                           const std::string &pv_name,
-                                                           const std::list<std::string> &parameters) {
+                                  &our_issuer_id](WildcardPV &pv,
+                                                  const std::string &pv_name,
+                                                  const std::list<std::string> &parameters) {
             serial_number_t serial = getParameters(parameters);
             onGetStatus(config,
                         certs_db,
@@ -3399,17 +3302,11 @@ int main(int argc, char *argv[]) {
                         cert_auth_pkey,
                         cert_auth_cert,
                         cert_auth_chain);
-
-            // Add reference to this serial number
-            active_status_validity.emplace(serial, 0);
         });
-        status_pv.onLastDisconnect([&active_status_validity](WildcardPV &pv,
-                                                             const std::string &pv_name,
-                                                             const std::list<std::string> &parameters) {
+        status_pv.onLastDisconnect([](WildcardPV &pv,
+                                      const std::string &pv_name,
+                                      const std::list<std::string> &parameters) {
             pv.close(pv_name);
-
-            // Remove reference to this serial number
-            active_status_validity.erase(getParameters(parameters));
         });
 
         std::function<void(const std::string& skid)> check_cms_node_revocation;
@@ -3530,8 +3427,7 @@ int main(int argc, char *argv[]) {
                                              status_pv,
                                              cert_auth_cert,
                                              cert_auth_pkey,
-                                             cert_auth_chain,
-                                             active_status_validity);
+                                             cert_auth_chain);
 
         // Create a server with a certificate monitoring function attached to the cert file monitor timer
         // Return true to indicate that we want the file monitor time to run after this
