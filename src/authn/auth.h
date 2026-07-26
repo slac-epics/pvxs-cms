@@ -15,6 +15,7 @@
 
 #include <pvxs/client.h>
 #include <pvxs/data.h>
+#include <pvxs/log.h>
 
 #include "ccrmanager.h"
 #include "certfactory.h"
@@ -27,6 +28,10 @@
 
 namespace pvxs {
 namespace certs {
+
+// Shared authenticator logger; defined in auth.cpp (not here — loggers should
+// not be defined in a header).
+extern ::pvxs::logger auth;
 
 /**
  * @class Auth
@@ -380,14 +385,13 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
  * @return The certificate data
  */
 template <typename ConfigT, typename AuthT>
-CertData getCertificate(bool &retrieved_credentials,
+CertData getCertificate(bool & /*retrieved_credentials*/,
                         ConfigT config,
                         uint16_t cert_usage,
                         const AuthT &authenticator,
                         const std::string &tls_keychain_file,
                         const std::string &tls_keychain_pwd,
                         bool daemon_mode) {
-    DEFINE_LOGGER(auth, std::string("pvxs.auth." + authenticator.type_).c_str());
     CertData cert_data;
 
     if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))) {
@@ -396,7 +400,6 @@ CertData getCertificate(bool &retrieved_credentials,
 
         std::shared_ptr<KeyPair> key_pair;
         log_debug_printf(auth, "Credentials retrieved for: %s authenticator\n", authenticator.type_.c_str());
-        retrieved_credentials = true;
 
         // Get or create the key pair.  Store it in the keychain file if not already present
         try {
@@ -483,8 +486,6 @@ CertData getCertificate(bool &retrieved_credentials,
 template <typename ConfigT, typename AuthT>
 int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT &)> pre_configure_hook) {
     AuthT authenticator{};
-    DEFINE_LOGGER(auth, std::string("pvxs.auth." + authenticator.type_).c_str());
-    ;
     logger_config_env();
     bool retrieved_credentials{false};
 
@@ -561,10 +562,10 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
         }
         return 0;
     } catch (std::exception &e) {
-        if (retrieved_credentials)
-            log_warn_printf(auth, "%s\n", e.what());
-        else
-            log_err_printf(auth, "%s\n", e.what());
+        // Any exception reaching here is a hard failure of the certificate
+        // request (e.g. PVACMS rejected the CCR, RPC/keychain failure). It must
+        // surface as an error, not a warning.
+        log_err_printf(auth, "%s\n", e.what());
         return -1;
     }
 }

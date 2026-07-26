@@ -117,6 +117,15 @@ class ConfigCms final : public Config {
     std::string default_ioc_cert_validity="6M";
 
     /**
+     * @brief Validity period of the auto-provisioned certificate authority (CA) certificate
+     *
+     * Expressed using format: 1y 2M 3w 4d 5h 6m 7s
+     * This is the lifetime given to the self-signed CA certificate (`cert_auth.p12`) that
+     * PVACMS creates on first startup when no CA keychain exists. Defaults to 4 years.
+     */
+    std::string cert_auth_validity="4y";
+
+    /**
      * @brief This flag is used to indicate that a certificate user must subscribe
      * to the certificate status PV to verify the certificate's revoked status.
      *

@@ -1022,6 +1022,19 @@ int64_t onCreateCertificate(ConfigCms &config,
                 log_info_printf(pvacms, "Overriding requested expiration with default: %s\n", config.default_client_cert_validity.c_str());
         }
 
+        // Clamp the certificate's validity to the remaining lifetime of the issuing certificate
+        // authority: a certificate must never outlive its issuer (see #34). This covers both an
+        // explicit request and a configured default, and the case where cert_auth.p12 was supplied
+        // externally (site PKI) with an arbitrary remaining lifetime.
+        const time_t cert_auth_not_after = getNotAfterTimeFromCert(cert_auth_cert.get());
+        if (expiration > cert_auth_not_after) {
+            log_info_printf(pvacms, "Clamping certificate expiration to issuer CA not-after (%s)\n",
+                            CertDate(cert_auth_not_after).s.c_str());
+            expiration = std::min(expiration, cert_auth_not_after);
+            if (renew_by > 0)
+                renew_by = std::min(renew_by, expiration);
+        }
+
         auto has_renew_by = renew_by > 0 && renew_by != expiration;
 
         // If there's no status, then we can't support renew_by dates
@@ -1880,7 +1893,18 @@ void createAdminClientCert(const ConfigCms &config,
     auto organization = "";
     auto organization_unit = "";
     time_t not_before(timeNow());
-    time_t not_after(not_before + (365 + 1) * 24 * 60 * 60);  // 1yrs
+    time_t not_after(not_before + CertDate::parseDuration(config.default_client_cert_validity));  // Default client cert validity
+
+    // Clamp the admin certificate's validity to the remaining lifetime of the issuing certificate
+    // authority: a certificate must never outlive its issuer (see #33).  This covers bootstrap
+    // with a freshly created self-signed certificate authority whose lifetime is shorter than
+    // the configured default client certificate validity.
+    const time_t cert_auth_not_after = getNotAfterTimeFromCert(cert_auth_cert.get());
+    if (not_after > cert_auth_not_after) {
+        log_info_printf(pvacms, "Clamping admin certificate expiration to issuer CA not-after (%s)\n",
+                        CertDate(cert_auth_not_after).s.c_str());
+        not_after = cert_auth_not_after;
+    }
 
     // Create a certificate factory
     auto certificate_factory = CertFactory(serial,
@@ -2100,9 +2124,9 @@ CertData createCertAuthCertificate(const ConfigCms &config,
                                    const std::shared_ptr<KeyPair> &key_pair) {
     log_debug_printf(pvacms, "Creating certificate authority into: %s with %s\n", config.cert_auth_keychain_file.c_str(), (config.cert_auth_keychain_pwd.empty()?"no password":"pwd: *****"));
 
-    // Set validity to 4 yrs
+    // CA validity from config (EPICS_PVACMS_CERT_AUTH_VALIDITY / --cert-auth-validity; default 4y)
     const time_t not_before(timeNow());
-    const time_t not_after(not_before + (4 * 365 + 1) * 24 * 60 * 60);  // 4yrs
+    const time_t not_after(not_before + CertDate::parseDuration(config.cert_auth_validity));
 
     // Generate a new serial number
     const auto serial = generateSerial();
@@ -2207,7 +2231,8 @@ void ensureValidityCompatible(const CertFactory &cert_factory) {
         throw std::runtime_error("Not before time is before issuer's not before time");
     }
     if (cert_factory.not_after_ > issuer_not_after) {
-        throw std::runtime_error("Not after time is after issuer's not after time");
+        throw std::runtime_error(SB() << "The requested certificate validity exceeds the validity of the issuing Certificate Authority: requested not-after "
+                                      << CertDate(cert_factory.not_after_).s << " is later than the issuer's not-after " << CertDate(issuer_not_after).s);
     }
 }
 
@@ -2908,6 +2933,10 @@ int readParameters(int argc,
                    cert_validity,
                    "Specify PVACMS default duration for all certificates");
 
+    app.add_option("--cert-auth-validity",
+                   config.cert_auth_validity,
+                   "Specify the validity period of the auto-provisioned certificate authority (CA) certificate.  Default 4y");
+
     app.add_flag("--disallow-custom-durations-client",
                  disallow_custom_durations_client,
                  "Disallow custom durations for client certificates");
@@ -3018,6 +3047,7 @@ int readParameters(int argc,
             << "        --cert_validity-server <duration>    Default duration for server certificates\n"
             << "        --cert_validity-ioc <duration>       Default duration for IOC certificates\n"
             << "        --cert_validity <duration>           Default duration for all certificates\n"
+            << "        --cert-auth-validity <duration>      Validity period of the auto-provisioned CA certificate (default 4y)\n"
             << "        --disallow-custom-durations-client   Disallow custom durations for client certificates\n"
             << "        --disallow-custom-durations-server   Disallow custom durations for server certificates\n"
             << "        --disallow-custom-durations-ioc      Disallow custom durations for IOC certificates\n"
