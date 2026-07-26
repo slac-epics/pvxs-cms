@@ -3163,7 +3163,7 @@ int main(int argc, char *argv[]) {
 
         // Logger config from environment (so environment overrides verbose setting)
         if (verbose)
-            logger_level_set("pvxs.certs.*", pvxs::Level::Info);
+            logger_level_set("pvxs.certs*", pvxs::Level::Info);
         pvxs::logger_config_env();
 
         // Initialize the certificates database
