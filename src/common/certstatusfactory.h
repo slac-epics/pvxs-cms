@@ -53,8 +53,8 @@ namespace certs {
  * @code
  *      static auto cert_status_creator(CertStatusFactory(config, cert_auth_cert, cert_auth_pkey, cert_auth_cert_chain));
  *      auto cert_status = cert_status_creator.createPVACertificateStatus(
- *          serial, new_state, CertDate(std::time(nullptr)),
- *          CertDate(std::time(nullptr)), CertDate(db_renew_by), false);
+ *          serial, new_state, CertDate(timeNow()),
+ *          CertDate(timeNow()), CertDate(db_renew_by), false);
  * @endcode
  */
 class CertStatusFactory {

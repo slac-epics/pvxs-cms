@@ -86,7 +86,7 @@ std::shared_ptr<AuthnCredentials> AuthNLdap::getCredentials(const client::Config
     auto ldap_credentials = std::make_shared<LdapCredentials>();
 
     // Set the expiration time of the certificate
-    const time_t now = time(nullptr);
+    const time_t now = timeNow();
     ldap_credentials->not_before = now;
     if (ldap_config.cert_validity_mins <= 0) {
         ldap_credentials->not_after = 0;

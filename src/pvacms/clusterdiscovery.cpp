@@ -548,7 +548,7 @@ ClusterDiscovery::JoinResult ClusterDiscovery::joinCluster() {
 
         auto resp_ts = getTimeStamp(resp);
         epicsTimeStamp now_ts = epicsTime::getCurrent();
-        auto now = static_cast<int64_t>(now_ts.secPastEpoch);
+        auto now = static_cast<int64_t>(now_ts.secPastEpoch) + POSIX_TIME_AT_EPICS_EPOCH;
         if (std::abs(now - resp_ts) > kJoinTimestampTolerance) {
             log_warn_printf(pvacmscluster, "Join response stale timestamp (ts=%lld, now=%lld)\n",
                             static_cast<long long>(resp_ts), static_cast<long long>(now));

@@ -295,16 +295,16 @@ All cluster messages that carry a timestamp use the EPICS NT `time_t` struct
 
 | Field              | Type  | Description                                    |
 |--------------------|-------|------------------------------------------------|
-| `secondsPastEpoch` | Int64 | Seconds since the EPICS epoch (1990-01-01 UTC) |
+| `secondsPastEpoch` | Int64 | Seconds since the POSIX epoch (1970-01-01 UTC) |
 | `nanoseconds`      | Int32 | Sub-second nanoseconds                         |
 | `userTag`          | Int32 | Reserved (always 0)                            |
 
-Helper functions in `clustertypes.{h,cpp}` work directly in the EPICS epoch:
+Helper functions in `clustertypes.{h,cpp}` work directly in POSIX seconds:
 
-- `setTimeStamp(val)` - writes the current wall-clock time as an EPICS-epoch
+- `setTimeStamp(val)` - writes the current wall-clock time as a POSIX-epoch
   NT `time_t` struct via `epicsTimeGetCurrent()`.
-- `getTimeStamp(val)` - reads the `secondsPastEpoch` field and returns an
-  EPICS-epoch `int64_t`.
+- `getTimeStamp(val)` - reads the `secondsPastEpoch` field and returns
+  POSIX seconds as an `int64_t`.
 
 Using NT types ensures interoperability with standard EPICS tooling (e.g.
 `pvget`, `pvmonitor`, CSS) which recognise and display `time_t` structs

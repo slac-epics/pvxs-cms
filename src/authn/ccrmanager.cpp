@@ -65,7 +65,7 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     const CertDate expiration_date(value["expiration"].as<time_t>());
     log_debug_printf(auth_log, "Expires On: %s\n", expiration_date.s.c_str() );
     if (renew_by_val) {
-        const auto renew_by_t = renew_by_val.as<time_t>() - POSIX_TIME_AT_EPICS_EPOCH;
+        const auto renew_by_t = renew_by_val.as<time_t>();
         const CertDate renew_by(renew_by_t);
         log_debug_printf(auth_log, "Renew By: %s\n", renew_by.s.c_str() );
         return {renew_by.t, pem_string};

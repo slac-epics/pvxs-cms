@@ -27,17 +27,17 @@ enum SyncUpdateType : int32_t {
 };
 
 /**
- * @brief Set the EPICS timeStamp sub-structure to the current wall-clock time.
+ * @brief Set the timeStamp sub-structure to the current wall-clock time (POSIX seconds).
  * @param parent  Value containing the timeStamp field to populate.
  * @param field   Name of the timeStamp field (default "timeStamp").
  */
 void setTimeStamp(Value &parent, const char *field = "timeStamp");
 
 /**
- * @brief Extract the EPICS epoch secondsPastEpoch from a timeStamp sub-structure.
+ * @brief Extract the secondsPastEpoch from a timeStamp sub-structure.
  * @param parent  Value containing the timeStamp field.
  * @param field   Name of the timeStamp field (default "timeStamp").
- * @return EPICS epoch seconds (seconds since 1990-01-01 UTC).
+ * @return POSIX seconds (seconds since 1970-01-01 UTC).
  */
 int64_t getTimeStamp(const Value &parent, const char *field = "timeStamp");
 

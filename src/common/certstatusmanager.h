@@ -190,8 +190,6 @@ class CmsStatusManager {
      */
     void unsubscribe();
 
-    bool waitedTooLong(double timeout = 5.0) const noexcept { return (manager_start_time_ + (time_t)timeout) < std::time(nullptr); }
-
    private:
     CmsStatusManager(const client::Context &client,
                       std::shared_ptr<client::Subscription> sub = std::shared_ptr<client::Subscription>())
@@ -205,7 +203,6 @@ class CmsStatusManager {
     std::shared_ptr<client::Subscription> sub_;
     std::shared_ptr<CertificateStatus> status_;
     std::shared_ptr<PVACertificateStatus> pva_status_;
-    time_t manager_start_time_{time(nullptr)};
 
     /**
      * @brief Get the custom status extension from the given certificate

@@ -19,15 +19,15 @@ namespace certs {
 
 using namespace pvxs::members;
 
-/** @brief Set the EPICS timeStamp sub-structure to the current wall-clock time. */
+/** @brief Set the timeStamp sub-structure to the current wall-clock time (POSIX seconds). */
 void setTimeStamp(Value &parent, const char *field) {
     epicsTimeStamp now;
     epicsTimeGetCurrent(&now);
-    parent[std::string(field) + ".secondsPastEpoch"] = static_cast<int64_t>(now.secPastEpoch);
+    parent[std::string(field) + ".secondsPastEpoch"] = static_cast<int64_t>(now.secPastEpoch) + POSIX_TIME_AT_EPICS_EPOCH;
     parent[std::string(field) + ".nanoseconds"] = static_cast<int32_t>(now.nsec);
 }
 
-/** @brief Extract the EPICS epoch secondsPastEpoch from a timeStamp sub-structure. */
+/** @brief Extract the secondsPastEpoch (POSIX seconds) from a timeStamp sub-structure. */
 int64_t getTimeStamp(const Value &parent, const char *field) {
     return parent[std::string(field) + ".secondsPastEpoch"].as<int64_t>();
 }

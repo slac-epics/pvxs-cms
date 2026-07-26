@@ -517,10 +517,10 @@ void testApplySyncNewCert() {
  * @param serial      Certificate serial number (primary key).
  * @param cn          Certificate Common Name.
  * @param status      Initial certificate status (e.g. VALID, PENDING_APPROVAL).
- * @param not_before  Not-before timestamp (EPICS epoch seconds).
- * @param not_after   Not-after (expiry) timestamp (EPICS epoch seconds).
- * @param renew_by    Renewal deadline timestamp (EPICS epoch seconds).
- * @param status_date Timestamp of the most recent status change (EPICS epoch seconds).
+ * @param not_before  Not-before timestamp (POSIX seconds).
+ * @param not_after   Not-after (expiry) timestamp (POSIX seconds).
+ * @param renew_by    Renewal deadline timestamp (POSIX seconds).
+ * @param status_date Timestamp of the most recent status change (POSIX seconds).
  */
 void insertCert(sqlite3 *db, int64_t serial, const std::string &cn, const certstatus_t status,
                 const int64_t not_before, const int64_t not_after, const int64_t renew_by, const int64_t status_date) {
@@ -681,7 +681,7 @@ void testJoinHandshake() {
 
     auto resp_ts = getTimeStamp(resp);
     epicsTimeStamp now_ts = epicsTime::getCurrent();
-    auto now = static_cast<int64_t>(now_ts.secPastEpoch);
+    auto now = static_cast<int64_t>(now_ts.secPastEpoch) + POSIX_TIME_AT_EPICS_EPOCH;
     testOk(std::abs(now - resp_ts) <= 30, "Join response timestamp within tolerance");
 
     auto resp_members = resp["members"].as<shared_array<const Value>>();
@@ -1334,10 +1334,34 @@ void testIncrementalIngestion() {
     sqlite3_finalize(stmt);
 }
 
+/**
+ * @brief renew_by is a plain POSIX time_t on the wire - no EPICS-epoch offset.
+ *
+ * The CCR reply and status PV carry renew_by as a raw UInt64 POSIX time_t (unlike
+ * the NT timeStamp.secondsPastEpoch fields). This guards against re-introducing a
+ * POSIX_TIME_AT_EPICS_EPOCH conversion on either the encode or decode side, which
+ * previously double-subtracted the offset and pushed the renewal date back to ~1986.
+ */
+void testRenewByPosixRoundTrip() {
+    testDiag("renew_by POSIX round-trip (no EPICS-epoch offset)");
+    using namespace members;
+
+    auto proto = TypeDef(TypeCode::Struct, {Member(TypeCode::UInt64, "renew_by")}).create();
+
+    const time_t renew_by = time(nullptr) + 365 * 24 * 3600;         // one year out
+    proto["renew_by"] = static_cast<uint64_t>(renew_by);             // encode (as pvacms does)
+    const auto decoded = static_cast<time_t>(proto["renew_by"].as<uint64_t>());  // decode (as ccrmanager does)
+
+    testEq(decoded, renew_by);
+    testOk(decoded > time(nullptr), "decoded renew_by is in the future, not ~1986");
+    testOk(static_cast<uint64_t>(decoded) >= POSIX_TIME_AT_EPICS_EPOCH,
+           "renew_by is POSIX seconds, not EPICS-epoch");
+}
+
 }  // namespace
 
 MAIN(testcluster) {
-    testPlan(159);
+    testPlan(162);
     testSetup();
     logger_config_env();
 
@@ -1475,6 +1499,11 @@ MAIN(testcluster) {
         testIncrementalIngestion();
     } catch (std::exception &e) {
         testFail("testIncrementalIngestion failed: %s", e.what());
+    }
+    try {
+        testRenewByPosixRoundTrip();
+    } catch (std::exception &e) {
+        testFail("testRenewByPosixRoundTrip failed: %s", e.what());
     }
 
     return testDone();

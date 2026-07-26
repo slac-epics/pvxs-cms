@@ -192,11 +192,6 @@
     "  AND not_after > :now "          \
     "  AND (renew_by = 0 OR renew_by > :now) "
 
-#define SQL_CERT_BECOMING_INVALID      \
-    "SELECT serial, status "           \
-    "FROM certs "                      \
-    "WHERE "
-
 #define SQL_CERT_TO_EXPIRED            \
     "SELECT serial "                   \
     "FROM certs "                      \
@@ -268,47 +263,16 @@ class StatusMonitor {
     ossl_ptr<X509> &cert_auth_cert_;
     ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     pvxs::ossl_shared_ptr<STACK_OF(X509)> &cert_auth_cert_chain_;
-    std::map<serial_number_t, time_t> &active_status_validity_;
-  private:
-    mutable epicsMutex lock_;
-  public:
+
     StatusMonitor(ConfigCms &config, sql_ptr &certs_db, std::string &issuer_id, server::WildcardPV &status_pv, ossl_ptr<X509> &cert_auth_cert,
-                  ossl_ptr<EVP_PKEY> &cert_auth_pkey, ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
-                  std::map<serial_number_t, time_t> &active_status_validity)
+                  ossl_ptr<EVP_PKEY> &cert_auth_pkey, ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain)
         : config_(config),
           certs_db_(certs_db),
           issuer_id_(issuer_id),
           status_pv_(status_pv),
           cert_auth_cert_(cert_auth_cert),
           cert_auth_pkey_(cert_auth_pkey),
-          cert_auth_cert_chain_(cert_auth_chain),
-          active_status_validity_(active_status_validity) {}
-
-    std::vector<serial_number_t> getActiveSerials() const {
-        const auto cutoff{time(nullptr) - static_cast<uint64_t>(config_.getRequestTimeout())};
-        std::vector<serial_number_t> result;
-        Guard G(lock_);
-        for (const auto &pair : active_status_validity_) {
-            if (static_cast<uint64_t>(pair.second) > cutoff) {
-                result.push_back(pair.first);
-            }
-        }
-        return result;
-    }
-
-    /**
-     * @brief Set the new validity timeout after we've updated the database
-     * Note that its possible that the serial has been removed by another thread during the operation
-     * @param serial the serial number of the validity we need to update
-     * @param validity_date the new validity date
-     */
-    void setValidity(const serial_number_t serial, const time_t validity_date) const {
-        Guard G(lock_);
-        const auto it = active_status_validity_.find(serial);
-        if (it != active_status_validity_.end()) {
-            it->second = validity_date;
-        }
-    }
+          cert_auth_cert_chain_(cert_auth_chain) {}
 };
 
 void checkForDuplicates(const sql_ptr &certs_db, const CertFactory &cert_factory);

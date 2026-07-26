@@ -520,7 +520,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
         CertData cert_data;
         try {
             auto new_cert_data = IdFileFactory::create(tls_keychain_file, tls_keychain_pwd)->getCertDataFromFile();
-            const auto now = time(nullptr);
+            const auto now = timeNow();
             const auto not_after_time =
                 (!new_cert_data.cert) ? 0 : CertFactory::getNotAfterTimeFromCert(new_cert_data.cert);
             if (not_after_time > now) {
