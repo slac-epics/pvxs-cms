@@ -293,7 +293,6 @@ namespace cms {
     namespace server = pvxs::server;
     using cms::cert::DbCert;
     using cms::cert::KeyPair;
-    using cms::cert::SanEntry;
     using cms::cert::CertFactory;
     using cms::cert::CertData;
     using cms::cert::PVACertificateStatus;
