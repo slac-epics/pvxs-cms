@@ -81,7 +81,6 @@ DEFINE_LOGGER(pvacmsmonitor, "cms");
 namespace cms {
 using pvxs::Value;
 using pvxs::shared_array;
-using pvxs::version_information;
 using pvxs::NoConvert;
 using pvxs::impl::ConfigCommon;
 namespace server = pvxs::server;
@@ -95,10 +94,9 @@ using cms::detail::getFileContents;
 using cms::auth::Auth;
 using cms::auth::AuthRegistry;
 using cms::cert::DbCert;
+using cms::cert::timeNow;
 using cms::cert::IdFileFactory;
 using cms::cert::KeyPair;
-    using cms::cert::SanEntry;
-    using cms::cert::ScheduleWindow;
     using cms::cert::CertFactory;
     using cms::cert::CertStatus;
     using cms::cert::CmsStatusManager;
@@ -122,14 +120,12 @@ using cms::cert::KeyPair;
     using cms::cert::PENDING;
     using cms::cert::PENDING_APPROVAL;
     using cms::cert::PENDING_RENEWAL;
-    using cms::cert::SCHEDULED_OFFLINE;
     using cms::cert::EXPIRED;
     using cms::cert::REVOKED;
     using cms::cert::UNKNOWN;
     using cms::cluster::ClusterController;
     using cms::cluster::ClusterDiscovery;
     using cms::cluster::ClusterSyncPublisher;
-    using cms::cluster::TokenBucket;
 
 // fwd decl
 static void insertLoadedCertIfMissing(const ConfigCms &config,
@@ -3246,14 +3242,12 @@ using cms::cert::VALID;
 using cms::cert::PENDING;
 using cms::cert::PENDING_APPROVAL;
 using cms::cert::PENDING_RENEWAL;
-using cms::cert::SCHEDULED_OFFLINE;
 using cms::cert::EXPIRED;
 using cms::cert::REVOKED;
 using cms::cert::UNKNOWN;
 using cms::cluster::ClusterController;
 using cms::cluster::ClusterDiscovery;
 using cms::cluster::ClusterSyncPublisher;
-using cms::cluster::TokenBucket;
     using namespace cms;
     using namespace pvxs::server;
 

@@ -42,7 +42,7 @@ namespace auth {
 // Shared authenticator logger, defined once here and declared extern in auth.h
 // (loggers should not be defined in a header; DEFINE_LOGGER yields a static per
 // translation unit).
-::pvxs::logger auth{"pvxs.auth.common"};
+::pvxs::logger auth{"cms.auth.common"};
 
 /**
  * @brief Get a pointer to the singleton Auth object for the given type.

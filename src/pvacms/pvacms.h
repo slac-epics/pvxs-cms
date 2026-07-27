@@ -242,7 +242,6 @@ namespace cms {
     namespace server = pvxs::server;
     using cms::cert::DbCert;
     using cms::cert::KeyPair;
-    using cms::cert::SanEntry;
     using cms::cert::CertFactory;
     using cms::cert::CertData;
     using cms::cert::PVACertificateStatus;
@@ -255,9 +254,6 @@ namespace cms {
     using cms::detail::sql_ptr;
     using cms::detail::ServerEv;
 
-std::string sanToJson(const std::vector<SanEntry> &entries);
-std::vector<SanEntry> sanFromJson(const std::string &json);
->>>>>>> 43f1336 (refactor: move certificate machinery to cms::cert namespace)
 
 /**
  * @brief Monitors the certificate status and updates the shared wildcard status pv when any become valid or expire.

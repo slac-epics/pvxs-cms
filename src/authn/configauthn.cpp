@@ -26,7 +26,6 @@ namespace auth {
     using ::cms::detail::ensureDirectoryExists;
     using ::cms::detail::getFileContents;
     using ::cms::detail::getXdgPvaConfigHome;
-    using ::cms::cert::SanEntry;
     using ::cms::cert::CertDate;
     using ::cms::cert::YES;
     using ::cms::cert::NO;

@@ -203,16 +203,16 @@ int main(int argc, char *argv[]) {
                 }
                 std::string config_id{};
                 try {
-                    config_id = certs::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
+                    config_id = cms::cert::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
                 } catch (...) {
                 }
 
                 std::cout << "Certificate Details: " << std::endl
                           << "============================================" << std::endl
-                          << ossl::ShowX509{cert_data.cert.get()} << std::endl
+                          << cms::ssl::ShowX509{cert_data.cert.get()} << std::endl
                           << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
                           << std::endl;
-                cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
+                cert_id = cms::cert::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
             } catch (std::exception &e) {
                 std::cout << "Online Certificate Status: " << std::endl
                           << "============================================" << std::endl
@@ -229,8 +229,6 @@ int main(int argc, char *argv[]) {
             }
             Value result;
             switch (action) {
-                case NONE:
-                    break;
                 case STATUS:
                     result = client.get(cert_id).exec()->wait(conf.getRequestTimeout());
                     break;
@@ -252,7 +250,7 @@ int main(int argc, char *argv[]) {
                           << "Status        : " << result["state"].as<std::string>() << std::endl
                           << "Status Issued : " << result["ocsp_status_date"].as<std::string>() << std::endl
                           << "Status Expires: " << result["ocsp_certified_until"].as<std::string>() << std::endl;
-                if (result["value.index"].as<uint32_t>() == certs::REVOKED) {
+                if (result["value.index"].as<uint32_t>() == cms::cert::REVOKED) {
                     std::cout << "Revocation Date: " << result["ocsp_revocation_date"].as<std::string>() << std::endl;
                 }
                 std::cout << "--------------------------------------------\n" << std::endl;

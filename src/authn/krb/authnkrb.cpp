@@ -77,7 +77,7 @@ std::shared_ptr<AuthnCredentials> AuthNKrb::getCredentials(const client::Config 
     kerberos_credentials->country = {};
 
     // Set validity times.
-    const time_t now = timeNow();
+    const time_t now = cert::timeNow();
     kerberos_credentials->not_before = now;
     if ( krb_config.cert_validity_mins <= 0 ) {
         kerberos_credentials->not_after = 0;
@@ -373,7 +373,7 @@ bool AuthNKrb::verify(Value &ccr, time_t &authenticated_expiration_date) const {
 
     // Retrieve peer credential information from the context.
     OM_uint32 peer_lifetime = 0;
-    time_t now = timeNow();
+    time_t now = cert::timeNow();
 
     auto initiator_name = GSS_C_NO_NAME;
     major_status = gss_inquire_context(&minor_status, context, &initiator_name, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);

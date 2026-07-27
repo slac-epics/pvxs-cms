@@ -17,7 +17,6 @@ namespace cms {
 namespace auth {
     using ::cms::cert::CertCreationRequest;
     using ::cms::cert::IdFileFactory;
-    using ::cms::cert::ScheduleWindow;
     using ::cms::cert::CertDate;
     using ::cms::cert::VALID;
     using ::cms::cert::PENDING_APPROVAL;

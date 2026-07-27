@@ -28,7 +28,6 @@ namespace cms {
     using cms::cert::PENDING;
     using cms::cert::PENDING_APPROVAL;
     using cms::cert::PENDING_RENEWAL;
-    using cms::cert::SCHEDULED_OFFLINE;
     using cms::cert::EXPIRED;
     using cms::cert::REVOKED;
     using cms::cert::UNKNOWN;
