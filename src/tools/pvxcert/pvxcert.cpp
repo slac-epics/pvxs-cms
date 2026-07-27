@@ -151,6 +151,7 @@ int readParameters(cliparams& params, client::Config &conf) {
                   << "  (-v | --verbose)                           Verbose mode\n"
                   << "  (--status-pv)                              Print only certificate status PV name.  Use with -f\n"
                   << std::endl;
+        exit(0);
     }
 
     if (show_version) {
