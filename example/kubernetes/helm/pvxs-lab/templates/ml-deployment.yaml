@@ -71,6 +71,15 @@ spec:
               value: "NO"
             - name: EPICS_PVAS_BEACON_ADDR_LIST
               value: '{{ include "pvxs-lab.mlGatewayService" . }}:5076'
+            # The certificate database must live on the persistent volume mounted at
+            # /home/idm/.local/share/pva/1.5. Without this it follows the running user's
+            # data directory, and this container runs as root so that the key distribution
+            # centre can bind a privileged port, which puts the database on the container
+            # filesystem where it is destroyed on every restart. Losing it makes every
+            # certificate issued beforehand UNKNOWN, including the administrator's own,
+            # which the administrator rule requires.
+            - name: EPICS_PVACMS_DB
+              value: /home/idm/.local/share/pva/1.5/certs.db
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: /home/idm/.config/pva/1.5/pvacms.p12
             {{- if .Values.ml.debug.enabled }}

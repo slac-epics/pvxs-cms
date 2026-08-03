@@ -338,6 +338,21 @@ gw_undeploy
 > ```
 > The copy step logs `admin.p12 copied to admin client cert` when it succeeds and
 > warns if the certificate manager had not produced one within two minutes.
+>
+> **Upgrading a laboratory installed before the certificate database was
+> persisted.** The database used to be written outside the persistent volume, so
+> it was destroyed whenever the certificate manager restarted, and every
+> certificate issued beforehand lost its status record. An administrator keychain
+> kept from such an installation reports `UNKNOWN` and is refused. Clear it once
+> and let the certificate manager mint a replacement:
+> ```sh
+> kubectl -n pvxs-lab exec deploy/pvxs-lab-idm -c idm -- \
+>     rm -f /home/idm/.config/pva/1.5/admin.p12 \
+>           /home/admin/.config/pva/1.5/client.p12
+> kubectl -n pvxs-lab delete pod -l app=pvxs-lab-idm
+> ```
+> Check the replacement with `pvxcert -f ~/.config/pva/1.5/client.p12`, which
+> should report `VALID`. A new installation does not need this.
 
 - **login_to_lab** — Login as a lab user (selects the correct pod automatically)
 ```sh
