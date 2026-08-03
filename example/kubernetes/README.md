@@ -323,6 +323,22 @@ gw_undeploy
 
 ## Login helpers
 
+> **Administrators must wait for their keychain on a fresh install.**
+> Approving, denying or revoking a certificate requires the administrator to
+> present a certificate issued by that department's own certificate authority,
+> over a secure transport. The administrator's keychain is copied from the
+> certificate manager once it has bootstrapped, which takes up to two minutes on a
+> fresh install. An administrator shell opened before the copy finishes now fails
+> the decision outright rather than quietly succeeding over plain transport.
+>
+> To tell that it has happened, check the file exists in the administrator's home:
+> ```sh
+> kubectl -n pvxs-lab exec deploy/pvxs-lab-idm -c idm -- \
+>     ls -l /home/admin/.config/pva/1.5/client.p12
+> ```
+> The copy step logs `admin.p12 copied to admin client cert` when it succeeds and
+> warns if the certificate manager had not produced one within two minutes.
+
 - **login_to_lab** — Login as a lab user (selects the correct pod automatically)
 ```sh
 login_to_lab <user>

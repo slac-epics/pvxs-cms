@@ -121,7 +121,7 @@ spec:
             secretName: {{ include "pvxs-lab.fullname" . }}-ml-intermediate
         - name: pvacms-acf
           configMap:
-            name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf
+            name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf-ml
         - name: krb5-conf
           configMap:
             name: {{ include "pvxs-lab.fullname" . }}-krb5

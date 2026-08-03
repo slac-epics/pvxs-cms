@@ -607,11 +607,13 @@ function go_tls() {
             echo "  [approve on $node] $id"
             if [[ "$node" == "ml" ]]; then
                 # Approve on the ML PVACMS directly (localhost) as the admin user.
+                # Secure transport, because an administrator decision requires a
+                # certificate from this department's own authority presented over TLS.
                 kubectl -n $NS exec deploy/pvxs-lab-ml -- bash -c \
-                    "su - admin -c 'source ~/.admin_bashrc 2>/dev/null; export EPICS_PVA_NAME_SERVERS=localhost:5075; pvxcert --approve $id'" || {
+                    "su - admin -c 'source ~/.admin_bashrc 2>/dev/null; export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076; pvxcert --approve $id'" || {
                         echo "  [retry] $id on ml"; sleep 3
                         kubectl -n $NS exec deploy/pvxs-lab-ml -- bash -c \
-                            "su - admin -c 'source ~/.admin_bashrc 2>/dev/null; export EPICS_PVA_NAME_SERVERS=localhost:5075; pvxcert --approve $id'"
+                            "su - admin -c 'source ~/.admin_bashrc 2>/dev/null; export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076; pvxcert --approve $id'"
                     }
             else
                 _tls_exec idm admin "pvxcert --approve $id" || {

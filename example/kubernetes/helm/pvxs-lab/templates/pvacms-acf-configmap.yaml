@@ -1,16 +1,51 @@
+{{- /*
+One access security file per department, because a single shared file cannot name
+two different immediate issuers and still tell the two departments apart. The
+authority clause is the only thing in an access security file that can, so a
+shared file would let either department's administrator act on the other's
+certificate manager.
+
+The authority is declared in the nested form the certificate manager itself emits
+for a two element chain: the facility root enclosing that department's own
+intermediate, which carries the identifier the rule refers to.
+
+The administrator write rule is the administrator gate. The level one write test
+against the DEFAULT group is what decides whether a caller may approve, deny or
+revoke a certificate, so every clause here is load bearing:
+
+  UAG(CMS_ADMIN)   who
+  AUTHORITY(CMS_AUTH)  issued by this department, not the other one
+  PROTOCOL(TLS)    over a secure transport, not plain
+  METHOD("x509")   having actually presented a certificate
+
+The read rule is deliberately left open: anyone may read certificate status
+without presenting anything.
+*/ -}}
+{{- range $dept := list
+      (dict "suffix" "idm" "authority" $.Values.certAuthorities.labIntermediate)
+      (dict "suffix" "ml"  "authority" $.Values.certAuthorities.mlIntermediate) }}
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf
+  name: {{ include "pvxs-lab.fullname" $ }}-pvacms-acf-{{ $dept.suffix }}
   labels:
-    {{- include "pvxs-lab.labels" . | nindent 4 }}
+    {{- include "pvxs-lab.labels" $ | nindent 4 }}
 data:
   pvacms.acf: |-
+    AUTHORITY({{ $.Values.certAuthorities.root | quote }}) {
+        AUTHORITY(CMS_AUTH, {{ $dept.authority | quote }})
+    }
+
     UAG(CMS_ADMIN) {admin}
 
     ASG(DEFAULT) {
         RULE(0,READ)
         RULE(1,WRITE) {
             UAG(CMS_ADMIN)
+            AUTHORITY(CMS_AUTH)
+            PROTOCOL(TLS)
+            METHOD("x509")
         }
     }
+{{- end }}

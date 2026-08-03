@@ -32,7 +32,13 @@ spec:
             - |
               set -euo pipefail
               mkdir -p /certs
-              /opt/epics/pvxs-cms/test/O.$(/opt/epics/epics-base/startup/EpicsHostArch)/gen_lab_certs -O /certs
+              # The same three names the access security files name, from one place
+              # in the chart values, so the rule and the certificate cannot drift apart.
+              /opt/epics/pvxs-cms/test/O.$(/opt/epics/epics-base/startup/EpicsHostArch)/gen_lab_certs \
+                  -O /certs \
+                  -R {{ .Values.certAuthorities.root | quote }} \
+                  -L {{ .Values.certAuthorities.labIntermediate | quote }} \
+                  -M {{ .Values.certAuthorities.mlIntermediate | quote }}
               echo "=== generated ==="
               ls -la /certs
               cat /certs/issuer_ids.env

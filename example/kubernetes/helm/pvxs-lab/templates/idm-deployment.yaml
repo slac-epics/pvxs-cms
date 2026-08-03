@@ -136,4 +136,4 @@ spec:
             secretName: {{ include "pvxs-lab.fullname" . }}-lab-intermediate
         - name: pvacms-acf
           configMap:
-            name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf
+            name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf-idm

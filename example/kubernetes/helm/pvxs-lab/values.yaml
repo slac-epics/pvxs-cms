@@ -255,6 +255,18 @@ lab:
     command: ["/bin/sh", "-lc"]
     args: ["sleep infinity"]
 
+# Common names of the certificate authorities the laboratory mints.
+#
+# These are the single source: the certificate generation job mints with them and
+# each department's access security file names its own intermediate with them, so
+# changing one here changes both. Change one without the other and the certificate
+# manager will refuse every administrator, because the authority the rule names
+# will no longer be the authority that issued the administrator's certificate.
+certAuthorities:
+  root: "EPICS Root Certificate Authority"
+  labIntermediate: "EPICS Controls Intermediate CA"
+  mlIntermediate: "EPICS ML Intermediate CA"
+
 # Internal PVAccess ports (PVXS/P4P defaults)
 ports:
   pvaTcp: 5075
