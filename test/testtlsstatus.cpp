@@ -323,7 +323,7 @@ struct Tester {
 }  // namespace
 
 MAIN(testtlsstatus) {
-    testPlan(89);
+    testPlan(98);
     testSetup();
     logger_config_env();
     const auto tester = new Tester();
