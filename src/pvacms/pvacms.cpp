@@ -33,6 +33,7 @@
 #include <string>
 #include <thread>
 #include <tuple>
+#include <set>
 #include <vector>
 
 #include <epicsGetopt.h>
@@ -82,6 +83,28 @@ namespace pvxs {
 namespace certs {
 
 // fwd decl
+/**
+ * @brief Render a certificate's key usage or extended key usage extension as text.
+ *
+ * Produces the same comma separated form the certificate factory writes, so a
+ * certificate loaded from disk is recorded the same way as one issued here. Returns an
+ * empty string when the extension is absent, which is a fact about the certificate and
+ * not an error.
+ */
+static std::string usageStringFromCert(const X509 *cert, const int nid) {
+    if (!cert) return {};
+    const int index = X509_get_ext_by_NID(cert, nid, -1);
+    if (index < 0) return {};
+    const X509_EXTENSION *extension = X509_get_ext(const_cast<X509 *>(cert), index);
+    if (!extension) return {};
+    const ossl_ptr<BIO> bio(BIO_new(BIO_s_mem()), false);
+    if (!bio || X509V3_EXT_print(bio.get(), const_cast<X509_EXTENSION *>(extension), 0, 0) != 1) return {};
+    char *data = nullptr;
+    const auto length = BIO_get_mem_data(bio.get(), &data);
+    if (length <= 0 || !data) return {};
+    return {data, static_cast<size_t>(length)};
+}
+
 static void insertLoadedCertIfMissing(const ConfigCms &config,
                                       sql_ptr &certs_db,
                                       const ossl_ptr<X509> &cert,
@@ -284,6 +307,43 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
         }
         std::cout << "Certificate DB created  : " << db_file << std::endl;
     }
+
+    // Bring an existing database forward. The create statement above only runs when the
+    // table is absent, so it never reaches a database made by an earlier version. Each
+    // column is added only if it is not already there, so starting twice is harmless.
+    std::set<std::string> existing_columns;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERTS_TABLE_COLUMNS, -1, &statement, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(SB() << "Failed to read the certs table columns: " << sqlite3_errmsg(certs_db.get()));
+    }
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+        if (const auto column_name = sqlite3_column_text(statement, 1)) {
+            existing_columns.emplace(reinterpret_cast<const char *>(column_name));
+        }
+    }
+    sqlite3_finalize(statement);
+
+    const std::vector<std::pair<const char *, const char *>> added_columns{
+        {"created_date", SQL_ADD_CREATED_DATE},
+        {"key_usage", SQL_ADD_KEY_USAGE},
+        {"extended_key_usage", SQL_ADD_EXTENDED_KEY_USAGE},
+    };
+    for (const auto &column : added_columns) {
+        if (existing_columns.count(column.first)) continue;
+        log_debug_printf(pvacms, "Adding certs column: %s\n", column.first);
+        if (sqlite3_exec(certs_db.get(), column.second, nullptr, nullptr, nullptr) != SQLITE_OK) {
+            throw std::runtime_error(SB() << "Failed to add the " << column.first
+                                          << " column: " << sqlite3_errmsg(certs_db.get()));
+        }
+    }
+
+    // Rows written before the creation time existed carry an approximation of it, taken
+    // from the start of validity. It cannot be recovered, and the only consumer is a row
+    // order, which an approximation serves.
+    if (sqlite3_exec(certs_db.get(), SQL_BACKFILL_CREATED_DATE, nullptr, nullptr, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(SB() << "Failed to fill in the creation time on existing rows: "
+                                      << sqlite3_errmsg(certs_db.get()));
+    }
+
     log_debug_printf(pvacms, "Certs database exists: %s\n", "certs");
 }
 
@@ -639,20 +699,36 @@ certstatus_t storeCertificate(const sql_ptr &certs_db, CertFactory &cert_factory
                           cert_factory.country_.c_str(),
                           -1,
                           SQLITE_STATIC);
-        sqlite3_bind_int(sql_statement,
-                         sqlite3_bind_parameter_index(sql_statement, ":not_before"),
-                         static_cast<int>(cert_factory.not_before_));
-        sqlite3_bind_int(sql_statement,
-                         sqlite3_bind_parameter_index(sql_statement, ":not_after"),
-                         static_cast<int>(cert_factory.not_after_));
-        sqlite3_bind_int(sql_statement,
-                         sqlite3_bind_parameter_index(sql_statement, ":renew_by"),
-                         (cert_factory.renew_by_ > 0) ? static_cast<int>(cert_factory.renew_by_) : static_cast<int>(cert_factory.not_after_));
+        // Bound as 64 bit, matching how they are read back. Binding them as 32 bit
+        // truncated any date past 19 January 2038, which a long lived certificate
+        // authority reaches.
+        sqlite3_bind_int64(sql_statement,
+                           sqlite3_bind_parameter_index(sql_statement, ":not_before"),
+                           cert_factory.not_before_);
+        sqlite3_bind_int64(sql_statement,
+                           sqlite3_bind_parameter_index(sql_statement, ":not_after"),
+                           cert_factory.not_after_);
+        sqlite3_bind_int64(sql_statement,
+                           sqlite3_bind_parameter_index(sql_statement, ":renew_by"),
+                           (cert_factory.renew_by_ > 0) ? cert_factory.renew_by_ : cert_factory.not_after_);
         sqlite3_bind_int(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":status"), effective_status);
         sqlite3_bind_int(sql_statement,
                          sqlite3_bind_parameter_index(sql_statement, ":approved"),
                          cert_factory.initial_status_ == VALID ? 1 : 0);
         sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":status_date"), current_time);
+        // Recorded once when the row is first written and never changed afterwards: a
+        // listing is ordered by it, and a value that moved would move rows under a reader.
+        sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":created_date"), current_time);
+        sqlite3_bind_text(sql_statement,
+                          sqlite3_bind_parameter_index(sql_statement, ":key_usage"),
+                          cert_factory.key_usage_.c_str(),
+                          -1,
+                          SQLITE_STATIC);
+        sqlite3_bind_text(sql_statement,
+                          sqlite3_bind_parameter_index(sql_statement, ":extended_key_usage"),
+                          cert_factory.extended_key_usage_.c_str(),
+                          -1,
+                          SQLITE_STATIC);
 
         sql_status = sqlite3_step(sql_statement);
     }
@@ -2041,12 +2117,21 @@ static void insertLoadedCertIfMissing(const ConfigCms &config,
     sqlite3_bind_text (stmt, sqlite3_bind_parameter_index(stmt, ":O"),    o.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text (stmt, sqlite3_bind_parameter_index(stmt, ":OU"),   ou.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text (stmt, sqlite3_bind_parameter_index(stmt, ":C"),    c.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int  (stmt, sqlite3_bind_parameter_index(stmt, ":not_before"), (int)not_before);
-    sqlite3_bind_int  (stmt, sqlite3_bind_parameter_index(stmt, ":not_after"),  (int)not_after);
-    sqlite3_bind_int  (stmt, sqlite3_bind_parameter_index(stmt, ":renew_by"),   (int)not_after);
+    sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":not_before"), not_before);
+    sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":not_after"),  not_after);
+    sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":renew_by"),   not_after);
     sqlite3_bind_int  (stmt, sqlite3_bind_parameter_index(stmt, ":status"),     (int)effective_status);
     sqlite3_bind_int  (stmt, sqlite3_bind_parameter_index(stmt, ":approved"),   approved);
     sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":status_date"), now);
+    // This certificate was made elsewhere, so when it was created is not knowable. Its
+    // own start of validity is used: a property of the certificate, so two nodes loading
+    // the same file agree, and reloading it after rebuilding the database gives the same
+    // answer. The load time would do neither.
+    sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":created_date"), not_before);
+    const auto loaded_key_usage = usageStringFromCert(cert.get(), NID_key_usage);
+    const auto loaded_extended_key_usage = usageStringFromCert(cert.get(), NID_ext_key_usage);
+    sqlite3_bind_text (stmt, sqlite3_bind_parameter_index(stmt, ":key_usage"), loaded_key_usage.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text (stmt, sqlite3_bind_parameter_index(stmt, ":extended_key_usage"), loaded_extended_key_usage.c_str(), -1, SQLITE_TRANSIENT);
 
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);

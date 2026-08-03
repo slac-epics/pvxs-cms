@@ -45,7 +45,10 @@
     "     renew_by INTEGER,"            \
     "     renewal_due INTEGER,"         \
     "     status INTEGER,"              \
-    "     status_date INTEGER"          \
+    "     status_date INTEGER,"         \
+    "     created_date INTEGER,"        \
+    "     key_usage TEXT,"              \
+    "     extended_key_usage TEXT"      \
     "); "                               \
     "CREATE INDEX IF NOT EXISTS idx_certs_skid " \
     "     ON certs(skid); "            \
@@ -58,6 +61,26 @@
     "CREATE INDEX IF NOT EXISTS idx_certs_validity " \
     "     ON certs(not_before, not_after) ; " \
     "COMMIT;"
+
+// Columns present on the certificate table, so a database created before a column
+// existed can be brought forward. The create statement only runs when the table is
+// absent, so it never reaches an existing database.
+#define SQL_CERTS_TABLE_COLUMNS       \
+    "PRAGMA table_info(certs);"
+
+#define SQL_ADD_CREATED_DATE          \
+    "ALTER TABLE certs ADD COLUMN created_date INTEGER;"
+
+#define SQL_ADD_KEY_USAGE             \
+    "ALTER TABLE certs ADD COLUMN key_usage TEXT;"
+
+#define SQL_ADD_EXTENDED_KEY_USAGE    \
+    "ALTER TABLE certs ADD COLUMN extended_key_usage TEXT;"
+
+// Rows written before the creation time existed cannot have one recovered. The start
+// of validity is the closest thing the row holds and is used as an approximation.
+#define SQL_BACKFILL_CREATED_DATE     \
+    "UPDATE certs SET created_date = not_before WHERE created_date IS NULL;"
 
 #define SQL_CHECK_EXISTS_DB_FILE       \
     "SELECT name "                     \
@@ -79,7 +102,10 @@
     "     renew_by,"                  \
     "     renewal_due,"               \
     "     status,"                    \
-    "     status_date"                \
+    "     status_date,"               \
+    "     created_date,"              \
+    "     key_usage,"                 \
+    "     extended_key_usage"         \
     ") "                              \
     "VALUES ("                        \
     "     :serial,"                   \
@@ -94,7 +120,10 @@
     "     :renew_by,"                 \
     "     0,"                         \
     "     :status,"                   \
-    "     :status_date"               \
+    "     :status_date,"              \
+    "     :created_date,"             \
+    "     :key_usage,"                \
+    "     :extended_key_usage"        \
     ")"
 
 #define SQL_DUPS_SUBJECT              \

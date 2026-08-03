@@ -58,6 +58,9 @@
     "  , status_date = :status_date "      \
     "WHERE serial = :serial"
 
+// A peer does not send a creation time, so the receiving node derives one from the
+// start of validity: the same approximation used for rows written before the column
+// existed. This keeps the exchanged structure unchanged.
 #define SQL_SYNC_INSERT_CERT                    \
     "INSERT INTO certs ("                       \
     "     serial,"                              \
@@ -72,7 +75,8 @@
     "     renew_by,"                            \
     "     renewal_due,"                         \
     "     status,"                              \
-    "     status_date"                          \
+    "     status_date,"                         \
+    "     created_date"                         \
     ") "                                        \
     "VALUES ("                                  \
     "     :serial,"                             \
@@ -87,7 +91,8 @@
     "     :renew_by,"                           \
     "     :renewal_due,"                        \
     "     :status,"                             \
-    "     :status_date"                         \
+    "     :status_date,"                        \
+    "     :not_before"                          \
     ")"
 
 // Forward declarations
