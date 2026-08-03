@@ -80,6 +80,52 @@ class Auth {
     virtual bool verify(Value &ccr, time_t &authorized_validity) const = 0;
 
     /**
+     * @brief Members this authenticator wants added to the reply to a creation request.
+     *
+     * Returned empty by default, which leaves the reply exactly as it was, so a client
+     * that knows nothing of this sees no change. Mirrors the verifier substructure the
+     * request already carries: each authenticator owns its own part and ignores the rest.
+     *
+     * @return the members to place under `authenticator` in the reply
+     */
+    virtual std::vector<Member> responseFields() const { return {}; }
+
+    /**
+     * @brief Fill in the members declared by responseFields() on a reply.
+     *
+     * Called on the certificate management service after the fixed reply fields are set
+     * and before the reply is sent.
+     *
+     * @param ccr the certificate creation request being answered
+     * @param reply the reply being built
+     */
+    virtual void fillCreateResponse(const Value &ccr, Value &reply) const {
+        (void)ccr;
+        (void)reply;
+    }
+
+    /**
+     * @brief Act on the authenticator part of a reply, on the requesting side.
+     *
+     * Called only when the reply carries an `authenticator` member, so an authenticator
+     * that adds nothing is never entered. The requesting key pair is passed because the
+     * part may be addressed to the key that made the request, and the keychain contents
+     * as they were before the request are passed because anything already trusted has to
+     * come from before the reply rather than out of it.
+     *
+     * @param reply the reply received
+     * @param key_pair the key pair used to make the request
+     * @param held_before_request what the keychain held before the request was sent
+     */
+    virtual void handleCreateResponse(const Value &reply,
+                                      const std::shared_ptr<KeyPair> &key_pair,
+                                      const CertData &held_before_request) const {
+        (void)reply;
+        (void)key_pair;
+        (void)held_before_request;
+    }
+
+    /**
      * @brief Get the authenticator configuration from the environment.
      *
      * This function gets the authenticator configuration from the environment.
@@ -180,7 +226,9 @@ class Auth {
     std::tuple<time_t, std::string> processCertificateCreationRequest(const std::shared_ptr<CertCreationRequest> &ccr,
                                                   const std::string &cert_pv_prefix,
                                                   const std::string &issuer_id,
-                                                  double timeout) const;
+                                                  double timeout,
+                                                  const std::shared_ptr<KeyPair> &key_pair = {},
+                                                  const CertData &held_before_request = {}) const;
 
     /**
      * @brief Update the definitions with the authenticator-specific definitions.
@@ -401,6 +449,16 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
         std::shared_ptr<KeyPair> key_pair;
         log_debug_printf(auth, "Credentials retrieved for: %s authenticator\n", authenticator.type_.c_str());
 
+        // What the keychain held before the request was sent. Anything an authenticator
+        // has to trust while reading the reply must come from here rather than from the
+        // reply itself.
+        CertData held_before_request;
+        try {
+            held_before_request = IdFileFactory::create(tls_keychain_file, tls_keychain_pwd)->getCertDataFromFile();
+        } catch (...) {
+            // Nothing held yet. Expected on a first run.
+        }
+
         // Get or create the key pair.  Store it in the keychain file if not already present
         try {
             // Check if the key pair exists
@@ -426,7 +484,9 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
         std::tie(renew_by, p12_pem_string) = authenticator.processCertificateCreationRequest(cert_creation_request,
                                                                               config.getCertPvPrefix(),
                                                                               config.issuer_id,
-                                                                              config.getRequestTimeout());
+                                                                              config.getRequestTimeout(),
+                                                                              key_pair,
+                                                                              held_before_request);
 
         // If the certificate was created successfully, write it to the keychain file
         if (!p12_pem_string.empty()) {

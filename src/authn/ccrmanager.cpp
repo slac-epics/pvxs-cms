@@ -10,6 +10,7 @@
 #include <pvxs/log.h>
 #include <pvxs/nt.h>
 
+#include "auth.h"
 #include "certstatus.h"
 #include "openssl.h"
 #include "security.h"
@@ -33,7 +34,12 @@ using namespace members;
  * @param timeout Timeout for the request
  * @return std::string PEM format Certificate.
  */
-std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_ptr<CertCreationRequest> &cert_creation_request, const std::string &cert_pv_prefix, const std::string &issuer_id, const double timeout) {
+std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_ptr<CertCreationRequest> &cert_creation_request,
+                                                              const std::string &cert_pv_prefix,
+                                                              const std::string &issuer_id,
+                                                              const double timeout,
+                                                              const std::shared_ptr<KeyPair> &key_pair,
+                                                              const CertData &held_before_request) {
     auto uri = nt::NTURI({}).build();
     uri += {Struct("query", CCR_PROTOTYPE(cert_creation_request->verifier_fields))};
     auto arg = uri.create();
@@ -61,6 +67,13 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     log_debug_printf(auth_log, "%s\n", value["issuer"].as<std::string>().c_str());
     log_debug_printf(auth_log, "%s\n", value["cert_id"].as<std::string>().c_str());
     log_debug_printf(auth_log, "%s\n", value["status_pv"].as<std::string>().c_str());
+    // An authenticator only hears about a reply that carries a part for it, so one that
+    // adds nothing is never entered and nothing about its path changes.
+    if (const auto authenticator_part = value["authenticator"]) {
+        (void)authenticator_part;
+        Auth::getAuth(cert_creation_request->type)->handleCreateResponse(value, key_pair, held_before_request);
+    }
+
     const auto renew_by_val = value["renew_by"];
     const CertDate expiration_date(value["expiration"].as<time_t>());
     log_debug_printf(auth_log, "Expires On: %s\n", expiration_date.s.c_str() );

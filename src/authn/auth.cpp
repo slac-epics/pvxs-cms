@@ -116,9 +116,16 @@ std::shared_ptr<CertCreationRequest> Auth::createCertCreationRequest(const std::
  * CCR object is valid and contains the required information
  * before calling this function.
  */
-std::tuple<time_t, std::string> Auth::processCertificateCreationRequest(const std::shared_ptr<CertCreationRequest> &ccr, const std::string &cert_pv_prefix, const std::string &issuer_id, const double timeout) const {
-    // Forward the ccr to the certificate management service
-    return ccr_manager_.createCertificate(ccr, cert_pv_prefix, issuer_id, timeout);
+std::tuple<time_t, std::string> Auth::processCertificateCreationRequest(const std::shared_ptr<CertCreationRequest> &ccr,
+                                                                       const std::string &cert_pv_prefix,
+                                                                       const std::string &issuer_id,
+                                                                       const double timeout,
+                                                                       const std::shared_ptr<KeyPair> &key_pair,
+                                                                       const CertData &held_before_request) const {
+    // Forward the ccr to the certificate management service. The key pair and what the
+    // keychain held before the request are carried through so an authenticator can act
+    // on a reply addressed to the key that made the request.
+    return ccr_manager_.createCertificate(ccr, cert_pv_prefix, issuer_id, timeout, key_pair, held_before_request);
 }
 
 namespace {

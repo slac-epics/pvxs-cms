@@ -174,7 +174,7 @@ std::string extractSubjectPart(const std::string &subject, const std::string &ke
  * @brief  The prototype of the returned data from a create certificate operation
  * @return  the prototype to use for create certificate operations
  */
-Value getCreatePrototype() {
+Value getCreatePrototype(const std::vector<Member> &response_fields) {
     using namespace members;
     auto value = TypeDef(TypeCode::Struct, "epics:nt/NTEnum:1.0", {
                     Struct("value", "enum_t", {
@@ -195,6 +195,17 @@ Value getCreatePrototype() {
                     Member(TypeCode::UInt64, "expiration"),
                     Member(TypeCode::String, "cert"),
         }).create();
+    if (!response_fields.empty()) {
+        // An authenticator may add its own members to the reply, in the same way the
+        // request already carries a verifier substructure that each one fills
+        // differently. An authenticator that adds nothing leaves the reply unchanged,
+        // so a client that knows nothing of this sees exactly what it saw before.
+        auto def = TypeDef(value);
+        def += {Struct("authenticator", response_fields)};
+        auto extended = def.create();
+        extended.assign(value);
+        return extended;
+    }
     shared_array<const std::string> choices(CERT_STATES);
     value["value.choices"] = choices.freeze();
     return value;
@@ -1058,9 +1069,11 @@ int64_t onCreateCertificate(ConfigCms &config,
         expiration = renew_by = getStructureValue<time_t>(ccr, "not_after");
         certstatus_t state = UNKNOWN;
 
-        // Call the authenticator-specific verifier if not the default type
+        // Look up the authenticator for every request, so it can add to the reply below.
+        // Verification is still only for the non-default types: the default one has
+        // nothing to verify, which is why its requests wait for an administrator.
+        const auto authenticator = Auth::getAuth(type);
         if (type != PVXS_DEFAULT_AUTH_TYPE) {
-            const auto authenticator = Auth::getAuth(type);
             // Calling authenticator may set the renew-by date to the maximum authenticated date
             if (!authenticator->verify(ccr, renew_by))
                 throw std::runtime_error("CCR claims are invalid");
@@ -1156,7 +1169,7 @@ int64_t onCreateCertificate(ConfigCms &config,
                                                cert_auth_cert_chain.get(),
                                                state);
 
-        auto reply(getCreatePrototype());
+        auto reply(getCreatePrototype(authenticator->responseFields()));
         std::string pem_string;
 
         ///////////////////////////////////////////////
@@ -1240,6 +1253,9 @@ int64_t onCreateCertificate(ConfigCms &config,
             log_info_printf(pvacms, "RENEWAL BY: %s\n", renew_by_s.c_str());
         }
         log_info_printf(pvacms, "EXPIRES ON: %s\n", expiration_s.c_str());
+        // After the fixed fields, before the reply goes out: the authenticator fills in
+        // whatever it declared. One that declared nothing does nothing here.
+        authenticator->fillCreateResponse(ccr, reply);
         op->reply(reply);
         return static_cast<int64_t>(serial);
     } catch (std::exception &e) {
