@@ -392,6 +392,50 @@ inline std::string certAuthorityIssuerId(const CertData &cert_data) {
 }
 
 /**
+ * @brief The identifier of the certificate authority in cert data, computed from its public key.
+ *
+ * Deciding whether an authority is the expected one must never rest on the subject key identifier
+ * extension: that is written by whoever produced the certificate, so an attacker substituting its
+ * own authority simply writes the expected value into it and passes. Computing the identifier from
+ * the public key removes that, because the attacker would have to find a key that hashes to the
+ * expected value rather than just assert it.
+ *
+ * Returns the whole identifier, not a prefix. How much of it is compared is decided by the caller,
+ * from how much they committed to in advance.
+ *
+ * @throws std::runtime_error if no certificate authority can be identified.
+ */
+inline std::string certAuthorityFullIssuerId(const CertData &cert_data) {
+    if (cert_data.cert_auth_chain && sk_X509_num(cert_data.cert_auth_chain.get()) > 0) {
+        return CertStatus::getFullSkId(CertStatus::getIssuerCa(cert_data.cert_auth_chain));
+    }
+    if (cert_data.cert) {
+        // Trust-anchor keychain: the authority is the certificate itself.
+        return CertStatus::getFullSkId(cert_data.cert.get());
+    }
+    throw std::runtime_error("No certificate authority found to identify the issuer.");
+}
+
+/**
+ * @brief Whether an authority's identifier is the one committed to.
+ *
+ * The comparison runs over as much of the identifier as was committed to in advance. Someone who
+ * pinned a certificate authority in a keychain has the whole thing and gets the whole thing
+ * compared. Someone who typed the published short form gets that many digits compared, which is
+ * all the form they used can carry; supplying more of it makes the check stronger.
+ *
+ * Compared without regard to case, since the identifier is written as hexadecimal either way.
+ */
+inline bool issuerIdIsExpected(const std::string &expected, const std::string &actual_full) {
+    if (expected.empty() || expected.size() > actual_full.size()) return false;
+    for (size_t i = 0; i < expected.size(); i++) {
+        if (std::tolower(static_cast<unsigned char>(expected[i]))
+            != std::tolower(static_cast<unsigned char>(actual_full[i]))) return false;
+    }
+    return true;
+}
+
+/**
  * @brief Read the issuer ID of the certificate authority already trusted in a keychain file.
  *
  * If @p keychain_file exists and contains a certificate authority (a trust anchor downloaded by a
@@ -405,7 +449,7 @@ inline std::string certAuthorityIssuerId(const CertData &cert_data) {
  */
 inline std::string getTrustedIssuerId(const std::string &keychain_file, const std::string &keychain_pwd) {
     try {
-        return certAuthorityIssuerId(IdFileFactory::create(keychain_file, keychain_pwd)->getCertDataFromFile());
+        return certAuthorityFullIssuerId(IdFileFactory::create(keychain_file, keychain_pwd)->getCertDataFromFile());
     } catch (...) {
         // No existing keychain / no trusted authority — nothing pinned.
         return {};
@@ -433,7 +477,7 @@ inline std::string resolveExpectedIssuerId(const std::string &configured_issuer_
     const std::string pinned_issuer_id = getTrustedIssuerId(keychain_file, keychain_pwd);
 
     if (!pinned_issuer_id.empty()) {
-        if (!configured_issuer_id.empty() && configured_issuer_id != pinned_issuer_id) {
+        if (!configured_issuer_id.empty() && !issuerIdIsExpected(configured_issuer_id, pinned_issuer_id)) {
             throw std::runtime_error(SB() << "Specified issuer '" << configured_issuer_id
                                           << "' does not match the certificate authority already trusted in the keychain ('"
                                           << pinned_issuer_id << "'). Refusing to change the trusted authority.");
@@ -459,8 +503,8 @@ inline std::string resolveExpectedIssuerId(const std::string &configured_issuer_
  * @throws std::runtime_error if the delivered authority's issuer ID differs from @p expected_issuer_id.
  */
 inline void verifyDeliveredIssuerId(const CertData &delivered, const std::string &expected_issuer_id) {
-    const std::string delivered_issuer_id = certAuthorityIssuerId(delivered);
-    if (delivered_issuer_id != expected_issuer_id) {
+    const std::string delivered_issuer_id = certAuthorityFullIssuerId(delivered);
+    if (!issuerIdIsExpected(expected_issuer_id, delivered_issuer_id)) {
         throw std::runtime_error(SB() << "Delivered certificate authority issuer '" << delivered_issuer_id
                                       << "' does not match the expected issuer '" << expected_issuer_id
                                       << "'. Rejecting — the authority may have been substituted in transit.");
