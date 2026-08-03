@@ -253,12 +253,12 @@ void CertFactory::setValidity(const ossl_ptr<X509> &certificate) const {
     if (X509_set1_notBefore(certificate.get(), before.get()) != 1) {
         throw std::runtime_error("Failed to set validity start time in certificate.");
     }
-    log_debug_printf(certs, "Not before: %s", std::ctime(&not_before_));
+    log_debug_printf(certs, "Not before: %s\n", CertDate(not_before_).s.c_str());
 
     if (X509_set1_notAfter(certificate.get(), after.get()) != 1) {
         throw std::runtime_error("Failed to set validity end time in certificate.");
     }
-    log_debug_printf(certs, "Not after: %s", std::ctime(&not_after_));
+    log_debug_printf(certs, "Not after: %s\n", CertDate(not_after_).s.c_str());
 }
 
 /**

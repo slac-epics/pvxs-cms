@@ -323,7 +323,18 @@ struct Tester {
 }  // namespace
 
 MAIN(testtlsstatus) {
-    testPlan(98);
+    testPlan(101);
+
+    // The layout itself, asserted against a literal. A round trip through format and
+    // parse uses the same layout on both sides and passes whatever that layout is, so
+    // it cannot detect a change to it. Only a literal can.
+    {
+        const CertDate fixed(static_cast<time_t>(1754044281));  // 2025-08-01 10:31:21 UTC
+        testEq(fixed.s, std::string("2025-08-01 10:31:21 UTC"));
+        testOk(fixed.s.size() == 23, "Rendered date is fixed width (%zu characters)", fixed.s.size());
+        const CertDate round_tripped(fixed.s);
+        testEq(round_tripped.t, fixed.t);
+    }
     testSetup();
     logger_config_env();
     const auto tester = new Tester();
