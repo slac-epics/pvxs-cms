@@ -29,6 +29,7 @@ spec:
               cp /home/guest/.internet_guest_bashrc /home/guest/.guest_bashrc
               exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
           env:
+            {{- include "pvxs-lab.issuerEnv" (dict "ctx" . "key" "LAB_ISSUER") | nindent 12 }}
             - name: EPICS_AUTH_KRB_REALM
               value: "EPICS.ORG"
             - name: KRB5_CONFIG
