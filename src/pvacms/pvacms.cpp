@@ -1918,6 +1918,7 @@ void addNewAdminToAcfFile(const std::string &filename, const std::string &admin_
     std::ostringstream buffer;
     buffer << infile.rdbuf();
     std::string content = buffer.str();
+    const std::string original_content = content;
     infile.close();
 
     // Regex to find and update the UAG(CMS_ADMIN) block
@@ -1959,6 +1960,13 @@ void addNewAdminToAcfFile(const std::string &filename, const std::string &admin_
         throw std::runtime_error("UAG(CMS_ADMIN) block not found in file: " + filename);
     }
 
+    // Nothing to add: the administrator is already listed. Do not rewrite the file.
+    // Writing an identical file would fail wherever the access security file is
+    // supplied read-only, which is the normal way to ship one.
+    if (content == original_content) {
+        return;
+    }
+
     // Write back to the file
     std::ofstream outfile(filename);
     if (!outfile.is_open()) {
@@ -1986,6 +1994,7 @@ void addNewAdminToYamlFile(const std::string &filename, const std::string &admin
     std::ostringstream buffer;
     buffer << infile.rdbuf();
     std::string content = buffer.str();
+    const std::string original_content = content;
     infile.close();
 
     // Regex to find the `CMS_ADMIN` section and `users` list
@@ -2006,6 +2015,12 @@ void addNewAdminToYamlFile(const std::string &filename, const std::string &admin
 
         // Replace the matched users block with the updated block
         content.replace(match.position(1), match.length(1), users_block);
+
+        // Nothing to add: the administrator is already listed. Do not rewrite the
+        // file, so a read-only access security file is left alone.
+        if (content == original_content) {
+            return;
+        }
 
         // Write back the updated YAML
         std::ofstream outfile(filename);
