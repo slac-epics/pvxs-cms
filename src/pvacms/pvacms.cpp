@@ -60,6 +60,7 @@
 #include "authregistry.h"
 #include "certfactory.h"
 #include "certfilefactory.h"
+#include "certrequestid.h"
 #include "certstatus.h"
 #include "certstatusfactory.h"
 #include "cmsversion.h"
@@ -317,6 +318,14 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
             throw std::runtime_error(SB() << "Can't initialize certs db file: " << sqlite3_errmsg(certs_db.get()));
         }
         std::cout << "Certificate DB created  : " << db_file << std::endl;
+    }
+
+    // The request identifier table, created whether or not the certificate table was just
+    // made. Adding it to the statement above would leave every existing deployment without
+    // it, because that statement only runs when certs is absent. Safe to run every start.
+    if (sqlite3_exec(certs_db.get(), SQL_CREATE_REQUEST_ID_TABLE, nullptr, nullptr, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(SB() << "Failed to create the certificate request identifier table: "
+                                      << sqlite3_errmsg(certs_db.get()));
     }
 
     // Bring an existing database forward. The create statement above only runs when the
@@ -976,6 +985,66 @@ bool getPriorApprovalStatus(const sql_ptr &certs_db,
 }
 
 /**
+ * @brief Read the request identifier already recorded for a certificate, if there is one.
+ *
+ * @param certs_db the certificate database
+ * @param serial the certificate serial number
+ * @return the stored identifier, or an empty string when the certificate has none
+ */
+std::string getStoredRequestId(sqlite3 *certs_db, const uint64_t serial) {
+    if (!certs_db) return {};
+
+    sqlite3_stmt *statement = nullptr;
+    if (sqlite3_prepare_v2(certs_db, SQL_REQUEST_ID_BY_SERIAL, -1, &statement, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(SB() << "Failed to read the certificate request identifier: "
+                                      << sqlite3_errmsg(certs_db));
+    }
+    sqlite3_bind_int64(statement, sqlite3_bind_parameter_index(statement, ":serial"),
+                       static_cast<sqlite3_int64>(serial));
+
+    std::string request_id;
+    if (sqlite3_step(statement) == SQLITE_ROW) {
+        if (const auto text = sqlite3_column_text(statement, 0)) {
+            request_id = reinterpret_cast<const char *>(text);
+        }
+    }
+    sqlite3_finalize(statement);
+    return request_id;
+}
+
+/**
+ * @brief Record a request identifier against a certificate.
+ *
+ * The key digest goes in beside it so an administrator, or a later tool, can tell which key an
+ * identifier was issued against without re-reading the certificate.
+ */
+void storeRequestId(sqlite3 *certs_db, const uint64_t serial, const std::string &request_id,
+                    const std::string &pub_key_digest, const time_t created) {
+    if (!certs_db) throw std::runtime_error("No certificate database to record the request identifier in");
+
+    sqlite3_stmt *statement = nullptr;
+    if (sqlite3_prepare_v2(certs_db, SQL_CREATE_REQUEST_ID, -1, &statement, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(SB() << "Failed to record the certificate request identifier: "
+                                      << sqlite3_errmsg(certs_db));
+    }
+    sqlite3_bind_int64(statement, sqlite3_bind_parameter_index(statement, ":serial"),
+                       static_cast<sqlite3_int64>(serial));
+    sqlite3_bind_text(statement, sqlite3_bind_parameter_index(statement, ":request_id"),
+                      request_id.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(statement, sqlite3_bind_parameter_index(statement, ":pub_key_digest"),
+                      pub_key_digest.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int64(statement, sqlite3_bind_parameter_index(statement, ":created"),
+                      static_cast<sqlite3_int64>(created));
+
+    const auto step = sqlite3_step(statement);
+    sqlite3_finalize(statement);
+    if (step != SQLITE_DONE) {
+        throw std::runtime_error(SB() << "Failed to record the certificate request identifier: "
+                                      << sqlite3_errmsg(certs_db));
+    }
+}
+
+/**
  * @brief CERT:CREATE Handles the creation of a certificate.
  *
  * This function handles the creation of a certificate based on the provided
@@ -1255,7 +1324,28 @@ int64_t onCreateCertificate(ConfigCms &config,
         log_info_printf(pvacms, "EXPIRES ON: %s\n", expiration_s.c_str());
         // After the fixed fields, before the reply goes out: the authenticator fills in
         // whatever it declared. One that declared nothing does nothing here.
-        authenticator->fillCreateResponse(ccr, reply);
+        // Only a request awaiting approval gets an identifier, because that is the only state an
+        // administrator approves. A request sent straight to VALID by site configuration, one
+        // matched by a prior approval, and one from any authenticator other than the standard
+        // one all get none: an identifier there would tell the requester to email an
+        // administrator who has nothing to approve.
+        //
+        // A renewal of a certificate still awaiting approval keeps the identifier already
+        // recorded against it, so the requester does not have to send a second one. A pending
+        // certificate created before this existed has none, and gets one now.
+        std::string request_id;
+        if (state == PENDING_APPROVAL) {
+            request_id = getStoredRequestId(certs_db.get(), serial);
+            if (request_id.empty()) {
+                request_id = generateRequestId();
+                storeRequestId(certs_db.get(), serial, request_id, publicKeyDigest(pub_key), now);
+            }
+        }
+
+        CreateResponseContext response_context;
+        response_context.request_id = request_id;
+        response_context.cert_auth_pkey = &cert_auth_pkey;
+        authenticator->fillCreateResponse(ccr, reply, response_context);
         op->reply(reply);
         return static_cast<int64_t>(serial);
     } catch (std::exception &e) {

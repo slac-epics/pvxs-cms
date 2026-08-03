@@ -121,11 +121,13 @@ std::tuple<time_t, std::string> Auth::processCertificateCreationRequest(const st
                                                                        const std::string &issuer_id,
                                                                        const double timeout,
                                                                        const std::shared_ptr<KeyPair> &key_pair,
-                                                                       const CertData &held_before_request) const {
+                                                                       const CertData &held_before_request,
+                                                                       const std::string &expected_issuer_id) const {
     // Forward the ccr to the certificate management service. The key pair and what the
     // keychain held before the request are carried through so an authenticator can act
     // on a reply addressed to the key that made the request.
-    return ccr_manager_.createCertificate(ccr, cert_pv_prefix, issuer_id, timeout, key_pair, held_before_request);
+    return ccr_manager_.createCertificate(ccr, cert_pv_prefix, issuer_id, timeout, key_pair, held_before_request,
+                                          expected_issuer_id);
 }
 
 namespace {
