@@ -80,7 +80,13 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     app.add_flag("-R,--revoke", revoke);
     app.add_flag("-D,--deny", deny);
 
-    CLI11_PARSE(app, argc, argv);
+    // Do not let the argument parsing library choose the exit code: it returns its own,
+    // which is how an unrecognised option used to exit 109. Keep its message, use ours.
+    try {
+        app.parse(argc, argv);
+    } catch (const CLI::ParseError &e) {
+        return app.exit(e) == 0 ? 0 : 3;
+    }
 
     conf.setRequestTimeout(timeout);
 
@@ -119,6 +125,17 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "  (--cert-pv-prefix) <prefix>                Status PV prefix for the <cert_id> form.  Default CERT:STATUS:\n"
                   << "  (-d | --debug)                             Debug mode: Shorthand for $PVXS_LOG=\"pvxs.*=DEBUG\"\n"
                   << "  (-v | --verbose)                           Verbose mode\n"
+                  << std::endl
+                  << "Results are written to standard output and everything else to standard error,\n"
+                  << "so the output can be piped into another program.\n"
+                  << std::endl
+                  << "exit codes:\n"
+                  << "  0   Did what was asked.  A query that matched nothing is also 0.\n"
+                  << "  1   Failed.\n"
+                  << "  2   Interrupted before it finished.\n"
+                  << "  3   The command line was wrong.\n"
+                  << "  4   Timed out.\n"
+                  << "  5   Some operations in a batch failed while others succeeded.\n"
                   << std::endl;
         exit(0);
     }
@@ -126,7 +143,7 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     if (show_version) {
         if (argc > 2) {
             std::cerr << "Error: -V option cannot be used with any other options.\n";
-            exit(10);
+            exit(3);
         }
         std::cout << ::cms::version_information;
         exit(0);
@@ -153,18 +170,18 @@ int main(int argc, char *argv[]) {
 
         if (password_flag && cert_file.empty()) {
             log_err_printf(certslog, "Error: -p must only be used with -f.%s", "\n");
-            return 1;
+            return 3;
         }
 
         if (!cert_file.empty() && (approve || revoke || deny)) {
             log_err_printf(certslog, "Error: -I, -A, -R, or -D cannot be used with -f.%s", "\n");
-            return 2;
+            return 3;
         }
 
         // Handle the flags after parsing
         if (debug) logger_level_set("pvxs.*", Level::Debug);
         if (password_flag) {
-            std::cout << "Enter password: ";
+            std::cerr << "Enter password: ";
 #if !defined(_WIN32) && !defined(_MSC_VER)
             setEcho(false);
 #endif
@@ -172,7 +189,7 @@ int main(int argc, char *argv[]) {
 #if !defined(_WIN32) && !defined(_MSC_VER)
             setEcho(true);
 #endif
-            std::cout << std::endl;
+            std::cerr << std::endl;
         }
 
         if (approve) {
@@ -187,7 +204,7 @@ int main(int argc, char *argv[]) {
 
         auto client = conf.build();
 
-        if (verbose) std::cout << "Effective config\n" << conf;
+        if (verbose) std::cerr << "Effective config\n" << conf;
 
         std::list<std::shared_ptr<client::Operation>> ops;
 
@@ -207,14 +224,13 @@ int main(int argc, char *argv[]) {
                 } catch (...) {
                 }
 
-                std::cout << "Certificate Details: " << std::endl
-                          << "============================================" << std::endl
-                          << ossl::ShowX509{cert_data.cert.get()} << std::endl
-                          << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n") << "--------------------------------------------\n"
-                          << std::endl;
+                std::cerr << "Certificate Details: " << std::endl << "============================================" << std::endl;
+                std::cout << ossl::ShowX509{cert_data.cert.get()} << std::endl
+                          << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n");
+                std::cerr << "--------------------------------------------\n" << std::endl;
                 cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
             } catch (std::exception &e) {
-                std::cout << "Online Certificate Status: " << std::endl
+                std::cerr << "Online Certificate Status: " << std::endl
                           << "============================================" << std::endl
                           << "Not configured: " << e.what() << std::endl;
                 return 0;
@@ -225,7 +241,7 @@ int main(int argc, char *argv[]) {
 
         try {
             if (action != STATUS) {
-                std::cout << actionToString(action) << " ==> " << cert_id;
+                std::cerr << actionToString(action) << " ==> " << cert_id;
             }
             Value result;
             switch (action) {
@@ -244,26 +260,36 @@ int main(int argc, char *argv[]) {
             }
             Indented I(std::cout);
             if (result) {
-                std::cout << "Certificate Status: " << std::endl
-                          << "============================================" << std::endl
-                          << "Certificate ID: " << cert_id.substr(cert_id.rfind(':') - 8) << std::endl
+                std::cerr << "Certificate Status: " << std::endl << "============================================" << std::endl;
+                std::cout << "Certificate ID: " << cert_id.substr(cert_id.rfind(':') - 8) << std::endl
                           << "Status        : " << result["state"].as<std::string>() << std::endl
                           << "Status Issued : " << result["ocsp_status_date"].as<std::string>() << std::endl
                           << "Status Expires: " << result["ocsp_certified_until"].as<std::string>() << std::endl;
                 if (result["value.index"].as<uint32_t>() == certs::REVOKED) {
                     std::cout << "Revocation Date: " << result["ocsp_revocation_date"].as<std::string>() << std::endl;
                 }
-                std::cout << "--------------------------------------------\n" << std::endl;
+                std::cerr << "--------------------------------------------\n" << std::endl;
             } else if (action != STATUS)
-                std::cout << " ==> Completed Successfully\n";
-        } catch (std::exception &e) {
-            std::cout << std::endl;
+                std::cerr << " ==> Completed Successfully\n";
+        } catch (const client::Timeout &e) {
+            // Distinguished from an unspecified failure so a caller can tell the server
+            // did not answer in time from the server refusing what was asked.
+            std::cerr << std::endl;
             log_err_printf(certslog, "%s\n", e.what());
             return 4;
+        } catch (const client::Interrupted &e) {
+            // Same meaning pvxget gives this code.
+            std::cerr << std::endl;
+            log_err_printf(certslog, "%s\n", e.what());
+            return 2;
+        } catch (std::exception &e) {
+            std::cerr << std::endl;
+            log_err_printf(certslog, "%s\n", e.what());
+            return 1;
         }
 
     } catch (std::exception &e) {
         log_err_printf(certslog, "Error: %s%s", e.what(), "\n");
-        return 5;
+        return 1;
     }
 }
