@@ -223,13 +223,12 @@ function gw_kind_status {
 # Runs pvxs/example/docker/build.sh which invokes both build_docker.sh scripts
 # in order (epics-base → pvxs).  All arguments (e.g. --no-cache) are forwarded.
 # Requires: PVXS_CMS to be set in the environment.
+# Runs in a subshell so the directory change is contained, the build script's
+# exit code is the function's exit code, and Ctrl-C aborts instead of being
+# swallowed. The old trap/cd pattern returned the cd's success even when the
+# build failed, letting `a && b` chains carry on past a failed build.
 function spva_build_images {
-    local _pwd="${PWD}"
-    trap 'cd "${_pwd}"' INT TERM EXIT
-    cd "${PVXS_CMS}/../pvxs/example/docker"
-    ./build.sh "$@"
-    trap - INT TERM EXIT
-    cd "${_pwd}"
+    ( cd "${PVXS_CMS}/../pvxs/example/docker" && ./build.sh "$@" )
 }
 
 # Build the pvxs-cms image (pvxs-cms:dev) which sits on top of pvxs:latest.
@@ -237,12 +236,7 @@ function spva_build_images {
 # All arguments (e.g. --no-cache) are forwarded.
 # Requires: PVXS_CMS to be set in the environment.
 function cms_build_images {
-    local _pwd="${PWD}"
-    trap 'cd "${_pwd}"' INT TERM EXIT
-    cd "${PVXS_CMS}/example/docker"
-    ./build.sh "$@"
-    trap - INT TERM EXIT
-    cd "${_pwd}"
+    ( cd "${PVXS_CMS}/example/docker" && ./build.sh "$@" )
 }
 
 function gw_build_images {
@@ -258,10 +252,11 @@ function gw_build_images {
     )
 }
 
+# Runs in a subshell (like the build helpers): directory change contained,
+# real exit code propagated, Ctrl-C aborts instead of being swallowed.
 function gw_deploy {
-    local _pwd="${PWD}"
-    trap 'cd "${_pwd}"' INT TERM EXIT
-    cd "${PVXS_CMS}/example/kubernetes/helm"
+    (
+    cd "${PVXS_CMS}/example/kubernetes/helm" || return 1
 
     # Tag selector — dev branch defaults to "dev" (matches values.yaml). Pass
     # --tag latest to deploy the latest-tagged images instead. This MUST stay
@@ -302,7 +297,7 @@ function gw_deploy {
         gw_delete_cert_authority_state
     fi
     if [[ "$(kubectl config current-context 2>/dev/null)" == "${GW_KIND_CONTEXT}" ]]; then
-        gw_kind_load_images --tag "${tag}" || { trap - INT TERM EXIT; cd "${_pwd}"; return 1; }
+        gw_kind_load_images --tag "${tag}" || return 1
     fi
 
     # Override every per-image tag in values.yaml. Keys must match the
@@ -323,7 +318,7 @@ function gw_deploy {
     helm upgrade --install pvxs-lab pvxs-lab -n pvxs-lab --create-namespace \
         --set dockerRegistry=${DOCKER_REGISTRY} \
         --set dockerUsername=${DOCKER_USERNAME} \
-        "${tag_overrides[@]}" "${passthrough[@]}"
+        "${tag_overrides[@]}" "${passthrough[@]}" || return 1
 
     # Fixed tags like "latest" mean helm sees an unchanged manifest and leaves
     # running pods on the old image even after a newer one was loaded into the
@@ -337,8 +332,7 @@ function gw_deploy {
             fi
         done < <(kubectl -n pvxs-lab get deploy -o jsonpath='{range .items[*]}{.metadata.name} {.spec.template.spec.containers[0].image}{"\n"}{end}')
     fi
-    trap - INT TERM EXIT
-    cd "${_pwd}"
+    )
 }
 
 function gw_undeploy {

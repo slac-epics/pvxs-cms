@@ -6,3 +6,12 @@ bin
 lib
 cfg
 .DS_Store
+# Git bookkeeping changes on every commit, fetch, even git status - none of
+# which affect the compiled result. Cost: the in-image version header falls
+# back to a generic string instead of the git description.
+.git
+# Host-side tooling (helm charts, kind helpers, per-app docker contexts).
+# Never used inside the pvxs-cms image; editing a helper must not rebuild
+# the whole image chain. The gateway and cs-studio images copy from here
+# via the workspace-root context, which has its own .dockerignore.
+example/kubernetes
