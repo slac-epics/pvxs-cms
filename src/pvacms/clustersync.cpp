@@ -18,6 +18,7 @@
 #include <sqlite3.h>
 
 #include "pvacmsVersion.h"
+#include "sqlitestmt.h"
 
 DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 
@@ -148,8 +149,8 @@ Value serializeCertsTable(sqlite3 *certs_db,
     }
     val["members"] = members_arr.freeze();
 
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_CERTS, -1, &stmt, nullptr) != SQLITE_OK) {
+    SqliteStmt stmt;
+    if (sqlite3_prepare_v2(certs_db, SQL_SYNC_SELECT_ALL_CERTS, -1, stmt.acquire(), nullptr) != SQLITE_OK) {
         throw std::runtime_error(std::string("Failed to query certs: ") + sqlite3_errmsg(certs_db));
     }
 
@@ -175,7 +176,7 @@ Value serializeCertsTable(sqlite3 *certs_db,
         row["status_date"] = sqlite3_column_int64(stmt, 12);
         cert_rows.push_back(std::move(row));
     }
-    sqlite3_finalize(stmt);
+    stmt.reset();
 
     shared_array<Value> certs_arr(cert_rows.size());
     for (size_t i = 0; i < cert_rows.size(); i++) certs_arr[i] = std::move(cert_rows[i]);
@@ -327,8 +328,8 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
         sync_source_->prototype_ = makeClusterSyncValue();
     }
 
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(certs_db_, SQL_SYNC_SELECT_CERT_BY_SERIAL, -1, &stmt, nullptr) != SQLITE_OK) {
+    SqliteStmt stmt;
+    if (sqlite3_prepare_v2(certs_db_, SQL_SYNC_SELECT_CERT_BY_SERIAL, -1, stmt.acquire(), nullptr) != SQLITE_OK) {
         log_err_printf(pvacmscluster, "Failed to query cert %lld: %s\n",
                        static_cast<long long>(serial), sqlite3_errmsg(certs_db_));
         return;
@@ -336,7 +337,7 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
     sqlite3_bind_int64(stmt, 1, serial);
 
     if (sqlite3_step(stmt) != SQLITE_ROW) {
-        sqlite3_finalize(stmt);
+        stmt.reset();
         log_warn_printf(pvacmscluster, "Cert %lld not found for incremental publish\n",
                         static_cast<long long>(serial));
         return;
@@ -361,7 +362,7 @@ void ClusterSyncPublisher::publishCertChange(int64_t serial) {
     update.renewal_due = sqlite3_column_int(stmt, 10);
     update.status      = sqlite3_column_int(stmt, 11);
     update.status_date = sqlite3_column_int64(stmt, 12);
-    sqlite3_finalize(stmt);
+    stmt.reset();
 
     appendToLog(std::move(update));
 
