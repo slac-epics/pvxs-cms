@@ -95,3 +95,49 @@ in the lab_base image. Two parts, both taking {"ctx": ., "key": "LAB_ISSUER"|"ML
   subPath: issuer
   readOnly: true
 {{- end -}}
+
+{{/*
+Health probes for a certificate manager container.
+
+supervisord is the container's process 1 and stays up whatever happens to the
+programs under it, so a certificate manager that has died still reports the pod
+as Running and Ready. That is not a theoretical concern: it hid a crash-looping
+certificate manager during debugging, and the Service kept sending requests to
+a pod that could not answer them.
+
+The check is a TCP connect to the plain PVAccess port, which the certificate
+manager listens on whenever it is serving. That is stronger than asking
+supervisord whether the process exists, because it fails for a process that is
+alive but no longer listening.
+
+  startup   - generous, so a slow first start (which mints an administrator
+              keychain) is not mistaken for a failure
+  readiness - tight, so the pod leaves the Service and shows as not ready
+              quickly, which is the visibility that was missing
+  liveness  - deliberately slow: supervisord already restarts the program, and
+              a container restart here also takes down everything else in the
+              pod, Kerberos included. It is the backstop for a program
+              supervisord believes is running but which no longer serves.
+
+Takes {"ctx": ., } and reads .Values.pvacmsProbes.
+*/}}
+{{- define "pvxs-lab.pvacmsProbes" -}}
+{{- $p := .ctx.Values.pvacmsProbes -}}
+{{- if $p.enabled }}
+startupProbe:
+  tcpSocket:
+    port: {{ .ctx.Values.ports.pvaTcp }}
+  periodSeconds: {{ $p.startup.periodSeconds }}
+  failureThreshold: {{ $p.startup.failureThreshold }}
+readinessProbe:
+  tcpSocket:
+    port: {{ .ctx.Values.ports.pvaTcp }}
+  periodSeconds: {{ $p.readiness.periodSeconds }}
+  failureThreshold: {{ $p.readiness.failureThreshold }}
+livenessProbe:
+  tcpSocket:
+    port: {{ .ctx.Values.ports.pvaTcp }}
+  periodSeconds: {{ $p.liveness.periodSeconds }}
+  failureThreshold: {{ $p.liveness.failureThreshold }}
+{{- end }}
+{{- end -}}

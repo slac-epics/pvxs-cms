@@ -44,6 +44,7 @@ spec:
             - name: kpasswd
               containerPort: {{ .Values.idm.service.pwdPort }}
               protocol: TCP
+          {{- include "pvxs-lab.pvacmsProbes" (dict "ctx" .) | nindent 10 }}
           volumeMounts:
             - name: pva-config
               mountPath: /home/idm/.config/pva/1.5

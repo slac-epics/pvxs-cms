@@ -274,3 +274,24 @@ ports:
   pvaTls: 5076
   exposePvaTls: true
 
+# Health probes for the two certificate managers. supervisord keeps the container
+# up whatever happens to the programs under it, so without these a dead
+# certificate manager still reports the pod Running and Ready. The check is a TCP
+# connect to pvaTcp above. Set enabled to false while debugging a wedged
+# certificate manager you want left exactly as it is.
+pvacmsProbes:
+  enabled: true
+  # Up to two minutes to start: a first start mints an administrator keychain.
+  startup:
+    periodSeconds: 5
+    failureThreshold: 24
+  # Out of the Service within about twenty seconds of it going quiet.
+  readiness:
+    periodSeconds: 10
+    failureThreshold: 2
+  # Slow on purpose: supervisord restarts the program itself, and a container
+  # restart takes the rest of the pod down with it. About ninety seconds.
+  liveness:
+    periodSeconds: 15
+    failureThreshold: 6
+
