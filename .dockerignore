@@ -1,0 +1,8 @@
+# Host build artifacts (same set the repo gitignores). They change on every
+# local build and would invalidate the docker layer cache at COPY even when
+# no source changed; the image build compiles from source itself.
+**/O.*
+bin
+lib
+cfg
+.DS_Store

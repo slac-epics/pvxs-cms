@@ -142,6 +142,10 @@ function gw_kind_load_images {
         | awk 'NR>1 {print $1, $3}')
 
     # Load images one at a time — batch loading triggers containerd digest errors
+    # Record every image actually (re)loaded in GW_KIND_RELOADED_IMAGES so
+    # gw_deploy can restart the deployments that run them: with a fixed tag
+    # like "latest", helm sees an unchanged manifest and restarts nothing.
+    typeset -ga GW_KIND_RELOADED_IMAGES=()
     local failed=0 skipped=0 local_id
     for ref in "${full_refs[@]}"; do
         if ! docker image inspect "${ref}" &>/dev/null; then
@@ -163,8 +167,10 @@ function gw_kind_load_images {
                     ctr --namespace=k8s.io images import --snapshotter=overlayfs -; then
                 echo "    WARNING: failed to load ${ref}"
                 (( failed++ ))
+                continue
             fi
         fi
+        GW_KIND_RELOADED_IMAGES+=("${ref}")
     done
 
     (( skipped > 0 )) && echo "==> Skipped ${skipped} already-loaded image(s)."
@@ -318,6 +324,19 @@ function gw_deploy {
         --set dockerRegistry=${DOCKER_REGISTRY} \
         --set dockerUsername=${DOCKER_USERNAME} \
         "${tag_overrides[@]}" "${passthrough[@]}"
+
+    # Fixed tags like "latest" mean helm sees an unchanged manifest and leaves
+    # running pods on the old image even after a newer one was loaded into the
+    # node. Restart exactly the deployments whose image was just reloaded.
+    if (( ${#GW_KIND_RELOADED_IMAGES[@]} )); then
+        local _dep _img
+        while read -r _dep _img; do
+            if (( ${GW_KIND_RELOADED_IMAGES[(Ie)${_img}]} )); then
+                echo "==> Restarting ${_dep} (image reloaded)"
+                kubectl -n pvxs-lab rollout restart "deployment/${_dep}"
+            fi
+        done < <(kubectl -n pvxs-lab get deploy -o jsonpath='{range .items[*]}{.metadata.name} {.spec.template.spec.containers[0].image}{"\n"}{end}')
+    fi
     trap - INT TERM EXIT
     cd "${_pwd}"
 }
