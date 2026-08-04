@@ -295,6 +295,7 @@ function gw_deploy {
         while kubectl get jobs -n pvxs-lab -l app.kubernetes.io/instance=pvxs-lab --no-headers 2>/dev/null | grep -q .; do
             sleep 1
         done
+        gw_delete_cert_authority_state
     fi
     if [[ "$(kubectl config current-context 2>/dev/null)" == "${GW_KIND_CONTEXT}" ]]; then
         gw_kind_load_images --tag "${tag}" || { trap - INT TERM EXIT; cd "${_pwd}"; return 1; }
@@ -326,6 +327,18 @@ function gw_deploy {
 function gw_undeploy {
   kubectl delete jobs -n pvxs-lab -l app.kubernetes.io/instance=pvxs-lab --ignore-not-found
   helm uninstall pvxs-lab -n pvxs-lab
+  gw_delete_cert_authority_state
+}
+
+# The ca-keygen hook job creates the certificate authority secrets and the
+# issuer-ids configmap with kubectl rather than helm, so helm uninstall leaves
+# them behind and the next install sees them and keeps the old certificate
+# authority. Delete them so a redeploy mints a fresh authority.
+function gw_delete_cert_authority_state {
+  kubectl delete secret -n pvxs-lab \
+      pvxs-lab-ca-keychain pvxs-lab-lab-intermediate pvxs-lab-ml-intermediate \
+      --ignore-not-found
+  kubectl delete configmap -n pvxs-lab pvxs-lab-issuer-ids --ignore-not-found
 }
 
 
