@@ -240,18 +240,16 @@ function cms_build_images {
 }
 
 function gw_build_images {
-    local _pwd="${PWD}"
-    trap 'cd "${_pwd}"' INT TERM EXIT
-    cd "${PVXS_CMS}/example/kubernetes/docker"
-    local builder="./build.sh"
-    if [[ "$1" == "gateway" || "$1" == "lab" || "$1" == "lab_base" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "cs-studio" ]]; then
-        cd "$1"
-        builder="./build_docker.sh"
-        shift
-    fi
-    $builder "$@"
-    trap - INT TERM EXIT
-    cd "${_pwd}"
+    (
+        cd "${PVXS_CMS}/example/kubernetes/docker" || return 1
+        local builder="./build.sh"
+        if [[ "$1" == "gateway" || "$1" == "lab" || "$1" == "lab_tools" || "$1" == "lab_base" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "cs-studio" ]]; then
+            cd "$1" || return 1
+            builder="./build_docker.sh"
+            shift
+        fi
+        $builder "$@"
+    )
 }
 
 function gw_deploy {

@@ -293,7 +293,7 @@ source ./helpers.sh
 gw_build_images [<target>] [<options>]
 
 # target (omit to build all):
-#   lab_base, lab, internet, testioc, tstioc, idm,
+#   lab_tools, lab_base, lab, internet, testioc, tstioc, idm,
 #   ml, ml-ioc, gateway, cs-studio
 
 # options:

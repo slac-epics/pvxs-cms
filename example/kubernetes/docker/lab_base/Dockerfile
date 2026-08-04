@@ -1,7 +1,14 @@
 ARG DOCKER_REGISTRY=ghcr.io
 ARG DOCKER_USERNAME=slac-epics
-ARG BASE_IMAGE=pvxs-cms
+ARG BASE_IMAGE=lab_tools
 ARG BASE_IMAGE_TAG=latest
+ARG SOURCE_IMAGE=pvxs-cms
+ARG SOURCE_IMAGE_TAG=latest
+
+# The built EPICS tree comes from the pvxs-cms image; the packages come from
+# lab_tools. Split so that a source change re-runs only the copy and the make
+# below, never the package download in lab_tools.
+FROM ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${SOURCE_IMAGE}:${SOURCE_IMAGE_TAG} AS source
 
 FROM ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${BASE_IMAGE}:${BASE_IMAGE_TAG}
 
@@ -9,37 +16,9 @@ FROM ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${BASE_IMAGE}:${BASE_IMAGE_TAG}
 ENV PROJECT_HOME=/opt/epics
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies, display stack, and diagnostic tools
-RUN apt-get update && \
-    apt-get install -y \
-            adduser \
-            sudo \
-            supervisor \
-            libkrb5-dev \
-            krb5-user \
-            libgssapi-krb5-2 \
-            vim nano \
-            # Display stack (Xvfb + VNC + noVNC)
-            xvfb \
-            x11vnc \
-            fluxbox \
-            novnc \
-            python3-websockify \
-            # Network diagnostic tools
-            dnsutils \
-            netcat-openbsd \
-            telnet \
-            curl \
-            tcpdump \
-            iproute2 \
-            traceroute \
-            iputils-ping \
-            net-tools \
-            less \
-            jq \
-            file \
-            strace \
-            procps
+# epics-base, pvxs and pvxs-cms, already built, plus RELEASE.local and
+# CONFIG_SITE.local - everything the source image keeps under /opt/epics.
+COPY --from=source ${PROJECT_HOME} ${PROJECT_HOME}
 
 RUN echo "PVXS = \$(TOP)/../pvxs" >> ${PROJECT_HOME}/RELEASE.local
 RUN echo "PVXS_ENABLE_KRB_AUTH = YES" >> ${PROJECT_HOME}/CONFIG_SITE.local
