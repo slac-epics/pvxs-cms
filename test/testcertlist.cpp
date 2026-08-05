@@ -9,6 +9,7 @@
  * decision is written to. These check the parts that has to get right.
  */
 
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,7 @@
 #include <pvxs/unittest.h>
 
 #include "certlist.h"
+#include "certlistprint.h"
 #include "certstatus.h"
 
 using namespace pvxs;
@@ -163,10 +165,84 @@ void testEmptyListingIsStillATable() {
     testEq(table["labels"].as<shared_array<const std::string>>().size(), certListColumns(true).size());
 }
 
+
+// A subject contains commas, so the comma separated form has to quote it or a reader splits
+// one identity into several fields.
+void testCsvSurvivesACommaInASubject() {
+    testDiag("Comma separated output quotes a field containing a comma");
+
+    auto rows = twoRows();
+    rows[0].subject = "CN=testioc,OU=controls,O=epics.org,C=US";
+    std::ostringstream out;
+    printCertList(out, buildCertListTable(rows, false, 0), CertListFormat::Csv);
+    const auto text = out.str();
+
+    testOk(text.find("\"CN=testioc,OU=controls,O=epics.org,C=US\"") != std::string::npos,
+           "The subject is quoted");
+
+    // Every line has the same number of fields once quoting is honoured, which is the
+    // property a reader depends on.
+    std::istringstream lines(text);
+    std::string line;
+    bool all_rows_same_width = true;
+    size_t expected = 0;
+    while (std::getline(lines, line)) {
+        size_t fields = 1;
+        bool quoted = false;
+        for (const char c : line) {
+            if (c == '"') quoted = !quoted;
+            else if (c == ',' && !quoted) ++fields;
+        }
+        if (!expected) expected = fields;
+        else if (fields != expected) all_rows_same_width = false;
+    }
+    testOk(all_rows_same_width, "Every line has %zu fields", expected);
+}
+
+void testJsonUsesTheServedFieldNames() {
+    testDiag("JavaScript Object Notation output uses the served field names");
+
+    std::ostringstream out;
+    printCertList(out, buildCertListTable(twoRows(), true, 0), CertListFormat::Json);
+    const auto text = out.str();
+
+    for (const auto &name : certListColumns(true)) {
+        if (text.find("\"" + name + "\":") == std::string::npos) {
+            testFail("field name %s is missing from the output", name.c_str());
+            return;
+        }
+    }
+    testPass("Every served column name appears as a field name");
+}
+
+void testUnknownFormatIsRefused() {
+    testDiag("An unrecognised format is refused rather than guessed at");
+    CertListFormat format{CertListFormat::Csv};
+    testOk1(!parseCertListFormat("xml", format));
+    testOk1(parseCertListFormat("csv", format) && format == CertListFormat::Csv);
+    testOk1(parseCertListFormat("json", format) && format == CertListFormat::Json);
+    testOk1(parseCertListFormat("columns", format) && format == CertListFormat::Columns);
+}
+
+// The order is the server's: it picks a key that cannot change while a row is in the view, so
+// a client that re-sorted would undo the property the choice exists for.
+void testPrintedOrderIsTheServedOrder() {
+    testDiag("The printed order is the served order");
+
+    std::ostringstream out;
+    printCertList(out, buildCertListTable(twoRows(), false, 0), CertListFormat::Csv);
+    const auto text = out.str();
+
+    const auto first = text.find(getCertId("a76e613b", 12345));
+    const auto second = text.find(getCertId("a76e613b", 67890));
+    testOk(first != std::string::npos && second != std::string::npos && first < second,
+           "Rows appear in the order they were served");
+}
+
 }  // namespace
 
 MAIN(testcertlist) {
-    testPlan(24);
+    testPlan(32);
     testSubjectIsCanonical();
     testCertTypeNamesWhatItIsFor();
     testTableIsNormative();
@@ -174,5 +250,9 @@ MAIN(testcertlist) {
     testExpiryWindowIsStatedInTheLabel();
     testCertIdIsTheFormAStatusChannelAccepts();
     testEmptyListingIsStillATable();
+    testCsvSurvivesACommaInASubject();
+    testJsonUsesTheServedFieldNames();
+    testUnknownFormatIsRefused();
+    testPrintedOrderIsTheServedOrder();
     return testDone();
 }

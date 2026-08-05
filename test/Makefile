@@ -28,6 +28,7 @@ USR_CPPFLAGS += -DPVXS_ENABLE_EXPERT_API
 SRC_DIRS += $(COMMON_DIR)
 SRC_DIRS += $(AUTHN_DIR)
 SRC_DIRS += $(PVACMS_DIR)
+SRC_DIRS += $(TOP)/src/tools/pvxcert
 
 # Common sources
 SRCS += configcms.cpp
@@ -102,6 +103,7 @@ TESTS += testcertlist
 TESTPROD_HOST += testcertlist
 testcertlist_SRCS += testcertlist.cpp
 testcertlist_SRCS += certlist.cpp
+testcertlist_SRCS += certlistprint.cpp
 testcertlist_LIBS += pvxsIoc dbRecStd dbCore ca
 testcertlist_SYS_LIBS += sqlite3
 
