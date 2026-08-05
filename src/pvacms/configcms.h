@@ -316,6 +316,27 @@ class ConfigCms final : public Config {
 
     bool cluster_skip_peer_identity_check = false;
 
+    /**
+     * @brief How far ahead the expiring certificate view looks, in seconds. Default thirty days.
+     *
+     * The view takes no parameter - a display tool cannot send one - so the period is the
+     * server's to choose rather than the caller's. The value is stated in the view's column
+     * labels, since a normative table has nowhere else to put it and a reader would otherwise
+     * have no way to know what they are looking at.
+     */
+    uint32_t cert_list_expiry_window_secs = 30 * 24 * 60 * 60;
+
+    /**
+     * @brief Shortest gap between two posts of the same listing view, in seconds.
+     *
+     * A monitored table resends every column whenever anything changes, because a change mask
+     * marks fields and an array is one field. So the case to defend against is not a large
+     * table but a burst: approving fifty certificates one after another would otherwise post
+     * fifty complete tables. The interval delays a post and never drops a change, and the last
+     * change of a burst is always carried by the final post.
+     */
+    uint32_t cert_list_min_post_interval_secs = 2;
+
     void applyCmsEnv(const std::map<std::string, std::string>& defs);
     static ConfigCms mockCms(int family=AF_INET);
     static ConfigCms forCms();
