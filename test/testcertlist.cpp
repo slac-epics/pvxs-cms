@@ -9,6 +9,7 @@
  * decision is written to. These check the parts that has to get right.
  */
 
+#include <cstdio>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -18,6 +19,7 @@
 
 #include <pvxs/unittest.h>
 
+#include "certdate.h"
 #include "certlist.h"
 #include "certlistprint.h"
 #include "certstatus.h"
@@ -239,10 +241,199 @@ void testPrintedOrderIsTheServedOrder() {
            "Rows appear in the order they were served");
 }
 
+
+// These run against a real database rather than a stand-in, so they exercise the query and
+// its ordering, which is where the behaviour a display depends on actually lives.
+struct ListDb {
+    std::string path;
+    sqlite3 *db{nullptr};
+
+    ListDb() : path("testcertlist_query.db") {
+        std::remove(path.c_str());
+        if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) { db = nullptr; return; }
+        // The columns the listing reads. Kept here rather than shared with the server so a
+        // change to the real schema that breaks the listing shows up as a failure.
+        sqlite3_exec(db,
+                     "CREATE TABLE certs(serial INTEGER PRIMARY KEY, skid TEXT, CN TEXT, O TEXT, OU TEXT, C TEXT,"
+                     " approved INTEGER, not_before INTEGER, not_after INTEGER, renew_by INTEGER,"
+                     " renewal_due INTEGER, status INTEGER, status_date INTEGER, created_date INTEGER,"
+                     " key_usage TEXT, extended_key_usage TEXT);"
+                     "CREATE TABLE cert_request_ids(serial INTEGER PRIMARY KEY, request_id TEXT NOT NULL,"
+                     " pub_key_digest TEXT NOT NULL, created INTEGER NOT NULL);",
+                     nullptr, nullptr, nullptr);
+    }
+    ~ListDb() {
+        if (db) sqlite3_close(db);
+        std::remove(path.c_str());
+    }
+    ListDb(const ListDb &) = delete;
+    ListDb &operator=(const ListDb &) = delete;
+
+    void add(const uint64_t serial, const char *cn, const certstatus_t status, const time_t created,
+             const time_t not_before, const time_t not_after, const char *request_id = nullptr) {
+        char sql[1024];
+        snprintf(sql, sizeof(sql),
+                 "INSERT INTO certs (serial, CN, O, OU, C, status, status_date, not_before, not_after, renew_by,"
+                 " created_date, key_usage, extended_key_usage) VALUES (%lld, '%s', 'epics.org', '', 'US', %d,"
+                 " %lld, %lld, %lld, %lld, %lld, 'Digital Signature', 'TLS Web Client Authentication');",
+                 static_cast<long long>(serial), cn, static_cast<int>(status), static_cast<long long>(created),
+                 static_cast<long long>(not_before), static_cast<long long>(not_after),
+                 static_cast<long long>(not_after), static_cast<long long>(created));
+        sqlite3_exec(db, sql, nullptr, nullptr, nullptr);
+        if (request_id) {
+            snprintf(sql, sizeof(sql),
+                     "INSERT INTO cert_request_ids (serial, request_id, pub_key_digest, created)"
+                     " VALUES (%lld, '%s', 'digest', %lld);",
+                     static_cast<long long>(serial), request_id, static_cast<long long>(created));
+            sqlite3_exec(db, sql, nullptr, nullptr, nullptr);
+        }
+    }
+};
+
+// The key has to be one that cannot change while a row is in the view. A certificate whose
+// validity starts in the future is the case that separates creation time from start of
+// validity, and ordering on the latter would move it.
+void testRowOrderIsByCreationNotValidity() {
+    testDiag("Rows are ordered by when a certificate was created, newest first");
+
+    ListDb store;
+    testOk(store.db != nullptr, "Opened a database to query");
+    if (!store.db) return;
+
+    const time_t now = 1785888000;
+    store.add(100, "oldest", VALID, now - 3000, now, now + 86400);
+    // Created in the middle but not valid until much later: ordering on the start of
+    // validity would put this last, which is the mistake being guarded against.
+    store.add(200, "future-start", PENDING, now - 2000, now + 500000, now + 900000);
+    store.add(300, "newest", VALID, now - 1000, now, now + 86400);
+
+    const auto rows = queryCertList(store.db, CertListView::All, "a76e613b", false, 0);
+    testEq(rows.size(), size_t(3));
+    if (rows.size() != 3) return;
+
+    testEq(rows[0].subject, std::string("CN=newest,O=epics.org,C=US"));
+    testEq(rows[1].subject, std::string("CN=future-start,O=epics.org,C=US"));
+    testEq(rows[2].subject, std::string("CN=oldest,O=epics.org,C=US"));
+}
+
+void testPendingViewShowsOnlyWhatAwaitsADecision() {
+    testDiag("The pending view shows only certificates awaiting a decision");
+
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(3, "no database"); return; }
+
+    const time_t now = 1785888000;
+    store.add(100, "valid", VALID, now - 3000, now, now + 86400);
+    store.add(200, "waiting", PENDING_APPROVAL, now - 2000, now, now + 86400, "YV6Q-56SG-JTVZ-HKP3");
+
+    const auto rows = queryCertList(store.db, CertListView::PendingApproval, "a76e613b", true, 0);
+    testEq(rows.size(), size_t(1));
+    if (rows.empty()) { testSkip(2, "no rows"); return; }
+    testEq(rows[0].status, std::string("PENDING_APPROVAL"));
+    testEq(rows[0].request_id, std::string("YV6Q-56SG-JTVZ-HKP3"));
+}
+
+// The identifier is a search key an administrator uses to find a row and read it. Handing it
+// to everyone would let it be treated as proof that a request is genuine.
+void testRequestIdIsWithheldFromNonAdministrators() {
+    testDiag("The request identifier is withheld unless the caller is an administrator");
+
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(1, "no database"); return; }
+
+    const time_t now = 1785888000;
+    store.add(200, "waiting", PENDING_APPROVAL, now - 2000, now, now + 86400, "YV6Q-56SG-JTVZ-HKP3");
+
+    const auto withheld = queryCertList(store.db, CertListView::All, "a76e613b", false, 0);
+    testEq(withheld.at(0).request_id, std::string(""));
+    const auto given = queryCertList(store.db, CertListView::All, "a76e613b", true, 0);
+    testEq(given.at(0).request_id, std::string("YV6Q-56SG-JTVZ-HKP3"));
+}
+
+void testExpiringViewFollowsItsWindow() {
+    testDiag("Changing the window changes which rows the expiring view shows");
+
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(1, "no database"); return; }
+
+    const auto now = timeNow();
+    store.add(100, "soon", VALID, now - 3000, now - 100, now + 5 * 86400);
+    store.add(200, "later", VALID, now - 2000, now - 100, now + 100 * 86400);
+
+    const auto narrow = queryCertList(store.db, CertListView::Expiring, "a76e613b", false, 30 * 86400);
+    testEq(narrow.size(), size_t(1));
+    const auto wide = queryCertList(store.db, CertListView::Expiring, "a76e613b", false, 200 * 86400);
+    testEq(wide.size(), size_t(2));
+}
+
+// A display compares date bounds as plain text, with no parsing, which only works if the
+// rendering is fixed width and year first. A partial bound has to work by prefix.
+void testDatesCompareAsPlainText() {
+    testDiag("A date bound selects by plain string comparison, including a partial bound");
+
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(2, "no database"); return; }
+
+    // 2026-06-15, 2026-07-15 and 2026-08-15, as expiry dates.
+    store.add(100, "june", VALID, 1000, 0, 1781000000);
+    store.add(200, "july", VALID, 2000, 0, 1783500000);
+    store.add(300, "august", VALID, 3000, 0, 1786000000);
+
+    const auto rows = queryCertList(store.db, CertListView::All, "a76e613b", false, 0);
+    testEq(rows.size(), size_t(3));
+
+    // Every rendered date is the same width, which is what makes the comparison valid.
+    bool same_width = true;
+    for (const auto &row : rows) {
+        if (row.expires.size() != rows.front().expires.size()) same_width = false;
+    }
+    testOk(same_width, "Every rendered date is %zu characters", rows.front().expires.size());
+
+    // A partial bound by prefix: everything expiring in or after July.
+    size_t from_july = 0;
+    for (const auto &row : rows) {
+        if (row.expires >= "2026-07") ++from_july;
+    }
+    testOk(from_july >= 1 && from_july < rows.size(), "A partial bound selects a subset (%zu of %zu)", from_july,
+           rows.size());
+}
+
+// The interactive approval and revocation modes read nothing but this listing, so the columns
+// they decide from have to be present and mean what those modes assume.
+void testColumnsTheInteractiveModesDecideFrom() {
+    testDiag("The columns the interactive modes decide from are present");
+
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(3, "no database"); return; }
+
+    const auto now = timeNow();
+    store.add(100, "valid", VALID, now - 3000, now - 86400, now + 86400);
+    store.add(200, "revoked", REVOKED, now - 2000, now - 86400, now + 86400);
+
+    const auto rows = queryCertList(store.db, CertListView::All, "a76e613b", false, 0);
+    testEq(rows.size(), size_t(2));
+
+    // Approval computes its outcome from the certificate's own dates against the current
+    // time, so those three have to carry a value.
+    bool dates_present = true;
+    for (const auto &row : rows) {
+        if (row.issued.empty() || row.expires.empty() || row.renew_by.empty()) dates_present = false;
+    }
+    testOk(dates_present, "Issued, Expires and Renew by all carry a value");
+
+    // Revocation is refused for anything other than awaiting-approval, pending or valid, so
+    // the status column is what lets a client say in advance which rows would be refused.
+    const auto revocable = [](const std::string &status) {
+        return status == "PENDING_APPROVAL" || status == "PENDING" || status == "VALID";
+    };
+    testOk(revocable(rows[1].status) != revocable(rows[0].status),
+           "The status column tells the two apart (%s, %s)", rows[0].status.c_str(), rows[1].status.c_str());
+}
+
 }  // namespace
 
 MAIN(testcertlist) {
-    testPlan(32);
+    testPlan(50);
     testSubjectIsCanonical();
     testCertTypeNamesWhatItIsFor();
     testTableIsNormative();
@@ -254,5 +445,11 @@ MAIN(testcertlist) {
     testJsonUsesTheServedFieldNames();
     testUnknownFormatIsRefused();
     testPrintedOrderIsTheServedOrder();
+    testRowOrderIsByCreationNotValidity();
+    testPendingViewShowsOnlyWhatAwaitsADecision();
+    testRequestIdIsWithheldFromNonAdministrators();
+    testExpiringViewFollowsItsWindow();
+    testDatesCompareAsPlainText();
+    testColumnsTheInteractiveModesDecideFrom();
     return testDone();
 }
