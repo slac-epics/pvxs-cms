@@ -97,20 +97,33 @@ std::vector<std::string> certListColumns(const bool with_request_id) {
 }
 
 std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListView view, const std::string &issuer_id,
-                                       const bool with_request_id, const time_t expiry_window_secs) {
-    const char *sql;
+                                       const bool with_request_id, const time_t expiry_window_secs,
+                                       const CertFilter *const filter) {
+    // A filter naming another certificate authority cannot match a row here, so say so rather
+    // than run a query that cannot return one.
+    if (filter && !filter->possibleFor(issuer_id)) return {};
+
+    std::string sql_text;
     switch (view) {
         case CertListView::PendingApproval:
-            sql = SQL_LIST_CERTS_PENDING_APPROVAL;
+            sql_text = SQL_LIST_CERTS_COLUMNS "WHERE c.status = :pending_approval ";
             break;
         case CertListView::Expiring:
-            sql = SQL_LIST_CERTS_EXPIRING;
+            sql_text = SQL_LIST_CERTS_COLUMNS "WHERE c.not_after >= :now AND c.not_after <= :window_end ";
             break;
         case CertListView::All:
         default:
-            sql = SQL_LIST_CERTS_ALL;
+            sql_text = SQL_LIST_CERTS_COLUMNS;
             break;
     }
+
+    // The filter's condition narrows what comes back. It may only widen relative to the whole
+    // expression, so the pass below is what actually decides.
+    if (filter && !filter->whereClause().empty() && filter->whereClause() != "1") {
+        sql_text += (view == CertListView::All ? "WHERE " : "AND ") + filter->whereClause() + " ";
+    }
+    sql_text += SQL_LIST_CERTS_ORDER;
+    const char *const sql = sql_text.c_str();
 
     SqliteStmt statement;
     if (sqlite3_prepare_v2(certs_db, sql, -1, statement.acquire(), nullptr) != SQLITE_OK) {
@@ -123,6 +136,24 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
         const auto now = timeNow();
         sqlite3_bind_int64(statement, sqlite3_bind_parameter_index(statement, ":now"), now);
         sqlite3_bind_int64(statement, sqlite3_bind_parameter_index(statement, ":window_end"), now + expiry_window_secs);
+    }
+
+    // The filter's values, bound in the order its condition uses them. Positional parameters
+    // start after the named ones the view itself uses.
+    if (filter) {
+        int position = sqlite3_bind_parameter_count(statement) - static_cast<int>(filter->bindings().size());
+        for (const auto &value : filter->bindings()) {
+            ++position;
+            switch (value.kind) {
+                case FilterValueKind::Text:
+                case FilterValueKind::Regex:
+                    sqlite3_bind_text(statement, position, value.text.c_str(), -1, SQLITE_TRANSIENT);
+                    break;
+                default:
+                    sqlite3_bind_int64(statement, position, value.number);
+                    break;
+            }
+        }
     }
 
     std::vector<CertListRow> rows;
@@ -144,6 +175,26 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
         row.type = renderCertType(columnText(statement, 11), columnText(statement, 12));
         // Present either way; carries a value only for an administrator.
         row.request_id = with_request_id ? columnText(statement, 13) : std::string{};
+
+        // The whole expression, over every row the condition let through. This is where a test
+        // the database cannot express - a pattern, or the certificate identifier - is decided.
+        if (filter) {
+            if (rows.size() >= kFilterMaxRows) break;  // a filter cannot be made to scan forever
+            FilterRow candidate;
+            candidate.cert_id = row.cert_id;
+            candidate.serial = serial;
+            candidate.common_name = columnText(statement, 1);
+            candidate.organization = columnText(statement, 2);
+            const auto unit = columnText(statement, 3);
+            if (!unit.empty()) candidate.organizational_units.push_back(unit);
+            candidate.country = columnText(statement, 4);
+            candidate.status = sqlite3_column_int(statement, 5);
+            candidate.status_date = sqlite3_column_int64(statement, 6);
+            candidate.not_before = sqlite3_column_int64(statement, 7);
+            candidate.not_after = sqlite3_column_int64(statement, 8);
+            candidate.renew_by = sqlite3_column_int64(statement, 9);
+            if (!filter->matches(candidate)) continue;
+        }
 
         rows.push_back(std::move(row));
     }

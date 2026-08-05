@@ -15,6 +15,8 @@
 
 #include <pvxs/data.h>
 
+#include "certfilter.h"
+
 namespace pvxs {
 namespace certs {
 
@@ -146,10 +148,13 @@ std::string renderCertType(const std::string &key_usage, const std::string &exte
  * @param issuer_id     the serving issuer, used to build the certificate identifier column
  * @param with_request_id  fill the request identifier column; left empty for everyone else
  * @param expiry_window_secs  how far ahead Expiring looks, ignored by the other views
- * @return the rows, already rendered
+ * @param filter         narrows the result; the condition it gives is only an optimisation, so
+ *                       every row that comes back is still checked against the whole expression
+ * @return the rows, already rendered, in the order the view serves them
  */
 std::vector<CertListRow> queryCertList(sqlite3 *certs_db, CertListView view, const std::string &issuer_id,
-                                       bool with_request_id, time_t expiry_window_secs);
+                                       bool with_request_id, time_t expiry_window_secs,
+                                       const CertFilter *filter = nullptr);
 
 /**
  * @brief Build the normative table a listing is served as.

@@ -103,6 +103,7 @@ TESTS += testcertlist
 TESTPROD_HOST += testcertlist
 testcertlist_SRCS += testcertlist.cpp
 testcertlist_SRCS += certlist.cpp
+testcertlist_SRCS += certfilter.cpp
 testcertlist_SRCS += certlistprint.cpp
 testcertlist_LIBS += pvxsIoc dbRecStd dbCore ca
 testcertlist_SYS_LIBS += sqlite3

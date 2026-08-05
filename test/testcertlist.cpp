@@ -20,6 +20,7 @@
 #include <pvxs/unittest.h>
 
 #include "certdate.h"
+#include "certfilter.h"
 #include "certlist.h"
 #include "certlistprint.h"
 #include "certstatus.h"
@@ -430,10 +431,44 @@ void testColumnsTheInteractiveModesDecideFrom() {
            "The status column tells the two apart (%s, %s)", rows[0].status.c_str(), rows[1].status.c_str());
 }
 
+
+// Filtering removes rows and never reorders them, so an operator narrowing a search twice sees
+// the rows they already saw in the same places.
+void testFilteringPreservesTheOrder() {
+    testDiag("A filter removes rows without moving the ones it keeps");
+
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(1, "no database"); return; }
+
+    const time_t now = 1785888000;
+    store.add(100, "alpha", VALID, now - 5000, now, now + 86400);
+    store.add(200, "beta", REVOKED, now - 4000, now, now + 86400);
+    store.add(300, "gamma", VALID, now - 3000, now, now + 86400);
+    store.add(400, "delta", REVOKED, now - 2000, now, now + 86400);
+
+    const auto all = queryCertList(store.db, CertListView::All, "a76e613b", false, 0);
+    const auto filter = CertFilter::parse("state:VALID", now);
+    const auto kept = queryCertList(store.db, CertListView::All, "a76e613b", false, 0, &filter);
+
+    testEq(kept.size(), size_t(2));
+
+    // Every row the filter kept appears in the unfiltered result, in the same relative order.
+    size_t at = 0;
+    bool order_held = true;
+    for (const auto &row : kept) {
+        bool found = false;
+        while (at < all.size()) {
+            if (all[at++].cert_id == row.cert_id) { found = true; break; }
+        }
+        if (!found) order_held = false;
+    }
+    testOk(order_held, "The kept rows are in the order they were served");
+}
+
 }  // namespace
 
 MAIN(testcertlist) {
-    testPlan(50);
+    testPlan(52);
     testSubjectIsCanonical();
     testCertTypeNamesWhatItIsFor();
     testTableIsNormative();
@@ -451,5 +486,6 @@ MAIN(testcertlist) {
     testExpiringViewFollowsItsWindow();
     testDatesCompareAsPlainText();
     testColumnsTheInteractiveModesDecideFrom();
+    testFilteringPreservesTheOrder();
     return testDone();
 }

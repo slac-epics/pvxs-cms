@@ -16,9 +16,11 @@
 #endif
 #include <pvxs/client.h>
 #include <pvxs/log.h>
+#include <pvxs/nt.h>
 
 #include <CLI/CLI.hpp>
 
+#include "certfilter.h"
 #include "certlistprint.h"
 #include "certfactory.h"
 #include "certfilefactory.h"
@@ -52,7 +54,8 @@ std::string actionToString(const CertAction &action) {
 }
 int readParameters(const int argc, char *argv[], const char *program_name, client::Config &conf, bool &approve, bool &revoke, bool &deny, bool &debug,
                    bool &password_flag, bool &verbose, std::string &cert_file, std::string &issuer_serial_string, std::string &cert_pv_prefix,
-                   bool &list, std::string &format_name, std::string &cert_list_pv_prefix) {
+                   bool &list, std::string &format_name, std::string &cert_list_pv_prefix, std::string &where,
+                   bool &pending, std::string &expiring) {
     bool show_version{false}, help{false};
 
     // Argument configuration
@@ -78,6 +81,9 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                    "Ignored when -f/--file is given (the full status PV is read from the certificate).");
 
     app.add_flag("-l,--list", list);
+    app.add_option("--where", where, "Narrow the listing, for example \"state:VALID and org:SLAC\"");
+    app.add_flag("--pending", pending);
+    app.add_option("--expiring", expiring, "List certificates expiring within a period, for example 30d");
     app.add_option("--format", format_name, "How --list writes its table: columns (default), csv or json");
     app.add_option("--cert-list-pv-prefix", cert_list_pv_prefix,
                    "Prefix the listing operation is served under (default CERT)");
@@ -133,8 +139,21 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "  (--cert-pv-prefix) <prefix>                Status PV prefix for the <cert_id> form.  Default CERT:STATUS:\n"
                   << "  (--cert-list-pv-prefix) <prefix>           Prefix the listing is served under.  Default CERT\n"
                   << "  (--format) <columns|csv|json>              How --list writes its table.  Default columns\n"
+                  << "  (--where) <expression>                     Narrow the listing.  See below\n"
+                  << "  (--pending)                                Short for --where \"state:PENDING_APPROVAL\"\n"
+                  << "  (--expiring) <period>                      Short for --where \"expires_before:<period> and state:VALID\"\n"
                   << "  (-d | --debug)                             Debug mode: Shorthand for $PVXS_LOG=\"pvxs.*=DEBUG\"\n"
                   << "  (-v | --verbose)                           Verbose mode\n"
+                  << std::endl
+                  << "filter expression:\n"
+                  << "  A test is written field:value, and tests join with and, or and not, grouped\n"
+                  << "  with brackets.  Several values for one field are separated by | and mean any\n"
+                  << "  of them.  Fields: id, serial, issuer, name, org, unit, country, state, issued,\n"
+                  << "  expires, renew_by, changed, and the before and after forms such as\n"
+                  << "  expires_before.  A date is 2026-07-31 or '2026-07-31 10:31:21' in Coordinated\n"
+                  << "  Universal Time; a period is a number and a unit letter such as 30d.\n"
+                  << "\n"
+                  << "  " << program_name << " --list --where \"(org:SLAC or org:LBNL) and expires_before:30d\"\n"
                   << std::endl
                   << "Results are written to standard output and everything else to standard error,\n"
                   << "so the output can be piped into another program.\n"
@@ -171,12 +190,14 @@ int main(int argc, char *argv[]) {
         // Variables to store options
         CertAction action{STATUS};
         bool approve{false}, revoke{false}, deny{false}, debug{false}, password_flag{false}, verbose{false}, list{false};
-        std::string cert_file, password, issuer_serial_string, format_name;
+        std::string cert_file, password, issuer_serial_string, format_name, where, expiring;
+        bool pending{false};
         std::string cert_pv_prefix{"CERT:STATUS:"};
         std::string cert_list_pv_prefix{"CERT"};
 
         auto parse_result = readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, cert_file,
-                                           issuer_serial_string, cert_pv_prefix, list, format_name, cert_list_pv_prefix);
+                                           issuer_serial_string, cert_pv_prefix, list, format_name, cert_list_pv_prefix,
+                                           where, pending, expiring);
         if (parse_result) exit(parse_result);
 
         certs::CertListFormat list_format{certs::CertListFormat::Columns};
@@ -187,6 +208,35 @@ int main(int argc, char *argv[]) {
             }
             if (!certs::parseCertListFormat(format_name, list_format)) {
                 log_err_printf(certslog, "Error: unrecognised --format '%s'. Accepted: columns, csv, json.\n", format_name.c_str());
+                return 3;
+            }
+        }
+
+        // The two shorthands stand for expressions. Combining either with --where would leave
+        // it unclear which one applies, so it is refused rather than guessed at.
+        if ((pending || !expiring.empty()) && !where.empty()) {
+            log_err_printf(certslog, "Error: --pending and --expiring cannot be combined with --where.%s", "\n");
+            return 3;
+        }
+        if (pending && !expiring.empty()) {
+            log_err_printf(certslog, "Error: --pending and --expiring cannot be used together.%s", "\n");
+            return 3;
+        }
+        if (pending) where = "state:PENDING_APPROVAL";
+        if (!expiring.empty()) where = "expires_before:" + expiring + " and state:VALID";
+
+        if (!where.empty() && !list) {
+            log_err_printf(certslog, "Error: --where, --pending and --expiring only apply to --list.%s", "\n");
+            return 3;
+        }
+
+        // Read the expression before building a client, so a typing mistake costs no round trip
+        // and is reported even when the certificate manager cannot be reached.
+        if (!where.empty()) {
+            try {
+                certs::CertFilter::parse(where, certs::timeNow());
+            } catch (const certs::CertFilterError &e) {
+                std::cerr << e.what() << std::endl;
                 return 3;
             }
         }
@@ -208,7 +258,12 @@ int main(int argc, char *argv[]) {
             if (verbose) std::cerr << "Listing certificates from " << list_pv << std::endl;
 
             try {
-                const auto table = list_client.rpc(list_pv).exec()->wait(conf.getRequestTimeout());
+                // The expression travels as an argument on the call, so the certificate
+                // manager reads it for itself rather than trusting the check made above.
+                Value arguments = nt::NTURI({members::String("where")}).create();
+                arguments["query.where"] = where;
+                const auto table =
+                    list_client.rpc(list_pv, arguments).exec()->wait(conf.getRequestTimeout());
                 certs::printCertList(std::cout, table, list_format);
                 return 0;
             } catch (const client::Timeout &) {
