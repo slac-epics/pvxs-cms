@@ -22,6 +22,7 @@
 
 #include "certfilter.h"
 #include "certlistprint.h"
+#include "certreview.h"
 #include "certfactory.h"
 #include "certfilefactory.h"
 #include "certstatusmanager.h"
@@ -55,7 +56,8 @@ std::string actionToString(const CertAction &action) {
 int readParameters(const int argc, char *argv[], const char *program_name, client::Config &conf, bool &approve, bool &revoke, bool &deny, bool &debug,
                    bool &password_flag, bool &verbose, std::string &cert_file, std::string &issuer_serial_string, std::string &cert_pv_prefix,
                    bool &list, std::string &format_name, std::string &cert_list_pv_prefix, std::string &where,
-                   bool &pending, std::string &expiring) {
+                   bool &pending, std::string &expiring, bool &review_pending, bool &review_issued,
+                   std::string &all, bool &assume_yes) {
     bool show_version{false}, help{false};
 
     // Argument configuration
@@ -87,6 +89,16 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
     app.add_option("--format", format_name, "How --list writes its table: columns (default), csv or json");
     app.add_option("--cert-list-pv-prefix", cert_list_pv_prefix,
                    "Prefix the listing operation is served under (default CERT)");
+
+    app.add_flag("--review-pending", review_pending,
+                 "Review every certificate awaiting a decision, one at a time");
+    app.add_flag("--review-issued", review_issued,
+                 "Review issued certificates for revocation, one at a time");
+    app.add_option("--all", all,
+                   "Decide every listed certificate without asking: approve or deny when "
+                   "reviewing pending requests, no value when reviewing issued certificates")
+        ->expected(0, 1);
+    app.add_flag("--yes", assume_yes, "Answer the one final confirmation");
 
     // Action flags in a mutually exclusive group
     app.add_flag("-A,--approve", approve);
@@ -128,6 +140,8 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "  " << program_name << " [options] (-R | --revoke) <cert_id>\n"
                   << "                                             REVOKE certificate (ADMIN ONLY)\n"
                   << "  " << program_name << " [options] (-l | --list)     List certificates\n"
+                  << "  " << program_name << " [options] --review-pending    Review certificates awaiting a decision\n"
+                  << "  " << program_name << " [options] --review-issued     Review issued certificates for revocation\n"
                   << "  " << program_name << " (-h | --help)                      Show this help message and exit\n"
                   << "  " << program_name << " (-V | --version)                   Print version and exit\n"
                   << std::endl
@@ -142,6 +156,16 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "  (--where) <expression>                     Narrow the listing.  See below\n"
                   << "  (--pending)                                Short for --where \"state:PENDING_APPROVAL\"\n"
                   << "  (--expiring) <period>                      Short for --where \"expires_before:<period> and state:VALID\"\n"
+                  << "  (--review-pending)                         Ask about each certificate awaiting a decision in turn.\n"
+                  << "                                             Answer approve, deny, skip, stop or cancel.  Nothing is\n"
+                  << "                                             written until you confirm once at the end\n"
+                  << "  (--review-issued)                          Ask about each issued certificate in turn, narrowed by\n"
+                  << "                                             --where.  Answer revoke, skip, stop or cancel\n"
+                  << "  (--all) [approve|deny]                     Decide every listed certificate without being asked.\n"
+                  << "                                             Takes approve or deny with --review-pending, no value\n"
+                  << "                                             with --review-issued\n"
+                  << "  (--yes)                                    Answer the final confirmation.  With --all this approves\n"
+                  << "                                             or revokes without checking any request identifier\n"
                   << "  (-d | --debug)                             Debug mode: Shorthand for $PVXS_LOG=\"pvxs.*=DEBUG\"\n"
                   << "  (-v | --verbose)                           Verbose mode\n"
                   << std::endl
@@ -191,13 +215,14 @@ int main(int argc, char *argv[]) {
         CertAction action{STATUS};
         bool approve{false}, revoke{false}, deny{false}, debug{false}, password_flag{false}, verbose{false}, list{false};
         std::string cert_file, password, issuer_serial_string, format_name, where, expiring;
-        bool pending{false};
+        bool pending{false}, review_pending{false}, review_issued{false}, assume_yes{false};
+        std::string all;
         std::string cert_pv_prefix{"CERT:STATUS:"};
         std::string cert_list_pv_prefix{"CERT"};
 
         auto parse_result = readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, cert_file,
                                            issuer_serial_string, cert_pv_prefix, list, format_name, cert_list_pv_prefix,
-                                           where, pending, expiring);
+                                           where, pending, expiring, review_pending, review_issued, all, assume_yes);
         if (parse_result) exit(parse_result);
 
         certs::CertListFormat list_format{certs::CertListFormat::Columns};
@@ -225,8 +250,28 @@ int main(int argc, char *argv[]) {
         if (pending) where = "state:PENDING_APPROVAL";
         if (!expiring.empty()) where = "expires_before:" + expiring + " and state:VALID";
 
-        if (!where.empty() && !list) {
-            log_err_printf(certslog, "Error: --where, --pending and --expiring only apply to --list.%s", "\n");
+        const bool reviewing = review_pending || review_issued;
+
+        if (review_pending && review_issued) {
+            log_err_printf(certslog, "Error: --review-pending and --review-issued cannot be used together.%s", "\n");
+            return 3;
+        }
+        if (reviewing && (approve || revoke || deny || !cert_file.empty() || !issuer_serial_string.empty() || list)) {
+            log_err_printf(certslog,
+                           "Error: --review-pending and --review-issued cannot be used with -l, -f, -A, -D, -R or a certificate ID.%s",
+                           "\n");
+            return 3;
+        }
+        if (!reviewing && (!all.empty() || assume_yes)) {
+            log_err_printf(certslog, "Error: --all and --yes only apply to --review-pending or --review-issued.%s", "\n");
+            return 3;
+        }
+        if (!where.empty() && !list && !review_issued) {
+            log_err_printf(certslog, "Error: --where, --pending and --expiring only apply to --list and --review-issued.%s", "\n");
+            return 3;
+        }
+        if (review_pending && !where.empty()) {
+            log_err_printf(certslog, "Error: --review-pending selects the pending certificates itself, so --where does not apply.%s", "\n");
             return 3;
         }
 
@@ -239,6 +284,112 @@ int main(int argc, char *argv[]) {
                 std::cerr << e.what() << std::endl;
                 return 3;
             }
+        }
+
+        if (reviewing) {
+            certs::ReviewOptions options;
+            options.mode = review_pending ? certs::ReviewMode::Approval : certs::ReviewMode::Revocation;
+            options.now = certs::CertDate(certs::timeNow()).s;
+#if !defined(_WIN32) && !defined(_MSC_VER)
+            options.interactive = isatty(STDIN_FILENO) != 0;
+#else
+            options.interactive = _isatty(_fileno(stdin)) != 0;
+#endif
+            options.assume_yes = assume_yes;
+
+            // --all takes a decision when reviewing pending requests, because there are two of
+            // them, and no value when reviewing issued certificates, because there is only one.
+            const auto all_given = std::find(argv, argv + argc, std::string("--all")) != argv + argc;
+            if (all_given) {
+                if (review_pending) {
+                    if (all == "approve") {
+                        options.all = certs::ReviewDecision::Approve;
+                    } else if (all == "deny") {
+                        options.all = certs::ReviewDecision::Deny;
+                    } else {
+                        log_err_printf(certslog, "Error: --all needs a value with --review-pending: approve or deny.%s", "\n");
+                        return 3;
+                    }
+                } else {
+                    if (!all.empty()) {
+                        log_err_printf(certslog, "Error: --all takes no value with --review-issued.%s", "\n");
+                        return 3;
+                    }
+                    options.all = certs::ReviewDecision::Revoke;
+                }
+            }
+            if (assume_yes && options.interactive == false && options.all == certs::ReviewDecision::Undecided) {
+                log_err_printf(certslog, "Error: --yes needs either a terminal to review at or --all.%s", "\n");
+                return 3;
+            }
+
+            auto review_client = conf.build();
+            const auto list_pv = certs::getCertListPv(cert_list_pv_prefix);
+            const auto selection = review_pending ? std::string("state:PENDING_APPROVAL") : where;
+
+            std::vector<certs::ReviewRow> rows;
+            try {
+                Value arguments = nt::NTURI({members::String("where")}).create();
+                arguments["query.where"] = selection;
+                const auto table = review_client.rpc(list_pv, arguments).exec()->wait(conf.getRequestTimeout());
+                rows = certs::reviewRowsFromTable(table);
+            } catch (const client::Timeout &) {
+                log_err_printf(certslog, "Timed out listing certificates from %s\n", list_pv.c_str());
+                return 4;
+            } catch (const std::exception &e) {
+                log_err_printf(certslog, "Failed to list certificates: %s\n", e.what());
+                return 1;
+            }
+
+            // A certificate is only offered when it can actually be acted on, and the reason it
+            // cannot is shown rather than the certificate being quietly dropped.
+            if (review_issued) {
+                // The certificate manager refuses an administrator revoking their own
+                // certificate, so find it here and do not ask: a question whose only possible
+                // answer is a refusal is worse than no question. Read the same way the -f path
+                // reads a keychain, and a keychain that cannot be read simply means no match.
+                std::string own_cert_id;
+                try {
+                    const auto own = certs::IdFileFactory::createReader(conf.tls_keychain_file, conf.getKeychainPassword())
+                                         ->getCertDataFromFile();
+                    if (own.cert) {
+                        const auto status_pv = certs::CmsStatusManager::getStatusPvFromCert(own.cert);
+                        own_cert_id = status_pv.substr(status_pv.rfind(':') - 8);
+                    }
+                } catch (const std::exception &) {
+                }
+
+                for (auto &row : rows) {
+                    if (!certs::isRevocable(row.status)) {
+                        row.ineligible_reason = "status " + row.status + " cannot be revoked";
+                    } else if (!own_cert_id.empty() && row.cert_id == own_cert_id) {
+                        row.ineligible_reason = "this is your own certificate, which you cannot revoke";
+                    }
+                }
+            }
+
+            certs::ReviewCallbacks callbacks;
+            callbacks.currentStatus = [&](const std::string &cert_id) -> std::string {
+                try {
+                    const auto value = review_client.get(cert_pv_prefix + cert_id).exec()->wait(conf.getRequestTimeout());
+                    return value["state"].as<std::string>();
+                } catch (const std::exception &) {
+                    return {};  // unreadable, so treated as unchanged and left to the write
+                }
+            };
+            callbacks.apply = [&](const std::string &cert_id, const certs::ReviewDecision decision) -> std::string {
+                const char *state = decision == certs::ReviewDecision::Approve   ? "APPROVED"
+                                    : decision == certs::ReviewDecision::Deny    ? "DENIED"
+                                                                                 : "REVOKED";
+                try {
+                    review_client.put(cert_pv_prefix + cert_id).set("state", state).exec()->wait(conf.getRequestTimeout());
+                    return {};
+                } catch (const std::exception &e) {
+                    return e.what();  // the certificate manager's own words, verbatim
+                }
+            };
+
+            return certs::runReview(rows, options, callbacks, std::cin, std::cout, std::cerr);
         }
 
         if (list) {

@@ -141,6 +141,21 @@ testorgunits_SRCS += openssl.cpp
 testorgunits_LIBS += pvxsIoc dbRecStd dbCore ca
 testorgunits_SYS_LIBS += sqlite3
 
+# Test reviewing certificates one at a time: that it writes exactly what was agreed, nothing
+# before the confirmation, nothing that moved underneath, and nothing after a cancel
+TESTS += testcertreview
+TESTPROD_HOST += testcertreview
+testcertreview_SRCS += testcertreview.cpp
+testcertreview_SRCS += certreview.cpp
+testcertreview_SRCS += certfilter.cpp
+testcertreview_SRCS += certrequestid.cpp
+testcertreview_SRCS += certfactory.cpp
+testcertreview_SRCS += certfilefactory.cpp
+testcertreview_SRCS += p12filefactory.cpp
+testcertreview_SRCS += openssl.cpp
+testcertreview_LIBS += pvxsIoc dbRecStd dbCore ca
+testcertreview_SYS_LIBS += sqlite3
+
 # Test cluster functionality
 TESTS += testcluster
 TESTPROD_HOST += testcluster
