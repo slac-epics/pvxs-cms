@@ -32,13 +32,13 @@ namespace certs {
  * @param usage the certificate usage client, server, or ioc
  * @param name the name
  * @param organization the organization
- * @param organizational_unit the organizational unit
+ * @param organizational_unit the organizational units, innermost first
  * @param country the country
  * @param cert_validity_mins the requested certificate validity in minutes
  * @param cert_pv_prefix the certificate status PV prefix
  */
  void defineOptions(CLI::App &app, ConfigStd &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
-                    std::string &usage, std::string &name, std::string &organization, std::string &organizational_unit, std::string &country, std::string &cert_validity_mins, std::string &cert_pv_prefix) {
+                    std::string &usage, std::string &name, std::string &organization, std::vector<std::string> &organizational_unit, std::string &country, std::string &cert_validity_mins, std::string &cert_pv_prefix) {
     app.set_help_flag("", "");  // deactivate built-in help
 
     app.add_flag("-h,--help", help);
@@ -60,7 +60,10 @@ namespace certs {
 
     app.add_option("-n,--name", name, "Specify Certificate's name");
     app.add_option("-o,--organization", organization, "Specify the Certificate's Organisation");
-    app.add_option("--ou", organizational_unit, "Specify the Certificate's Organizational Unit");
+    // Repeatable, one value each: a unit name may contain spaces, so a second bare word after
+    // --ou is far more likely to be a mistake than a second unit
+    app.add_option("--ou", organizational_unit, "Specify the Certificate's Organizational Unit.  May be given more than once, innermost first")
+        ->allow_extra_args(false);
     app.add_option("-c,--country", country, "Specify the Certificate's Country");
 }
 
@@ -87,6 +90,8 @@ void showHelp(const char *program_name) {
               << "  (-n | --name) <name>                       Specify common name of the certificate. Default <logged-in-username>\n"
               << "  (-o | --organization) <organization>       Specify organisation name for the certificate. Default <hostname>\n"
               << "        --ou <org-unit>                      Specify organisational unit for the certificate. Default <blank>\n"
+              << "                                             May be given more than once to name a nested unit.  Give the innermost\n"
+              << "                                             unit first: `--ou staff --ou beamline` means staff is inside beamline\n"
               << "  (-c | --country) <country>                 Specify country for the certificate. Default locale setting if detectable otherwise `US`\n"
               << "  (-t | --time) <minutes>                    Duration of the certificate in minutes.  e.g. 30 or 1d or 1y3M2d4m\n"
               << "  (-D | --daemon)                            Start a daemon that re-requests a certificate on expiration`\n"
@@ -115,7 +120,8 @@ void showHelp(const char *program_name) {
 int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, bool &debug, uint16_t &cert_usage, bool &daemon_mode, bool &force) {
     auto program_name = argv[0];
     bool show_version{false}, help{false}, add_config_uri{false};
-    std::string usage{"client"}, name, organization, organizational_unit, country, cert_validity_mins, cert_pv_prefix;
+    std::string usage{"client"}, name, organization, country, cert_validity_mins, cert_pv_prefix;
+    std::vector<std::string> organizational_unit;
 
     CLI::App app{"authnstd - Secure PVAccess Standard Authenticator"};
 
@@ -178,6 +184,13 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
             case ssl::kForServer: config.server_organization = organization; break;
             default: config.organization = config.server_organization = organization; break;
         }
+    }
+    try {
+        // Trims each value and refuses a repeated one, so a unit cannot be asked to contain itself
+        normalizeOrganizationalUnits(organizational_unit);
+    } catch (const std::exception &e) {
+        std::cerr << e.what() << std::endl;
+        return 15;
     }
     if ( !organizational_unit.empty()) {
         switch (cert_usage) {
