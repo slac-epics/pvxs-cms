@@ -251,6 +251,35 @@ inline std::string getCertListViewPv(const std::string &cert_pv_prefix, const st
     return pv;
 }
 
+/**
+ * @brief Get the issuer-qualified name of a monitored certificate listing view
+ *
+ * e.g., CERT:LIST:0192faeb:ALL
+ *
+ * Two certificate managers on one network both answer the plain view name, and a gateway
+ * routes on the issuer component of the name, so an unqualified name is either claimed by
+ * both gateways or by neither. This is the form a client names when more than one certificate
+ * manager is reachable, and it is the only form a gateway forwards.
+ *
+ * This completes the name space rule the plain form above states. The component after
+ * `CERT:LIST:` is either an eight hexadecimal digit issuer id or a view word, and a fourth
+ * component may only be a view word. So `CERT:LIST:<issuer>` stays the one-shot call and
+ * `CERT:LIST:<issuer>:<word>` is a view of that issuer. Any new view word must be checked
+ * against both halves.
+ *
+ * @param cert_pv_prefix the prefix for PVACMS PVs.  Default `CERT`
+ * @param issuer_id the issuer ID that this PVACMS is serving
+ * @param view the view word, one of the three below
+ * @return the issuer-qualified monitored view name
+ */
+inline std::string getCertListViewPv(const std::string &cert_pv_prefix, const std::string &issuer_id,
+                                     const std::string &view) {
+    std::string pv = getCertListPv(cert_pv_prefix, issuer_id);
+    pv += ":";
+    pv += view;
+    return pv;
+}
+
 /** The view showing every certificate, readable by everyone. */
 #define CERT_LIST_VIEW_ALL "ALL"
 /** The view showing certificates awaiting a decision, readable by administrators only. */
