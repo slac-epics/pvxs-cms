@@ -12,7 +12,6 @@
 
 #include "certdate.h"
 #include "certstatus.h"
-#include "pvacms.h"
 #include "sqlitestmt.h"
 
 namespace pvxs {

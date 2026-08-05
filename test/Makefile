@@ -96,6 +96,15 @@ testsqlitehardening_SRCS += sqlitehardening.cpp
 testsqlitehardening_LIBS += pvxsIoc dbRecStd dbCore ca
 testsqlitehardening_SYS_LIBS += sqlite3
 
+# Test the certificate listing: the rendering a control room display depends on, and
+# that the served result really is a normative table so a display needs no support for it
+TESTS += testcertlist
+TESTPROD_HOST += testcertlist
+testcertlist_SRCS += testcertlist.cpp
+testcertlist_SRCS += certlist.cpp
+testcertlist_LIBS += pvxsIoc dbRecStd dbCore ca
+testcertlist_SYS_LIBS += sqlite3
+
 # Test cluster functionality
 TESTS += testcluster
 TESTPROD_HOST += testcluster

@@ -180,58 +180,6 @@
     "FROM certs "                     \
     "WHERE serial = :serial"
 
-/**
- * The columns every certificate listing reads, and the order every listing returns.
- *
- * The request identifier is joined in rather than selected from certs: it lives in its own
- * table and is absent for any certificate created before it existed, so the outer join
- * leaves it null and the handler renders that as an empty string.
- *
- * Ordered by created_date descending, ties broken on the serial so the order is total. The
- * order has to be stable under an update, because a monitored table that re-sorts itself
- * moves the row the operator was about to click. created_date is the only column that
- * qualifies: it is never written twice, whereas the serial is random rather than monotonic
- * and not_before is the start of validity, which for a certificate issued with a future
- * start date is later than the moment it was created.
- */
-#define SQL_LIST_CERTS_COLUMNS        \
-    "SELECT c.serial "                \
-    "     , c.CN "                    \
-    "     , c.O "                     \
-    "     , c.OU "                    \
-    "     , c.C "                     \
-    "     , c.status "                \
-    "     , c.status_date "           \
-    "     , c.not_before "            \
-    "     , c.not_after "             \
-    "     , c.renew_by "              \
-    "     , c.created_date "          \
-    "     , c.key_usage "             \
-    "     , c.extended_key_usage "    \
-    "     , IFNULL(r.request_id, '') AS request_id " \
-    "FROM certs c "                   \
-    "LEFT JOIN cert_request_ids r ON r.serial = c.serial "
-
-#define SQL_LIST_CERTS_ORDER          \
-    "ORDER BY c.created_date DESC, c.serial ASC"
-
-/** Every certificate. */
-#define SQL_LIST_CERTS_ALL            \
-    SQL_LIST_CERTS_COLUMNS            \
-    SQL_LIST_CERTS_ORDER
-
-/** Certificates awaiting an administrator's decision. */
-#define SQL_LIST_CERTS_PENDING_APPROVAL \
-    SQL_LIST_CERTS_COLUMNS              \
-    "WHERE c.status = :pending_approval " \
-    SQL_LIST_CERTS_ORDER
-
-/** Certificates whose expiry falls inside the server's expiry window. */
-#define SQL_LIST_CERTS_EXPIRING       \
-    SQL_LIST_CERTS_COLUMNS            \
-    "WHERE c.not_after >= :now AND c.not_after <= :window_end " \
-    SQL_LIST_CERTS_ORDER
-
 #define SQL_CERT_SKID_BY_SERIAL       \
     "SELECT skid "                    \
     "FROM certs "                     \
