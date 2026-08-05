@@ -12,6 +12,13 @@ spec:
       release: {{ .Release.Name }}
   template:
     metadata:
+      annotations:
+        # Roll the pods when the gateway configuration changes. The init container
+        # copies gateway.conf out of the ConfigMap once, at pod start, so without
+        # this a configuration-only change updates the ConfigMap and nothing else:
+        # the deployment spec is untouched, no pod restarts, and the running gateway
+        # keeps the old file while helm reports success.
+        checksum/config: {{ include (print $.Template.BasePath "/ml-gateway-configmap.yaml") . | sha256sum }}
       labels:
         app: ml-gateway
         release: {{ .Release.Name }}
@@ -61,6 +68,16 @@ spec:
               value: "/home/gateway/.config/pva/1.5/gateway.p12"
             - name: EPICS_PVAS_TLS_KEYCHAIN
               value: "/home/gateway/.config/pva/1.5/gateway.p12"
+            # Where this gateway looks up the status of a certificate presented to it by a
+            # client of the other department. A Lab-issued certificate can only be answered
+            # for by the Lab PVACMS, which this gateway may not reach directly, so it asks
+            # through the Lab gateway. This must be an environment variable: the inner client
+            # a server uses for peer status takes its name servers from the environment
+            # (pvxs Server::clientConfig), so the same setting in gateway.conf is discarded.
+            # The clustered configuration solved the same problem the same way, with
+            # EPICS_PVACMS_CLUSTER_NAME_SERVERS.
+            - name: EPICS_PVA_NAME_SERVERS
+              value: "{{ include "pvxs-lab.gatewayService" . }}:5075"
           volumeMounts:
             {{- include "pvxs-lab.issuerMount" (dict "ctx" . "key" "ML_ISSUER") | nindent 12 }}
             - name: gw-conf

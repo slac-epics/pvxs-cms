@@ -117,8 +117,15 @@ spec:
               release: {{ .Release.Name }}
 
 ---
-# 3-a) Lab Gateway ingress: allow from all non-lab, non-gateway pods
+# 3-a) Lab Gateway ingress: allow from all non-lab pods, including the ML gateway
 #      (ML and Internet clients reach lab IOCs / the Lab CERT:* PVs via this gateway)
+#
+#      The ML gateway is allowed in for one reason only: when a client holding a
+#      Lab-issued certificate connects to it, it has to check that certificate's
+#      status, and only the Lab PVACMS can answer. It asks through this gateway
+#      rather than reaching the Lab PVACMS directly, which stays blocked. This
+#      gateway's pvlist forwards CERT:STATUS for the Lab issuer and nothing else,
+#      so the ML gateway cannot use the opening to reach lab IOCs.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -135,13 +142,18 @@ spec:
             matchExpressions:
               - key: app
                 operator: NotIn
-                values: ["lab", "cs-studio-lab", "idm", "gateway", "testioc", "tstioc", "ml-gateway"]
+                values: ["lab", "cs-studio-lab", "idm", "gateway", "testioc", "tstioc"]
             matchLabels:
               release: {{ .Release.Name }}
 
 ---
-# 3-b) ML Gateway ingress: allow from all non-ML, non-gateway pods
+# 3-b) ML Gateway ingress: allow from all non-ML pods, including the Lab gateway
 #      (Lab and Internet clients reach ml IOCs / the ML CERT:* PVs via this gateway)
+#
+#      The Lab gateway is allowed in for the mirror-image reason: to check the
+#      status of an ML-issued certificate presented to it, asking through this
+#      gateway rather than reaching the ML PVACMS directly. This gateway's pvlist
+#      forwards CERT:STATUS for the ML issuer and nothing else.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -158,6 +170,6 @@ spec:
             matchExpressions:
               - key: app
                 operator: NotIn
-                values: ["ml", "cs-studio-ml", "ml-gateway", "ml-ioc", "gateway"]
+                values: ["ml", "cs-studio-ml", "ml-gateway", "ml-ioc"]
             matchLabels:
               release: {{ .Release.Name }}
