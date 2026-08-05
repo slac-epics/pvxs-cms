@@ -6,11 +6,15 @@
 
 #include "ccrmanager.h"
 
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+
 #include <pvxs/client.h>
 #include <pvxs/log.h>
 #include <pvxs/nt.h>
 
 #include "auth.h"
+#include "certfactory.h"
 #include "certstatus.h"
 #include "openssl.h"
 #include "security.h"
@@ -21,6 +25,23 @@ namespace pvxs {
 namespace certs {
 
 using namespace members;
+
+void CCRManager::checkIssuedOrganizationalUnits(const std::vector<std::string> &requested, const std::string &pem_string) {
+    const ossl_ptr<BIO> bio(BIO_new_mem_buf(pem_string.data(), static_cast<int>(pem_string.size())), false);
+    if (!bio) throw std::runtime_error("Unable to read the certificate that was issued");
+    const ossl_ptr<X509> cert(PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr), false);
+    if (!cert) throw std::runtime_error("Unable to read the certificate that was issued");
+
+    const auto issued = getSubjectOrganizationalUnits(X509_get_subject_name(cert.get()));
+    if (issued == requested) return;
+
+    throw std::runtime_error(SB() << "The certificate that was issued does not carry the organizational units that "
+                                     "were asked for: asked for "
+                                  << joinOrganizationalUnits(requested) << ", was issued " << joinOrganizationalUnits(issued)
+                                  << ". A certificate manager that predates nested organizational units drops all but "
+                                     "the innermost one, which claims a different and broader identity, so the "
+                                     "keychain file has not been written.");
+}
 
 /**
  * @brief Create a certificate
@@ -59,6 +80,10 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     auto pem_val = value["cert"];
     if ( pem_val ) {
         pem_string = pem_val.as<std::string>();
+        // Only when more than one unit was asked for: a single unit travels in the field every
+        // certificate manager reads, so there is nothing that can be silently dropped.
+        const auto &requested_units = cert_creation_request->credentials->organization_unit;
+        if (requested_units.size() > 1) CCRManager::checkIssuedOrganizationalUnits(requested_units, pem_string);
         log_info_printf(auth_log, "X.509 certificate(%s)\n", value["state"].as<std::string>().c_str());
     } else {
         log_info_printf(auth_log, "X.509 certificate RENEWED (%s)\n", value["state"].as<std::string>().c_str());

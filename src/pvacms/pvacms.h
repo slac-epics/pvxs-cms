@@ -362,7 +362,7 @@ int64_t onCreateCertificate(ConfigCms &config, sql_ptr &certs_db, const server::
                          const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain, std::string issuer_id);
 
 bool getPriorApprovalStatus(const sql_ptr &certs_db, const std::string &name, const std::string &country, const std::string &organization,
-                            const std::string &organization_unit);
+                            const std::vector<std::string> &organizational_units);
 
 void onGetStatus(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
                  const std::string &pv_name, serial_number_t serial, const std::string &issuer_id, const ossl_ptr<EVP_PKEY> &cert_auth_pkey,

@@ -121,6 +121,22 @@ testcertfilter_SRCS += certfilter.cpp
 testcertfilter_LIBS += pvxsIoc dbRecStd dbCore ca
 testcertfilter_SYS_LIBS += sqlite3
 
+# Test nested organizational units: the order that carries containment, the two request fields
+# that must agree or verification can be bypassed, and the subject entries they become
+TESTS += testorgunits
+TESTPROD_HOST += testorgunits
+testorgunits_SRCS += testorgunits.cpp
+testorgunits_SRCS += auth.cpp
+testorgunits_SRCS += ccrmanager.cpp
+testorgunits_SRCS += configauthn.cpp
+testorgunits_SRCS += certfactory.cpp
+testorgunits_SRCS += certfilefactory.cpp
+testorgunits_SRCS += p12filefactory.cpp
+testorgunits_SRCS += certrequestid.cpp
+testorgunits_SRCS += openssl.cpp
+testorgunits_LIBS += pvxsIoc dbRecStd dbCore ca
+testorgunits_SYS_LIBS += sqlite3
+
 # Test cluster functionality
 TESTS += testcluster
 TESTPROD_HOST += testcluster

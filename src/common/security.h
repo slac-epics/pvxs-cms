@@ -194,25 +194,71 @@ struct AuthnCredentials {
     }
 
 /**
+ * @brief Express a single organizational unit as a list, with an empty value meaning no unit.
+ *
+ * For the places that still hold one unit in one string: a configured certificate authority unit,
+ * a value read out of the existing single-value database column.
+ *
+ * @param unit the one unit, or an empty string for none
+ * @return a list holding that unit, or an empty list
+ */
+inline std::vector<std::string> singleOrganizationalUnit(const std::string &unit) {
+    if (unit.empty()) return {};
+    return {unit};
+}
+
+/**
+ * @brief The innermost organizational unit, or an empty string when there is none.
+ *
+ * The single value the existing `certs.OU` column holds. That column is derived and never
+ * authoritative: it exists so the existing index, the existing queries and anything reading the
+ * table directly keep working, and the innermost unit is the most specific single value to show.
+ *
+ * @param units the organizational units, innermost first
+ * @return the innermost unit, or an empty string
+ */
+inline const std::string &innermostOrganizationalUnit(const std::vector<std::string> &units) {
+    static const std::string none;
+    return units.empty() ? none : units.front();
+}
+
+/**
  * @brief Read the organizational units out of a certificate creation request.
  *
  * A request from a client that predates repeated units carries no `organization_units` field at
  * all, because the request travels with its own type. Its single `organization_unit` value is
  * then read as a one-element list, so such a request is handled exactly as it was before.
  *
+ * When a request carries both fields they must agree, and this is the only way to read the units,
+ * so no caller can act on the list without the two having been compared. Were the server to build
+ * the subject from the list while a verifier inspected only the single value, a caller could leave
+ * an authorised value in the single field, put unauthorised values in the list, and have them all
+ * issued. That is a privilege escalation rather than a compatibility wrinkle, which is why the
+ * check is here rather than at each call site.
+ *
  * @param ccr the certificate creation request as it arrived
  * @return the organizational units, innermost first
+ * @throws std::runtime_error if the request carries both fields and they disagree
  */
 inline std::vector<std::string> getOrganizationalUnits(const Value &ccr) {
-    if (const auto units = ccr["organization_units"]) {
-        const auto values = units.as<shared_array<const std::string>>();
+    const auto single_value = ccr["organization_unit"];
+    const auto single = single_value ? single_value.as<std::string>() : std::string();
+
+    if (const auto units_value = ccr["organization_units"]) {
+        const auto values = units_value.as<shared_array<const std::string>>();
+        if (values.empty()) {
+            if (!single.empty())
+                throw std::runtime_error(SB() << "Certificate creation request names organizational unit \"" << single
+                                              << "\" but its list of units is empty");
+            return {};
+        }
+        if (values[0] != single)
+            throw std::runtime_error(SB() << "Certificate creation request names organizational unit \"" << single
+                                          << "\" but the innermost unit in its list is \"" << values[0] << "\"");
         return {values.begin(), values.end()};
     }
-    if (const auto unit = ccr["organization_unit"]) {
-        auto value = unit.as<std::string>();
-        if (!value.empty()) return {std::move(value)};
-    }
-    return {};
+
+    return singleOrganizationalUnit(single);
 }
 
 struct CertCreationRequest final {
