@@ -40,5 +40,5 @@ exec java \
     -Dfile.encoding=UTF-8 \
     -jar /opt/phoebus/product-*.jar \
     -settings /opt/phoebus/phoebus-settings.ini \
-    -resource "/opt/phoebus/displays/pvxs-lab-certificate-administration.bob?ISSUER=${ISSUER}&CERT_PREFIX=${CERT_PREFIX}&DECISIONS=${DECISIONS}" \
+    -resource "file:///opt/phoebus/displays/pvxs-lab-certificate-administration.bob?ISSUER=${ISSUER}&CERT_PREFIX=${CERT_PREFIX}&DECISIONS=${DECISIONS}" \
     "$@"

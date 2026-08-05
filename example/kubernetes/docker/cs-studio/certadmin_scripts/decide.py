@@ -11,15 +11,17 @@
 # Triggers: the action button. The action itself is the widget's `action` macro.
 
 from org.csstudio.display.builder.runtime.script import PVUtil, ValueUtil, ScriptUtil
-from org.phoebus.pv import PVPool
-
 action = widget.getEffectiveMacros().getValue("action")
 prefix = widget.getEffectiveMacros().getValue("cert_prefix")
 if prefix is None or prefix == "":
     prefix = "CERT"
 
-set_pv = pvs[0]
-table_pv = pvs[1]
+# A button's script is handed the widget and nothing else - no channel list - so the channels
+# this decision works on are named in the button's own macros.
+from org.phoebus.pv import PVPool
+
+set_pv = PVPool.getPV(widget.getEffectiveMacros().getValue("set_pv"))
+table_pv = PVPool.getPV(widget.getEffectiveMacros().getValue("table_pv"))
 
 state_for = {"approve": "APPROVED", "deny": "DENIED", "revoke": "REVOKED"}
 new_state = state_for.get(action)
@@ -113,3 +115,6 @@ else:
         else:
             ScriptUtil.showMessageDialog(widget, "Applied to %d certificate(s)." % len(held))
             set_pv.write([""])
+
+PVPool.releasePV(set_pv)
+PVPool.releasePV(table_pv)

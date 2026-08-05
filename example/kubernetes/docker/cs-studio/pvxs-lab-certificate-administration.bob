@@ -161,13 +161,11 @@
         <y>648</y>
         <width>150</width>
         <height>28</height>
-        <actions><action type="execute"><script file="add_to_set.py"></script><description>Add selected</description></action></actions>
-        <scripts>
-          <script file="certadmin_scripts/add_to_set.py">
-            <pv_name trigger="false">loc://sel_pending</pv_name>
-            <pv_name trigger="false">loc://set_pending("")</pv_name>
-          </script>
-        </scripts>
+        <macros>
+          <selection_pv>loc://sel_pending</selection_pv>
+          <set_pv>loc://set_pending("")</set_pv>
+        </macros>
+        <actions><action type="execute"><script file="certadmin_scripts/add_to_set.py"></script><description>Add selected</description></action></actions>
       </widget>
       <widget type="action_button" version="3.0.0">
         <name>PendingRemove</name>
@@ -176,13 +174,11 @@
         <y>648</y>
         <width>150</width>
         <height>28</height>
-        <actions><action type="execute"><script file="remove_from_set.py"></script><description>Remove selected</description></action></actions>
-        <scripts>
-          <script file="certadmin_scripts/remove_from_set.py">
-            <pv_name trigger="false">loc://sel_pending</pv_name>
-            <pv_name trigger="false">loc://set_pending("")</pv_name>
-          </script>
-        </scripts>
+        <macros>
+          <selection_pv>loc://sel_pending</selection_pv>
+          <set_pv>loc://set_pending("")</set_pv>
+        </macros>
+        <actions><action type="execute"><script file="certadmin_scripts/remove_from_set.py"></script><description>Remove selected</description></action></actions>
       </widget>
       <widget type="action_button" version="3.0.0">
         <name>PendingClear</name>
@@ -191,12 +187,10 @@
         <y>648</y>
         <width>90</width>
         <height>28</height>
-        <actions><action type="execute"><script file="clear_set.py"></script><description>Clear</description></action></actions>
-        <scripts>
-          <script file="certadmin_scripts/clear_set.py">
-            <pv_name trigger="false">loc://set_pending("")</pv_name>
-          </script>
-        </scripts>
+        <macros>
+          <set_pv>loc://set_pending("")</set_pv>
+        </macros>
+        <actions><action type="execute"><script file="certadmin_scripts/clear_set.py"></script><description>Clear</description></action></actions>
       </widget>
       <widget type="action_button" version="3.0.0">
         <name>PendingApprove</name>
@@ -206,16 +200,12 @@
         <width>170</width>
         <height>28</height>
         <macros>
+          <set_pv>loc://set_pending("")</set_pv>
+          <table_pv>pva://$(CERT_PREFIX):LIST:$(ISSUER):PENDING_APPROVAL</table_pv>
           <action>approve</action>
           <cert_prefix>$(CERT_PREFIX)</cert_prefix>
         </macros>
-        <actions><action type="execute"><script file="decide.py"></script><description>Approve picked...</description></action></actions>
-        <scripts>
-          <script file="certadmin_scripts/decide.py">
-            <pv_name trigger="false">loc://set_pending("")</pv_name>
-            <pv_name trigger="false">pva://$(CERT_PREFIX):LIST:$(ISSUER):PENDING_APPROVAL</pv_name>
-          </script>
-        </scripts>
+        <actions><action type="execute"><script file="certadmin_scripts/decide.py"></script><description>Approve picked...</description></action></actions>
       </widget>
       <widget type="action_button" version="3.0.0">
         <name>PendingDeny</name>
@@ -225,16 +215,12 @@
         <width>170</width>
         <height>28</height>
         <macros>
+          <set_pv>loc://set_pending("")</set_pv>
+          <table_pv>pva://$(CERT_PREFIX):LIST:$(ISSUER):PENDING_APPROVAL</table_pv>
           <action>deny</action>
           <cert_prefix>$(CERT_PREFIX)</cert_prefix>
         </macros>
-        <actions><action type="execute"><script file="decide.py"></script><description>Deny picked...</description></action></actions>
-        <scripts>
-          <script file="certadmin_scripts/decide.py">
-            <pv_name trigger="false">loc://set_pending("")</pv_name>
-            <pv_name trigger="false">pva://$(CERT_PREFIX):LIST:$(ISSUER):PENDING_APPROVAL</pv_name>
-          </script>
-        </scripts>
+        <actions><action type="execute"><script file="certadmin_scripts/decide.py"></script><description>Deny picked...</description></action></actions>
       </widget>
       </children>
       <width>1400</width>
@@ -356,13 +342,11 @@
         <y>648</y>
         <width>150</width>
         <height>28</height>
-        <actions><action type="execute"><script file="add_to_set.py"></script><description>Add selected</description></action></actions>
-        <scripts>
-          <script file="certadmin_scripts/add_to_set.py">
-            <pv_name trigger="false">loc://sel_issued</pv_name>
-            <pv_name trigger="false">loc://set_issued("")</pv_name>
-          </script>
-        </scripts>
+        <macros>
+          <selection_pv>loc://sel_issued</selection_pv>
+          <set_pv>loc://set_issued("")</set_pv>
+        </macros>
+        <actions><action type="execute"><script file="certadmin_scripts/add_to_set.py"></script><description>Add selected</description></action></actions>
       </widget>
       <widget type="action_button" version="3.0.0">
         <name>IssuedRemove</name>
@@ -371,13 +355,11 @@
         <y>648</y>
         <width>150</width>
         <height>28</height>
-        <actions><action type="execute"><script file="remove_from_set.py"></script><description>Remove selected</description></action></actions>
-        <scripts>
-          <script file="certadmin_scripts/remove_from_set.py">
-            <pv_name trigger="false">loc://sel_issued</pv_name>
-            <pv_name trigger="false">loc://set_issued("")</pv_name>
-          </script>
-        </scripts>
+        <macros>
+          <selection_pv>loc://sel_issued</selection_pv>
+          <set_pv>loc://set_issued("")</set_pv>
+        </macros>
+        <actions><action type="execute"><script file="certadmin_scripts/remove_from_set.py"></script><description>Remove selected</description></action></actions>
       </widget>
       <widget type="action_button" version="3.0.0">
         <name>IssuedClear</name>
@@ -386,12 +368,10 @@
         <y>648</y>
         <width>90</width>
         <height>28</height>
-        <actions><action type="execute"><script file="clear_set.py"></script><description>Clear</description></action></actions>
-        <scripts>
-          <script file="certadmin_scripts/clear_set.py">
-            <pv_name trigger="false">loc://set_issued("")</pv_name>
-          </script>
-        </scripts>
+        <macros>
+          <set_pv>loc://set_issued("")</set_pv>
+        </macros>
+        <actions><action type="execute"><script file="certadmin_scripts/clear_set.py"></script><description>Clear</description></action></actions>
       </widget>
       <widget type="action_button" version="3.0.0">
         <name>IssuedRevoke</name>
@@ -401,16 +381,12 @@
         <width>170</width>
         <height>28</height>
         <macros>
+          <set_pv>loc://set_issued("")</set_pv>
+          <table_pv>pva://$(CERT_PREFIX):LIST:$(ISSUER):ALL</table_pv>
           <action>revoke</action>
           <cert_prefix>$(CERT_PREFIX)</cert_prefix>
         </macros>
-        <actions><action type="execute"><script file="decide.py"></script><description>Revoke picked...</description></action></actions>
-        <scripts>
-          <script file="certadmin_scripts/decide.py">
-            <pv_name trigger="false">loc://set_issued("")</pv_name>
-            <pv_name trigger="false">pva://$(CERT_PREFIX):LIST:$(ISSUER):ALL</pv_name>
-          </script>
-        </scripts>
+        <actions><action type="execute"><script file="certadmin_scripts/decide.py"></script><description>Revoke picked...</description></action></actions>
       </widget>
       </children>
       <width>1400</width>

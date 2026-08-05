@@ -354,7 +354,7 @@ function gw_delete_cert_authority_state {
 
 
 function go_in_to {
-  if [[ "$1" == "lab" ||  "$1" == "idm" ||  "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" || "$1" == "cs-studio-lab" || "$1" == "cs-studio-ml" || "$1" == "cs-studio-internet" ]] ; then
+  if [[ "$1" == "lab" ||  "$1" == "idm" ||  "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" || "$1" == "cs-studio-lab" || "$1" == "cs-studio-ml" || "$1" == "cs-studio-internet" || "$1" == "cert-admin-lab" || "$1" == "cert-admin-ml" || "$1" == "cert-admin-internet" ]] ; then
    kubectl -n pvxs-lab exec -it deploy/pvxs-lab-$1 -- /bin/bash
   else
    echo "No such lab system: $1"
@@ -477,7 +477,7 @@ function gw_cp_in {
 }
 
 function gw_log {
-  if [[ "$1" == "lab" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" || "$1" == "cs-studio-lab" || "$1" == "cs-studio-ml" || "$1" == "cs-studio-internet" ]] ; then
+  if [[ "$1" == "lab" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "gateway" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "ml-gateway" || "$1" == "cs-studio-lab" || "$1" == "cs-studio-ml" || "$1" == "cs-studio-internet" || "$1" == "cert-admin-lab" || "$1" == "cert-admin-ml" || "$1" == "cert-admin-internet" ]] ; then
    kubectl logs -n pvxs-lab deployment/pvxs-lab-$1  -f
   else
    echo "No such lab system: $1"
@@ -495,6 +495,34 @@ function cs_studio_ml() {
 
 function cs_studio_internet() {
     kubectl port-forward deploy/pvxs-lab-cs-studio-internet 8082:8080 -n pvxs-lab
+}
+
+# The three certificate administration desktops. Separate ports from the control room
+# displays, so an administrator desktop and the control room can be open at the same time.
+function cert_admin_lab() {
+    kubectl port-forward deploy/pvxs-lab-cert-admin-lab 8083:8080 -n pvxs-lab
+}
+
+function cert_admin_ml() {
+    kubectl port-forward deploy/pvxs-lab-cert-admin-ml 8084:8080 -n pvxs-lab
+}
+
+function cert_admin_internet() {
+    kubectl port-forward deploy/pvxs-lab-cert-admin-internet 8085:8080 -n pvxs-lab
+}
+
+function login_to_cert_admin_in_lab() {
+    kubectl exec -it deploy/pvxs-lab-cert-admin-lab -n pvxs-lab -- su - ${1:-certadmin}
+}
+
+function login_to_cert_admin_in_ml() {
+    kubectl exec -it deploy/pvxs-lab-cert-admin-ml -n pvxs-lab -- su - ${1:-mlcertadmin}
+}
+
+# The internet zone desktop carries no administrator: every view it shows is open to
+# everyone, so it holds the ordinary internet zone viewer and nothing more.
+function login_to_cert_admin_from_internet() {
+    kubectl exec -it deploy/pvxs-lab-cert-admin-internet -n pvxs-lab -- su - ${1:-operator}
 }
 
 function login_to_cs_studio_in_lab() {
