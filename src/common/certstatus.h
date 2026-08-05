@@ -181,6 +181,84 @@ inline std::string getCertCreatePv(const std::string &cert_pv_prefix, const std:
 }
 
 /**
+ * @brief Get the base name the certificate listing operations sit under
+ *
+ * e.g., CERT:LIST
+ *
+ * @param cert_pv_prefix the prefix for PVACMS PVs.  Default `CERT`
+ * @return the base name for the listing operations
+ */
+inline std::string getCertListPvBase(const std::string &cert_pv_prefix) {
+    std::string pv = cert_pv_prefix;
+    pv += ":LIST";
+    return pv;
+}
+
+/**
+ * @brief Get the one-shot certificate listing call name
+ *
+ * This is suitable for networks where there is only one certificate authority.  Clients will
+ * not need to specify the issuer they are interested in
+ *
+ * e.g., CERT:LIST
+ *
+ * @param cert_pv_prefix the prefix for PVACMS PVs.  Default `CERT`
+ * @return the generic certificate listing call name
+ */
+inline std::string getCertListPv(const std::string &cert_pv_prefix) {
+    return getCertListPvBase(cert_pv_prefix);
+}
+
+/**
+ * @brief Get the issuer-qualified one-shot certificate listing call name
+ *
+ * This is suitable for networks where there are multiple certificate authorities.  Clients will
+ * need to specify the issuer they are interested in
+ *
+ * e.g., CERT:LIST:0192faeb
+ *
+ * The monitored view names below occupy the same shape, `CERT:LIST:<word>`. They cannot be
+ * confused with this one because an issuer id is eight hexadecimal digits and none of the
+ * view words is. Any new view word must be checked against that.
+ *
+ * @param cert_pv_prefix the prefix for PVACMS PVs.  Default `CERT`
+ * @param issuer_id the issuer ID that this PVACMS is serving
+ * @return the issuer-qualified certificate listing call name
+ */
+inline std::string getCertListPv(const std::string &cert_pv_prefix, const std::string &issuer_id) {
+    std::string pv = getCertListPvBase(cert_pv_prefix);
+    pv += ":";
+    pv += issuer_id;
+    return pv;
+}
+
+/**
+ * @brief Get the name of a monitored certificate listing view
+ *
+ * The three views are fixed names carrying no parameter, because a display tool can only
+ * parse a field clause out of a process variable name and so cannot send one.
+ *
+ * e.g., CERT:LIST:ALL, CERT:LIST:PENDING_APPROVAL, CERT:LIST:EXPIRING
+ *
+ * @param cert_pv_prefix the prefix for PVACMS PVs.  Default `CERT`
+ * @param view the view word, one of the three below
+ * @return the monitored view name
+ */
+inline std::string getCertListViewPv(const std::string &cert_pv_prefix, const std::string &view) {
+    std::string pv = getCertListPvBase(cert_pv_prefix);
+    pv += ":";
+    pv += view;
+    return pv;
+}
+
+/** The view showing every certificate, readable by everyone. */
+#define CERT_LIST_VIEW_ALL "ALL"
+/** The view showing certificates awaiting a decision, readable by administrators only. */
+#define CERT_LIST_VIEW_PENDING_APPROVAL "PENDING_APPROVAL"
+/** The view showing certificates expiring inside the server's window, readable by everyone. */
+#define CERT_LIST_VIEW_EXPIRING "EXPIRING"
+
+/**
  * @brief Returns the certificate URI.
  *
  * This function takes a prefix and a certificate ID as input parameters and returns the certificate URI.
