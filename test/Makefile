@@ -107,6 +107,15 @@ testcertlist_SRCS += certlistprint.cpp
 testcertlist_LIBS += pvxsIoc dbRecStd dbCore ca
 testcertlist_SYS_LIBS += sqlite3
 
+# Test the filter expression: how the words bind, what happens when the query cannot express
+# a test, and what an operator is told when they get it wrong
+TESTS += testcertfilter
+TESTPROD_HOST += testcertfilter
+testcertfilter_SRCS += testcertfilter.cpp
+testcertfilter_SRCS += certfilter.cpp
+testcertfilter_LIBS += pvxsIoc dbRecStd dbCore ca
+testcertfilter_SYS_LIBS += sqlite3
+
 # Test cluster functionality
 TESTS += testcluster
 TESTPROD_HOST += testcluster

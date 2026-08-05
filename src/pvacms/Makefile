@@ -41,6 +41,7 @@ pvacms_SRCS += p12filefactory.cpp
 pvacms_SRCS += certfilefactory.cpp
 pvacms_SRCS += certfactory.cpp
 pvacms_SRCS += certrequestid.cpp
+pvacms_SRCS += certfilter.cpp
 pvacms_SRCS += configcerts.cpp
 pvacms_SRCS += wildcardpv.cpp
 pvacms_SRCS += openssl.cpp
