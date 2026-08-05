@@ -59,6 +59,15 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "pvxs-lab.csStudioInternetService" -}}
 {{ include "pvxs-lab.fullname" . }}-cs-studio-internet
 {{- end -}}
+{{- define "pvxs-lab.certAdminLabService" -}}
+{{ include "pvxs-lab.fullname" . }}-cert-admin-lab
+{{- end -}}
+{{- define "pvxs-lab.certAdminMlService" -}}
+{{ include "pvxs-lab.fullname" . }}-cert-admin-ml
+{{- end -}}
+{{- define "pvxs-lab.certAdminInternetService" -}}
+{{ include "pvxs-lab.fullname" . }}-cert-admin-internet
+{{- end -}}
 
 {{/*
 EPICS_PVA_AUTH_ISSUER env sourced from the issuer-ids ConfigMap, so authnstd/authnkrb
@@ -93,6 +102,41 @@ in the lab_base image. Two parts, both taking {"ctx": ., "key": "LAB_ISSUER"|"ML
 - name: issuer-id
   mountPath: /etc/epics/issuer
   subPath: issuer
+  readOnly: true
+{{- end -}}
+
+{{/*
+Both departments' issuer ids, for a pod that carries a user per department and therefore cannot
+have one pod-level EPICS_PVA_AUTH_ISSUER: the right answer differs by user, so each user's shell
+profile selects one. Three parts, all taking {"ctx": .}:
+  issuersEnv    - LAB_ISSUER and ML_ISSUER as environment variables, under `env:`
+  issuersVolume - the ConfigMap volume, placed under `volumes:`
+  issuersMount  - the volumeMount, placed under a container's `volumeMounts:`
+The files are what a login shell reads, via /etc/profile.d/epics-issuers.sh in the lab_base image,
+because su - <user> resets the environment.
+*/}}
+{{- define "pvxs-lab.issuersEnv" -}}
+- name: LAB_ISSUER
+  valueFrom:
+    configMapKeyRef:
+      name: {{ include "pvxs-lab.fullname" .ctx }}-issuer-ids
+      key: LAB_ISSUER
+- name: ML_ISSUER
+  valueFrom:
+    configMapKeyRef:
+      name: {{ include "pvxs-lab.fullname" .ctx }}-issuer-ids
+      key: ML_ISSUER
+{{- end -}}
+
+{{- define "pvxs-lab.issuersVolume" -}}
+- name: issuer-ids
+  configMap:
+    name: {{ include "pvxs-lab.fullname" .ctx }}-issuer-ids
+{{- end -}}
+
+{{- define "pvxs-lab.issuersMount" -}}
+- name: issuer-ids
+  mountPath: /etc/epics/issuers
   readOnly: true
 {{- end -}}
 

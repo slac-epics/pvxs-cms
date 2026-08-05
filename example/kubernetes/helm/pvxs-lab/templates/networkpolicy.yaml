@@ -25,7 +25,7 @@ spec:
             matchExpressions:
               - key: app
                 operator: In
-                values: ["lab", "cs-studio-lab", "gateway", "testioc", "tstioc"]
+                values: ["lab", "cs-studio-lab", "cert-admin-lab", "gateway", "testioc", "tstioc"]
             matchLabels:
               release: {{ .Release.Name }}
 
@@ -35,7 +35,7 @@ spec:
             matchExpressions:
               - key: app
                 operator: In
-                values: ["ml", "cs-studio-ml", "internet", "cs-studio-internet"]
+                values: ["ml", "cs-studio-ml", "cert-admin-ml", "internet", "cs-studio-internet", "cert-admin-internet"]
             matchLabels:
               release: {{ .Release.Name }}
       ports:
@@ -65,7 +65,7 @@ spec:
             matchExpressions:
               - key: app
                 operator: In
-                values: ["ml", "cs-studio-ml", "ml-gateway", "ml-ioc"]
+                values: ["ml", "cs-studio-ml", "cert-admin-ml", "ml-gateway", "ml-ioc"]
             matchLabels:
               release: {{ .Release.Name }}
 
@@ -142,7 +142,7 @@ spec:
             matchExpressions:
               - key: app
                 operator: NotIn
-                values: ["lab", "cs-studio-lab", "idm", "gateway", "testioc", "tstioc"]
+                values: ["lab", "cs-studio-lab", "cert-admin-lab", "idm", "gateway", "testioc", "tstioc"]
             matchLabels:
               release: {{ .Release.Name }}
 
@@ -170,6 +170,6 @@ spec:
             matchExpressions:
               - key: app
                 operator: NotIn
-                values: ["ml", "cs-studio-ml", "ml-gateway", "ml-ioc"]
+                values: ["ml", "cs-studio-ml", "cert-admin-ml", "ml-gateway", "ml-ioc"]
             matchLabels:
               release: {{ .Release.Name }}
