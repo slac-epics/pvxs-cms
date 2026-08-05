@@ -126,6 +126,8 @@ testcertfilter_SYS_LIBS += sqlite3
 # that must agree or verification can be bypassed, and the subject entries they become
 TESTS += testorgunits
 TESTPROD_HOST += testorgunits
+# Uses SQL_DUPS_SUBJECT from pvacms.h, whose sql_ptr is behind PVXS_ENABLE_PVACMS.
+testorgunits_CPPFLAGS += -DPVXS_ENABLE_PVACMS
 testorgunits_SRCS += testorgunits.cpp
 testorgunits_SRCS += certsubjectunits.cpp
 testorgunits_SRCS += auth.cpp
@@ -176,6 +178,8 @@ ifdef BASE_3_15
 ifeq ($(EVENT2_HAS_OPENSSL),YES)
 testtlswithcms$(EXE): | cert_auth.p12
 testpvacmsoptions$(EXE): | cert_auth.p12
+# reads client1.p12 and client2.p12, so the generated fixtures must exist first
+testorgunits$(EXE): | cert_auth.p12
 
 # generate test certs only with EPICS_HOST_ARCH
 ifdef T_A

@@ -25,6 +25,11 @@
 #include "certfactory.h"
 #include "certsubjectunits.h"
 #include "configauthn.h"
+// pvacms.h is not self-contained: it names sql_ptr, which ownedptr.h only defines once
+// sqlite3.h has been seen. pvacms.cpp happens to include both first; do the same here.
+#include <sqlite3.h>
+#include "ownedptr.h"
+#include "pvacms.h"
 #include "security.h"
 
 using namespace pvxs;
@@ -343,13 +348,16 @@ struct SubjectDb {
     //! What the server runs on startup: create the table and bring existing rows forward.
     bool migrate() { return sqlite3_exec(db, SQL_CREATE_SUBJECT_UNITS_TABLE, nullptr, nullptr, nullptr) == SQLITE_OK; }
 
-    //! How many certificates match the subject, compared as an ordered list of units.
+    //! How many certificates match the subject, using the certificate manager's own duplicate
+    //! query, so that an edit to SQL_DUPS_SUBJECT is caught here rather than in production.
     int countMatching(const char *cn, const std::vector<std::string> &units) {
-        std::string sql("SELECT COUNT(*) FROM certs WHERE CN = :CN AND O = 'lbnl' AND C = 'US'");
+        std::string sql(SQL_DUPS_SUBJECT);
         sql += getOrganizationalUnitsClause(units);
         sqlite3_stmt *stmt = nullptr;
         if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return -1;
         sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":CN"), cn, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":O"), "lbnl", -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":C"), "US", -1, SQLITE_TRANSIENT);
         bindOrganizationalUnitsClause(stmt, units);
         const int count = sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int(stmt, 0) : -1;
         sqlite3_finalize(stmt);
@@ -412,10 +420,29 @@ void testTheOrderedComparisonIsAnIdentityTest() {
     testEq(store.countMatching("bob", {"beamline"}), 0);
 }
 
+// The generated fixture: a real keychain file on disk whose subject names two units. Everything
+// above builds its certificates in process, so nothing until now proves that a subject written
+// by one program and read back by another survives the round trip.
+void testAGeneratedKeychainCarriesBothUnits() {
+    testDiag("The ioc1 fixture carries a nested unit, innermost first");
+
+    const auto cert_data = IdFileFactory::createReader("ioc1.p12")->getCertDataFromFile();
+    testTrue(static_cast<bool>(cert_data.cert));
+    if (!cert_data.cert) { testSkip(2, "no certificate"); return; }
+
+    testEq(show(getSubjectOrganizationalUnits(X509_get_subject_name(cert_data.cert.get()))),
+           show({"beamline", "epics.org Certificate Authority"}));
+
+    // and a fixture that was not given one is unchanged: a single unit, as before
+    const auto plain = IdFileFactory::createReader("client1.p12")->getCertDataFromFile();
+    testEq(show(getSubjectOrganizationalUnits(X509_get_subject_name(plain.cert.get()))),
+           show({"epics.org Certificate Authority"}));
+}
+
 }  // namespace
 
 MAIN(testorgunits) {
-    testPlan(56);
+    testPlan(59);
     const auto key_pair = IdFileFactory::createKeyPair();
 
     testTheEnvironmentCarriesAList();
@@ -430,6 +457,7 @@ MAIN(testorgunits) {
     testTheIssuedSubjectNamesEveryUnitInOrder(key_pair);
     testASubjectIsReadBackWhole(key_pair);
     testAShortenedSubjectIsRefused(key_pair);
+    testAGeneratedKeychainCarriesBothUnits();
     testAnExistingDatabaseIsBroughtForward();
     testTheOrderedComparisonIsAnIdentityTest();
     return testDone();
