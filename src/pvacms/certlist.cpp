@@ -12,6 +12,7 @@
 
 #include "certdate.h"
 #include "certstatus.h"
+#include "certsubjectunits.h"
 #include "sqlitestmt.h"
 
 namespace pvxs {
@@ -47,7 +48,7 @@ std::string renderDate(const time_t when) { return when ? CertDate(when).s : std
 
 }  // namespace
 
-std::string renderSubject(const std::string &common_name, const std::string &organizational_unit,
+std::string renderSubject(const std::string &common_name, const std::vector<std::string> &organizational_units,
                           const std::string &organization, const std::string &country) {
     std::string subject;
     const auto append = [&subject](const char *key, const std::string &value) {
@@ -58,7 +59,9 @@ std::string renderSubject(const std::string &common_name, const std::string &org
         subject += value;
     };
     append("CN", common_name);
-    append("OU", organizational_unit);
+    // One part per unit, innermost first, the same order the certificate subject itself carries.
+    // Read left to right the whole thing is a containment path: each part encloses the one before.
+    for (const auto &organizational_unit : organizational_units) append("OU", organizational_unit);
     append("O", organization);
     append("C", country);
     return subject;
@@ -156,16 +159,31 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
         }
     }
 
+    // Prepared once and reused for every listed row, so the units cost one indexed lookup a row
+    SqliteStmt units_statement;
+    if (sqlite3_prepare_v2(certs_db, SQL_GET_SUBJECT_UNITS, -1, units_statement.acquire(), nullptr) != SQLITE_OK) {
+        throw std::runtime_error(SB() << "Failed to prepare the organizational unit read: " << sqlite3_errmsg(certs_db));
+    }
+    const auto unitsFor = [&units_statement](const int64_t db_serial) {
+        std::vector<std::string> units;
+        sqlite3_reset(units_statement);
+        sqlite3_clear_bindings(units_statement);
+        sqlite3_bind_int64(units_statement, sqlite3_bind_parameter_index(units_statement, ":serial"), db_serial);
+        while (sqlite3_step(units_statement) == SQLITE_ROW) units.push_back(columnText(units_statement, 0));
+        return units;
+    };
+
     std::vector<CertListRow> rows;
     while (sqlite3_step(statement) == SQLITE_ROW) {
         const auto serial = static_cast<uint64_t>(sqlite3_column_int64(statement, 0));
+        const auto organizational_units = unitsFor(sqlite3_column_int64(statement, 0));
 
         CertListRow row;
         // Built from the serving issuer and the serial, not from the stored subject key
         // identifier, and through the same helper every parser uses: a display concatenates
         // this column into a status channel name, so the two cannot be allowed to drift.
         row.cert_id = getCertId(issuer_id, serial);
-        row.subject = renderSubject(columnText(statement, 1), columnText(statement, 3), columnText(statement, 2),
+        row.subject = renderSubject(columnText(statement, 1), organizational_units, columnText(statement, 2),
                                     columnText(statement, 4));
         row.status = CERT_STATE(sqlite3_column_int(statement, 5));
         row.status_changed = renderDate(sqlite3_column_int64(statement, 6));
@@ -185,8 +203,8 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
             candidate.serial = serial;
             candidate.common_name = columnText(statement, 1);
             candidate.organization = columnText(statement, 2);
-            const auto unit = columnText(statement, 3);
-            if (!unit.empty()) candidate.organizational_units.push_back(unit);
+            // Every unit, so `unit:beamline` matches a certificate for staff inside beamline
+            candidate.organizational_units = organizational_units;
             candidate.country = columnText(statement, 4);
             candidate.status = sqlite3_column_int(statement, 5);
             candidate.status_date = sqlite3_column_int64(statement, 6);

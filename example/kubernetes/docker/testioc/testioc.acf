@@ -29,6 +29,23 @@ UAG(GUESTS) {
     "guest"
 }
 
+# Anyone at or below the beamline, named by what their certificate says rather than by who
+# they are. An entry that names subject fields places a condition only on the fields it names,
+# so this one says nothing about the common name or the organization.
+#
+# The organizational units a subject carries are read innermost first, so they are a
+# containment path: a certificate for OU=staff,OU=beamline says staff sits inside beamline.
+# This entry names one unit, so it admits any certificate carrying beamline among its units,
+# wherever in the path it sits - OU=beamline and OU=staff,OU=beamline alike. Position only
+# starts to matter once the entry itself names more than one unit, because then the entry's
+# units must appear among the peer's in the same relative order. An entry reading
+# "OU=staff,OU=beamline" would admit OU=staff,OU=beamline and refuse OU=beamline,OU=staff.
+#
+# Try it: authnstd -u client -n visitor --ou staff --ou beamline
+UAG(BEAMLINE) {
+    "OU=beamline"
+}
+
 # The test:spec special PV: operators (either department) may write; guests cannot.
 ASG(SPECIAL) {
     RULE(1,READ)
@@ -55,6 +72,14 @@ ASG(DEFAULT) {
     RULE(1,WRITE,TRAPWRITE) {
         UAG(OPERATORS)
         AUTHORITY(AUTH_ML)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    # WRITE for anyone the beamline encloses, whoever they are. Nobody has to be named
+    # individually: a person joining the beamline gets a certificate saying so and can write.
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(BEAMLINE)
+        AUTHORITY(AUTH_LAB)
         PROTOCOL(TLS)
         METHOD(X509)
     }

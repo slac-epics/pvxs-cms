@@ -679,7 +679,10 @@ const char *columnOf(const FilterField field) {
         case FilterField::Serial: return "serial";
         case FilterField::Name: return "CN";
         case FilterField::Org: return "O";
-        case FilterField::Unit: return "OU";
+        // A certificate may carry several units, one row each, so the test runs inside a
+        // subquery over the child table rather than against a column on certs. See
+        // conditionFor, which wraps whatever is built here.
+        case FilterField::Unit: return "u.value";
         case FilterField::Country: return "C";
         case FilterField::State: return "status";
         case FilterField::Issued: case FilterField::IssuedBefore: case FilterField::IssuedAfter: return "not_before";
@@ -772,6 +775,11 @@ std::string conditionFor(const FilterNode &test, const bool negated, std::vector
             case FilterValueKind::Regex:
                 return "1";  // never reached: a regular expression is not pushable
         }
+        // The units live one row per value in a child table, so the test asks whether any of a
+        // certificate's rows satisfies it. That makes `unit:beamline` find a certificate whose
+        // units are staff inside beamline, which naming an outer unit is meant to do.
+        if (test.field == FilterField::Unit)
+            one = "EXISTS (SELECT 1 FROM cert_subject_units u WHERE u.serial = c.serial AND (" + one + "))";
         joined += (joined.empty() ? "(" : " OR ") + one;
     }
     joined += ")";

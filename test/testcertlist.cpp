@@ -35,13 +35,18 @@ namespace {
 void testSubjectIsCanonical() {
     testDiag("A subject renders in one canonical order");
 
-    testEq(renderSubject("testioc", "controls", "epics.org", "US"),
+    testEq(renderSubject("testioc", {"controls"}, "epics.org", "US"),
            std::string("CN=testioc,OU=controls,O=epics.org,C=US"));
 
+    // A nested unit renders as one part per value, innermost first, so the text reads as the
+    // containment path it is and can still be pasted into an access security file.
+    testEq(renderSubject("testioc", {"staff", "controls"}, "epics.org", "US"),
+           std::string("CN=testioc,OU=staff,OU=controls,O=epics.org,C=US"));
+
     // Empty parts are left out rather than rendered as an empty pair.
-    testEq(renderSubject("testioc", "", "epics.org", "US"), std::string("CN=testioc,O=epics.org,C=US"));
-    testEq(renderSubject("testioc", "", "", ""), std::string("CN=testioc"));
-    testEq(renderSubject("", "", "", ""), std::string(""));
+    testEq(renderSubject("testioc", {}, "epics.org", "US"), std::string("CN=testioc,O=epics.org,C=US"));
+    testEq(renderSubject("testioc", {}, "", ""), std::string("CN=testioc"));
+    testEq(renderSubject("", {}, "", ""), std::string(""));
 }
 
 void testCertTypeNamesWhatItIsFor() {
@@ -260,7 +265,9 @@ struct ListDb {
                      " renewal_due INTEGER, status INTEGER, status_date INTEGER, created_date INTEGER,"
                      " key_usage TEXT, extended_key_usage TEXT);"
                      "CREATE TABLE cert_request_ids(serial INTEGER PRIMARY KEY, request_id TEXT NOT NULL,"
-                     " pub_key_digest TEXT NOT NULL, created INTEGER NOT NULL);",
+                     " pub_key_digest TEXT NOT NULL, created INTEGER NOT NULL);"
+                     "CREATE TABLE cert_subject_units(serial INTEGER NOT NULL, position INTEGER NOT NULL,"
+                     " value TEXT NOT NULL);",
                      nullptr, nullptr, nullptr);
     }
     ~ListDb() {
@@ -271,7 +278,8 @@ struct ListDb {
     ListDb &operator=(const ListDb &) = delete;
 
     void add(const uint64_t serial, const char *cn, const certstatus_t status, const time_t created,
-             const time_t not_before, const time_t not_after, const char *request_id = nullptr) {
+             const time_t not_before, const time_t not_after, const char *request_id = nullptr,
+             const std::vector<std::string> &organizational_units = {}) {
         char sql[1024];
         snprintf(sql, sizeof(sql),
                  "INSERT INTO certs (serial, CN, O, OU, C, status, status_date, not_before, not_after, renew_by,"
@@ -286,6 +294,14 @@ struct ListDb {
                      "INSERT INTO cert_request_ids (serial, request_id, pub_key_digest, created)"
                      " VALUES (%lld, '%s', 'digest', %lld);",
                      static_cast<long long>(serial), request_id, static_cast<long long>(created));
+            sqlite3_exec(db, sql, nullptr, nullptr, nullptr);
+        }
+        // One row per unit, innermost first, exactly as the server writes them
+        for (size_t position = 0; position < organizational_units.size(); position++) {
+            snprintf(sql, sizeof(sql),
+                     "INSERT INTO cert_subject_units (serial, position, value) VALUES (%lld, %d, '%s');",
+                     static_cast<long long>(serial), static_cast<int>(position),
+                     organizational_units[position].c_str());
             sqlite3_exec(db, sql, nullptr, nullptr, nullptr);
         }
     }
@@ -315,6 +331,48 @@ void testRowOrderIsByCreationNotValidity() {
     testEq(rows[0].subject, std::string("CN=newest,O=epics.org,C=US"));
     testEq(rows[1].subject, std::string("CN=future-start,O=epics.org,C=US"));
     testEq(rows[2].subject, std::string("CN=oldest,O=epics.org,C=US"));
+}
+
+// A certificate subject may name a nested organizational unit. The listing has to show the whole
+// path, not just the innermost unit, or the column cannot be pasted into an access security file
+// and a filter naming an outer unit would not find the certificate that sits under it.
+void testTheListingShowsEveryOrganizationalUnit() {
+    testDiag("A listed subject carries every unit, innermost first");
+
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(3, "no database"); return; }
+
+    const time_t now = 1785888000;
+    store.add(100, "alice", VALID, now - 3000, now, now + 86400, nullptr, {"staff", "beamline"});
+    store.add(200, "bob", VALID, now - 2000, now, now + 86400, nullptr, {"beamline"});
+    store.add(300, "carol", VALID, now - 1000, now, now + 86400);
+
+    const auto rows = queryCertList(store.db, CertListView::All, "a76e613b", false, 0);
+    testEq(rows.size(), size_t(3));
+    if (rows.size() != 3) { testSkip(3, "wrong row count"); return; }
+
+    testEq(rows[2].subject, std::string("CN=alice,OU=staff,OU=beamline,O=epics.org,C=US"));
+    testEq(rows[1].subject, std::string("CN=bob,OU=beamline,O=epics.org,C=US"));
+    testEq(rows[0].subject, std::string("CN=carol,O=epics.org,C=US"));
+}
+
+// The filter asks a containment question, not an identity one: naming the beamline finds
+// everyone under it, including someone in a staff group inside it.
+void testAFilterFindsAnOuterUnit() {
+    testDiag("A filter naming an outer unit finds a certificate nested under it");
+
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(2, "no database"); return; }
+
+    const time_t now = 1785888000;
+    store.add(100, "alice", VALID, now - 3000, now, now + 86400, nullptr, {"staff", "beamline"});
+    store.add(200, "dave", VALID, now - 2000, now, now + 86400, nullptr, {"workshop"});
+
+    const auto filter = CertFilter::parse("unit:beamline", now);
+    const auto rows = queryCertList(store.db, CertListView::All, "a76e613b", false, 0, &filter);
+    testEq(rows.size(), size_t(1));
+    if (rows.size() != 1) { testSkip(1, "wrong row count"); return; }
+    testEq(rows[0].subject, std::string("CN=alice,OU=staff,OU=beamline,O=epics.org,C=US"));
 }
 
 void testPendingViewShowsOnlyWhatAwaitsADecision() {
@@ -468,7 +526,7 @@ void testFilteringPreservesTheOrder() {
 }  // namespace
 
 MAIN(testcertlist) {
-    testPlan(52);
+    testPlan(59);
     testSubjectIsCanonical();
     testCertTypeNamesWhatItIsFor();
     testTableIsNormative();
@@ -481,6 +539,8 @@ MAIN(testcertlist) {
     testUnknownFormatIsRefused();
     testPrintedOrderIsTheServedOrder();
     testRowOrderIsByCreationNotValidity();
+    testTheListingShowsEveryOrganizationalUnit();
+    testAFilterFindsAnOuterUnit();
     testPendingViewShowsOnlyWhatAwaitsADecision();
     testRequestIdIsWithheldFromNonAdministrators();
     testExpiringViewFollowsItsWindow();

@@ -55,6 +55,11 @@ namespace certs {
 #define SQL_LIST_CERTS_ORDER          \
     "ORDER BY c.created_date DESC, c.serial ASC"
 
+// A certificate's organizational units are read with their own statement, one indexed lookup per
+// listed row (SQL_GET_SUBJECT_UNITS in certsubjectunits.h), rather than joined into the query
+// above: joining would have to paste the values into one string, and a value may legally contain
+// whatever separator was chosen, so the listing could not tell one unit from two.
+
 /** Every certificate. */
 #define SQL_LIST_CERTS_ALL            \
     SQL_LIST_CERTS_COLUMNS            \
@@ -129,7 +134,7 @@ struct CertListRow {
  *
  * Multiple organizational unit values keep their relative order among themselves.
  */
-std::string renderSubject(const std::string &common_name, const std::string &organizational_unit,
+std::string renderSubject(const std::string &common_name, const std::vector<std::string> &organizational_units,
                           const std::string &organization, const std::string &country);
 
 /**

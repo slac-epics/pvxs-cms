@@ -7,6 +7,7 @@
 #ifndef PVXS_CERTFILTER_H_
 #define PVXS_CERTFILTER_H_
 
+#include <cstdint>
 #include <ctime>
 #include <memory>
 #include <stdexcept>

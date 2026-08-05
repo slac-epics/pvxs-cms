@@ -18,9 +18,12 @@
 
 #include <pvxs/unittest.h>
 
+#include <sqlite3.h>
+
 #include "auth.h"
 #include "ccrmanager.h"
 #include "certfactory.h"
+#include "certsubjectunits.h"
 #include "configauthn.h"
 #include "security.h"
 
@@ -303,10 +306,116 @@ void testAShortenedSubjectIsRefused(const std::shared_ptr<KeyPair> &key_pair) {
     testTrue(refuses([&] { CCRManager::checkIssuedOrganizationalUnits(asked, "not a certificate"); }));
 }
 
+// A database with the certificate table only, as an installation running the current release
+// has it. The organizational units are added the way the server adds them on startup.
+struct SubjectDb {
+    std::string path{"testorgunits_subject.db"};
+    sqlite3 *db{nullptr};
+
+    SubjectDb() {
+        std::remove(path.c_str());
+        if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+            db = nullptr;
+            return;
+        }
+        sqlite3_exec(db,
+                     "CREATE TABLE certs(serial INTEGER PRIMARY KEY, CN TEXT, O TEXT, OU TEXT, C TEXT,"
+                     " status INTEGER, status_date INTEGER, approved INTEGER);",
+                     nullptr, nullptr, nullptr);
+    }
+    ~SubjectDb() {
+        if (db) sqlite3_close(db);
+        std::remove(path.c_str());
+    }
+    SubjectDb(const SubjectDb &) = delete;
+    SubjectDb &operator=(const SubjectDb &) = delete;
+
+    //! A certificate row as the current release writes it: one unit, in the single column.
+    void addOldStyleCert(const int64_t serial, const char *cn, const char *unit) {
+        char sql[512];
+        snprintf(sql, sizeof(sql),
+                 "INSERT INTO certs (serial, CN, O, OU, C, status, status_date, approved)"
+                 " VALUES (%lld, '%s', 'lbnl', '%s', 'US', 1, 100, 1);",
+                 static_cast<long long>(serial), cn, unit);
+        sqlite3_exec(db, sql, nullptr, nullptr, nullptr);
+    }
+
+    //! What the server runs on startup: create the table and bring existing rows forward.
+    bool migrate() { return sqlite3_exec(db, SQL_CREATE_SUBJECT_UNITS_TABLE, nullptr, nullptr, nullptr) == SQLITE_OK; }
+
+    //! How many certificates match the subject, compared as an ordered list of units.
+    int countMatching(const char *cn, const std::vector<std::string> &units) {
+        std::string sql("SELECT COUNT(*) FROM certs WHERE CN = :CN AND O = 'lbnl' AND C = 'US'");
+        sql += getOrganizationalUnitsClause(units);
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return -1;
+        sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":CN"), cn, -1, SQLITE_TRANSIENT);
+        bindOrganizationalUnitsClause(stmt, units);
+        const int count = sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int(stmt, 0) : -1;
+        sqlite3_finalize(stmt);
+        return count;
+    }
+};
+
+// Every certificate written before this change carries at most one unit, so there is no order to
+// reconstruct. The migration must add a row for each, drop nothing, and be safe to run again.
+void testAnExistingDatabaseIsBroughtForward() {
+    testDiag("An existing database gains a unit row per certificate, and twice is harmless");
+
+    SubjectDb store;
+    if (!store.db) { testFail("no database"); testSkip(5, "no database"); return; }
+
+    store.addOldStyleCert(100, "alice", "beamline");
+    store.addOldStyleCert(200, "bob", "");  // no unit at all
+    testTrue(store.migrate());
+
+    testEq(show(getSubjectUnits(store.db, 100)), show({"beamline"}));
+    // An empty value is not a unit, so it gets no row rather than a row holding nothing
+    testEq(show(getSubjectUnits(store.db, 200)), show({}));
+
+    // Running it again must not double the rows, and must not disturb a certificate that has
+    // since been given a nested unit by the new code.
+    storeSubjectUnits(store.db, 300, {"staff", "beamline"});
+    testTrue(store.migrate());
+    testEq(show(getSubjectUnits(store.db, 100)), show({"beamline"}));
+    testEq(show(getSubjectUnits(store.db, 300)), show({"staff", "beamline"}));
+}
+
+// The comparison the three subject-equality queries make. Order is containment, so the same
+// values in another order are a different holder, and a shorter path is a different holder.
+void testTheOrderedComparisonIsAnIdentityTest() {
+    testDiag("Two subjects match only on the same units in the same order");
+
+    SubjectDb store;
+    if (!store.db) { testFail("no database"); testSkip(7, "no database"); return; }
+
+    // The table on an empty database, then a certificate written the way the server writes one:
+    // the row, with the innermost unit in its column, and one child row per unit.
+    testTrue(store.migrate());
+    store.addOldStyleCert(100, "alice", "staff");
+    storeSubjectUnits(store.db, 100, {"staff", "beamline"});  // alice is staff inside beamline
+
+    testEq(store.countMatching("alice", {"staff", "beamline"}), 1);
+
+    // The same values the other way round say beamline sits inside staff: a different holder
+    testEq(store.countMatching("alice", {"beamline", "staff"}), 0);
+    // A shorter path claims a staff group that is not inside any beamline: also different
+    testEq(store.countMatching("alice", {"staff"}), 0);
+    // And a longer one is different again
+    testEq(store.countMatching("alice", {"staff", "beamline", "lbnl"}), 0);
+    // Naming no unit at all must not match a certificate that names two
+    testEq(store.countMatching("alice", {}), 0);
+
+    // A certificate with no units is matched by asking for none, and only by that
+    store.addOldStyleCert(200, "bob", "");
+    testEq(store.countMatching("bob", {}), 1);
+    testEq(store.countMatching("bob", {"beamline"}), 0);
+}
+
 }  // namespace
 
 MAIN(testorgunits) {
-    testPlan(42);
+    testPlan(56);
     const auto key_pair = IdFileFactory::createKeyPair();
 
     testTheEnvironmentCarriesAList();
@@ -321,5 +430,7 @@ MAIN(testorgunits) {
     testTheIssuedSubjectNamesEveryUnitInOrder(key_pair);
     testASubjectIsReadBackWhole(key_pair);
     testAShortenedSubjectIsRefused(key_pair);
+    testAnExistingDatabaseIsBroughtForward();
+    testTheOrderedComparisonIsAnIdentityTest();
     return testDone();
 }
