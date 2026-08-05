@@ -1,0 +1,507 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>Certificate Administration</name>
+  <width>1400</width>
+  <height>900</height>
+  <macros>
+    <CERT_PREFIX>CERT</CERT_PREFIX>
+    <DECISIONS>yes</DECISIONS>
+  </macros>
+  <widget type="label" version="2.0.0">
+        <name>Title</name>
+        <text>Certificate Administration - issuer $(ISSUER)</text>
+        <x>0</x>
+        <y>0</y>
+        <width>1400</width>
+        <height>36</height>
+        <font><font name="Header 2" family="Liberation Sans" style="BOLD" size="22.0"></font></font>
+        <background_color><color red="220" green="230" blue="245"></color></background_color>
+        <transparent>false</transparent>
+  </widget>
+  <widget type="pva_security" version="2.0.0">
+    <name>Identity</name>
+    <pv_name>pva://$(CERT_PREFIX):LIST:$(ISSUER):ALL</pv_name>
+    <display_mode>3</display_mode>
+    <x>0</x>
+    <y>38</y>
+    <width>700</width>
+    <height>30</height>
+  </widget>
+  <widget type="pva_security" version="2.0.0">
+    <name>Transport</name>
+    <pv_name>pva://$(CERT_PREFIX):LIST:$(ISSUER):ALL</pv_name>
+    <display_mode>0</display_mode>
+    <x>700</x>
+    <y>38</y>
+    <width>700</width>
+    <height>30</height>
+  </widget>
+  <widget type="tabs" version="2.0.0">
+    <name>Views</name>
+    <y>72</y>
+    <width>1400</width>
+    <height>828</height>
+    <scripts>
+      <script file="certadmin_scripts/zone.py">
+        <pv_name>loc://carries_decisions("$(DECISIONS)")</pv_name>
+      </script>
+    </scripts>
+    <tabs>
+    <tab>
+      <name>Awaiting a decision</name>
+      <children>
+      <widget type="label" version="2.0.0">
+        <name>PendingHelp</name>
+        <text>The request identifier travels in clear text. Compare it against the one the requester sent you before approving.</text>
+        <x>10</x>
+        <y>8</y>
+        <width>1370</width>
+        <height>24</height>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>PendingTable_lblsearch</name>
+        <text>Search</text>
+        <x>10</x>
+        <y>40</y>
+        <width>60</width>
+        <height>26</height>
+      </widget>
+      <widget type="textentry" version="2.0.0">
+        <name>PendingTable_search</name>
+        <pv_name>loc://PendingTable_search("")</pv_name>
+        <x>72</x>
+        <y>40</y>
+        <width>300</width>
+        <height>26</height>
+        <format>6</format>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>PendingTable_lblafter</name>
+        <text>Issued after</text>
+        <x>390</x>
+        <y>40</y>
+        <width>110</width>
+        <height>26</height>
+      </widget>
+      <widget type="textentry" version="2.0.0">
+        <name>PendingTable_after</name>
+        <pv_name>loc://PendingTable_after("")</pv_name>
+        <x>500</x>
+        <y>40</y>
+        <width>170</width>
+        <height>26</height>
+        <format>6</format>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>PendingTable_lblbefore</name>
+        <text>and before</text>
+        <x>685</x>
+        <y>40</y>
+        <width>90</width>
+        <height>26</height>
+      </widget>
+      <widget type="textentry" version="2.0.0">
+        <name>PendingTable_before</name>
+        <pv_name>loc://PendingTable_before("")</pv_name>
+        <x>780</x>
+        <y>40</y>
+        <width>170</width>
+        <height>26</height>
+        <format>6</format>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>PendingTable_count</name>
+        <text></text>
+        <x>970</x>
+        <y>40</y>
+        <width>200</width>
+        <height>26</height>
+      </widget>
+      <widget type="table" version="2.0.0">
+        <name>PendingTable</name>
+        <pv_name>pva://$(CERT_PREFIX):LIST:$(ISSUER):PENDING_APPROVAL</pv_name>
+        <x>10</x>
+        <y>74</y>
+        <width>1370</width>
+        <height>380</height>
+        <editable>false</editable>
+        <row_selection_mode>true</row_selection_mode>
+        <selection_pv>loc://sel_pending</selection_pv>
+        <macros><date_column>Issued</date_column></macros>
+        <scripts>
+          <script file="certadmin_scripts/filter.py">
+            <pv_name>pva://$(CERT_PREFIX):LIST:$(ISSUER):PENDING_APPROVAL</pv_name>
+            <pv_name>loc://PendingTable_search("")</pv_name>
+            <pv_name>loc://PendingTable_after("")</pv_name>
+            <pv_name>loc://PendingTable_before("")</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>PendingSetLabel</name>
+        <text>Picked, and kept while you search again:</text>
+        <x>10</x>
+        <y>462</y>
+        <width>400</width>
+        <height>26</height>
+      </widget>
+      <widget type="textupdate" version="2.0.0">
+        <name>PendingSet</name>
+        <pv_name>loc://set_pending("")</pv_name>
+        <x>10</x>
+        <y>488</y>
+        <width>1370</width>
+        <height>150</height>
+        <wrap_words>true</wrap_words>
+      </widget>
+      <widget type="action_button" version="3.0.0">
+        <name>PendingAdd</name>
+        <text>Add selected</text>
+        <x>10</x>
+        <y>648</y>
+        <width>150</width>
+        <height>28</height>
+        <actions><action type="execute"><script file="add_to_set.py"></script><description>Add selected</description></action></actions>
+        <scripts>
+          <script file="certadmin_scripts/add_to_set.py">
+            <pv_name trigger="false">loc://sel_pending</pv_name>
+            <pv_name trigger="false">loc://set_pending("")</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      <widget type="action_button" version="3.0.0">
+        <name>PendingRemove</name>
+        <text>Remove selected</text>
+        <x>170</x>
+        <y>648</y>
+        <width>150</width>
+        <height>28</height>
+        <actions><action type="execute"><script file="remove_from_set.py"></script><description>Remove selected</description></action></actions>
+        <scripts>
+          <script file="certadmin_scripts/remove_from_set.py">
+            <pv_name trigger="false">loc://sel_pending</pv_name>
+            <pv_name trigger="false">loc://set_pending("")</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      <widget type="action_button" version="3.0.0">
+        <name>PendingClear</name>
+        <text>Clear</text>
+        <x>330</x>
+        <y>648</y>
+        <width>90</width>
+        <height>28</height>
+        <actions><action type="execute"><script file="clear_set.py"></script><description>Clear</description></action></actions>
+        <scripts>
+          <script file="certadmin_scripts/clear_set.py">
+            <pv_name trigger="false">loc://set_pending("")</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      <widget type="action_button" version="3.0.0">
+        <name>PendingApprove</name>
+        <text>Approve picked...</text>
+        <x>440</x>
+        <y>648</y>
+        <width>170</width>
+        <height>28</height>
+        <macros>
+          <action>approve</action>
+          <cert_prefix>$(CERT_PREFIX)</cert_prefix>
+        </macros>
+        <actions><action type="execute"><script file="decide.py"></script><description>Approve picked...</description></action></actions>
+        <scripts>
+          <script file="certadmin_scripts/decide.py">
+            <pv_name trigger="false">loc://set_pending("")</pv_name>
+            <pv_name trigger="false">pva://$(CERT_PREFIX):LIST:$(ISSUER):PENDING_APPROVAL</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      <widget type="action_button" version="3.0.0">
+        <name>PendingDeny</name>
+        <text>Deny picked...</text>
+        <x>620</x>
+        <y>648</y>
+        <width>170</width>
+        <height>28</height>
+        <macros>
+          <action>deny</action>
+          <cert_prefix>$(CERT_PREFIX)</cert_prefix>
+        </macros>
+        <actions><action type="execute"><script file="decide.py"></script><description>Deny picked...</description></action></actions>
+        <scripts>
+          <script file="certadmin_scripts/decide.py">
+            <pv_name trigger="false">loc://set_pending("")</pv_name>
+            <pv_name trigger="false">pva://$(CERT_PREFIX):LIST:$(ISSUER):PENDING_APPROVAL</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      </children>
+      <width>1400</width>
+      <height>790</height>
+    </tab>
+    <tab>
+      <name>Issued</name>
+      <children>
+      <widget type="label" version="2.0.0">
+        <name>IssuedTable_lblsearch</name>
+        <text>Search</text>
+        <x>10</x>
+        <y>8</y>
+        <width>60</width>
+        <height>26</height>
+      </widget>
+      <widget type="textentry" version="2.0.0">
+        <name>IssuedTable_search</name>
+        <pv_name>loc://IssuedTable_search("")</pv_name>
+        <x>72</x>
+        <y>8</y>
+        <width>300</width>
+        <height>26</height>
+        <format>6</format>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>IssuedTable_lblafter</name>
+        <text>Expires after</text>
+        <x>390</x>
+        <y>8</y>
+        <width>110</width>
+        <height>26</height>
+      </widget>
+      <widget type="textentry" version="2.0.0">
+        <name>IssuedTable_after</name>
+        <pv_name>loc://IssuedTable_after("")</pv_name>
+        <x>500</x>
+        <y>8</y>
+        <width>170</width>
+        <height>26</height>
+        <format>6</format>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>IssuedTable_lblbefore</name>
+        <text>and before</text>
+        <x>685</x>
+        <y>8</y>
+        <width>90</width>
+        <height>26</height>
+      </widget>
+      <widget type="textentry" version="2.0.0">
+        <name>IssuedTable_before</name>
+        <pv_name>loc://IssuedTable_before("")</pv_name>
+        <x>780</x>
+        <y>8</y>
+        <width>170</width>
+        <height>26</height>
+        <format>6</format>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>IssuedTable_count</name>
+        <text></text>
+        <x>970</x>
+        <y>8</y>
+        <width>200</width>
+        <height>26</height>
+      </widget>
+      <widget type="table" version="2.0.0">
+        <name>IssuedTable</name>
+        <pv_name>pva://$(CERT_PREFIX):LIST:$(ISSUER):ALL</pv_name>
+        <x>10</x>
+        <y>42</y>
+        <width>1370</width>
+        <height>400</height>
+        <editable>false</editable>
+        <row_selection_mode>true</row_selection_mode>
+        <selection_pv>loc://sel_issued</selection_pv>
+        <macros><date_column>Expires</date_column></macros>
+        <scripts>
+          <script file="certadmin_scripts/filter.py">
+            <pv_name>pva://$(CERT_PREFIX):LIST:$(ISSUER):ALL</pv_name>
+            <pv_name>loc://IssuedTable_search("")</pv_name>
+            <pv_name>loc://IssuedTable_after("")</pv_name>
+            <pv_name>loc://IssuedTable_before("")</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>ZoneNote</name>
+        <text>Decisions are applied from the department's own zone. This zone shows issued certificates without acting on them.</text>
+        <x>10</x>
+        <y>450</y>
+        <width>1370</width>
+        <height>26</height>
+        <background_color><color red="255" green="244" blue="214"></color></background_color>
+        <transparent>false</transparent>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>IssuedSetLabel</name>
+        <text>Picked, and kept while you search again:</text>
+        <x>10</x>
+        <y>482</y>
+        <width>400</width>
+        <height>26</height>
+      </widget>
+      <widget type="textupdate" version="2.0.0">
+        <name>IssuedSet</name>
+        <pv_name>loc://set_issued("")</pv_name>
+        <x>10</x>
+        <y>508</y>
+        <width>1370</width>
+        <height>130</height>
+        <wrap_words>true</wrap_words>
+      </widget>
+      <widget type="action_button" version="3.0.0">
+        <name>IssuedAdd</name>
+        <text>Add selected</text>
+        <x>10</x>
+        <y>648</y>
+        <width>150</width>
+        <height>28</height>
+        <actions><action type="execute"><script file="add_to_set.py"></script><description>Add selected</description></action></actions>
+        <scripts>
+          <script file="certadmin_scripts/add_to_set.py">
+            <pv_name trigger="false">loc://sel_issued</pv_name>
+            <pv_name trigger="false">loc://set_issued("")</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      <widget type="action_button" version="3.0.0">
+        <name>IssuedRemove</name>
+        <text>Remove selected</text>
+        <x>170</x>
+        <y>648</y>
+        <width>150</width>
+        <height>28</height>
+        <actions><action type="execute"><script file="remove_from_set.py"></script><description>Remove selected</description></action></actions>
+        <scripts>
+          <script file="certadmin_scripts/remove_from_set.py">
+            <pv_name trigger="false">loc://sel_issued</pv_name>
+            <pv_name trigger="false">loc://set_issued("")</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      <widget type="action_button" version="3.0.0">
+        <name>IssuedClear</name>
+        <text>Clear</text>
+        <x>330</x>
+        <y>648</y>
+        <width>90</width>
+        <height>28</height>
+        <actions><action type="execute"><script file="clear_set.py"></script><description>Clear</description></action></actions>
+        <scripts>
+          <script file="certadmin_scripts/clear_set.py">
+            <pv_name trigger="false">loc://set_issued("")</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      <widget type="action_button" version="3.0.0">
+        <name>IssuedRevoke</name>
+        <text>Revoke picked...</text>
+        <x>440</x>
+        <y>648</y>
+        <width>170</width>
+        <height>28</height>
+        <macros>
+          <action>revoke</action>
+          <cert_prefix>$(CERT_PREFIX)</cert_prefix>
+        </macros>
+        <actions><action type="execute"><script file="decide.py"></script><description>Revoke picked...</description></action></actions>
+        <scripts>
+          <script file="certadmin_scripts/decide.py">
+            <pv_name trigger="false">loc://set_issued("")</pv_name>
+            <pv_name trigger="false">pva://$(CERT_PREFIX):LIST:$(ISSUER):ALL</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      </children>
+      <width>1400</width>
+      <height>790</height>
+    </tab>
+    <tab>
+      <name>Expiring</name>
+      <children>
+      <widget type="label" version="2.0.0">
+        <name>ExpiringTable_lblsearch</name>
+        <text>Search</text>
+        <x>10</x>
+        <y>8</y>
+        <width>60</width>
+        <height>26</height>
+      </widget>
+      <widget type="textentry" version="2.0.0">
+        <name>ExpiringTable_search</name>
+        <pv_name>loc://ExpiringTable_search("")</pv_name>
+        <x>72</x>
+        <y>8</y>
+        <width>300</width>
+        <height>26</height>
+        <format>6</format>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>ExpiringTable_lblafter</name>
+        <text>Expires after</text>
+        <x>390</x>
+        <y>8</y>
+        <width>110</width>
+        <height>26</height>
+      </widget>
+      <widget type="textentry" version="2.0.0">
+        <name>ExpiringTable_after</name>
+        <pv_name>loc://ExpiringTable_after("")</pv_name>
+        <x>500</x>
+        <y>8</y>
+        <width>170</width>
+        <height>26</height>
+        <format>6</format>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>ExpiringTable_lblbefore</name>
+        <text>and before</text>
+        <x>685</x>
+        <y>8</y>
+        <width>90</width>
+        <height>26</height>
+      </widget>
+      <widget type="textentry" version="2.0.0">
+        <name>ExpiringTable_before</name>
+        <pv_name>loc://ExpiringTable_before("")</pv_name>
+        <x>780</x>
+        <y>8</y>
+        <width>170</width>
+        <height>26</height>
+        <format>6</format>
+      </widget>
+      <widget type="label" version="2.0.0">
+        <name>ExpiringTable_count</name>
+        <text></text>
+        <x>970</x>
+        <y>8</y>
+        <width>200</width>
+        <height>26</height>
+      </widget>
+      <widget type="table" version="2.0.0">
+        <name>ExpiringTable</name>
+        <pv_name>pva://$(CERT_PREFIX):LIST:$(ISSUER):EXPIRING</pv_name>
+        <x>10</x>
+        <y>42</y>
+        <width>1370</width>
+        <height>600</height>
+        <editable>false</editable>
+        <row_selection_mode>true</row_selection_mode>
+        <selection_pv>loc://sel_expiring</selection_pv>
+        <macros><date_column>Expires</date_column></macros>
+        <scripts>
+          <script file="certadmin_scripts/filter.py">
+            <pv_name>pva://$(CERT_PREFIX):LIST:$(ISSUER):EXPIRING</pv_name>
+            <pv_name>loc://ExpiringTable_search("")</pv_name>
+            <pv_name>loc://ExpiringTable_after("")</pv_name>
+            <pv_name>loc://ExpiringTable_before("")</pv_name>
+          </script>
+        </scripts>
+      </widget>
+      </children>
+      <width>1400</width>
+      <height>790</height>
+    </tab>
+    </tabs>
+  </widget>
+</display>

@@ -37,7 +37,10 @@ COPY --from=phoebus-builder /build/phoebus-product/target/lib/ /opt/phoebus/lib/
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/pvxs-lab-dashboard.bob /opt/phoebus/displays/pvxs-lab-dashboard.bob
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/phoebus-settings.ini /opt/phoebus/phoebus-settings.ini
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/cs-studio.sh /usr/local/bin/cs-studio
-RUN chmod +x /usr/local/bin/cs-studio
+COPY pvxs-cms/example/kubernetes/docker/cs-studio/pvxs-lab-certificate-administration.bob /opt/phoebus/displays/pvxs-lab-certificate-administration.bob
+COPY pvxs-cms/example/kubernetes/docker/cs-studio/certadmin_scripts/ /opt/phoebus/displays/certadmin_scripts/
+COPY pvxs-cms/example/kubernetes/docker/cs-studio/cs-studio-certificates.sh /usr/local/bin/cs-studio-certificates
+RUN chmod +x /usr/local/bin/cs-studio /usr/local/bin/cs-studio-certificates
 
 RUN useradd -m -s /bin/bash operator -g operator && echo "operator:secret" | chpasswd
 RUN useradd -m -s /bin/bash guest             && echo "guest:secret"    | chpasswd
