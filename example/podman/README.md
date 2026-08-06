@@ -498,28 +498,94 @@ needs parsing.
 
 ## 7. Approving, in batches or one at a time
 
-**One at a time**, with the full subject and the request identifier in front of you.
-Answer `approve`, `deny`, `skip`, `stop` or `cancel`:
+There are two separate questions - *what is the decision* and *are you sure* - and `--all`
+and `--yes` answer one each. That gives four ways of working, from reading every request to
+approving a hundred without being asked anything, and you choose how far to go.
+
+**Neither.** Each certificate in turn, with its subject and its request identifier in front
+of you, and a decision for each:
 
 ```sh
 run_in lab-manager as admin pvxcert --review-pending
 ```
 
-`s` is refused, because it could mean `skip` or `stop`. `a`, `d`, `r` and `c` are accepted.
-Nothing is written until a single confirmation at the end, which defaults to no. Just
-before it, every decided certificate is re-read, and any that changed since the listing is
-dropped and reported rather than written over.
+```
+Compare the request identifier shown below against the one the requester sent you before approving.
 
-**The whole batch**, without being asked:
+[1/2] ba71d9e3:02665075835003669104
+  Subject        : CN=guest,O=epics.org,C=US
+  Status         : PENDING_APPROVAL
+  Request ID     : VY14-FM0S-3HTV-V77Q
+  Status changed : 2026-08-06 21:27:38 UTC
+  approve / deny / skip / stop / cancel ? approve
+
+[2/2] ba71d9e3:01457147623119291338
+  Subject        : CN=operator,O=epics.org,C=US
+  Status         : PENDING_APPROVAL
+  Request ID     : Y6W7-HZMY-FX8R-R65E
+  Status changed : 2026-08-06 21:27:37 UTC
+  approve / deny / skip / stop / cancel ? skip
+
+About to change 1 certificate:
+  ba71d9e3:02665075835003669104  CN=guest,O=epics.org,C=US
+      PENDING_APPROVAL -> VALID  (APPROVE)
+  The certificate manager decides the final value for an approval, from the certificate's own dates.
+
+Apply these 1 changes? [y/N]
+```
+
+The five answers differ in what they leave behind. `skip` moves on and decides this one
+another day; `stop` keeps the decisions made so far and stops asking about the rest;
+`cancel` abandons everything, written or not. `a`, `d` and `c` are accepted as shorthand,
+but **`s` is refused** - it begins both `skip` and `stop`, and getting those two the wrong
+way round is not something to guess at.
+
+**`--all` alone.** One decision for every certificate, without being asked each time - but
+still shown what that means, and still asked once:
+
+```sh
+run_in lab-manager as admin pvxcert --review-pending --all approve
+```
+
+```
+About to change 2 certificates:
+  ba71d9e3:02665075835003669104  CN=guest,O=epics.org,C=US
+      PENDING_APPROVAL -> VALID  (APPROVE)
+  ba71d9e3:01457147623119291338  CN=operator,O=epics.org,C=US
+      PENDING_APPROVAL -> VALID  (APPROVE)
+  The certificate manager decides the final value for an approval, from the certificate's own dates.
+
+Apply these 2 changes? [y/N] n
+Cancelled. Nothing was written.
+```
+
+Every certificate is named, with the status it holds now and the status it would hold, so
+the confirmation is a last chance to read the list rather than a formality. It defaults to
+no: pressing return changes nothing.
+
+`--all` here means every certificate awaiting a decision, and a pending review cannot be
+narrowed: `--where` applies to `--list` and to `--review-issued`, and asking for it with
+`--review-pending` is refused rather than quietly ignored. To approve part of a batch, go
+through them one at a time and `skip` the rest.
+
+```sh
+run_in lab-manager as admin pvxcert --review-pending --where "name:guest" --all approve
+#   Error: --where, --pending and --expiring only apply to --list and --review-issued.
+```
+
+**Both.** No questions at all, for a script or a hundred controllers coming up at once:
 
 ```sh
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 run_in lab-manager as admin pvxcert --review-pending --all deny --yes
 ```
 
-`--all` decides every listed certificate; `--yes` answers the final confirmation. Together
-they approve without showing you a single request identifier, which is why the tool warns
-about it.
+This approves without putting a single request identifier in front of anyone, which is the
+one thing that identifier exists for. The tool says so rather than assuming you meant it.
+
+Whichever way is used, nothing is written until that final point, and every decided
+certificate is re-read just before the write. Any that changed since the listing is dropped
+and reported rather than written over.
 
 **One known certificate**, when you already have its identifier:
 
@@ -549,13 +615,33 @@ shows that before you confirm.
 run_in lab-manager as admin pvxcert --review-pending --all deny --yes
 ```
 
-Revocation works over the issued certificates, narrowed by the same filter:
+Revocation works over the issued certificates, and unlike a pending review it *can* be
+narrowed by the filter from section 6. The same three levels of control apply:
 
 ```sh
 run_in lab-manager as admin pvxcert --review-issued --where "state:VALID"                 # one at a time
+run_in lab-manager as admin pvxcert --review-issued --where "name:guest" --all            # decided, still confirmed
 run_in lab-manager as admin pvxcert --review-issued --where "name:testioc" --all --yes    # the whole batch
 run_in lab-manager as admin pvxcert -R "${LAB}:0123456789"                                # one known certificate
 ```
+
+The middle one is the useful shape for a revocation: the filter chooses, and the
+confirmation shows exactly what was chosen before anything is written.
+
+```
+About to change 2 certificates:
+  ba71d9e3:02665075835003669104  CN=guest,O=epics.org,C=US
+      PENDING_APPROVAL -> REVOKED  (REVOKE)
+  ba71d9e3:15096909679183656442  CN=guest,O=lab-client,C=US
+      VALID -> REVOKED  (REVOKE)
+
+Revoke these 2 certificates? [y/N] n
+Cancelled. Nothing was written.
+```
+
+Note the wording and the answers change with the job: revoking offers
+`revoke / skip / stop / cancel`, with no `approve` or `deny` to pick the wrong one of.
+A certificate awaiting a decision can be revoked outright, without being approved first.
 
 Only certificates that can actually be revoked are offered. The rest are listed with the
 reason and never asked about - a status outside `PENDING_APPROVAL`, `PENDING` and `VALID`,

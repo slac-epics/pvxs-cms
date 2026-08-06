@@ -72,6 +72,11 @@ _lab_container() {
     printf '%s' "${name}"
 }
 
+# Run podman exec, handing through a terminal only when there is one on both sides.
+_lab_podman() {
+    if [ -t 0 ] && [ -t 1 ]; then podman exec -it "$@"; else podman exec "$@"; fi
+}
+
 # Rebuild the command line for the shell inside the container, keeping each argument whole.
 # An argument that only needs quoting because it contains spaces gets plain double quotes, so
 # a filter still reads as --where "state:VALID and type:IOC" when it is shown or logged;
@@ -141,6 +146,17 @@ run_in() {
     # Keep the command exactly as it was typed. Requoting matters: a filter such as
     # --where "state:VALID and type:IOC" is one argument, and flattening it into a string
     # would hand pvxcert three.
+    #
+    # A terminal is handed through only when there is one on both sides. That is what lets a
+    # command which asks a question - pvxcert --review-pending - be answered, and it is the
+    # only case that needs it: the tools ask nothing unless they are talking to a terminal.
+    #
+    # Connecting standard input at any other time would do harm. A container given the
+    # surrounding script's input reads it: a run_in inside a loop over a list of commands
+    # would swallow the rest of the list and the loop would stop after one turn.
+    local attach="podman exec"
+    if [ -t 0 ] && [ -t 1 ]; then attach="podman exec -it"; fi
+
     local script
     if [ "$#" -gt 0 ]; then
         script=$(_lab_quote "$@")
@@ -196,17 +212,17 @@ ${script}"
             *)     quoted="'${script}'" ;;
         esac
         case "${who}" in
-            guest|operator) echo "podman exec --user ${who} ${container} bash -lc ${quoted}" ;;
-            admin)          echo "podman exec ${container} bash -lc ${quoted}" ;;
-            *)              echo "podman exec ${container} su - ${who} -c ${quoted}" ;;
+            guest|operator) echo "${attach} --user ${who} ${container} bash -lc ${quoted}" ;;
+            admin)          echo "${attach} ${container} bash -lc ${quoted}" ;;
+            *)              echo "${attach} ${container} su - ${who} -c ${quoted}" ;;
         esac
         return 0
     fi
 
     case "${who}" in
-        guest|operator) podman exec --user "${who}" "${container}" bash -lc "${script}" ;;
-        admin)          podman exec "${container}" bash -lc "${script}" ;;
-        *)              podman exec "${container}" su - "${who}" -c "${script}" ;;
+        guest|operator) _lab_podman --user "${who}" "${container}" bash -lc "${script}" ;;
+        admin)          _lab_podman "${container}" bash -lc "${script}" ;;
+        *)              _lab_podman "${container}" su - "${who}" -c "${script}" ;;
     esac
 }
 
