@@ -4,7 +4,7 @@
 A single-node Kubernetes cluster simulating **one laboratory** with two departments plus an
 outside Internet zone, on one host. The lab's IT department mints a single facility Root
 Certificate Authority and runs a separate departmental intermediate CA for each department; each
-department runs its own standalone PVACMS (there is no PVACMS cluster). See **Federated CMS** below.
+department runs its own standalone PVACMS. See **Federated CMS** below.
 
 - **Zone 1: Lab Network (control-systems department)**
 	- **idm**: Identity Management
@@ -30,8 +30,8 @@ department runs its own standalone PVACMS (there is no PVACMS cluster). See **Fe
 	- **internet**: Home users — *operator*, *guest*
 	- **cs-studio-internet**: CS-Studio (Phoebus) via noVNC — same users as internet (*operator*, *guest*)
 
-There is no `it` node and no PVACMS cluster in this lab. Network policies enforce zone isolation;
-gateways are the only path between zones.
+Each department runs one standalone PVACMS, holding only the certificates it issued.
+Network policies enforce zone isolation, and gateways are the only path between zones.
 
 ## Network Policies
 
@@ -79,7 +79,7 @@ ML pods (ml, cs-studio-ml)
   ├── direct: pvacms(ml), ml-ioc              (ADDR_LIST)
   └── via gateway:5075                        (NAME_SERVERS) → test:*, tst:*
 
-Cross-department cert status (no cluster; each PVACMS answers only its own issuer):
+Cross-department cert status (each PVACMS answers for its own issuer):
   Lab client → ml IOC : CERT:STATUS:<ml>  via ml-gateway → ML pvacms
   ML  client → lab IOC: CERT:STATUS:<lab> via gateway    → Lab pvacms
 
@@ -109,9 +109,9 @@ The lab has one facility Root Certificate Authority, minted by "IT", that signs 
 | `EPICS ML Intermediate CA`          | `ml` (ML)        | machine-learning | `<ml>` (hex)  |
 
 Both intermediates chain to the one facility Root (`EPICS Root Certificate Authority`), which every
-pod trusts, so a certificate issued by either department is trusted across the whole lab. There is
-**no PVACMS cluster** — each department's PVACMS runs standalone and answers only for its own
-issuer's certificates.
+pod trusts, so a certificate issued by either department is trusted across the whole lab. Each
+department's PVACMS runs **standalone**, holding and answering for its own issuer's certificates
+only.
 
 **Bootstrapping.** The certificates are minted before any pod starts by the `ca-keygen` pre-install
 Job (which runs `gen_lab_certs`): it produces the Root (no status extension), the two intermediate
@@ -454,7 +454,7 @@ root and both intermediates, so a certificate issued by either department is tru
 who may approve one is a separate question, answered per department.
 
 **Each administrator identity is minted once, through the same workflow as every other identity
-in the laboratory** - there is no new mechanism and no keychain is copied between pods:
+in the laboratory** - the pod asks, and its department approves:
 
 ```sh
 # Laboratory department

@@ -1,10 +1,10 @@
 # Secure PVAccess demonstration laboratory, on podman
 
 A two-department Secure PVAccess laboratory that runs on rootless podman with
-`podman-compose`. No Kubernetes, no Helm, no cluster.
+`podman-compose`.
 
-Everything here is exercised from the command line. There is no graphical client, because
-every property worth demonstrating can be shown and checked in a terminal.
+Everything here is exercised from the command line, where every property worth
+demonstrating can be shown and checked directly.
 
 ## Contents
 
@@ -28,7 +28,7 @@ every property worth demonstrating can be shown and checked in a terminal.
 |---|---|
 | **Two departments** | Each runs its own certificate manager, signing with its own intermediate certificate authority, holding only the certificates it issued |
 | **One facility root** | Both intermediates are signed by it, so a certificate from either department is trusted laboratory-wide, while authorisation stays per department |
-| **Real network separation** | Three podman networks; a container reaches only those it is attached to. Nothing outside a department can address its certificate manager |
+| **Real network separation** | Three podman networks; a container reaches only those it is attached to, so a department's certificate manager is addressable only from inside it |
 | **Gateways on the boundary** | The only route between departments, forwarding certificate traffic keyed by issuer id |
 | **Administration** | Listing, filtering, request identifiers, approval in batches or one at a time, denial and revocation, all restricted to administrators |
 
@@ -177,7 +177,7 @@ And a lab client reaching the other department goes through that department's ga
 podman exec podman_lab-client_1 bash -lc 'source ~/.guest_bashrc; pvxget ml:aiExample'
 ```
 
-There is no other route. These must all fail, and do:
+A gateway is the only route. Every direct approach is refused:
 
 ```sh
 podman exec podman_lab-client_1       getent hosts pvxs-lab-ml        # other department's manager
@@ -186,9 +186,8 @@ podman exec podman_perimeter-client_1 getent hosts pvxs-lab-pvacms    # a certif
 podman exec podman_perimeter-client_1 getent hosts pvxs-lab-ml
 ```
 
-The separation is enforced by podman, not by policy: a container is attached only to the
-networks it is attached to. Only the two gateways sit on a department network **and** the
-perimeter.
+podman enforces the separation itself: a container reaches only the networks it is
+attached to. Only the two gateways sit on a department network **and** the perimeter.
 
 ## 3. One facility root, so each department trusts the other's certificates
 
@@ -431,8 +430,7 @@ department.
 Service names are the DNS names, and they match the names used in the shell profiles and
 gateway configuration inside the images, so nothing needs rewriting per environment.
 
-Configuration worth reading, all extracted from the Kubernetes chart so the two
-laboratories cannot drift apart:
+Configuration worth reading:
 
 - `config/pvacms-lab.acf`, `config/pvacms-ml.acf` - each certificate manager's access rules
 - `config/gateway-lab.pvlist`, `config/gateway-ml.pvlist` - what each gateway forwards
