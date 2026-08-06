@@ -287,6 +287,21 @@ class Tokeniser {
 // Parser
 /////////////////////////////////////////////////////////////////////////////
 
+/** Turn a broken-down date into a moment, reading it as Coordinated Universal Time.
+ *
+ * The one function that does this is spelled differently on either platform, and neither
+ * spelling exists on the other. mktime is not a substitute: it reads the same fields as local
+ * time, so it would move every date in the filter by the offset of whatever zone the machine
+ * happens to be in.
+ */
+inline int64_t momentFromUtc(std::tm &tm) {
+#if defined(_WIN32) || defined(_MSC_VER)
+    return static_cast<int64_t>(_mkgmtime(&tm));
+#else
+    return static_cast<int64_t>(timegm(&tm));
+#endif
+}
+
 /** Reads a date written as YYYY-MM-DD, optionally with a time, as Coordinated Universal Time. */
 bool parseAbsoluteDate(const std::string &text, int64_t &start, int64_t &end, bool &whole_day) {
     std::tm tm{};
@@ -301,7 +316,7 @@ bool parseAbsoluteDate(const std::string &text, int64_t &start, int64_t &end, bo
     tm.tm_hour = hour;
     tm.tm_min = minute;
     tm.tm_sec = second;
-    const auto moment = static_cast<int64_t>(timegm(&tm));
+    const auto moment = momentFromUtc(tm);
     whole_day = with_time == 3;
     start = moment;
     end = whole_day ? moment + 24 * 60 * 60 : moment + 1;
