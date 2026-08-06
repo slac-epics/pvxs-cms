@@ -142,12 +142,6 @@ std::vector<ReviewRow> reviewRowsFromTable(const Value &table) {
     return rows;
 }
 
-bool tableNamesRequestIds(const Value &table) {
-    const auto value = table["value"];
-    if (!value) return false;
-    return static_cast<bool>(value[certlistcol::kRequestId]);
-}
-
 std::string projectedApprovedStatus(const std::string &issued, const std::string &expires, const std::string &now) {
     // The dates are fixed-width and year-first, so ordering them as plain text orders them in
     // time. Comparing them this way avoids parsing a rendered date back into a time.

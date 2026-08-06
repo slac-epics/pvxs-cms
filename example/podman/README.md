@@ -644,13 +644,11 @@ Note the wording and the answers change with the job: revoking offers
 A certificate awaiting a decision can be revoked outright, without being approved first.
 
 Only certificates that can actually be revoked are offered. The rest are listed with the
-reason and never asked about - a status outside `PENDING_APPROVAL`, `PENDING` and `VALID`,
-and, for an administrator only, their own certificate:
+reason and never asked about - a status outside `PENDING_APPROVAL`, `PENDING` and `VALID`:
 
 ```sh
 run_in lab-manager as admin pvxcert --review-issued --where "state:VALID" < /dev/null
 #     Not offered    : status REVOKED cannot be revoked
-#     Not offered    : this is your own certificate, and an administrator may not revoke their own
 ```
 
 **An ordinary user may revoke their own certificate, and that is the point of it for them.**
@@ -669,10 +667,16 @@ run_in lab as guest pvxcert -R "${LAB}:04214365283771761526"    # the controller
 #   ERROR ... REVOKED operation not authorized on ba71d9e3:... by ca/guest@...
 ```
 
-The one exception is the administrator, and it runs the other way: a certificate manager
-refuses an administrator revoking their own, because that is the identity it needs in order
-to keep answering at all. So the tool withholds only that one, and only when the listing
-came back with the request identifiers that mark an administrator.
+The one identity this runs the other way for is the administrator's own certificate. A
+certificate manager refuses that, because it is the identity it needs in order to keep
+answering at all. The tool cannot tell an administrator's keychain from anyone else's - the
+listing looks the same for both - so it offers the certificate like any other and reports
+what the manager says:
+
+```sh
+run_in lab-manager as admin pvxcert -R "${LAB}:11277229790059579580"   # the administrator's own
+#   ERROR ... REVOKED Admin Self-Revoke not permitted on ba71d9e3:...
+```
 
 A failed write does not stop the ones after it, the certificate manager's own message is
 shown against the certificate it belongs to, and a partly successful batch exits 5.

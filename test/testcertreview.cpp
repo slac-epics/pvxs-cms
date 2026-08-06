@@ -19,10 +19,8 @@
 #include <epicsUnitTest.h>
 #include <testMain.h>
 
-#include <pvxs/nt.h>
 #include <pvxs/unittest.h>
 
-#include "certlistcols.h"
 #include "certreview.h"
 #include "certstatus.h"
 
@@ -317,36 +315,23 @@ void testRevocationAnswers() {
     testEq(joined(w3.applied), joined({"aabbccdd:2000=REVOKED"}));
 }
 
-//! A listing table shaped the way the certificate manager serves one, with or without the
-//! request identifier column it adds only for a caller its rules let decide.
-Value listingTable(const bool with_request_id) {
-    nt::NTTable builder;
-    builder.add_column(TypeCode::String, certlistcol::kCertId, "Certificate");
-    builder.add_column(TypeCode::String, certlistcol::kSubject, "Subject");
-    builder.add_column(TypeCode::String, certlistcol::kStatus, "Status");
-    if (with_request_id) builder.add_column(TypeCode::String, certlistcol::kRequestId, "Request");
-    return builder.create();
-}
+//! An administrator is refused their own certificate by the certificate manager, and an
+//! ordinary user is not. The tool cannot tell which it is holding - the served listing looks
+//! the same for both - so it withholds nothing on that basis and lets the refusal come back
+//! from the manager. This pins the half that is decidable here: status, and nothing else.
+void testOnlyTheStatusDecidesWhatIsOffered() {
+    testDiag("whose certificate it is decides nothing about whether it is offered");
 
-void testOnlyAnAdministratorIsToldTheirOwnCertificate() {
-    testDiag("the request identifier column is what says the caller may decide");
+    auto rows = issuedRows();
+    for (auto &row : rows) testTrue(row.ineligible_reason.empty() || !isRevocable(row.status));
 
-    // An ordinary user may revoke their own certificate, and doing so is the point of the
-    // operation for them. Only an administrator is refused their own, so only an administrator
-    // should have it withheld - and the served table is the one thing that says which we are.
-    testTrue(tableNamesRequestIds(listingTable(true)));
-    testFalse(tableNamesRequestIds(listingTable(false)));
-
-    // A reply that carried no table at all is not an administrator's.
-    testFalse(tableNamesRequestIds(Value()));
-
-    // The column is what matters, not whether a row filled it in: a certificate the manager
-    // issued to itself has no request identifier to show, and an administrator listing only
-    // those would otherwise look like an ordinary user.
-    auto empty_for_every_row = listingTable(true);
-    shared_array<std::string> blanks(2);
-    empty_for_every_row["value"][certlistcol::kRequestId] = blanks.freeze();
-    testTrue(tableNamesRequestIds(empty_for_every_row));
+    // A manager that refuses the write says so against the certificate it belongs to, which
+    // is how an administrator learns their own was declined.
+    Writes w;
+    w.fail_this = "aabbccdd:2000";
+    std::string transcript;
+    testEq(run(rows, revoking(), w.callbacks(), "revoke\nrevoke\ny\n", &transcript), 5);
+    testTrue(transcript.find("Invalid state transition") != std::string::npos);
 }
 
 void testNothingToReview() {
@@ -361,7 +346,7 @@ void testNothingToReview() {
 }  // namespace
 
 MAIN(testcertreview) {
-    testPlan(57);
+    testPlan(58);
     testTwoDecisionsAreWritten();
     testStopLeavesTheRestUndecided();
     testCancelWritesNothing();
@@ -376,7 +361,7 @@ MAIN(testcertreview) {
     testTheReviewSaysWhatEachBecomes();
     testOnlyRevocableCertificatesAreOffered();
     testRevocationAnswers();
-    testOnlyAnAdministratorIsToldTheirOwnCertificate();
+    testOnlyTheStatusDecidesWhatIsOffered();
     testNothingToReview();
     return testDone();
 }

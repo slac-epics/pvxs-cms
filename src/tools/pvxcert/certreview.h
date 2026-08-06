@@ -89,17 +89,6 @@ struct ReviewOptions {
  */
 std::vector<ReviewRow> reviewRowsFromTable(const Value &table);
 
-/** Whether the served listing carried the request identifier column.
- *
- *  The certificate manager includes that column only for a caller its access rules let decide,
- *  so its presence is the one thing a tool can read off the reply that says which of the two it
- *  is talking for. It is the column that matters, not whether any row filled it in: a
- *  certificate the manager issued to itself has no request identifier to show.
- *
- *  @param table the normative table the listing operation returns
- *  @return true when the caller is an administrator of this certificate manager
- */
-bool tableNamesRequestIds(const Value &table);
 
 /** The status the certificate manager will compute for a certificate it approves.
  *

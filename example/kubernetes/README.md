@@ -1032,20 +1032,19 @@ admin lab --review-issued --where "name:testioc" --all --yes   # the whole batch
 admin lab -R "${LAB}:0123456789"
 ```
 
-Certificates the server would refuse are listed with the reason and never offered - a
-status outside `PENDING_APPROVAL`, `PENDING` and `VALID`, and, for an administrator only,
-their own certificate:
+Certificates the server would refuse on their status are listed with the reason and never
+offered - a status outside `PENDING_APPROVAL`, `PENDING` and `VALID`:
 
 ```sh
 admin lab --review-issued --where "state:VALID" < /dev/null
 #     Not offered    : status REVOKED cannot be revoked
-#     Not offered    : this is your own certificate, and an administrator may not revoke their own
 ```
 
 An ordinary user may revoke their own certificate, and that is the point of it for them: a
 key has leaked and they want it stopped without finding an administrator first. Only the
 administrator is refused their own, because that is the identity the certificate manager
-needs in order to keep answering at all.
+needs in order to keep answering at all - and since the tool cannot tell one keychain from
+the other, it offers every certificate and reports what the manager says.
 
 ### 9. Only an administrator may decide
 
