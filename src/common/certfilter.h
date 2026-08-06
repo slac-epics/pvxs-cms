@@ -90,6 +90,10 @@ struct FilterRow {
     std::string organization;
     std::vector<std::string> organizational_units;  //!< several: any one matching is a match
     std::string country;
+    //! What the certificate is for, as the listing renders it: CLIENT, SERVER, IOC,
+    //! CERT_AUTH, or UNKNOWN for one issued before the usage was recorded. Derived from the
+    //! stored key usage rather than held in a column, so it is matched here and never in SQL.
+    std::string type;
     int status{0};
     time_t not_before{0};
     time_t not_after{0};

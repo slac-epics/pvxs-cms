@@ -29,8 +29,9 @@ namespace {
 constexpr time_t kNow = 1785844800;  // 2026-08-04 12:00:00 UTC
 
 FilterRow rowFor(const char *cn, const char *org, const std::vector<std::string> &units, const certstatus_t status,
-                 const time_t not_after = kNow + 86400) {
+                 const time_t not_after = kNow + 86400, const char *type = "CLIENT") {
     FilterRow row;
+    row.type = type;
     row.cert_id = getCertId("a76e613b", 12345);
     row.serial = 12345;
     row.common_name = cn;
@@ -67,6 +68,75 @@ void testPrecedence() {
     const auto negated = CertFilter::parse("not org:SLAC and country:US", kNow);
     testOk(!negated.matches(rowFor("a", "SLAC", {}, VALID)), "not applies to the test, not the whole expression");
     testOk(negated.matches(rowFor("a", "LBNL", {}, VALID)), "and still has to hold");
+}
+
+// What a certificate is for is stored, and the listing prints it, so it can be filtered on.
+// It is derived from the recorded key usage rather than held in a column, which is why it is
+// matched in memory and never appears in the query.
+void testTypeMatchesTheWordTheListingPrints() {
+    testDiag("type: matches the word shown in the Type column");
+
+    const auto ioc = CertFilter::parse("type:IOC", kNow);
+    testOk1(ioc.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "IOC")));
+    testOk1(!ioc.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "CLIENT")));
+
+    // The column is printed in capitals; nobody should have to shout at the tool.
+    const auto folded = CertFilter::parse("type:ioc", kNow);
+    testOk(folded.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "IOC")), "Case is ignored");
+
+    // A certificate issued before the usage was recorded reads as UNKNOWN, and can be found.
+    const auto unknown = CertFilter::parse("type:UNKNOWN", kNow);
+    testOk1(unknown.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "UNKNOWN")));
+    testOk1(!unknown.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "SERVER")));
+}
+
+void testTypeTakesTheSameValueFormsAsAnyText() {
+    testDiag("type: takes alternatives, wildcards and patterns like any other text field");
+
+    const auto either = CertFilter::parse("type:IOC|SERVER", kNow);
+    testOk1(either.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "IOC")));
+    testOk1(either.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "SERVER")));
+    testOk1(!either.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "CLIENT")));
+
+    const auto authority = CertFilter::parse("type:CERT_*", kNow);
+    testOk(authority.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "CERT_AUTH")), "A wildcard matches");
+
+    const auto pattern = CertFilter::parse("type:/^(IOC|CLIENT)$/", kNow);
+    testOk1(pattern.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "CLIENT")));
+    testOk1(!pattern.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "SERVER")));
+}
+
+// A derived field cannot be asked of the database, so the condition has to let its rows
+// through and leave the decision to matches(). Getting this wrong would silently drop rows.
+void testTypeIsDecidedInMemoryNotInTheQuery() {
+    testDiag("A type test widens the condition rather than narrowing it");
+
+    const auto filter = CertFilter::parse("type:IOC", kNow);
+    testOk(filter.whereClause().find("type") == std::string::npos,
+           "The query does not mention a column that does not exist");
+    testOk1(filter.bindings().empty());
+}
+
+void testTypeCombinesWithTheRestOfAnExpression() {
+    testDiag("type: joins the other fields with and, or and not");
+
+    const auto both = CertFilter::parse("type:IOC and state:VALID", kNow);
+    testOk1(both.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "IOC")));
+    testOk(!both.matches(rowFor("a", "SLAC", {}, REVOKED, kNow + 86400, "IOC")), "Both parts must hold");
+
+    const auto negated = CertFilter::parse("not type:CLIENT", kNow);
+    testOk1(negated.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "IOC")));
+    testOk1(!negated.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "CLIENT")));
+
+    // and binds tighter than or, for a derived field as for any other.
+    const auto mixed = CertFilter::parse("org:LBNL or type:IOC and state:REVOKED", kNow);
+    testOk(mixed.matches(rowFor("a", "LBNL", {}, VALID, kNow + 86400, "CLIENT")), "The left side alone is enough");
+    testOk(!mixed.matches(rowFor("a", "SLAC", {}, VALID, kNow + 86400, "IOC")), "The right side needs both parts");
+    testOk1(mixed.matches(rowFor("a", "SLAC", {}, REVOKED, kNow + 86400, "IOC")));
+
+    const auto grouped = CertFilter::parse("(org:LBNL or type:IOC) and state:REVOKED", kNow);
+    testOk(!grouped.matches(rowFor("a", "LBNL", {}, VALID, kNow + 86400, "CLIENT")),
+           "Brackets make the status apply to both alternatives");
 }
 
 void testBracketsOverridePrecedence() {
@@ -280,7 +350,7 @@ void testMessagesCarryNoParserVocabulary() {
 
     const std::vector<std::string> bad_expressions{
         "orgg:SLAC", "state:VALDI", "(org:SLAC", "org:'SLAC", "org:SLAC state:VALID",
-        "expires_before:30", "type:client", "expires:notadate", "serial:abc",
+        "expires_before:30", "expires:notadate", "serial:abc", "typ:CLIENT",
     };
     const std::vector<std::string> forbidden{
         "token", "Token", "parse error", "std::", "exception", "nullptr", "regex_error", "AST", "EOF",
@@ -304,13 +374,6 @@ void testMessagesCarryNoParserVocabulary() {
 
 // The type is a real field that cannot be answered yet. Reporting it as unknown would send an
 // operator looking for a spelling mistake that is not there.
-void testTypeIsRecognisedButRefused() {
-    testDiag("The type field is recognised and refused, not reported as unknown");
-    const auto message = messageFor("type:client");
-    testOk(message.find("not recorded yet") != std::string::npos, "It says the type is not recorded yet");
-    testOk(message.find("no field called") == std::string::npos, "It does not call the field unknown");
-}
-
 void testLimitsAreRefusedPlainly() {
     testDiag("A filter past a limit is refused with something an operator can act on");
 
@@ -334,10 +397,14 @@ void testLimitsAreRefusedPlainly() {
 }  // namespace
 
 MAIN(testcertfilter) {
-    testPlan(62);
+    testPlan(81);
     testAJoiningWordCanBeAValue();
     testPrecedence();
     testBracketsOverridePrecedence();
+    testTypeMatchesTheWordTheListingPrints();
+    testTypeTakesTheSameValueFormsAsAnyText();
+    testTypeIsDecidedInMemoryNotInTheQuery();
+    testTypeCombinesWithTheRestOfAnExpression();
     testSeveralValuesMeanAnyOfThem();
     testCaseIsIgnoredWhereItShouldBe();
     testWildcards();
@@ -358,7 +425,6 @@ MAIN(testcertfilter) {
     testAnUnclosedThingPointsAtWhereItOpened();
     testAMissingJoiningWordIsNamedInWords();
     testMessagesCarryNoParserVocabulary();
-    testTypeIsRecognisedButRefused();
     testLimitsAreRefusedPlainly();
     return testDone();
 }

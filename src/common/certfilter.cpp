@@ -483,11 +483,6 @@ class Parser {
         }
         node->field = found->second;
 
-        if (node->field == FilterField::Type) {
-            throw filterError(text_, token.position, "What a certificate is for is not recorded yet.",
-                              "Remove that part of the filter. It will work once the certificate type is stored.");
-        }
-
         for (size_t i = 0; i < token.values.size(); ++i) {
             node->values.push_back(readValue(node->field, token.values[i], token.is_regex[i], token.position));
         }
@@ -875,6 +870,10 @@ bool valueMatchesRow(const FilterNode &test, const FilterValue &value, const Fil
             case FilterField::Name: return row.common_name;
             case FilterField::Org: return row.organization;
             case FilterField::Country: return row.country;
+            // The word the listing prints in its Type column, so what an operator reads is
+            // what they can write. It is derived from the stored key usage rather than held
+            // in a column, so it is only ever matched here, never pushed into the query.
+            case FilterField::Type: return row.type;
             default: return empty;
         }
     };

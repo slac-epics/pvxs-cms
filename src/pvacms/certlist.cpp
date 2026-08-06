@@ -206,6 +206,8 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
             // Every unit, so `unit:beamline` matches a certificate for staff inside beamline
             candidate.organizational_units = organizational_units;
             candidate.country = columnText(statement, 4);
+            // The same word the Type column shows, so a filter matches what an operator reads.
+            candidate.type = row.type;
             candidate.status = sqlite3_column_int(statement, 5);
             candidate.status_date = sqlite3_column_int64(statement, 6);
             candidate.not_before = sqlite3_column_int64(statement, 7);
