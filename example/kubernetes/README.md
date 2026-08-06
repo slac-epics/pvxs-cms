@@ -798,6 +798,45 @@ admin() {   # admin <lab|ml> <pvxcert arguments...>
 }
 ```
 
+### First, what works with no certificates at all
+
+Before any certificate exists, the laboratory is already running and readable.
+
+**Reading works everywhere, over plain TCP.** Inside a zone, in the peer department through
+its gateway, and from the internet zone through either:
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- su - guest -c \
+  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- su - guest -c \
+  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget ml:aiExample'
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-internet -- su - guest -c \
+  'source ~/.internet_guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
+```
+
+Read is deliberately open, to anyone, in any zone.
+
+**Writing is refused.** `test:spec` is the one process variable a gateway carries a write
+for, and it still requires a certificate presented over TLS by an operator:
+
+```sh
+# inside the zone, refused by the controller itself
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- su - guest -c \
+  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
+#   ERROR ... Put not permitted
+
+# across a zone boundary, refused earlier, by the gateway
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-internet -- su - guest -c \
+  'source ~/.internet_guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
+#   ERROR ... Put permission denied by gateway
+```
+
+The two messages come from two different places. In the first the request reached the
+controller, which applied its own access file; in the second it never got that far.
+
+So reading needs nothing and writing needs an identity. Section 3 returns to `test:spec`
+and writes it with a certificate issued by the *other* department.
+
 ### 1. Two certificate managers, one per department
 
 They are independent. Each holds only the certificates it issued.

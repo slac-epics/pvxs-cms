@@ -11,6 +11,7 @@ demonstrating can be shown and checked directly.
 - [What it demonstrates](#what-it-demonstrates)
 - [Installation](#installation)
 - [Bringing it up](#bringing-it-up)
+- [What works with no certificates at all](#first-what-works-with-no-certificates-at-all)
 - [1. Two certificate managers, one per department](#1-two-certificate-managers-one-per-department)
 - [2. Crossing a boundary is only possible through a gateway](#2-crossing-a-boundary-is-only-possible-through-a-gateway)
 - [3. One facility root, so each department trusts the other's certificates](#3-one-facility-root-so-each-department-trusts-the-others-certificates)
@@ -86,6 +87,68 @@ cat .env
 export LAB=$(grep LAB_ISSUER .env | cut -d= -f2)
 export ML=$(grep ML_ISSUER  .env | cut -d= -f2)
 ```
+
+### First, what works with no certificates at all
+
+Before any certificate exists, the laboratory is already running and readable. This is the
+baseline to come back to when something later looks broken.
+
+**Reading works everywhere, over plain TCP, with no certificate.** Inside a department:
+
+```sh
+podman exec podman_lab-client_1 bash -lc \
+  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
+```
+
+In the peer department, through its gateway:
+
+```sh
+podman exec podman_lab-client_1 bash -lc \
+  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget ml:aiExample'
+```
+
+And from outside both departments, through a gateway either way:
+
+```sh
+podman exec podman_perimeter-client_1 bash -lc \
+  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
+podman exec podman_perimeter-client_1 bash -lc \
+  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget ml:aiExample'
+```
+
+Read is deliberately open, to anyone, in any zone. Certificates are not about hiding
+readings.
+
+**Writing is refused.** `test:spec` is the one process variable a gateway will carry a
+write for, and it still requires a certificate presented over TLS by an operator:
+
+```sh
+# inside the department, refused by the controller itself
+podman exec podman_lab-client_1 bash -lc \
+  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
+#   ERROR ... Put not permitted
+
+# across the boundary, refused earlier, by the gateway
+podman exec podman_perimeter-client_1 bash -lc \
+  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
+#   ERROR ... Put permission denied by gateway
+```
+
+The two messages come from two different places, and the difference is worth noticing. In
+the first the request reached the controller, which applied its own access file. In the
+second it never got that far: the gateway refused it on the boundary.
+
+Any other process variable is refused the same way, because every write rule in the
+laboratory names `PROTOCOL(TLS)` and `METHOD(X509)`:
+
+```sh
+podman exec podman_lab-client_1 bash -lc \
+  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxput test:aiExample 3'
+#   ERROR ... Put not permitted
+```
+
+So: reading needs nothing, writing needs an identity. Section 3 returns to `test:spec` and
+writes it successfully with a certificate issued by the *other* department.
 
 ### Issue the certificates
 
