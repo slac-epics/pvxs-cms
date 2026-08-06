@@ -91,3 +91,7 @@ echo "==> issuer ids"
 sed 's/^/    /' issuer_ids.env
 echo
 echo "Now:  podman-compose up -d"
+echo
+echo "After 'podman-compose up -d', issue the certificates, then restart the two gateways."
+echo "A gateway that starts before the controllers are serving does not retry, and nothing"
+echo "reaches across a boundary until it is restarted."

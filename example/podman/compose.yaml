@@ -171,7 +171,10 @@ services:
   lab-client:
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
     hostname: lab-client
-    networks: [net-lab]
+    # Its own department directly, and the perimeter so it can reach the other
+    # department's gateway. There is still no route to the other department's
+    # certificate manager or controllers except through that gateway.
+    networks: [net-lab, net-perimeter]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
