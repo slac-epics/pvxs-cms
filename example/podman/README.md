@@ -179,14 +179,21 @@ podman exec podman_pvxs-lab-ml-gateway_1 su - gateway -c 'source ~/.gateway_bash
 Because that administrator command is long, the rest of this document abbreviates it:
 
 ```sh
-admin() {   # admin <lab|ml> <pvxcert arguments...>
+admin() {   # admin <lab|ml> <pvxcert arguments...>   - the department's administrator
     local c=podman_pvxs-lab-pvacms_1; [ "$1" = ml ] && c=podman_pvxs-lab-ml_1; shift
     podman exec "$c" bash -lc \
       "export EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12
        export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076
        PVXS_LOG=none pvxcert $*"
 }
+
+guest() {   # guest <lab|ml> <pvxcert arguments...>   - an ordinary user, no certificate
+    local c=podman_lab-client_1; [ "$1" = ml ] && c=podman_ml-client_1; shift
+    podman exec "$c" bash -c "EPICS_PVA_TLS_KEYCHAIN= PVXS_LOG=none pvxcert $*"
+}
 ```
+
+Run the same command through both to see what an identity is worth.
 
 **Then restart the controllers, and after them the gateways.** Order matters, and both
 steps are needed:
@@ -371,6 +378,24 @@ Every certificate the department has issued, with its type, subject, status, dat
 request identifier. Dates are rendered year first in one fixed-width layout everywhere, so
 they sort and compare as plain text.
 
+**An ordinary user can list too, with no certificate at all:**
+
+```sh
+guest lab -l
+```
+
+Both see the same rows - what a department has issued is not a secret, and an operator
+wanting to know whether their certificate arrived should not need an administrator. The
+difference is the **request identifier**, which is blank for everyone but an administrator:
+
+```sh
+admin lab -l | awk '{print $NF}' | tail -n +2    # identifiers present
+guest lab -l | awk '{print $NF}' | tail -n +2    # blank
+```
+
+That identifier is what the requester quotes to prove a request is theirs, so it is shown
+only to whoever is deciding.
+
 The same listing is served as standing views a client can subscribe to, named by issuer so
 that two certificate managers on one network are never ambiguous:
 
@@ -485,11 +510,31 @@ podman exec podman_pvxs-lab-pvacms_1 cat /etc/pvacms/pvacms.acf
 #   }
 ```
 
-An ordinary user is refused a decision:
+An ordinary user may look at everything and decide nothing. The same review command run
+both ways shows exactly where the line falls:
 
 ```sh
-podman exec podman_lab-client_1 bash -lc \
-  "source ~/.guest_bashrc; pvxput CERT:STATUS:${LAB}:0123456789 state=REVOKED"
+admin lab --review-pending < /dev/null
+#     Subject        : CN=operator,O=lab-client,C=US
+#     Status         : PENDING_APPROVAL
+#     Request ID     : A0MP-TAKG-JG1P-YJED
+
+guest lab --review-pending < /dev/null
+#     Subject        : CN=operator,O=lab-client,C=US
+#     Status         : PENDING_APPROVAL
+#     Request ID     : (none)
+```
+
+The certificate awaiting a decision is visible to both. The identifier that would let
+someone confirm it is the request they were sent is not. And an attempt to act is refused
+outright:
+
+```sh
+guest lab --review-issued --where "state:VALID" --all --yes
+#   ... FAILED: REVOKED operation not authorized on ba71d9e3:... by ca/guest@...
+
+podman exec podman_lab-client_1 bash -c \
+  "EPICS_PVA_TLS_KEYCHAIN= pvxput CERT:STATUS:${LAB}:0123456789 state=REVOKED"
 #   ERROR ... REVOKED operation not authorized ... by ca/guest@...
 ```
 

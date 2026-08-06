@@ -789,14 +789,23 @@ export LAB=$(kubectl -n pvxs-lab get cm pvxs-lab-issuer-ids -o jsonpath='{.data.
 export ML=$(kubectl  -n pvxs-lab get cm pvxs-lab-issuer-ids -o jsonpath='{.data.ML_ISSUER}')
 echo "lab=$LAB  machine learning=$ML"
 
-admin() {   # admin <lab|ml> <pvxcert arguments...>
+admin() {   # admin <lab|ml> <pvxcert arguments...>   - the department's administrator
     local d=idm; [ "$1" = ml ] && d=ml; shift
     kubectl -n pvxs-lab exec "deploy/pvxs-lab-$d" -c "$d" -- bash -c \
       "su - admin -c 'source ~/.admin_bashrc 2>/dev/null
                       export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076
                       PVXS_LOG=none pvxcert $*'"
 }
+
+guest() {   # guest <lab|ml> <pvxcert arguments...>   - an ordinary user, no certificate
+    local d=cs-studio-lab; [ "$1" = ml ] && d=cs-studio-ml; shift
+    kubectl -n pvxs-lab exec "deploy/pvxs-lab-$d" -- bash -c \
+      "su - guest -c 'source ~/.guest_bashrc 2>/dev/null
+                      EPICS_PVA_TLS_KEYCHAIN= PVXS_LOG=none pvxcert $*'"
+}
 ```
+
+Run the same command through both to see what an identity is worth.
 
 ### First, what works with no certificates at all
 
@@ -952,6 +961,15 @@ admin lab --review-pending < /dev/null
 
 ### 5. Listing, and 6. filtering
 
+An ordinary user can list too, with no certificate at all. Both see the same rows - what a
+department has issued is not a secret - but the **request identifier** is shown only to an
+administrator, because it is what a requester quotes to prove a request is theirs:
+
+```sh
+admin lab -l | awk '{print $NF}' | tail -n +2    # identifiers present
+guest lab -l | awk '{print $NF}' | tail -n +2    # blank
+```
+
 ```sh
 admin lab -l
 admin lab -l --where "name:gateway"
@@ -1031,6 +1049,17 @@ kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- su - guest -c \
 ```
 
 `ca/guest` says it all: no certificate was presented, so the rule could not match.
+
+The same review command run both ways shows where the line falls. The certificate awaiting
+a decision is visible to both; the identifier that would confirm it is the request they were
+sent is not, and an attempt to act is refused:
+
+```sh
+admin lab --review-pending < /dev/null      #   Request ID     : A0MP-TAKG-JG1P-YJED
+guest lab --review-pending < /dev/null      #   Request ID     : (none)
+guest lab --review-issued --where "state:VALID" --all --yes
+#   ... FAILED: REVOKED operation not authorized ... by ca/guest@...
+```
 
 The awaiting-decision view is gated at channel creation, while the open views are not:
 
