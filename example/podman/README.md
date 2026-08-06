@@ -408,19 +408,75 @@ Those two are open to everyone. The third is not - see section 9.
 
 ## 6. Filtering the listing
 
+The expression is meant to be sayable aloud.
+
 ```sh
 admin lab -l --where "name:gateway"
 admin lab -l --where "state:VALID"
-admin lab -l --where "state:PENDING_APPROVAL"
-admin lab -l --where "type:SERVER"
+admin lab -l --where "type:IOC"
 admin lab -l --where "name:testioc and state:VALID"
 admin lab -l --where "name:testioc or name:tstioc"
 admin lab -l --where "expires_before:30d and state:VALID"
 admin lab --expiring 30d
 ```
 
-The expression is meant to be sayable aloud. Because dates are fixed width and year
-first, a partial bound selects by prefix and nothing needs parsing.
+### The syntax, in full
+
+```
+expression := term { "or" term }
+term       := factor { "and" factor }
+factor     := [ "not" ] ( "(" expression ")" | test )
+test       := field ":" value { "|" value }
+value      := word | "quoted words" | /regular expression/     ( * matches any run )
+```
+
+Three rules follow from that, and they are the ones people get wrong:
+
+- **`not` binds tightest, then `and`, then `or`** - the order you would read them aloud.
+  `a or b and c` means `a or (b and c)`.
+- **Brackets override it.** `(a or b) and c` is a different question, and both are accepted.
+- **`|` is not `or`.** It offers alternatives *for one field*: `state:VALID|REVOKED` is one
+  test with two acceptable values. A comma is not a separator - `state:VALID,REVOKED` is read
+  as a single status of that name and refused.
+
+The fields:
+
+| Field | Matches |
+|---|---|
+| `id` | the printed `<issuer>:<serial>` identifier |
+| `serial` | the serial alone |
+| `issuer` | the issuing authority; naming another empties the result without a query |
+| `name` | the common name |
+| `org`, `unit`, `country` | the rest of the subject; a certificate with several units matches on any one |
+| `state` | `VALID`, `PENDING_APPROVAL`, `PENDING`, `EXPIRED`, `REVOKED`, `PENDING_RENEWAL` |
+| `type` | `CLIENT`, `SERVER`, `IOC`, `CERT_AUTH`, `UNKNOWN` - the word in the Type column |
+| `issued`, `expires`, `renew_by`, `changed` | a date, matching that whole day |
+| `..._before`, `..._after` | the same four, taking a date or a period |
+
+Dates are written `2026-07-31`, or `'2026-07-31 10:31:21'` in quotes. A bare date matches
+the whole day. Periods are a number and a unit letter - `y` years, `M` months, `w` weeks,
+`d` days, `h` hours, `m` minutes, `s` seconds. **`M` is months and `m` is minutes**, and a
+period without a unit is refused rather than guessed at.
+
+A `_before` field looks forward from now and an `_after` field looks back, so
+`expires_before:30d` is "expires within thirty days" and needs no arithmetic.
+
+Matching ignores case, and `*` is a wildcard. A value in `/slashes/` is a regular
+expression. Text that merely looks like a pattern is taken literally, so a common name with
+a dot in it does not quietly become a wildcard.
+
+### What it will not do
+
+- **No comparison operators.** There is no `>`, `<` or `!=`. Ranges are expressed with the
+  `_before` and `_after` fields, and inequality with `not`.
+- **No arithmetic, and no joining one field to another.** Every test compares one field with
+  a value you supply.
+- **No sorting or field selection.** The listing decides its own columns and order.
+- **Limits, refused plainly rather than silently truncated**: 4096 characters, 32 levels of
+  brackets, 8 regular expressions in one expression, and 100000 rows examined.
+
+Because dates are fixed width and year first, a partial bound selects by prefix and nothing
+needs parsing.
 
 ## 7. Approving, in batches or one at a time
 

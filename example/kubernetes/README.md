@@ -984,6 +984,14 @@ admin lab --expiring 30d
 Dates are year first in one fixed-width layout, so they sort and compare as plain text and
 a partial bound such as `2026-07` selects by prefix.
 
+The grammar, the precedence and the limits are the same in both laboratories, and are set
+out in full in [the podman document](../podman/README.md#the-syntax-in-full). The three
+points people trip on:
+
+- `not` binds tightest, then `and`, then `or`, so `a or b and c` means `a or (b and c)`
+- brackets override that, and are accepted to 32 levels
+- `|` offers alternatives for one field (`state:VALID|REVOKED`); a comma is not a separator
+
 The same data is served as standing views, named by issuer so two certificate managers on
 one network are never ambiguous:
 
