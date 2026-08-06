@@ -58,6 +58,21 @@ void testCertTypeNamesWhatItIsFor() {
            std::string("IOC"));
     testEq(renderCertType("Certificate Sign, CRL Sign", ""), std::string("CERT_AUTH"));
 
+    // An authority is almost never only an authority. These are the usages the intermediate
+    // certificate authority this system issues actually carries: it may sign, and it may also
+    // serve and connect. Asking what it serves first called it an IOC, which left CERT_AUTH
+    // unreachable for every authority in the listing and quietly wrong in type:IOC.
+    testEq(renderCertType("Digital Signature, Certificate Sign, CRL Sign",
+                          "TLS Web Server Authentication, TLS Web Client Authentication, OCSP Signing"),
+           std::string("CERT_AUTH"));
+    testEq(renderCertType("keyCertSign, cRLSign", "serverAuth, clientAuth"), std::string("CERT_AUTH"));
+
+    // The service certificate the same manager issues itself carries the same two web
+    // authentication usages but may not sign, so it stays an IOC.
+    testEq(renderCertType("Digital Signature, Key Encipherment",
+                          "TLS Web Server Authentication, TLS Web Client Authentication, OCSP Signing"),
+           std::string("IOC"));
+
     // A certificate stored before the type was recorded has neither. Saying UNKNOWN is the
     // point: reporting it as the most common kind would be believed.
     testEq(renderCertType("", ""), std::string("UNKNOWN"));
@@ -526,7 +541,7 @@ void testFilteringPreservesTheOrder() {
 }  // namespace
 
 MAIN(testcertlist) {
-    testPlan(59);
+    testPlan(62);
     testSubjectIsCanonical();
     testCertTypeNamesWhatItIsFor();
     testTableIsNormative();

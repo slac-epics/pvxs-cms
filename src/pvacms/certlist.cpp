@@ -72,6 +72,15 @@ std::string renderCertType(const std::string &key_usage, const std::string &exte
     // than let it read as the most common kind and be believed.
     if (key_usage.empty() && extended_key_usage.empty()) return "UNKNOWN";
 
+    // Signing other certificates is decided first, because it is the one capability nothing
+    // else has. An authority is normally also allowed to serve and to connect - every
+    // intermediate this system issues carries both web authentication usages - so asking what
+    // it serves before asking whether it signs reports an authority as an ordinary controller.
+    if (key_usage.find("Certificate Sign") != std::string::npos ||
+        key_usage.find("keyCertSign") != std::string::npos) {
+        return "CERT_AUTH";
+    }
+
     const bool serves = extended_key_usage.find("TLS Web Server Authentication") != std::string::npos ||
                         extended_key_usage.find("serverAuth") != std::string::npos;
     const bool connects = extended_key_usage.find("TLS Web Client Authentication") != std::string::npos ||
@@ -83,11 +92,6 @@ std::string renderCertType(const std::string &key_usage, const std::string &exte
     if (serves) return "SERVER";
     if (connects) return "CLIENT";
 
-    // A certificate authority signs rather than serves or connects.
-    if (key_usage.find("Certificate Sign") != std::string::npos ||
-        key_usage.find("keyCertSign") != std::string::npos) {
-        return "CERT_AUTH";
-    }
     return "UNKNOWN";
 }
 
