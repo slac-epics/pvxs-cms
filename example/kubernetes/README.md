@@ -887,9 +887,15 @@ against the manager that issued it.
 
 ```sh
 for gw in gateway ml-gateway; do
-  echo "== $gw"; kubectl -n pvxs-lab exec deploy/pvxs-lab-$gw -c $gw -- grep CERT: /home/gateway/gateway.pvlist
+  echo "== $gw"; kubectl -n pvxs-lab exec deploy/pvxs-lab-$gw -c $gw -- cat /home/gateway/gateway.pvlist
 done
 ```
+
+A gateway carries exactly what its list names, and that is two kinds of traffic: its
+department's **controllers**, which is how a client in one zone reads and writes process
+variables in another, and its department's **certificate traffic**, keyed by issuer id.
+Each names its own issuer only, so a request for the other department's certificates is
+not claimed by the wrong gateway.
 
 ### 4. The request identifier an administrator checks
 

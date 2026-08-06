@@ -29,7 +29,7 @@ demonstrating can be shown and checked directly.
 | **Two departments** | Each runs its own certificate manager, signing with its own intermediate certificate authority, holding only the certificates it issued |
 | **One facility root** | Both intermediates are signed by it, so a certificate from either department is trusted laboratory-wide, while authorisation stays per department |
 | **Real network separation** | Three podman networks; a container reaches only those it is attached to, so a department's certificate manager is addressable only from inside it |
-| **Gateways on the boundary** | The only route between departments, forwarding certificate traffic keyed by issuer id |
+| **Gateways on the boundary** | The only route between departments. Each forwards its own department's controller process variables, and its certificate traffic keyed by issuer id |
 | **Administration** | Listing, filtering, request identifiers, approval in batches or one at a time, denial and revocation, all restricted to administrators |
 
 ## Installation
@@ -188,6 +188,25 @@ podman exec podman_perimeter-client_1 getent hosts pvxs-lab-ml
 
 podman enforces the separation itself: a container reaches only the networks it is
 attached to. Only the two gateways sit on a department network **and** the perimeter.
+
+What a gateway carries is exactly what its list names - its department's controllers, and
+its department's certificate traffic keyed by issuer id:
+
+```sh
+podman exec podman_pvxs-lab-gateway_1    cat /home/gateway/gateway.pvlist
+#   test:.* ALLOW                                 its controllers, readable
+#   tst:.* ALLOW
+#   test:spec ALLOW SPECIAL                       writable, to a certificate from either department
+#   CERT:CREATE:<lab>(?::.*)? ALLOW CERT_CREATE   ask this department for a certificate
+#   CERT:STATUS:<lab>(?::.*)? ALLOW CERT_STATUS   check one it issued
+#   CERT:LIST:<lab>:ALL ALLOW CERT_STATUS         the two open views
+#   CERT:LIST:<lab>:EXPIRING ALLOW CERT_STATUS
+podman exec podman_pvxs-lab-ml-gateway_1 cat /home/gateway/gateway.pvlist
+```
+
+Each names its **own** issuer only, so a request for the other department's certificates is
+not claimed by the wrong gateway. The view of certificates awaiting a decision appears in
+neither list, for the reason in section 9.
 
 ## 3. One facility root, so each department trusts the other's certificates
 
