@@ -188,12 +188,26 @@ admin() {   # admin <lab|ml> <pvxcert arguments...>
 }
 ```
 
-**Then restart the two gateways.** A gateway that started before the controllers were
-serving does not retry, and nothing crosses a boundary until it is restarted.
+**Then restart the controllers, and after them the gateways.** Order matters, and both
+steps are needed:
 
 ```sh
+podman-compose restart pvxs-lab-testioc pvxs-lab-tstioc pvxs-lab-ml-ioc
 podman-compose restart pvxs-lab-gateway pvxs-lab-ml-gateway
 ```
+
+A controller reads its keychain at start, and it was already running when the certificate
+arrived, so until it restarts it serves plain traffic only - it listens on 5075 and not on
+the secure port:
+
+```sh
+podman exec podman_pvxs-lab-testioc_1 ss -lnt | grep 507
+#   before: *:5075          after: *:5075 and *:5076
+```
+
+The gateways go second because a gateway that starts before its department is serving does
+not retry, and restarting the controllers is exactly such a moment. Restart them in the
+other order and nothing crosses a boundary.
 
 ---
 
@@ -416,11 +430,16 @@ admin lab -D "${LAB}:0123456789"      # deny
 ```
 
 With no terminal to read answers from and no `--all`, the listing is printed, nothing is
-written, and the exit code is 3:
+written, and the exit code is 3 - asking for an interactive run with nothing able to answer
+is a command line mistake rather than something to guess at:
 
 ```sh
 admin lab --review-pending < /dev/null ; echo "exit $?"
+#   exit 3
 ```
+
+With nothing waiting for a decision there is nothing to be mistaken about, so the same
+command reports that and exits 0.
 
 ## 8. Denying and revoking
 

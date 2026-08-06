@@ -44,8 +44,8 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
-# A gateway that starts before its department is serving does not retry, so it is started
-# last, once everything it forwards to is up.
+# A gateway that starts before its department is serving does not retry, so the gateways go
+# last, once everything they forward to is up.
 echo "==> restarting the gateways"
 podman-compose restart pvxs-lab-gateway pvxs-lab-ml-gateway >/dev/null 2>&1
 sleep 10

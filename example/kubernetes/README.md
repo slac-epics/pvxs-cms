@@ -1085,17 +1085,26 @@ kubectl -n pvxs-lab get cm pvxs-lab-issuer-ids -o jsonpath='{.data}'
 Then work through [Issue the certificates](#create-a-certificate-for-the-ioc) again:
 controllers, then each department's administrator approving its own, then the gateways.
 
-**Restart the gateways once the controllers hold certificates.** A gateway that started
-before its department was serving does not retry, and nothing crosses a zone boundary until
-it is restarted:
+**Restart the controllers, then the gateways.** Both are needed, in that order:
 
 ```sh
+kubectl -n pvxs-lab rollout restart deploy/pvxs-lab-testioc deploy/pvxs-lab-tstioc deploy/pvxs-lab-ml-ioc
+kubectl -n pvxs-lab rollout status  deploy/pvxs-lab-testioc --timeout=120s
 kubectl -n pvxs-lab rollout restart deploy/pvxs-lab-gateway deploy/pvxs-lab-ml-gateway
 ```
 
-The same applies after any restart of the certificate managers or controllers. If a read
-that worked a moment ago starts timing out from another zone, restart the two gateways
-before looking anywhere else.
+A controller reads its keychain at start and was already running when its certificate
+arrived, so until it restarts it serves plain traffic only - it listens on 5075 and not on
+the secure port. Check with:
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-testioc -- ss -lnt | grep 507
+```
+
+The gateways go second because a gateway that starts before its zone is serving does not
+retry, and restarting the controllers is exactly such a moment. If a read that worked a
+moment ago starts timing out from another zone, restart the two gateways before looking
+anywhere else.
 
 ## Certificate management PVs
 
