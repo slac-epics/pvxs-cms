@@ -36,10 +36,19 @@ jobs_arg=()
 keep_certs=no
 [ "${1:-}" = "--keep-certs" ] && keep_certs=yes
 
-echo "==> building the pvxs-cms image (compiles EPICS, pvxs and pvxs-cms)"
-# Only this one from example/docker. The Kerberos and LDAP authenticator images beside it
-# are not used here: this laboratory issues certificates with the standard authenticator,
-# and the display images are left out because everything is verified from the command line.
+# The images form a chain, each built on the one before:
+#
+#   ubuntu -> epics-base -> pvxs -> pvxs-cms -> lab_tools/lab_base -> the laboratory
+#
+# The first two live in the pvxs tree, the third in this one. Only these three are taken
+# from example/docker: the Kerberos and LDAP authenticator images beside them are not used
+# here, because this laboratory issues certificates with the standard authenticator, and
+# the display images are left out because everything is verified from the command line.
+echo "==> building epics-base and pvxs (compiles EPICS Base and pvxs)"
+( cd ../../../pvxs/example/docker/epics-base && ./build_docker.sh "${jobs_arg[@]}" )
+( cd ../../../pvxs/example/docker/pvxs       && ./build_docker.sh "${jobs_arg[@]}" )
+
+echo "==> building the pvxs-cms image"
 ( cd ../docker/pvxs-cms && ./build_docker.sh "${jobs_arg[@]}" )
 
 echo "==> building the laboratory images"
