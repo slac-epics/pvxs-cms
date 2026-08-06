@@ -1033,13 +1033,19 @@ admin lab -R "${LAB}:0123456789"
 ```
 
 Certificates the server would refuse are listed with the reason and never offered - a
-status outside `PENDING_APPROVAL`, `PENDING` and `VALID`, and your own certificate:
+status outside `PENDING_APPROVAL`, `PENDING` and `VALID`, and, for an administrator only,
+their own certificate:
 
 ```sh
 admin lab --review-issued --where "state:VALID" < /dev/null
 #     Not offered    : status REVOKED cannot be revoked
-#     Not offered    : this is your own certificate, which you cannot revoke
+#     Not offered    : this is your own certificate, and an administrator may not revoke their own
 ```
+
+An ordinary user may revoke their own certificate, and that is the point of it for them: a
+key has leaked and they want it stopped without finding an administrator first. Only the
+administrator is refused their own, because that is the identity the certificate manager
+needs in order to keep answering at all.
 
 ### 9. Only an administrator may decide
 

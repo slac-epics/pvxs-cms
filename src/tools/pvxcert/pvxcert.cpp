@@ -328,11 +328,13 @@ int main(int argc, char *argv[]) {
             const auto selection = review_pending ? std::string("state:PENDING_APPROVAL") : where;
 
             std::vector<certs::ReviewRow> rows;
+            bool we_are_an_administrator = false;
             try {
                 Value arguments = nt::NTURI({members::String("where")}).create();
                 arguments["query.where"] = selection;
                 const auto table = review_client.rpc(list_pv, arguments).exec()->wait(conf.getRequestTimeout());
                 rows = certs::reviewRowsFromTable(table);
+                we_are_an_administrator = certs::tableNamesRequestIds(table);
             } catch (const client::Timeout &) {
                 log_err_printf(certslog, "Timed out listing certificates from %s\n", list_pv.c_str());
                 return 4;
@@ -344,26 +346,37 @@ int main(int argc, char *argv[]) {
             // A certificate is only offered when it can actually be acted on, and the reason it
             // cannot is shown rather than the certificate being quietly dropped.
             if (review_issued) {
-                // The certificate manager refuses an administrator revoking their own
-                // certificate, so find it here and do not ask: a question whose only possible
-                // answer is a refusal is worse than no question. Read the same way the -f path
-                // reads a keychain, and a keychain that cannot be read simply means no match.
+                // An ordinary user may revoke their own certificate, and that is the whole
+                // point of the operation for them: a key has leaked and they want it stopped
+                // without waiting for anyone. Only an administrator is refused their own, so
+                // that a certificate manager cannot be talked out of the identity it needs to
+                // keep answering. So look for our own certificate only when this listing came
+                // back with the request identifiers that only an administrator is shown.
+                //
+                // A question whose only possible answer is a refusal is worse than no question,
+                // but so is withholding one that would have been granted.
+                //
+                // Read the same way the -f path reads a keychain, and a keychain that cannot be
+                // read simply means no match.
                 std::string own_cert_id;
-                try {
-                    const auto own = certs::IdFileFactory::createReader(conf.tls_keychain_file, conf.getKeychainPassword())
-                                         ->getCertDataFromFile();
-                    if (own.cert) {
-                        const auto status_pv = certs::CmsStatusManager::getStatusPvFromCert(own.cert);
-                        own_cert_id = status_pv.substr(status_pv.rfind(':') - 8);
+                if (we_are_an_administrator) {
+                    try {
+                        const auto own =
+                            certs::IdFileFactory::createReader(conf.tls_keychain_file, conf.getKeychainPassword())
+                                ->getCertDataFromFile();
+                        if (own.cert) {
+                            const auto status_pv = certs::CmsStatusManager::getStatusPvFromCert(own.cert);
+                            own_cert_id = status_pv.substr(status_pv.rfind(':') - 8);
+                        }
+                    } catch (const std::exception &) {
                     }
-                } catch (const std::exception &) {
                 }
 
                 for (auto &row : rows) {
                     if (!certs::isRevocable(row.status)) {
                         row.ineligible_reason = "status " + row.status + " cannot be revoked";
                     } else if (!own_cert_id.empty() && row.cert_id == own_cert_id) {
-                        row.ineligible_reason = "this is your own certificate, which you cannot revoke";
+                        row.ineligible_reason = "this is your own certificate, and an administrator may not revoke their own";
                     }
                 }
             }

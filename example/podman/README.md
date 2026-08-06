@@ -645,13 +645,34 @@ A certificate awaiting a decision can be revoked outright, without being approve
 
 Only certificates that can actually be revoked are offered. The rest are listed with the
 reason and never asked about - a status outside `PENDING_APPROVAL`, `PENDING` and `VALID`,
-and your own certificate, which you may not revoke:
+and, for an administrator only, their own certificate:
 
 ```sh
 run_in lab-manager as admin pvxcert --review-issued --where "state:VALID" < /dev/null
 #     Not offered    : status REVOKED cannot be revoked
-#     Not offered    : this is your own certificate, which you cannot revoke
+#     Not offered    : this is your own certificate, and an administrator may not revoke their own
 ```
+
+**An ordinary user may revoke their own certificate, and that is the point of it for them.**
+A key has leaked and they want it stopped now, without finding an administrator first:
+
+```sh
+run_in lab as guest pvxcert -R "${LAB}:02665075835003669104"
+#   Revoke ==> CERT:STATUS:ba71d9e3:02665075835003669104 ==> Completed Successfully
+```
+
+They may revoke that one and no other. Someone else's is refused, and the message names the
+identity the certificate manager saw rather than the certificate:
+
+```sh
+run_in lab as guest pvxcert -R "${LAB}:04214365283771761526"    # the controller's
+#   ERROR ... REVOKED operation not authorized on ba71d9e3:... by ca/guest@...
+```
+
+The one exception is the administrator, and it runs the other way: a certificate manager
+refuses an administrator revoking their own, because that is the identity it needs in order
+to keep answering at all. So the tool withholds only that one, and only when the listing
+came back with the request identifiers that mark an administrator.
 
 A failed write does not stop the ones after it, the certificate manager's own message is
 shown against the certificate it belongs to, and a partly successful batch exits 5.
