@@ -80,12 +80,6 @@ else
                 -O /certs -R '${ROOT_CN}' -L '${LAB_CN}' -M '${ML_CN}'
             ls -la /certs"
     cp certs/issuer_ids.env issuer_ids.env
-    # One file per department, mounted at /etc/epics/issuer. A login shell resets the
-    # environment, so /etc/profile.d/epics-issuer.sh in the image reads the id back from
-    # there. Without it `su - <user>` loses the issuer and certificate requests fail.
-    ( . certs/issuer_ids.env
-      printf '%s' "${LAB_ISSUER}" > certs/lab_issuer
-      printf '%s' "${ML_ISSUER}"  > certs/ml_issuer )
     # compose substitutes ${LAB_ISSUER} and ${ML_ISSUER} in the file itself from .env,
     # which it reads before anything else. env_file only reaches the container, and by
     # then the substitution has already happened, so both are needed.

@@ -58,7 +58,6 @@ services:
       - idm-config:/home/idm/.config/pva/1.5
       - idm-data:/home/idm/.local/share/pva/1.5
       - ./certs:/certs:ro
-      - ./certs/lab_issuer:/etc/epics/issuer:ro
       - ./config/pvacms-lab.acf:/etc/pvacms/pvacms.acf:ro
       - ./scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro
     command: ["/usr/local/bin/start-pvacms", "lab"]
@@ -75,7 +74,6 @@ services:
     volumes:
       - testioc-config:/home/testioc/.config/pva/1.5
       - ./certs:/certs:ro
-      - ./certs/lab_issuer:/etc/epics/issuer:ro
       - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro
     command: ["/usr/local/bin/start-ioc", "testioc"]
     depends_on: [pvxs-lab-pvacms]
@@ -92,7 +90,6 @@ services:
     volumes:
       - tstioc-config:/home/tstioc/.config/pva/1.5
       - ./certs:/certs:ro
-      - ./certs/lab_issuer:/etc/epics/issuer:ro
       - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro
     command: ["/usr/local/bin/start-ioc", "tstioc"]
     depends_on: [pvxs-lab-pvacms]
@@ -110,7 +107,6 @@ services:
     volumes:
       - gateway-config:/home/gateway/.config/pva/1.5
       - ./certs:/certs:ro
-      - ./certs/lab_issuer:/etc/epics/issuer:ro
       - ./config/gateway-lab.conf:/home/gateway/gateway.conf.in:ro
       - ./config/gateway-lab.pvlist:/home/gateway/gateway.pvlist.in:ro
       - ./scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro
@@ -132,7 +128,6 @@ services:
       - ml-config:/home/idm/.config/pva/1.5
       - ml-data:/home/idm/.local/share/pva/1.5
       - ./certs:/certs:ro
-      - ./certs/ml_issuer:/etc/epics/issuer:ro
       - ./config/pvacms-ml.acf:/etc/pvacms/pvacms.acf:ro
       - ./scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro
     command: ["/usr/local/bin/start-pvacms", "ml"]
@@ -149,7 +144,6 @@ services:
     volumes:
       - ml-ioc-config:/home/mlioc/.config/pva/1.5
       - ./certs:/certs:ro
-      - ./certs/ml_issuer:/etc/epics/issuer:ro
       - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro
     command: ["/usr/local/bin/start-ioc", "mlioc"]
     depends_on: [pvxs-lab-ml]
@@ -166,7 +160,6 @@ services:
     volumes:
       - ml-gateway-config:/home/gateway/.config/pva/1.5
       - ./certs:/certs:ro
-      - ./certs/ml_issuer:/etc/epics/issuer:ro
       - ./config/gateway-ml.conf:/home/gateway/gateway.conf.in:ro
       - ./config/gateway-ml.pvlist:/home/gateway/gateway.pvlist.in:ro
       - ./scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro
@@ -187,8 +180,8 @@ services:
     volumes:
       - lab-client-config:/home/guest/.config/pva/1.5
       - ./certs:/certs:ro
-      - ./certs/lab_issuer:/etc/epics/issuer:ro
-    command: ["sleep", "infinity"]
+      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro
+    command: ["/usr/local/bin/start-shell", "guest", "operator"]
 
   # A shell outside both departments. Reaches the two gateways and nothing else, so
   # every certificate status lookup and every process variable crosses a gateway.
@@ -203,4 +196,5 @@ services:
     volumes:
       - perimeter-client-config:/home/guest/.config/pva/1.5
       - ./certs:/certs:ro
-    command: ["sleep", "infinity"]
+      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro
+    command: ["/usr/local/bin/start-shell", "guest", "operator"]
