@@ -29,10 +29,10 @@ WORKDIR ${PROJECT_HOME}
 COPY ./p4p ./p4p
 WORKDIR ${PROJECT_HOME}/p4p
 
-RUN make distclean || true && \
 # How many compiler processes to run at once. Each can take most of a gigabyte,
 # so a machine with little memory and no swap needs this lowered.
 ARG JOBS
+RUN make distclean || true && \
     make -j${JOBS:-$(nproc)} all
 
 # Create gateway user and set up config

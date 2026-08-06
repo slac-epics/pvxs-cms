@@ -73,11 +73,11 @@ RUN echo "EVENT2_HAS_OPENSSL = YES" >> CONFIG_SITE.local
 RUN echo "PVXS_ENABLE_PVACMS = YES" >> CONFIG_SITE.local
 RUN echo "PVXS_ENABLE_KRB_AUTH = YES" >> CONFIG_SITE.local
 
-# Rebuild PVXS with kerberos support
-RUN cd pvxs-cms && \
 # How many compiler processes to run at once. Each can take most of a gigabyte,
 # so a machine with little memory and no swap needs this lowered.
 ARG JOBS
+# Rebuild PVXS with kerberos support
+RUN cd pvxs-cms && \
     make -j${JOBS:-$(nproc)} all
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

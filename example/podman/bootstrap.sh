@@ -30,8 +30,15 @@ command -v docker >/dev/null || {
 export DOCKER_REGISTRY="${DOCKER_REGISTRY:-localhost}"
 export DOCKER_USERNAME="${DOCKER_USERNAME:-spva}"
 
+# An unset JOBS means "one compiler process per core". Written as an if rather than a
+# short-circuit, because under set -e a trailing && that evaluates false exits the script.
 jobs_arg=()
-[ -n "${JOBS:-}" ] && jobs_arg=(--build-arg "JOBS=${JOBS}")
+if [ -n "${JOBS:-}" ]; then
+    jobs_arg=(--build-arg "JOBS=${JOBS}")
+    echo "==> building with JOBS=${JOBS}"
+else
+    echo "==> building with one compiler process per core; set JOBS to lower it"
+fi
 
 keep_certs=no
 [ "${1:-}" = "--keep-certs" ] && keep_certs=yes
