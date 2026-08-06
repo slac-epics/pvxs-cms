@@ -24,8 +24,30 @@ only reach anything through a gateway.
 
 ## Requirements
 
-- podman and podman-compose
+- podman, podman-compose, and podman-docker (the build scripts call `docker`)
 - The four source trees checked out as siblings: `pvxs-cms`, `pvxs`, `epics-base`, `p4p`
+
+On Debian or Ubuntu:
+
+```sh
+sudo apt install -y podman podman-compose podman-docker
+```
+
+There is no display image here. Everything is verified from the command line, so the
+Phoebus and CS-Studio images the Kubernetes laboratory builds are left out - they are by
+far the largest and slowest to build, and nothing here needs them. The Kerberos and LDAP
+authenticator images are left out for the same reason: this laboratory issues certificates
+with the standard authenticator.
+
+### On a machine with little memory
+
+The build compiles EPICS, pvxs, pvxs-cms and p4p from source, and runs one compiler
+process per core by default. Each can take most of a gigabyte, so on a small machine with
+no swap the build will be killed. Lower it:
+
+```sh
+JOBS=2 ./bootstrap.sh
+```
 
 ## Getting started
 

@@ -75,6 +75,9 @@ RUN echo "PVXS_ENABLE_KRB_AUTH = YES" >> CONFIG_SITE.local
 
 # Rebuild PVXS with kerberos support
 RUN cd pvxs-cms && \
-    make -j$(nproc) all
+# How many compiler processes to run at once. Each can take most of a gigabyte,
+# so a machine with little memory and no swap needs this lowered.
+ARG JOBS
+    make -j${JOBS:-$(nproc)} all
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

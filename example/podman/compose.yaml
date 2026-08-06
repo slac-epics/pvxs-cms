@@ -45,7 +45,7 @@ services:
 
   # ---------------------------------------------------------------- lab department
   pvxs-lab-pvacms:
-    image: localhost/idm:latest
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-pvacms
     networks: [net-lab]
     env_file: [./issuer_ids.env]
@@ -63,7 +63,7 @@ services:
     command: ["/usr/local/bin/start-pvacms", "lab"]
 
   pvxs-lab-testioc:
-    image: localhost/testioc:latest
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/testioc:latest
     hostname: pvxs-lab-testioc
     networks: [net-lab]
     env_file: [./issuer_ids.env]
@@ -77,7 +77,7 @@ services:
     depends_on: [pvxs-lab-pvacms]
 
   pvxs-lab-tstioc:
-    image: localhost/tstioc:latest
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/tstioc:latest
     hostname: pvxs-lab-tstioc
     networks: [net-lab]
     env_file: [./issuer_ids.env]
@@ -92,7 +92,7 @@ services:
 
   # The only route between the lab department and the perimeter.
   pvxs-lab-gateway:
-    image: localhost/gateway:latest
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
     hostname: pvxs-lab-gateway
     networks: [net-lab, net-perimeter]
     env_file: [./issuer_ids.env]
@@ -111,7 +111,7 @@ services:
 
   # ------------------------------------------------- machine learning department
   pvxs-lab-ml:
-    image: localhost/ml:latest
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml:latest
     hostname: pvxs-lab-ml
     networks: [net-ml]
     env_file: [./issuer_ids.env]
@@ -129,7 +129,7 @@ services:
     command: ["/usr/local/bin/start-pvacms", "ml"]
 
   pvxs-lab-ml-ioc:
-    image: localhost/ml-ioc:latest
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml-ioc:latest
     hostname: pvxs-lab-ml-ioc
     networks: [net-ml]
     env_file: [./issuer_ids.env]
@@ -143,7 +143,7 @@ services:
     depends_on: [pvxs-lab-ml]
 
   pvxs-lab-ml-gateway:
-    image: localhost/gateway:latest
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
     hostname: pvxs-lab-ml-gateway
     networks: [net-ml, net-perimeter]
     env_file: [./issuer_ids.env]
@@ -163,7 +163,7 @@ services:
   # ------------------------------------------------------------------- clients
   # A shell inside the lab department. Reaches its own certificate manager directly.
   lab-client:
-    image: localhost/lab:latest
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
     hostname: lab-client
     networks: [net-lab]
     env_file: [./issuer_ids.env]
@@ -179,7 +179,7 @@ services:
   # A shell outside both departments. Reaches the two gateways and nothing else, so
   # every certificate status lookup and every process variable crosses a gateway.
   perimeter-client:
-    image: localhost/internet:latest
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/internet:latest
     hostname: perimeter-client
     networks: [net-perimeter]
     env_file: [./issuer_ids.env]
