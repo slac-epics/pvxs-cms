@@ -157,9 +157,9 @@ department's administrator approves.
 
 ```sh
 # controllers ask
-podman exec podman_pvxs-lab-testioc_1 su - testioc -c 'source ~/.testioc_bashrc; authnstd -u server'
-podman exec podman_pvxs-lab-tstioc_1  su - tstioc  -c 'source ~/.tstioc_bashrc;  authnstd -u server'
-podman exec podman_pvxs-lab-ml-ioc_1  su - mlioc   -c 'source ~/.mlioc_bashrc;   authnstd -u server'
+podman exec podman_pvxs-lab-testioc_1 su - testioc -c 'source ~/.testioc_bashrc; authnstd -u ioc'
+podman exec podman_pvxs-lab-tstioc_1  su - tstioc  -c 'source ~/.tstioc_bashrc;  authnstd -u ioc'
+podman exec podman_pvxs-lab-ml-ioc_1  su - mlioc   -c 'source ~/.mlioc_bashrc;   authnstd -u ioc'
 
 # each department approves its own
 podman exec podman_pvxs-lab-pvacms_1 bash -lc \

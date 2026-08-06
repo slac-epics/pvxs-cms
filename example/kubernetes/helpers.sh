@@ -701,15 +701,15 @@ function go_tls() {
     _tls_approve_all
 
     # -----------------------------------------------------------------------
-    echo "\n=== Step 4: IOC server certs ==="
+    echo "\n=== Step 4: IOC certs (client and server: a soft IOC links to other PVs) ==="
     # -----------------------------------------------------------------------
     local pre_ioc=$CHANGES
     # Lab IOCs: issued by / approved on the Lab (idm) PVACMS.
-    _tls_ensure_std_cert testioc testioc "-u server"
-    _tls_ensure_std_cert tstioc  tstioc  "-u server"
+    _tls_ensure_std_cert testioc testioc "-u ioc"
+    _tls_ensure_std_cert tstioc  tstioc  "-u ioc"
     _tls_approve_all idm
     # ML IOC: issued by / approved on the ML PVACMS.
-    _tls_ensure_std_cert ml-ioc  mlioc   "-u server"
+    _tls_ensure_std_cert ml-ioc  mlioc   "-u ioc"
     _tls_approve_all ml
 
     if (( CHANGES > pre_ioc )); then

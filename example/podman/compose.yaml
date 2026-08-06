@@ -39,6 +39,7 @@ volumes:
   tstioc-config:
   ml-ioc-config:
   lab-client-config:
+  ml-client-config:
   perimeter-client-config:
 
 services:
@@ -179,9 +180,30 @@ services:
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+      EPICS_PVA_NAME_SERVERS: "pvxs-lab-ml-gateway:5075"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER}"
+      PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - lab-client-config:/home/guest/.config/pva/1.5
+      - ./certs:/certs:ro
+      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro
+    command: ["/usr/local/bin/start-shell", "guest", "operator"]
+
+  # A shell inside the machine learning department, the mirror of lab-client: its own
+  # department directly, and the perimeter so it can reach the other department's gateway.
+  ml-client:
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
+    hostname: ml-client
+    networks: [net-ml, net-perimeter]
+    env_file: [./issuer_ids.env]
+    environment:
+      <<: *lab-env
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
+      EPICS_PVA_NAME_SERVERS: "pvxs-lab-gateway:5075"
+      EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER}"
+      PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    volumes:
+      - ml-client-config:/home/guest/.config/pva/1.5
       - ./certs:/certs:ro
       - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
@@ -196,6 +218,7 @@ services:
     environment:
       <<: *lab-env
       EPICS_PVA_NAME_SERVERS: "pvxs-lab-gateway:5075 pvxs-lab-ml-gateway:5075"
+      PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - perimeter-client-config:/home/guest/.config/pva/1.5
       - ./certs:/certs:ro

@@ -221,11 +221,11 @@ kinit operator@EPICS.ORG
 authnkrb
 ```
 
-or for server/IOC usage:
+or for a controller, which acts as a client as well as a server:
 
 ```sh
 kinit testioc@EPICS.ORG
-authnkrb -u server
+authnkrb -u ioc
 ```
 
 A keytab is provided and configured for the pvacms service.
@@ -530,7 +530,7 @@ so that when the gateway restarts it can connect to the upstream IOCs over TLS.
 login_to_lab testioc
 ```
 ```sh
-authnstd -u server
+authnstd -u ioc
 # Output: Keychain file created, Certificate identifier: <issuer_id>:<cert_id>
 exit
 ```
