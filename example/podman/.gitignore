@@ -1,3 +1,4 @@
 # Minted by bootstrap.sh, never committed: these are the laboratory's private keys.
 certs/
 issuer_ids.env
+.env
