@@ -11,9 +11,18 @@
 
 #include <epicsGetopt.h>
 #include <epicsThread.h>
+
+// Asking whether there is a terminal to review at, and turning echo off while a password is
+// typed, are the same two jobs on either platform but come from different headers. Neither set
+// exists on the other, so both have to be reached for conditionally.
 #if !defined(_WIN32) && !defined(_MSC_VER)
 #include <termios.h>
+#include <unistd.h>
+#else
+#include <io.h>
+#include <stdio.h>
 #endif
+
 #include <pvxs/client.h>
 #include <pvxs/log.h>
 #include <pvxs/nt.h>

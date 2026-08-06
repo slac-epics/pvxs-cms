@@ -22,7 +22,7 @@
 #include <pvxs/nt.h>
 #include <pvxs/unittest.h>
 
-#include "certlist.h"
+#include "certlistcols.h"
 #include "certreview.h"
 #include "certstatus.h"
 
@@ -40,7 +40,7 @@ struct Writes {
 
     ReviewCallbacks callbacks(const std::string &changed_id = {}, const std::string &changed_to = {}) {
         ReviewCallbacks cb;
-        cb.currentStatus = [this, changed_id, changed_to](const std::string &cert_id) -> std::string {
+        cb.currentStatus = [changed_id, changed_to](const std::string &cert_id) -> std::string {
             if (!changed_id.empty() && cert_id == changed_id) return changed_to;
             return {};  // unchanged
         };

@@ -12,7 +12,7 @@
 #include <ostream>
 #include <sstream>
 
-#include "certlist.h"
+#include "certlistcols.h"
 #include "certrequestid.h"
 
 namespace pvxs {
@@ -163,7 +163,6 @@ bool isRevocable(const std::string &status) {
 int runReview(std::vector<ReviewRow> &rows, const ReviewOptions &options, const ReviewCallbacks &callbacks, std::istream &in,
               std::ostream &out, std::ostream &err) {
     const auto eligible = [](const ReviewRow &row) { return row.ineligible_reason.empty(); };
-    const auto eligible_count = static_cast<size_t>(std::count_if(rows.begin(), rows.end(), eligible));
 
     if (rows.empty()) {
         out << "No certificates to review.\n";
