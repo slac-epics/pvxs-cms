@@ -235,17 +235,21 @@ A keytab is provided and configured for the pvacms service.
 All three pvacms instances share the same issuer_id (derived from the shared CA keychain).
 The `????????` placeholders represent 8-character hex IDs generated at runtime.
 
-### IDM, ML, and IT pvacms
-- CERT:CREATE
-- CERT:CREATE:????????
-- CERT:ISSUER
-- CERT:ISSUER:????????
-- CERT:ROOT
-- CERT:ROOT:????????
+### The two certificate managers (idm and ml)
+
+Each serves these for its own issuer only. The `????????` is that department's issuer id.
+
+- CERT:CREATE and CERT:CREATE:????????
+- CERT:ISSUER and CERT:ISSUER:????????
+- CERT:ROOT and CERT:ROOT:????????
 - CERT:STATUS:????????:*
-- CERT:CLUSTER:CTRL:????????
-- CERT:CLUSTER:CTRL:????????:????????
-- CERT:CLUSTER:SYNC:????????:????????
+- CERT:LIST and CERT:LIST:????????                    the one-shot listing call
+- CERT:LIST:ALL and CERT:LIST:????????:ALL            every certificate
+- CERT:LIST:EXPIRING and CERT:LIST:????????:EXPIRING  those inside the expiry window
+- CERT:LIST:PENDING_APPROVAL and CERT:LIST:????????:PENDING_APPROVAL  administrators only
+
+Only the issuer-qualified form is forwarded by a gateway: two certificate managers both
+answer the plain name, and it carries no issuer component to route on.
 
 ### testioc
 - test:aiExample
@@ -774,37 +778,268 @@ pvxinfo -S ml:aiExample
 exit
 ```
 
+## Exercising the FY26 features
+
+Everything below is run from a shell on your machine. Two shorthands first: the issuer ids,
+and an administrator wrapper, because a decision has to be made over a secure transport
+with the administrator's certificate.
+
+```sh
+export LAB=$(kubectl -n pvxs-lab get cm pvxs-lab-issuer-ids -o jsonpath='{.data.LAB_ISSUER}')
+export ML=$(kubectl  -n pvxs-lab get cm pvxs-lab-issuer-ids -o jsonpath='{.data.ML_ISSUER}')
+echo "lab=$LAB  machine learning=$ML"
+
+admin() {   # admin <lab|ml> <pvxcert arguments...>
+    local d=idm; [ "$1" = ml ] && d=ml; shift
+    kubectl -n pvxs-lab exec "deploy/pvxs-lab-$d" -c "$d" -- bash -c \
+      "su - admin -c 'source ~/.admin_bashrc 2>/dev/null
+                      export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076
+                      PVXS_LOG=none pvxcert $*'"
+}
+```
+
+### 1. Two certificate managers, one per department
+
+They are independent. Each holds only the certificates it issued.
+
+```sh
+admin lab -l
+admin ml  -l
+```
+
+Every identifier the first lists begins with `$LAB`, every one the second lists begins with
+`$ML`. The issuer half of an `<issuer>:<serial>` identifier says which department to ask.
+
+Which department a pod asks is decided by where it runs:
+
+```sh
+for a in testioc ml-ioc gateway ml-gateway; do
+  printf "%-12s " "$a"
+  kubectl -n pvxs-lab exec deploy/pvxs-lab-$a -- bash -c 'echo $EPICS_PVA_AUTH_ISSUER'
+done
+```
+
+### 2. Crossing a zone boundary is only possible through a gateway
+
+Inside a zone, directly:
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- \
+  su - operator -c 'source ~/.operator_bashrc; pvxget test:aiExample'
+```
+
+From another zone, across a gateway:
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-internet -- \
+  su - operator -c 'source ~/.internet_operator_bashrc; pvxget test:aiExample'
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-internet -- \
+  su - operator -c 'source ~/.internet_operator_bashrc; pvxget ml:aiExample'
+```
+
+The direct route does not exist, and NetworkPolicy is what stops it:
+
+```sh
+kubectl -n pvxs-lab get networkpolicy
+kubectl -n pvxs-lab describe networkpolicy pvxs-lab-ml-pvacms-ingress
+```
+
+### 3. One facility root, so each department trusts the other's certificates
+
+Both intermediates are signed by one facility root that every pod holds, so a certificate
+issued by either department is trusted laboratory-wide. Authorisation stays per
+department.
+
+```sh
+# the two intermediates, and the root above them
+kubectl -n pvxs-lab get cm pvxs-lab-pvacms-acf-idm -o jsonpath='{.data.pvacms\.acf}' | head -4
+kubectl -n pvxs-lab get cm pvxs-lab-pvacms-acf-ml  -o jsonpath='{.data.pvacms\.acf}' | head -4
+```
+
+An input or output controller's access file grants cross-zone writes on the **other**
+department's authority, which only works because both chain to the shared root:
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-ml-ioc -- cat /home/mlioc/mlioc.acf
+#   RULE(1,WRITE,TRAPWRITE) { UAG(OPERATORS) AUTHORITY(AUTH_LAB) PROTOCOL(TLS) METHOD(X509) }
+```
+
+To see it end to end, have an internet-zone operator get a certificate from one department
+and use it against the other. The request itself crosses a gateway, because the internet
+zone cannot reach a certificate manager directly:
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-internet -- \
+  su - operator -c "source ~/.internet_operator_bashrc; authnstd -u client --issuer $ML"
+admin ml --review-pending --all approve --yes
+
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-internet -- \
+  su - operator -c 'source ~/.internet_operator_bashrc; pvxput test:spec 7; pvxget test:spec'
+```
+
+The write is authorised on `AUTHORITY(EPICS_CA)`, the shared root, so a certificate from
+either department qualifies. Without a certificate the same write is refused by the
+gateway.
+
+Cross-department certificate **status** takes the same path: each gateway forwards its own
+department's `CERT:STATUS` keyed by issuer id, so the far side can check a certificate
+against the manager that issued it.
+
+```sh
+for gw in gateway ml-gateway; do
+  echo "== $gw"; kubectl -n pvxs-lab exec deploy/pvxs-lab-$gw -c $gw -- grep CERT: /home/gateway/gateway.pvlist
+done
+```
+
+### 4. The request identifier an administrator checks
+
+The creation request travels in clear text, so the administrator compares what is on screen
+against what the requester sent.
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- \
+  su - guest -c 'source ~/.guest_bashrc; authnstd -u client'
+#   email this Certificate Request ID: 4KFD-Z215-WGFD-977M, to your SPVA administrator
+
+admin lab --review-pending < /dev/null
+#     Request ID     : 4KFD-Z215-WGFD-977M
+```
+
+### 5. Listing, and 6. filtering
+
+```sh
+admin lab -l
+admin lab -l --where "name:gateway"
+admin lab -l --where "state:VALID"
+admin lab -l --where "type:SERVER"
+admin lab -l --where "name:testioc and state:VALID"
+admin lab -l --where "name:testioc or name:tstioc"
+admin lab -l --where "expires_before:30d and state:VALID"
+admin lab --expiring 30d
+```
+
+Dates are year first in one fixed-width layout, so they sort and compare as plain text and
+a partial bound such as `2026-07` selects by prefix.
+
+The same data is served as standing views, named by issuer so two certificate managers on
+one network are never ambiguous:
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- \
+  su - operator -c "source ~/.operator_bashrc; pvxmonitor CERT:LIST:${LAB}:ALL"
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- \
+  su - operator -c "source ~/.operator_bashrc; pvxmonitor CERT:LIST:${LAB}:EXPIRING"
+```
+
+### 7. Approving, in batches or one at a time
+
+```sh
+admin lab --review-pending                        # one at a time
+admin lab --review-pending --all approve --yes    # the whole batch
+admin lab -A "${LAB}:0123456789"                  # one known certificate
+```
+
+Answer `approve`, `deny`, `skip`, `stop` or `cancel`. `s` is refused because it could mean
+`skip` or `stop`. Nothing is written until one confirmation, which defaults to no, and
+every decision is re-read just before it so a certificate that changed since the listing is
+dropped rather than written over.
+
+With no terminal and no `--all`, the listing is printed, nothing is written, exit code 3:
+
+```sh
+admin lab --review-pending < /dev/null ; echo "exit $?"
+```
+
+### 8. Denying and revoking
+
+A denial writes `REVOKED`, and the review says so before you confirm.
+
+```sh
+admin lab --review-pending --all deny --yes
+admin lab --review-issued --where "state:VALID"                # one at a time
+admin lab --review-issued --where "name:testioc" --all --yes   # the whole batch
+admin lab -R "${LAB}:0123456789"
+```
+
+Certificates the server would refuse are listed with the reason and never offered - a
+status outside `PENDING_APPROVAL`, `PENDING` and `VALID`, and your own certificate:
+
+```sh
+admin lab --review-issued --where "state:VALID" < /dev/null
+#     Not offered    : status REVOKED cannot be revoked
+#     Not offered    : this is your own certificate, which you cannot revoke
+```
+
+### 9. Only an administrator may decide
+
+```sh
+kubectl -n pvxs-lab get cm pvxs-lab-pvacms-acf-idm -o jsonpath='{.data.pvacms\.acf}'
+#   RULE(1,WRITE) { UAG(CMS_ADMIN) AUTHORITY(CMS_AUTH) PROTOCOL(TLS) METHOD("x509") }
+```
+
+All four clauses matter. An ordinary user is refused:
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- su - guest -c \
+  "source ~/.guest_bashrc; pvxput CERT:STATUS:${LAB}:0123456789 state=REVOKED"
+#   ERROR ... not authorized ... by ca/guest@...
+```
+
+`ca/guest` says it all: no certificate was presented, so the rule could not match.
+
+The awaiting-decision view is gated at channel creation, while the open views are not:
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- su - guest -c \
+  "source ~/.guest_bashrc; pvxmonitor CERT:LIST:${LAB}:PENDING_APPROVAL"   # refused
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-lab -- su - guest -c \
+  "source ~/.guest_bashrc; pvxmonitor CERT:LIST:${LAB}:ALL"                # served
+```
+
+Neither gateway forwards the awaiting-decision view or a status write, because a gateway
+makes its upstream connection as itself. Decisions are made from inside the department:
+
+```sh
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cs-studio-internet -- su - operator -c \
+  "source ~/.internet_operator_bashrc; pvxmonitor CERT:LIST:${LAB}:PENDING_APPROVAL"  # resolves to nothing
+```
+
+### 10. The certificate administration display
+
+Each zone has a desktop carrying nothing but certificate administration.
+
+```sh
+cert_admin_lab        # then http://localhost:8083, log in as certadmin
+cert_admin_ml         # then http://localhost:8084, log in as mlcertadmin
+cert_admin_internet   # then http://localhost:8085, log in as operator
+```
+
+Inside, run `cs-studio-certificates`. It opens against the department the running user
+belongs to. `certadmin` administers the laboratory department and `mlcertadmin` the machine
+learning one, and neither is an administrator of the other's - each certificate manager's
+authority clause names its own intermediate.
+
+The internet zone desktop shows issued certificates without acting on them, and says so on
+screen, for the reason in section 9.
+
 ## Certificate management PVs
 
-- `CERT:CREATE` and `CERT:STATUS` are only accessible through the lab gateway's internet server (:5275/:5276) for internet clients. 
-- `CERT:CLUSTER` PVs are only accessible through the cross-zone servers (:5175/:5176) on both gateways.
-- Inside the lab and ML zones, PVACMS `CERT:*` PVs are accessed directly from the local PVACMS via `EPICS_PVA_ADDR_LIST`.
+Each certificate manager serves, under the configured prefix:
 
-From the internet:
-```sh
-login_from_internet operator
-kinit operator@EPICS.ORG
-authnkrb
-pvxget CERT:CREATE
-# Expected: accessible via gateway:5075
+| Name | What it is | Who may read it |
+|---|---|---|
+| `CERT:CREATE:<issuer>` | the certificate creation call | anyone |
+| `CERT:STATUS:<issuer>:<serial>` | one certificate's status | anyone |
+| `CERT:LIST:<issuer>` | the one-shot listing call | anyone |
+| `CERT:LIST:<issuer>:ALL` | every certificate | anyone |
+| `CERT:LIST:<issuer>:EXPIRING` | those inside the expiry window | anyone |
+| `CERT:LIST:<issuer>:PENDING_APPROVAL` | awaiting a decision | administrators only |
 
-pvxget CERT:CLUSTER:CTRL:????????
-# Expected: NOT accessible (CERT:CLUSTER not in internet pvlist)
-exit
-```
+Each is registered under a plain name as well, for a network with a single certificate
+manager. Only the issuer-qualified form is forwarded by a gateway, because two certificate
+managers both answer the plain name and there is no issuer component to route on.
 
-Inside the lab, PVACMS PVs are accessed directly (not through the gateway):
-```sh
-login_to_lab operator
-pvxget CERT:CREATE
-# Expected: direct from pvacms via ADDR_LIST
-exit
-```
-
-Inside the ML zone, PVACMS PVs are also accessed directly (not through ml-gateway):
-```sh
-login_to_ml mloperator
-pvxget CERT:CREATE
-# Expected: direct from ml pvacms via ADDR_LIST
-exit
-```
+Inside a zone these are reached directly from the local certificate manager through
+`EPICS_PVA_ADDR_LIST`. From another zone they are reached through that department's
+gateway, which forwards `CERT:CREATE`, `CERT:STATUS` and the two open views for its own
+issuer only.
