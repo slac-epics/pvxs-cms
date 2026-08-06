@@ -11,6 +11,7 @@ demonstrating can be shown and checked directly.
 - [What it demonstrates](#what-it-demonstrates)
 - [Installation](#installation)
 - [Bringing it up](#bringing-it-up)
+- [Say it once: where, and who](#say-it-once-where-and-who)
 - [What works with no certificates at all](#first-what-works-with-no-certificates-at-all)
 - [1. Two certificate managers, one per department](#1-two-certificate-managers-one-per-department)
 - [2. Crossing a boundary is only possible through a gateway](#2-crossing-a-boundary-is-only-possible-through-a-gateway)
@@ -79,15 +80,44 @@ JOBS=2 ./bootstrap.sh
 ```
 
 `bootstrap.sh` writes `.env` and `issuer_ids.env`, holding the two departments' issuer ids.
-Keep them to hand:
+
+### Say it once: where, and who
+
+Every command below runs inside a container, as a particular account, and both facts are
+the point of the demonstration. Rather than repeat a long `podman exec` line each time,
+source the shorthands once:
 
 ```sh
-cat .env
-#   LAB_ISSUER=ba71d9e3
-#   ML_ISSUER=2328300d
-export LAB=$(grep LAB_ISSUER .env | cut -d= -f2)
-export ML=$(grep ML_ISSUER  .env | cut -d= -f2)
+source ./helpers.sh
 ```
+
+That defines `run_in`, and reads the two issuer ids into `$LAB` and `$ML`:
+
+```
+run_in <place> as <person> [without a certificate] [--show] <command...>
+```
+
+| Place | Is |
+|---|---|
+| `lab`, `ml` | a workstation inside a department |
+| `perimeter` | a workstation outside both, reaching only the two gateways |
+| `lab-manager`, `ml-manager` | a department's certificate manager |
+| `testioc`, `tstioc`, `ml-ioc` | a controller |
+| `gateway`, `ml-gateway` | a department's boundary |
+
+The people are real accounts on those machines: `guest` and `operator` on a workstation,
+`admin` on a certificate manager, and a service's own account such as `testioc` or
+`gateway`. So `run_in lab as guest pvxget test:aiExample` reads as what it does.
+
+Nothing is hidden. Any command can print the `podman exec` line it stands for instead of
+running it, which is also how to lift one of these examples into a real deployment:
+
+```sh
+run_in lab as guest --show pvxget test:aiExample
+#   podman exec --user guest podman_lab-client_1 bash -lc '...'
+```
+
+`run_in` on its own lists the places and people; `lab_status` shows what is running.
 
 ### First, what works with no certificates at all
 
@@ -97,21 +127,21 @@ baseline to come back to when something later looks broken.
 **Reading works everywhere, over plain TCP, with no certificate.** Inside a department:
 
 ```sh
-podman exec podman_lab-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
+run_in lab as guest without a certificate pvxget test:aiExample
 ```
 
 In the peer department, through its gateway:
 
 ```sh
-podman exec podman_lab-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxget ml:aiExample'
-podman exec podman_ml-client_1  bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
+run_in lab as guest without a certificate pvxget ml:aiExample
+run_in ml  as guest without a certificate pvxget test:aiExample
 ```
 
 And from outside both departments, through a gateway either way:
 
 ```sh
-podman exec podman_perimeter-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
-podman exec podman_perimeter-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxget ml:aiExample'
+run_in perimeter as guest without a certificate pvxget test:aiExample
+run_in perimeter as guest without a certificate pvxget ml:aiExample
 ```
 
 Read is deliberately open, to anyone, in any zone. Certificates are not about hiding
@@ -122,15 +152,15 @@ write for, and it still requires a certificate presented over TLS by an operator
 
 ```sh
 # inside the department, refused by the controller itself
-podman exec podman_lab-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
+run_in lab as guest without a certificate pvxput test:spec 3
 #   ERROR ... Put not permitted
 
 # from the peer department, refused earlier, by the lab gateway
-podman exec podman_ml-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
+run_in ml as guest without a certificate pvxput test:spec 3
 #   ERROR ... Put permission denied by gateway
 
 # from outside both departments, refused the same way
-podman exec podman_perimeter-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
+run_in perimeter as guest without a certificate pvxput test:spec 3
 #   ERROR ... Put permission denied by gateway
 ```
 
@@ -143,7 +173,7 @@ Any other process variable is refused the same way, because every write rule in 
 laboratory names `PROTOCOL(TLS)` and `METHOD(X509)`:
 
 ```sh
-podman exec podman_lab-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxput test:aiExample 3'
+run_in lab as guest without a certificate pvxput test:aiExample 3
 #   ERROR ... Put not permitted
 ```
 
@@ -157,43 +187,33 @@ department's administrator approves.
 
 ```sh
 # controllers ask
-podman exec podman_pvxs-lab-testioc_1 su - testioc -c 'source ~/.testioc_bashrc; authnstd -u ioc'
-podman exec podman_pvxs-lab-tstioc_1  su - tstioc  -c 'source ~/.tstioc_bashrc;  authnstd -u ioc'
-podman exec podman_pvxs-lab-ml-ioc_1  su - mlioc   -c 'source ~/.mlioc_bashrc;   authnstd -u ioc'
+run_in testioc as testioc authnstd -u ioc
+run_in tstioc  as tstioc  authnstd -u ioc
+run_in ml-ioc  as mlioc   authnstd -u ioc
 
 # each department approves its own
-podman exec podman_pvxs-lab-pvacms_1 bash -lc \
-  'export EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12
-   export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076
-   pvxcert --review-pending --all approve --yes'
-podman exec podman_pvxs-lab-ml_1 bash -lc \
-  'export EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12
-   export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076
-   pvxcert --review-pending --all approve --yes'
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+run_in ml-manager  as admin pvxcert --review-pending --all approve --yes
 
-# gateways last, then approve them the same way
-podman exec podman_pvxs-lab-gateway_1    su - gateway -c 'source ~/.gateway_bashrc; authnstd -u ioc'
-podman exec podman_pvxs-lab-ml-gateway_1 su - gateway -c 'source ~/.gateway_bashrc; authnstd -u ioc -n ml-gateway'
+# gateways last, and they need approving too
+run_in gateway    as gateway authnstd -u ioc
+run_in ml-gateway as gateway authnstd -u ioc -n ml-gateway
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+run_in ml-manager  as admin pvxcert --review-pending --all approve --yes
 ```
 
-Because that administrator command is long, the rest of this document abbreviates it:
+Check that all seven arrived before going on. A gateway without a certificate refuses every
+write on the boundary, which looks like a broken rule rather than a missing certificate:
 
 ```sh
-admin() {   # admin <lab|ml> <pvxcert arguments...>   - the department's administrator
-    local c=podman_pvxs-lab-pvacms_1; [ "$1" = ml ] && c=podman_pvxs-lab-ml_1; shift
-    podman exec "$c" bash -lc \
-      "export EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12
-       export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076
-       PVXS_LOG=none pvxcert $*"
-}
-
-guest() {   # guest <lab|ml> <pvxcert arguments...>   - an ordinary user, no certificate
-    local c=podman_lab-client_1; [ "$1" = ml ] && c=podman_ml-client_1; shift
-    podman exec "$c" bash -c "EPICS_PVA_TLS_KEYCHAIN= PVXS_LOG=none pvxcert $*"
-}
+run_in lab-manager as admin pvxcert -l --where "state:VALID"
+run_in ml-manager  as admin pvxcert -l --where "state:VALID"
 ```
 
-Run the same command through both to see what an identity is worth.
+Note that the administrator is `run_in lab-manager`, not `run_in lab`. That identity lives
+beside the certificate manager and is presented to it over the secure port on the same
+machine; a workstation in the lab department is a different place, with different accounts.
+Run the same listing as `admin` and as `guest` to see what the identity is worth.
 
 **Then restart the controllers, and after them the gateways.** Order matters, and both
 steps are needed:
@@ -208,7 +228,7 @@ arrived, so until it restarts it serves plain traffic only - it listens on 5075 
 the secure port:
 
 ```sh
-podman exec podman_pvxs-lab-testioc_1 ss -lnt | grep 507
+run_in testioc as testioc ss -lnt | grep 507
 #   before: *:5075          after: *:5075 and *:5076
 ```
 
@@ -224,8 +244,8 @@ They are independent. Each holds only what it issued, and neither knows about th
 certificates.
 
 ```sh
-admin lab -l
-admin ml  -l
+run_in lab-manager as admin pvxcert -l
+run_in ml-manager  as admin pvxcert -l
 ```
 
 The certificate identifiers make it plain: everything the first lists begins with
@@ -236,8 +256,8 @@ Which department a service asks is decided by where it runs, not by which manage
 first. Each container carries its own department's issuer id:
 
 ```sh
-podman exec podman_pvxs-lab-testioc_1 su - testioc -c 'echo $EPICS_PVA_AUTH_ISSUER'   # lab
-podman exec podman_pvxs-lab-ml-ioc_1  su - mlioc   -c 'echo $EPICS_PVA_AUTH_ISSUER'   # machine learning
+run_in testioc as testioc printenv EPICS_PVA_AUTH_ISSUER   # lab
+run_in ml-ioc  as mlioc   printenv EPICS_PVA_AUTH_ISSUER   # machine learning
 ```
 
 ## 2. Crossing a boundary is only possible through a gateway
@@ -245,29 +265,29 @@ podman exec podman_pvxs-lab-ml-ioc_1  su - mlioc   -c 'echo $EPICS_PVA_AUTH_ISSU
 Inside a department, a client talks to its controllers directly:
 
 ```sh
-podman exec podman_lab-client_1 bash -lc 'source ~/.guest_bashrc; pvxget test:aiExample'
+run_in lab as guest pvxget test:aiExample
 ```
 
 From outside both departments, the same read has to cross a gateway, and does:
 
 ```sh
-podman exec podman_perimeter-client_1 bash -lc 'source ~/.guest_bashrc; pvxget test:aiExample'
-podman exec podman_perimeter-client_1 bash -lc 'source ~/.guest_bashrc; pvxget ml:aiExample'
+run_in perimeter as guest pvxget test:aiExample
+run_in perimeter as guest pvxget ml:aiExample
 ```
 
 And a lab client reaching the other department goes through that department's gateway:
 
 ```sh
-podman exec podman_lab-client_1 bash -lc 'source ~/.guest_bashrc; pvxget ml:aiExample'
+run_in lab as guest pvxget ml:aiExample
 ```
 
 A gateway is the only route. Every direct approach is refused:
 
 ```sh
-podman exec podman_lab-client_1       getent hosts pvxs-lab-ml        # other department's manager
-podman exec podman_lab-client_1       getent hosts pvxs-lab-ml-ioc    # other department's controller
-podman exec podman_perimeter-client_1 getent hosts pvxs-lab-pvacms    # a certificate manager
-podman exec podman_perimeter-client_1 getent hosts pvxs-lab-ml
+run_in lab       as guest getent hosts pvxs-lab-ml        # other department's manager
+run_in lab       as guest getent hosts pvxs-lab-ml-ioc    # other department's controller
+run_in perimeter as guest getent hosts pvxs-lab-pvacms    # a certificate manager
+run_in perimeter as guest getent hosts pvxs-lab-ml
 ```
 
 podman enforces the separation itself: a container reaches only the networks it is
@@ -277,7 +297,7 @@ What a gateway carries is exactly what its list names - its department's control
 its department's certificate traffic keyed by issuer id:
 
 ```sh
-podman exec podman_pvxs-lab-gateway_1    cat /home/gateway/gateway.pvlist
+run_in gateway as gateway cat /home/gateway/gateway.pvlist
 #   test:.* ALLOW                                 its controllers, readable
 #   tst:.* ALLOW
 #   test:spec ALLOW SPECIAL                       writable, to a certificate from either department
@@ -285,7 +305,7 @@ podman exec podman_pvxs-lab-gateway_1    cat /home/gateway/gateway.pvlist
 #   CERT:STATUS:<lab>(?::.*)? ALLOW CERT_STATUS   check one it issued
 #   CERT:LIST:<lab>:ALL ALLOW CERT_STATUS         the two open views
 #   CERT:LIST:<lab>:EXPIRING ALLOW CERT_STATUS
-podman exec podman_pvxs-lab-ml-gateway_1 cat /home/gateway/gateway.pvlist
+run_in ml-gateway as gateway cat /home/gateway/gateway.pvlist
 ```
 
 Each names its **own** issuer only, so a request for the other department's certificates is
@@ -301,20 +321,18 @@ certificate. It cannot reach that certificate manager, so the request travels th
 machine learning gateway:
 
 ```sh
-podman exec --user operator podman_perimeter-client_1 bash -lc \
-  "source ~/.operator_bashrc; authnstd -u client --issuer ${ML}"
-admin ml --review-pending --all approve --yes
+run_in perimeter  as operator authnstd -u client --issuer ${ML}
+run_in ml-manager as admin    pvxcert --review-pending --all approve --yes
 ```
 
 That client now holds a **machine-learning-issued** certificate. It uses it to write to a
 **lab** controller, through the **lab** gateway:
 
 ```sh
-podman exec --user operator podman_perimeter-client_1 bash -lc \
-  'source ~/.operator_bashrc
-   export EPICS_PVA_TLS_KEYCHAIN=/home/operator/.config/pva/1.5/client.p12
-   pvxput test:spec 7
-   pvxget test:spec'
+run_in perimeter as operator <<'EOF'
+    pvxput test:spec 7
+    pvxget test:spec
+EOF
 ```
 
 The write succeeds. For that to happen, every one of these had to hold:
@@ -331,14 +349,14 @@ process variables marked `ALLOW SPECIAL` in its list, and only to
 `UAG(SPECIAL_USERS)` over TLS with a certificate:
 
 ```sh
-podman exec podman_pvxs-lab-gateway_1 cat /home/gateway/gateway.acf
-podman exec podman_pvxs-lab-gateway_1 cat /home/gateway/gateway.pvlist
+run_in gateway as gateway cat /home/gateway/gateway.acf
+run_in gateway as gateway cat /home/gateway/gateway.pvlist
 ```
 
 A certificate from the wrong department, or none at all, is refused:
 
 ```sh
-podman exec podman_perimeter-client_1 bash -lc 'source ~/.guest_bashrc; pvxput test:spec 9'
+run_in perimeter as guest pvxput test:spec 9
 #   Put permission denied by gateway
 ```
 
@@ -349,14 +367,14 @@ to compare what is on screen against what the requester sent. `authnstd` prints 
 identifier for the requester to quote:
 
 ```sh
-podman exec podman_lab-client_1 bash -lc 'source ~/.guest_bashrc; authnstd -u client'
+run_in lab as guest authnstd -u client
 #   email this Certificate Request ID: 4KFD-Z215-WGFD-977M, to your SPVA administrator
 ```
 
 The administrator sees the same identifier, in the same grouping, against the request:
 
 ```sh
-admin lab --review-pending < /dev/null
+run_in lab-manager as admin pvxcert --review-pending < /dev/null
 #     Subject        : CN=guest,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
 #     Request ID     : 4KFD-Z215-WGFD-977M
@@ -365,13 +383,13 @@ admin lab --review-pending < /dev/null
 It is also a column in the listing:
 
 ```sh
-admin lab -l
+run_in lab-manager as admin pvxcert -l
 ```
 
 ## 5. Listing certificates
 
 ```sh
-admin lab -l
+run_in lab-manager as admin pvxcert -l
 ```
 
 Every certificate the department has issued, with its type, subject, status, dates and
@@ -381,7 +399,7 @@ they sort and compare as plain text.
 **An ordinary user can list too, with no certificate at all:**
 
 ```sh
-guest lab -l
+run_in lab as guest without a certificate pvxcert -l
 ```
 
 Both see the same rows - what a department has issued is not a secret, and an operator
@@ -389,8 +407,8 @@ wanting to know whether their certificate arrived should not need an administrat
 difference is the **request identifier**, which is blank for everyone but an administrator:
 
 ```sh
-admin lab -l | awk '{print $NF}' | tail -n +2    # identifiers present
-guest lab -l | awk '{print $NF}' | tail -n +2    # blank
+run_in lab-manager as admin pvxcert -l | awk '{print $NF}' | tail -n +2    # identifiers present
+run_in lab as guest without a certificate pvxcert -l | awk '{print $NF}' | tail -n +2    # blank
 ```
 
 That identifier is what the requester quotes to prove a request is theirs, so it is shown
@@ -400,8 +418,8 @@ The same listing is served as standing views a client can subscribe to, named by
 that two certificate managers on one network are never ambiguous:
 
 ```sh
-podman exec podman_lab-client_1 bash -lc "source ~/.guest_bashrc; pvxmonitor CERT:LIST:${LAB}:ALL"
-podman exec podman_lab-client_1 bash -lc "source ~/.guest_bashrc; pvxmonitor CERT:LIST:${LAB}:EXPIRING"
+run_in lab as guest pvxmonitor CERT:LIST:${LAB}:ALL
+run_in lab as guest pvxmonitor CERT:LIST:${LAB}:EXPIRING
 ```
 
 Those two are open to everyone. The third is not - see section 9.
@@ -411,13 +429,13 @@ Those two are open to everyone. The third is not - see section 9.
 The expression is meant to be sayable aloud.
 
 ```sh
-admin lab -l --where "name:gateway"
-admin lab -l --where "state:VALID"
-admin lab -l --where "type:IOC"
-admin lab -l --where "name:testioc and state:VALID"
-admin lab -l --where "name:testioc or name:tstioc"
-admin lab -l --where "expires_before:30d and state:VALID"
-admin lab --expiring 30d
+run_in lab-manager as admin pvxcert -l --where "name:gateway"
+run_in lab-manager as admin pvxcert -l --where "state:VALID"
+run_in lab-manager as admin pvxcert -l --where "type:IOC"
+run_in lab-manager as admin pvxcert -l --where "name:testioc and state:VALID"
+run_in lab-manager as admin pvxcert -l --where "name:testioc or name:tstioc"
+run_in lab-manager as admin pvxcert -l --where "expires_before:30d and state:VALID"
+run_in lab-manager as admin pvxcert -l --expiring 30d
 ```
 
 ### The syntax, in full
@@ -484,7 +502,7 @@ needs parsing.
 Answer `approve`, `deny`, `skip`, `stop` or `cancel`:
 
 ```sh
-admin lab --review-pending
+run_in lab-manager as admin pvxcert --review-pending
 ```
 
 `s` is refused, because it could mean `skip` or `stop`. `a`, `d`, `r` and `c` are accepted.
@@ -495,8 +513,8 @@ dropped and reported rather than written over.
 **The whole batch**, without being asked:
 
 ```sh
-admin lab --review-pending --all approve --yes
-admin lab --review-pending --all deny --yes
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+run_in lab-manager as admin pvxcert --review-pending --all deny --yes
 ```
 
 `--all` decides every listed certificate; `--yes` answers the final confirmation. Together
@@ -506,8 +524,8 @@ about it.
 **One known certificate**, when you already have its identifier:
 
 ```sh
-admin lab -A "${LAB}:0123456789"      # approve
-admin lab -D "${LAB}:0123456789"      # deny
+run_in lab-manager as admin pvxcert -A "${LAB}:0123456789"      # approve
+run_in lab-manager as admin pvxcert -D "${LAB}:0123456789"      # deny
 ```
 
 With no terminal to read answers from and no `--all`, the listing is printed, nothing is
@@ -515,7 +533,7 @@ written, and the exit code is 3 - asking for an interactive run with nothing abl
 is a command line mistake rather than something to guess at:
 
 ```sh
-admin lab --review-pending < /dev/null ; echo "exit $?"
+run_in lab-manager as admin pvxcert --review-pending < /dev/null ; echo "exit $?"
 #   exit 3
 ```
 
@@ -528,15 +546,15 @@ A denial is not a separate state: the certificate manager writes `REVOKED`, and 
 shows that before you confirm.
 
 ```sh
-admin lab --review-pending --all deny --yes
+run_in lab-manager as admin pvxcert --review-pending --all deny --yes
 ```
 
 Revocation works over the issued certificates, narrowed by the same filter:
 
 ```sh
-admin lab --review-issued --where "state:VALID"                 # one at a time
-admin lab --review-issued --where "name:testioc" --all --yes    # the whole batch
-admin lab -R "${LAB}:0123456789"                                # one known certificate
+run_in lab-manager as admin pvxcert --review-issued --where "state:VALID"                 # one at a time
+run_in lab-manager as admin pvxcert --review-issued --where "name:testioc" --all --yes    # the whole batch
+run_in lab-manager as admin pvxcert -R "${LAB}:0123456789"                                # one known certificate
 ```
 
 Only certificates that can actually be revoked are offered. The rest are listed with the
@@ -544,7 +562,7 @@ reason and never asked about - a status outside `PENDING_APPROVAL`, `PENDING` an
 and your own certificate, which you may not revoke:
 
 ```sh
-admin lab --review-issued --where "state:VALID" < /dev/null
+run_in lab-manager as admin pvxcert --review-issued --where "state:VALID" < /dev/null
 #     Not offered    : status REVOKED cannot be revoked
 #     Not offered    : this is your own certificate, which you cannot revoke
 ```
@@ -557,7 +575,7 @@ shown against the certificate it belongs to, and a partly successful batch exits
 The administrator write rule names four things, and all of them are load bearing:
 
 ```sh
-podman exec podman_pvxs-lab-pvacms_1 cat /etc/pvacms/pvacms.acf
+run_in lab-manager as idm cat /etc/pvacms/pvacms.acf
 #   RULE(1,WRITE) {
 #       UAG(CMS_ADMIN)        who
 #       AUTHORITY(CMS_AUTH)   issued by this department, not the other one
@@ -570,12 +588,12 @@ An ordinary user may look at everything and decide nothing. The same review comm
 both ways shows exactly where the line falls:
 
 ```sh
-admin lab --review-pending < /dev/null
+run_in lab-manager as admin pvxcert --review-pending < /dev/null
 #     Subject        : CN=operator,O=lab-client,C=US
 #     Status         : PENDING_APPROVAL
 #     Request ID     : A0MP-TAKG-JG1P-YJED
 
-guest lab --review-pending < /dev/null
+run_in lab as guest without a certificate pvxcert --review-pending < /dev/null
 #     Subject        : CN=operator,O=lab-client,C=US
 #     Status         : PENDING_APPROVAL
 #     Request ID     : (none)
@@ -586,11 +604,10 @@ someone confirm it is the request they were sent is not. And an attempt to act i
 outright:
 
 ```sh
-guest lab --review-issued --where "state:VALID" --all --yes
+run_in lab as guest without a certificate pvxcert --review-issued --where "state:VALID" --all --yes
 #   ... FAILED: REVOKED operation not authorized on ba71d9e3:... by ca/guest@...
 
-podman exec podman_lab-client_1 bash -c \
-  "EPICS_PVA_TLS_KEYCHAIN= pvxput CERT:STATUS:${LAB}:0123456789 state=REVOKED"
+run_in lab as guest without a certificate pvxput CERT:STATUS:${LAB}:0123456789 state=REVOKED
 #   ERROR ... REVOKED operation not authorized ... by ca/guest@...
 ```
 
@@ -601,14 +618,14 @@ The view of certificates **awaiting a decision** is gated the same way, at chann
 creation:
 
 ```sh
-podman exec podman_lab-client_1 bash -lc "source ~/.guest_bashrc; pvxmonitor CERT:LIST:${LAB}:PENDING_APPROVAL"
+run_in lab as guest pvxmonitor CERT:LIST:${LAB}:PENDING_APPROVAL
 #   Server ... refuses channel to 'CERT:LIST:ba71d9e3:PENDING_APPROVAL' : Refused to create Channel
 ```
 
 while the open views are served to the same user without complaint:
 
 ```sh
-podman exec podman_lab-client_1 bash -lc "source ~/.guest_bashrc; pvxmonitor CERT:LIST:${LAB}:ALL"
+run_in lab as guest pvxmonitor CERT:LIST:${LAB}:ALL
 ```
 
 Neither gateway forwards the awaiting-decision view or a certificate status write, because
@@ -655,12 +672,12 @@ the shell. A login shell resets the environment; the start scripts write it to
 `/etc/epics/issuer` for the profile in the image to read back. Check it:
 
 ```sh
-podman exec podman_pvxs-lab-testioc_1 cat /etc/epics/issuer
+run_in testioc as testioc cat /etc/epics/issuer
 ```
 
-**A decision is refused as `ca/<user>`.** The connection presented no certificate. Export
-`EPICS_PVA_TLS_KEYCHAIN` and address the manager over the secure port, as the `admin`
-function above does.
+**A decision is refused as `ca/<user>`.** The connection presented no certificate. A
+keychain has to be named and the manager addressed over its secure port, which is what
+`run_in lab-manager as admin` sets up - run it with `--show` to see exactly what it sets.
 
 **A certificate is issued but cannot be saved.** The keychain directory is not writable by
 the user. The start scripts take ownership of it; if you added a service, do the same.
@@ -687,7 +704,7 @@ certificate, its administrator identity, and its intermediate authority - and no
 gateway or client holds anything:
 
 ```sh
-podman exec podman_pvxs-lab-testioc_1 ls /home/testioc/.config/pva/1.5/    # empty
+run_in testioc as testioc ls /home/testioc/.config/pva/1.5/    # empty
 ```
 
 Reading still works from everywhere, and writing is refused everywhere, which is exactly
