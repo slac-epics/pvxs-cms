@@ -21,6 +21,7 @@ demonstrating can be shown and checked directly.
 - [7. Approving, in batches or one at a time](#7-approving-in-batches-or-one-at-a-time)
 - [8. Denying and revoking](#8-denying-and-revoking)
 - [9. Only an administrator may decide](#9-only-an-administrator-may-decide)
+- [Resetting between demonstrations](#resetting-between-demonstrations)
 - [Troubleshooting](#troubleshooting)
 
 ## What it demonstrates
@@ -96,24 +97,21 @@ baseline to come back to when something later looks broken.
 **Reading works everywhere, over plain TCP, with no certificate.** Inside a department:
 
 ```sh
-podman exec podman_lab-client_1 bash -lc \
-  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
+podman exec podman_lab-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
 ```
 
 In the peer department, through its gateway:
 
 ```sh
-podman exec podman_lab-client_1 bash -lc \
-  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget ml:aiExample'
+podman exec podman_lab-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxget ml:aiExample'
+podman exec podman_ml-client_1  bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
 ```
 
 And from outside both departments, through a gateway either way:
 
 ```sh
-podman exec podman_perimeter-client_1 bash -lc \
-  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
-podman exec podman_perimeter-client_1 bash -lc \
-  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxget ml:aiExample'
+podman exec podman_perimeter-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxget test:aiExample'
+podman exec podman_perimeter-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxget ml:aiExample'
 ```
 
 Read is deliberately open, to anyone, in any zone. Certificates are not about hiding
@@ -124,26 +122,28 @@ write for, and it still requires a certificate presented over TLS by an operator
 
 ```sh
 # inside the department, refused by the controller itself
-podman exec podman_lab-client_1 bash -lc \
-  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
+podman exec podman_lab-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
 #   ERROR ... Put not permitted
 
-# across the boundary, refused earlier, by the gateway
-podman exec podman_perimeter-client_1 bash -lc \
-  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
+# from the peer department, refused earlier, by the lab gateway
+podman exec podman_ml-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
+#   ERROR ... Put permission denied by gateway
+
+# from outside both departments, refused the same way
+podman exec podman_perimeter-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxput test:spec 3'
 #   ERROR ... Put permission denied by gateway
 ```
 
-The two messages come from two different places, and the difference is worth noticing. In
-the first the request reached the controller, which applied its own access file. In the
-second it never got that far: the gateway refused it on the boundary.
+The messages come from two different places, and the difference is worth noticing. In the
+first the request reached the controller, which applied its own access file. In the other
+two it never got that far: the gateway refused it on the boundary, whether the request came
+from the peer department or from outside both.
 
 Any other process variable is refused the same way, because every write rule in the
 laboratory names `PROTOCOL(TLS)` and `METHOD(X509)`:
 
 ```sh
-podman exec podman_lab-client_1 bash -lc \
-  'source ~/.guest_bashrc; EPICS_PVA_TLS_KEYCHAIN= pvxput test:aiExample 3'
+podman exec podman_lab-client_1 bash -c 'EPICS_PVA_TLS_KEYCHAIN= pvxput test:aiExample 3'
 #   ERROR ... Put not permitted
 ```
 
@@ -548,10 +548,39 @@ the user. The start scripts take ownership of it; if you added a service, do the
 **The build is killed.** Too many compiler processes for the memory available. Use
 `JOBS=2` and add swap.
 
-## Starting over
+## Resetting between demonstrations
+
+To run the demonstration again from the top, put the laboratory back to the state it is in
+immediately after a build:
 
 ```sh
-podman-compose down -v      # removes volumes, including every issued certificate
-./bootstrap.sh              # fresh authorities
-./bootstrap.sh --keep-certs # rebuild images, keep the certificates
+./reset.sh
+```
+
+That discards every certificate the laboratory has issued and every keychain the services
+hold, keeps the two departmental certificate authorities so the issuer ids stay the same,
+brings everything back up, and restarts the gateways last so the boundaries work. It takes
+about half a minute.
+
+Afterwards each certificate manager holds only what it creates for itself - its own service
+certificate, its administrator identity, and its intermediate authority - and no controller,
+gateway or client holds anything:
+
+```sh
+podman exec podman_pvxs-lab-testioc_1 ls /home/testioc/.config/pva/1.5/    # empty
+```
+
+Reading still works from everywhere, and writing is refused everywhere, which is exactly
+where [the baseline section](#first-what-works-with-no-certificates-at-all) starts.
+
+To mint new certificate authorities as well, which changes the issuer ids:
+
+```sh
+./reset.sh --authorities
+```
+
+To rebuild the images without discarding anything:
+
+```sh
+./bootstrap.sh --keep-certs
 ```

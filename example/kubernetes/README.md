@@ -1067,6 +1067,36 @@ authority clause names its own intermediate.
 The internet zone desktop shows issued certificates without acting on them, and says so on
 screen, for the reason in section 9.
 
+## Resetting between demonstrations
+
+To run the demonstration again from the top, reinstall the laboratory. This mints new
+certificate authorities and discards every certificate that was issued under the old ones:
+
+```sh
+gw_deploy -r
+```
+
+The issuer ids change, so read them again afterwards:
+
+```sh
+kubectl -n pvxs-lab get cm pvxs-lab-issuer-ids -o jsonpath='{.data}'
+```
+
+Then work through [Issue the certificates](#create-a-certificate-for-the-ioc) again:
+controllers, then each department's administrator approving its own, then the gateways.
+
+**Restart the gateways once the controllers hold certificates.** A gateway that started
+before its department was serving does not retry, and nothing crosses a zone boundary until
+it is restarted:
+
+```sh
+kubectl -n pvxs-lab rollout restart deploy/pvxs-lab-gateway deploy/pvxs-lab-ml-gateway
+```
+
+The same applies after any restart of the certificate managers or controllers. If a read
+that worked a moment ago starts timing out from another zone, restart the two gateways
+before looking anywhere else.
+
 ## Certificate management PVs
 
 Each certificate manager serves, under the configured prefix:
