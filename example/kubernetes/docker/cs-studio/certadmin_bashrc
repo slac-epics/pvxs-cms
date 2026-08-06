@@ -12,10 +12,12 @@ export EPICS_PVA_AUTH_ORGANIZATION=epics.org
 export EPICS_PVA_ADDR_LIST="pvxs-lab-pvacms"
 export EPICS_PVA_AUTO_ADDR_LIST="NO"
 
-# This pod carries both departments' issuer ids and sets no pod-level issuer, so the choice of
-# department is made here, by the user the session is running as. LAB_ISSUER is exported to a
+# In a pod carrying both departments' issuer ids and no pod-level issuer, the choice of
+# department is made here, by the user the session is running as. In a pod that serves one
+# department the id is not published under this name, so keep whatever the pod already set
+# rather than blanking it. LAB_ISSUER is exported to a
 # login shell by /etc/profile.d/epics-issuers.sh in the lab_base image.
-export EPICS_PVA_AUTH_ISSUER="${LAB_ISSUER}"
+export EPICS_PVA_AUTH_ISSUER="${LAB_ISSUER:-${EPICS_PVA_AUTH_ISSUER}}"
 
 export EPICS_HOST_ARCH=$(${PROJECT_HOME}/epics-base/startup/EpicsHostArch)
 export PATH="${PROJECT_HOME}/pvxs-cms/bin/${EPICS_HOST_ARCH}:$PATH"
