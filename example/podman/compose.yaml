@@ -46,6 +46,7 @@ services:
 
   # ---------------------------------------------------------------- lab department
   pvxs-lab-pvacms:
+    init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-pvacms
     networks: [net-lab]
@@ -58,12 +59,13 @@ services:
     volumes:
       - idm-config:/home/idm/.config/pva/1.5
       - idm-data:/home/idm/.local/share/pva/1.5
-      - ./certs:/certs:ro
-      - ./config/pvacms-lab.acf:/etc/pvacms/pvacms.acf:ro
-      - ./scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro
+      - ./certs:/certs:ro,z
+      - ./config/pvacms-lab.acf:/etc/pvacms/pvacms.acf:ro,z
+      - ./scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
     command: ["/usr/local/bin/start-pvacms", "lab"]
 
   pvxs-lab-testioc:
+    init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/testioc:latest
     hostname: pvxs-lab-testioc
     networks: [net-lab]
@@ -74,12 +76,13 @@ services:
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER}"
     volumes:
       - testioc-config:/home/testioc/.config/pva/1.5
-      - ./certs:/certs:ro
-      - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro
+      - ./certs:/certs:ro,z
+      - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
     command: ["/usr/local/bin/start-ioc", "testioc"]
     depends_on: [pvxs-lab-pvacms]
 
   pvxs-lab-tstioc:
+    init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/tstioc:latest
     hostname: pvxs-lab-tstioc
     networks: [net-lab]
@@ -90,13 +93,14 @@ services:
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER}"
     volumes:
       - tstioc-config:/home/tstioc/.config/pva/1.5
-      - ./certs:/certs:ro
-      - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro
+      - ./certs:/certs:ro,z
+      - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
     command: ["/usr/local/bin/start-ioc", "tstioc"]
     depends_on: [pvxs-lab-pvacms]
 
   # The only route between the lab department and the perimeter.
   pvxs-lab-gateway:
+    init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
     hostname: pvxs-lab-gateway
     networks: [net-lab, net-perimeter]
@@ -107,15 +111,16 @@ services:
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER}"
     volumes:
       - gateway-config:/home/gateway/.config/pva/1.5
-      - ./certs:/certs:ro
-      - ./config/gateway-lab.conf:/home/gateway/gateway.conf.in:ro
-      - ./config/gateway-lab.pvlist:/home/gateway/gateway.pvlist.in:ro
-      - ./scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro
+      - ./certs:/certs:ro,z
+      - ./config/gateway-lab.conf:/home/gateway/gateway.conf.in:ro,z
+      - ./config/gateway-lab.pvlist:/home/gateway/gateway.pvlist.in:ro,z
+      - ./scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro,z
     command: ["/usr/local/bin/start-gateway", "LAB_ISSUER"]
     depends_on: [pvxs-lab-pvacms]
 
   # ------------------------------------------------- machine learning department
   pvxs-lab-ml:
+    init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml:latest
     hostname: pvxs-lab-ml
     networks: [net-ml]
@@ -128,12 +133,13 @@ services:
     volumes:
       - ml-config:/home/idm/.config/pva/1.5
       - ml-data:/home/idm/.local/share/pva/1.5
-      - ./certs:/certs:ro
-      - ./config/pvacms-ml.acf:/etc/pvacms/pvacms.acf:ro
-      - ./scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro
+      - ./certs:/certs:ro,z
+      - ./config/pvacms-ml.acf:/etc/pvacms/pvacms.acf:ro,z
+      - ./scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
     command: ["/usr/local/bin/start-pvacms", "ml"]
 
   pvxs-lab-ml-ioc:
+    init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml-ioc:latest
     hostname: pvxs-lab-ml-ioc
     networks: [net-ml]
@@ -144,12 +150,13 @@ services:
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER}"
     volumes:
       - ml-ioc-config:/home/mlioc/.config/pva/1.5
-      - ./certs:/certs:ro
-      - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro
+      - ./certs:/certs:ro,z
+      - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
     command: ["/usr/local/bin/start-ioc", "mlioc"]
     depends_on: [pvxs-lab-ml]
 
   pvxs-lab-ml-gateway:
+    init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
     hostname: pvxs-lab-ml-gateway
     networks: [net-ml, net-perimeter]
@@ -160,16 +167,17 @@ services:
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER}"
     volumes:
       - ml-gateway-config:/home/gateway/.config/pva/1.5
-      - ./certs:/certs:ro
-      - ./config/gateway-ml.conf:/home/gateway/gateway.conf.in:ro
-      - ./config/gateway-ml.pvlist:/home/gateway/gateway.pvlist.in:ro
-      - ./scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro
+      - ./certs:/certs:ro,z
+      - ./config/gateway-ml.conf:/home/gateway/gateway.conf.in:ro,z
+      - ./config/gateway-ml.pvlist:/home/gateway/gateway.pvlist.in:ro,z
+      - ./scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro,z
     command: ["/usr/local/bin/start-gateway", "ML_ISSUER"]
     depends_on: [pvxs-lab-ml]
 
   # ------------------------------------------------------------------- clients
   # A shell inside the lab department. Reaches its own certificate manager directly.
   lab-client:
+    init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
     hostname: lab-client
     # Its own department directly, and the perimeter so it can reach the other
@@ -185,13 +193,14 @@ services:
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - lab-client-config:/home/guest/.config/pva/1.5
-      - ./certs:/certs:ro
-      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro
+      - ./certs:/certs:ro,z
+      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
 
   # A shell inside the machine learning department, the mirror of lab-client: its own
   # department directly, and the perimeter so it can reach the other department's gateway.
   ml-client:
+    init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
     hostname: ml-client
     networks: [net-ml, net-perimeter]
@@ -204,13 +213,14 @@ services:
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - ml-client-config:/home/guest/.config/pva/1.5
-      - ./certs:/certs:ro
-      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro
+      - ./certs:/certs:ro,z
+      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
 
   # A shell outside both departments. Reaches the two gateways and nothing else, so
   # every certificate status lookup and every process variable crosses a gateway.
   perimeter-client:
+    init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/internet:latest
     hostname: perimeter-client
     networks: [net-perimeter]
@@ -221,6 +231,6 @@ services:
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - perimeter-client-config:/home/guest/.config/pva/1.5
-      - ./certs:/certs:ro
-      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro
+      - ./certs:/certs:ro,z
+      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
