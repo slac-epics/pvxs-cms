@@ -14,6 +14,7 @@
 #include <osiProcess.h>
 
 #include "certdate.h"
+#include "certstatus.h"
 
 #ifndef _WIN32
 struct ifaddrs;
@@ -60,7 +61,12 @@ void ConfigAuthN::fromAuthEnv(const std::map<std::string, std::string> &defs) {
     no_status = pickone({"EPICS_PVA_AUTH_NO_STATUS", "EPICS_PVAS_AUTH_NO_STATUS"}) && pickone.val == "YES";
 
     // EPICS_PVA_AUTH_ISSUER, EPICS_PVAS_AUTH_ISSUER
-    if (pickone({"EPICS_PVA_AUTH_ISSUER", "EPICS_PVAS_AUTH_ISSUER"})) issuer_id = pickone.val;
+    //
+    // Read here rather than where it is used, so that something unusable is refused with the
+    // value in the message. Left at whatever length was given: naming an authority by more of
+    // its identifier is a stronger statement about which one is meant, and the channel names
+    // take the part they carry when they are built.
+    if (pickone({"EPICS_PVA_AUTH_ISSUER", "EPICS_PVAS_AUTH_ISSUER"})) issuer_id = readIssuerId(pickone.val);
 
     // EPICS_PVA_AUTH_ORGANIZATION, EPICS_PVAS_AUTH_ORGANIZATION
     organization = pickone({"EPICS_PVA_AUTH_ORGANIZATION"}) ? pickone.val : retrieved_organization;

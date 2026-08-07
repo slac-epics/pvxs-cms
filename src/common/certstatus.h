@@ -42,6 +42,56 @@ DEFINE_LOGGER(status_setup, "pvxs.certs.status");
 namespace pvxs {
 namespace certs {
 
+/** How many hex digits of a certificate authority's subject key identifier name it on the wire. */
+constexpr size_t kIssuerIdNameLength = 8;
+
+/**
+ * @brief Read an issuer identifier the way somebody wrote it down.
+ *
+ * The identifier is the subject key identifier of a certificate authority, written as
+ * hexadecimal. A process channel name carries the first eight digits of it, but that is a naming
+ * convention rather than the identifier: what a person has in front of them is usually the whole
+ * forty digits, copied from a certificate, and often in capitals and split by colons because that
+ * is how the tools that print certificates lay it out.
+ *
+ * All three are the same identifier, so all three are read here: separators are dropped, capitals
+ * are folded, and what comes back is the digits alone. Nothing is shortened, so a caller checking
+ * an authority still compares every digit that was committed to. Only the channel names shorten
+ * it, and they do that where they are built.
+ *
+ * @param text the identifier as it was typed or configured
+ * @return the identifier as hex digits in lower case, or empty if @p text is empty
+ * @throws std::runtime_error if it is not hexadecimal, or too short to name an authority
+ */
+inline std::string readIssuerId(const std::string &text) {
+    std::string digits;
+    digits.reserve(text.size());
+    for (const char c : text) {
+        if (c == ':' || c == '-' || c == ' ' || c == '\t') continue;
+        if (!std::isxdigit(static_cast<unsigned char>(c)))
+            throw std::runtime_error(SB() << "'" << text << "' is not an issuer identifier: it is written as "
+                                             "hexadecimal digits, optionally separated by colons");
+        digits += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (digits.empty()) return digits;
+    if (digits.size() < kIssuerIdNameLength)
+        throw std::runtime_error(SB() << "'" << text << "' is too short to name a certificate authority: at least "
+                                      << kIssuerIdNameLength << " hexadecimal digits are needed");
+    return digits;
+}
+
+/**
+ * @brief The part of an issuer identifier that a process channel name carries.
+ *
+ * Channel names carry the first eight digits, so an identifier given in full addresses the same
+ * certificate manager as the short form of it. Without this, naming an authority by all forty
+ * digits builds a name nothing serves, and the request goes unanswered rather than refused.
+ */
+inline std::string issuerIdForPvName(const std::string &issuer_id) {
+    const auto digits = readIssuerId(issuer_id);
+    return digits.substr(0, std::min(digits.size(), kIssuerIdNameLength));
+}
+
 /**
  * @brief Get the Certificate Status PV base.
  * e.g., CERT:STATUS
@@ -67,7 +117,7 @@ inline std::string getCertStatusPvBase(const std::string &cert_pv_prefix) {
 inline std::string getCertStatusPv(const std::string &cert_pv_prefix, const std::string& issuer_id) {
     std::string pv = getCertStatusPvBase(cert_pv_prefix);
     pv += ":";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     pv += ":*";
     return pv;
 }
@@ -104,7 +154,7 @@ inline std::string getCertIssuerPv(const std::string &cert_pv_prefix) {
 inline std::string getCertIssuerPv(const std::string &cert_pv_prefix, const std::string& issuer_id) {
     std::string pv = getCertIssuerPv(cert_pv_prefix);
     pv += ":";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     return pv;
 }
 
@@ -140,7 +190,7 @@ inline std::string getCertAuthRootPv(const std::string &cert_pv_prefix) {
 inline std::string getCertAuthRootPv(const std::string &cert_pv_prefix, const std::string& issuer_id) {
     std::string pv = getCertAuthRootPv(cert_pv_prefix);
     pv += ":";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     return pv;
 }
 
@@ -176,7 +226,7 @@ inline std::string getCertCreatePv(const std::string &cert_pv_prefix) {
 inline std::string getCertCreatePv(const std::string &cert_pv_prefix, const std::string& issuer_id) {
     std::string pv = getCertCreatePv(cert_pv_prefix);
     pv += ":";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     return pv;
 }
 
@@ -228,7 +278,7 @@ inline std::string getCertListPv(const std::string &cert_pv_prefix) {
 inline std::string getCertListPv(const std::string &cert_pv_prefix, const std::string &issuer_id) {
     std::string pv = getCertListPvBase(cert_pv_prefix);
     pv += ":";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     return pv;
 }
 
@@ -316,7 +366,7 @@ inline std::string getCertStatusURI(const std::string &prefix, const std::string
 inline std::string getConfigURI(const std::string &cert_pv_prefix, const std::string& issuer_id, const std::string& skid) {
     std::string pv = cert_pv_prefix;
     pv += ":CONFIG:";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     pv += ":";
     pv += skid;
     return pv;

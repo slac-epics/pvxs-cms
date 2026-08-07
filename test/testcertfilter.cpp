@@ -287,6 +287,49 @@ void testIssuerNamingElsewhereIsEmpty() {
     testOk1(CertFilter::parse("issuer:a76e613b", kNow).possibleFor("a76e613b"));
 }
 
+void testAnIssuerIsReadInEveryFormItIsWrittenIn() {
+    testDiag("An authority identifier is read however a certificate printed it");
+
+    const std::string full = "807feda5e03690086b8d04be73a7ca68495afaee";
+
+    // The eight digits a channel name carries, the whole identifier, in capitals, and split by
+    // colons the way the tools that print certificates lay it out. All the same authority.
+    testEq(readIssuerId("807feda5"), std::string("807feda5"));
+    testEq(readIssuerId(full), full);
+    testEq(readIssuerId("807FEDA5E03690086B8D04BE73A7CA68495AFAEE"), full);
+    testEq(readIssuerId("80:7F:ED:A5:E0:36:90:08:6B:8D:04:BE:73:A7:CA:68:49:5A:FA:EE"), full);
+
+    // Nothing given stays nothing given, which is how "ask whoever answers" is said.
+    testEq(readIssuerId(""), std::string(""));
+
+    // Whatever length it was given in, a channel name carries the digits it carries. Without
+    // this, naming an authority in full builds a name nothing serves and the request is never
+    // answered rather than refused.
+    testEq(issuerIdForPvName(full), std::string("807feda5"));
+    testEq(getCertCreatePv("CERT", full), std::string("CERT:CREATE:807feda5"));
+    testEq(getCertCreatePv("CERT", "807FEDA5"), std::string("CERT:CREATE:807feda5"));
+    testEq(getCertListPv("CERT", full), std::string("CERT:LIST:807feda5"));
+
+    // Not an identifier at all, and too little of one to name an authority, are both refused
+    // rather than turned into a name that goes unanswered.
+    testThrows<std::runtime_error>([] { readIssuerId("not-hex-at-all"); });
+    testThrows<std::runtime_error>([] { readIssuerId("807fed"); });
+}
+
+void testAnAuthorityCanBeNamedInFull() {
+    testDiag("The whole identifier and the eight digits of it name the same authority");
+
+    // What a certificate prints, and what a channel name carries, are the same authority.
+    testOk1(CertFilter::parse("issuer:a76e613bd1c58c1b9ba0f3d17c1d3a0f4e5c6d7e", kNow).possibleFor("a76e613b"));
+    testOk1(CertFilter::parse("issuer:A76E613BD1C58C1B9BA0F3D17C1D3A0F4E5C6D7E", kNow).possibleFor("a76e613b"));
+
+    // Naming somewhere else in full is still somewhere else.
+    testOk1(!CertFilter::parse("issuer:d7421bfed1c58c1b9ba0f3d17c1d3a0f4e5c6d7e", kNow).possibleFor("a76e613b"));
+
+    // A pattern is left as written rather than shortened on the caller's behalf.
+    testOk1(CertFilter::parse("issuer:a76e*", kNow).possibleFor("a76e613b"));
+}
+
 void testValuesAreBoundNotPastedIn() {
     testDiag("A value never appears in the condition text");
     const auto filter = CertFilter::parse("org:'; DROP TABLE certs; --'", kNow);
@@ -397,7 +440,7 @@ void testLimitsAreRefusedPlainly() {
 }  // namespace
 
 MAIN(testcertfilter) {
-    testPlan(81);
+    testPlan(96);
     testAJoiningWordCanBeAValue();
     testPrecedence();
     testBracketsOverridePrecedence();
@@ -419,6 +462,8 @@ MAIN(testcertfilter) {
     testNegationNormalFormDistributes();
     testDoubleNegationCollapses();
     testIssuerNamingElsewhereIsEmpty();
+    testAnIssuerIsReadInEveryFormItIsWrittenIn();
+    testAnAuthorityCanBeNamedInFull();
     testValuesAreBoundNotPastedIn();
     testAMistakeIsShownWhereItIs();
     testANearMissIsSuggested();

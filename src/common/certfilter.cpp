@@ -998,6 +998,18 @@ bool CertFilter::possibleFor(const std::string &issuer_id) const {
     for (const auto *test : issuer_tests) {
         bool any_matches = false;
         for (const auto &value : test->values) {
+            // An authority names itself in full on its own certificate and by the first eight
+            // digits of that in a channel name, and both get written down. Compare only as far
+            // as the shorter of the two runs, so either names the same authority. A pattern or
+            // a regular expression is left alone: what it was written to match is the caller's
+            // business, not something to shorten on their behalf.
+            if (value.kind == FilterValueKind::Text && value.text.find('*') == std::string::npos &&
+                value.text.size() > issuer_id.size()) {
+                if (textMatches(value.text.substr(0, issuer_id.size()), issuer_id)) {
+                    any_matches = true;
+                    continue;
+                }
+            }
             if (value.kind == FilterValueKind::Regex ? regexMatches(value.text, issuer_id)
                                                      : textMatches(value.text, issuer_id)) {
                 any_matches = true;
