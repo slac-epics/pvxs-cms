@@ -7,7 +7,7 @@
 # The two departmental certificate authorities are kept, so the issuer ids stay the same and
 # anything written down about them still applies.
 #
-#   ./reset.sh              discard the certificates, keep the authorities
+#   ./reset.sh                discard the certificates, keep the authorities
 #   ./reset.sh --authorities  mint new authorities as well; the issuer ids change
 #
 set -euo pipefail
@@ -23,7 +23,10 @@ podman-compose down -v >/dev/null 2>&1 || true
 
 if [ "${new_authorities}" = yes ]; then
     echo "==> minting new certificate authorities"
-    ./bootstrap.sh >/dev/null
+    # Authorities only. The images are already built and nothing here changes them, so a
+    # full bootstrap would recompile EPICS Base, pvxs, pvxs-cms and p4p to hand out a new
+    # pair of keys, which is where the Kerberos and gateway output people see comes from.
+    ./bootstrap.sh --certs-only >/dev/null
 else
     [ -s certs/lab_intermediate.p12 ] || {
         echo "no certificate authorities in ./certs - run ./bootstrap.sh first" >&2; exit 1; }
