@@ -32,27 +32,38 @@ export DOCKER_USERNAME="${DOCKER_USERNAME:-spva}"
 
 # An unset JOBS means "one compiler process per core". Written as an if rather than a
 # short-circuit, because under set -e a trailing && that evaluates false exits the script.
-jobs_arg=()
 if [ -n "${JOBS:-}" ]; then
-    jobs_arg=(--build-arg "JOBS=${JOBS}")
     echo "==> building with JOBS=${JOBS}"
 else
     echo "==> building with one compiler process per core; set JOBS to lower it"
 fi
 
+# Build one image, offering it JOBS only if it compiles something. An image is asked rather
+# than listed here, so adding one that compiles needs nothing changed in this file. Offering
+# it to an image that declares no such argument is not an error but is reported as a warning
+# on every build, which reads like a fault in the middle of an otherwise silent hour.
+build_image() {
+    local dir="$1"; shift
+    local args=()
+    if [ -n "${JOBS:-}" ] && grep -q '^ARG JOBS' "${dir}/Dockerfile"; then
+        args=(--build-arg "JOBS=${JOBS}")
+    fi
+    ( cd "${dir}" && ./build_docker.sh "${args[@]}" "$@" )
+}
+
 keep_certs=no
-build_images=yes
+build_the_images=yes
 case "${1:-}" in
     --keep-certs) keep_certs=yes ;;
     # Mint the authorities and nothing else. The images are already built and none of this
     # changes them, so rebuilding them to hand out new authorities costs many minutes and
     # recompiles EPICS Base, pvxs, pvxs-cms and p4p for no gain. reset.sh uses this.
-    --certs-only) build_images=no ;;
+    --certs-only) build_the_images=no ;;
     "") ;;
     *) echo "usage: ./bootstrap.sh [--keep-certs | --certs-only]" >&2; exit 2 ;;
 esac
 
-if [ "${build_images}" = yes ]; then
+if [ "${build_the_images}" = yes ]; then
 
 # The images form a chain, each built on the one before:
 #
@@ -63,20 +74,19 @@ if [ "${build_images}" = yes ]; then
 # here, because this laboratory issues certificates with the standard authenticator, and
 # the display images are left out because everything is verified from the command line.
 echo "==> building epics-base and pvxs (compiles EPICS Base and pvxs)"
-( cd ../../../pvxs/example/docker/epics-base && ./build_docker.sh "${jobs_arg[@]}" )
-( cd ../../../pvxs/example/docker/pvxs       && ./build_docker.sh "${jobs_arg[@]}" )
+build_image ../../../pvxs/example/docker/epics-base
+build_image ../../../pvxs/example/docker/pvxs
 
 echo "==> building the pvxs-cms image"
-( cd ../docker/pvxs-cms && ./build_docker.sh "${jobs_arg[@]}" )
+build_image ../docker/pvxs-cms
 
 echo "==> building the laboratory images"
 # lab_tools carries the operating system packages, lab_base the built EPICS tree, and
 # everything else derives from lab_base. This order matters.
-( cd ../kubernetes/docker
-  for target in lab_tools lab_base idm ml testioc tstioc ml-ioc gateway lab internet; do
-      echo "    ${target}"
-      ( cd "${target}" && ./build_docker.sh "${jobs_arg[@]}" >/dev/null )
-  done )
+for target in lab_tools lab_base idm ml testioc tstioc ml-ioc gateway lab internet; do
+    echo "    ${target}"
+    build_image "../kubernetes/docker/${target}" >/dev/null
+done
 
 fi
 

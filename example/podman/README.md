@@ -14,6 +14,7 @@ demonstrating can be shown and checked directly.
 - [Say it once: where, and who](#say-it-once-where-and-who)
 - [What works with no certificates at all](#first-what-works-with-no-certificates-at-all)
 - [1. Two certificate managers, one per department](#1-two-certificate-managers-one-per-department)
+  - [Naming an authority](#naming-an-authority)
 - [2. Crossing a boundary is only possible through a gateway](#2-crossing-a-boundary-is-only-possible-through-a-gateway)
 - [3. One facility root, so each department trusts the other's certificates](#3-one-facility-root-so-each-department-trusts-the-others-certificates)
 - [4. The request identifier an administrator checks](#4-the-request-identifier-an-administrator-checks)
@@ -259,6 +260,43 @@ first. Each container carries its own department's issuer id:
 run_in testioc as testioc printenv EPICS_PVA_AUTH_ISSUER   # lab
 run_in ml-ioc  as mlioc   printenv EPICS_PVA_AUTH_ISSUER   # machine learning
 ```
+
+### Naming an authority
+
+That id is the first eight digits of the authority's subject key identifier, which is what a
+process variable name can carry. The authority itself carries the whole forty, and that is
+what you see if you read its certificate:
+
+```sh
+run_in lab-manager as idm bash -c \
+  "openssl pkcs12 -in /certs/lab_intermediate.p12 -passin pass: -nokeys \
+   | openssl x509 -noout -ext subjectKeyIdentifier"
+#   53:E8:04:2C:F6:8B:D9:A0:BA:C0:A0:89:85:AB:47:BF:0F:BB:EB:D0
+```
+
+All of these name that same authority, so any of them can be given to `--issuer` or to
+`EPICS_PVA_AUTH_ISSUER`, and the `issuer:` field of a filter takes them too:
+
+```sh
+run_in lab as guest authnstd -u client --issuer 53e8042c
+run_in lab as guest authnstd -u client --issuer 53E8042C
+run_in lab as guest authnstd -u client --issuer 53E8042CF68BD9A0BAC0A08985AB47BF0FBBEBD0
+run_in lab as guest authnstd -u client --issuer 53:E8:04:2C:F6:8B:D9:A0:BA:C0:A0:89:85:AB:47:BF:0F:BB:EB:D0
+```
+
+Separators are dropped and capitals folded. Something that is not an identifier at all, or
+is too short to name an authority, is refused rather than turned into a name nothing answers:
+
+```sh
+run_in lab as guest authnstd -u client --issuer 53e80
+#   '53e80' is too short to name a certificate authority: at least 8 hexadecimal digits are needed
+```
+
+**Give the whole identifier when the certificate is deciding what to trust.** Eight digits
+is thirty-two bits, and a search for a key whose identifier begins with a given thirty-two
+bits is hours of work on one processor, so eight digits names an authority conveniently but
+does not establish that it is the right one. A certificate identifier keeps the eight-digit
+form, because that is what its name can carry.
 
 ## 2. Crossing a boundary is only possible through a gateway
 
@@ -827,8 +865,17 @@ To mint new certificate authorities as well, which changes the issuer ids:
 ./reset.sh --authorities
 ```
 
+That takes about a minute and a half. It builds nothing: the images do not depend on which
+authorities exist, so there is nothing about them to rebuild.
+
 To rebuild the images without discarding anything:
 
 ```sh
 ./bootstrap.sh --keep-certs
+```
+
+To mint the authorities without rebuilding anything, which is what the reset above uses:
+
+```sh
+./bootstrap.sh --certs-only
 ```

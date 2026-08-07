@@ -46,8 +46,13 @@ COPY krb5-kdc-supervisor.conf          /etc/supervisor/conf.d/krb5kdc.conf
 
 RUN mkdir -p /home/idm/.config/krb5/
 
-# Ensure Kerberos services are available before modifying the database
-RUN service krb5-kdc start && service krb5-admin-server start
+# The key distribution centre and its administration server were started here, before the
+# database they read exists, so both reported that they could not open it and the build carried
+# on regardless. Nothing was lost by that: each instruction runs in its own container, so a
+# process started by one is gone by the next, and the database is created and filled below with
+# kadmin.local, which works on the file directly and needs neither of them running. All the two
+# lines did was print two failures in the middle of a build that is otherwise quiet, which reads
+# like the build breaking.
 
 # Create the principals
 # - note clear passwords for testing purposes only
