@@ -9,6 +9,8 @@
 #include <chrono>
 #include <memory>
 
+#include <osiSock.h>
+
 #include <openssl/ocsp.h>
 #include <openssl/x509v3.h>
 
@@ -38,9 +40,53 @@ constexpr time_t longest_wait_secs = 60 * 60;
 /** Shortest wait, so that a responder promising an immediate next update is not asked in a spin. */
 constexpr time_t shortest_wait_secs = 10;
 
+/**
+ * How long one exchange with the responder may take, from connecting to a complete answer.
+ *
+ * A responder that accepts a connection and then says nothing would otherwise hold this thread
+ * for as long as it cared to, which would freeze the authority's standing at whatever was last
+ * established and leave the service unable to shut down, since stopping waits for the poll in
+ * flight. The transfer is bounded so that a silent responder is simply a responder that did not
+ * answer, which is a case already handled.
+ */
+constexpr auto responder_patience = std::chrono::seconds(10);
+
+using request_ctx_ptr = std::unique_ptr<OCSP_REQ_CTX, decltype(&OCSP_REQ_CTX_free)>;
+
 using pvxs::certs::cert_authority_standing_t;
 
 using aia_ptr = std::unique_ptr<AUTHORITY_INFO_ACCESS, decltype(&AUTHORITY_INFO_ACCESS_free)>;
+
+/**
+ * @brief Waits until the exchange with the responder can go further, or the deadline passes.
+ *
+ * @param bio the connection, which states whether it is waiting to read or to write
+ * @param deadline when to give up
+ * @return whether the exchange may continue
+ */
+bool waitForProgress(BIO *bio, const std::chrono::steady_clock::time_point deadline) {
+    int fd = -1;
+    if (BIO_get_fd(bio, &fd) < 0 || fd < 0) return false;
+
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) return false;
+    const auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(deadline - now).count();
+
+    timeval patience;
+    patience.tv_sec = static_cast<decltype(patience.tv_sec)>(remaining / 1000000);
+    patience.tv_usec = static_cast<decltype(patience.tv_usec)>(remaining % 1000000);
+
+    fd_set readable, writable;
+    FD_ZERO(&readable);
+    FD_ZERO(&writable);
+    // Before a connection is made neither is stated, so watch for either.
+    const bool wants_read = BIO_should_read(bio) != 0;
+    const bool wants_write = BIO_should_write(bio) != 0;
+    if (wants_read || !wants_write) FD_SET(fd, &readable);
+    if (wants_write || !wants_read) FD_SET(fd, &writable);
+
+    return select(fd + 1, &readable, &writable, nullptr, &patience) > 0;
+}
 
 /**
  * @brief Reads the first responder address out of a certificate's Authority Information Access
@@ -168,13 +214,27 @@ time_t AuthorityMonitor::pollOnce() {
             throw std::runtime_error("cannot assemble the request");
         }
 
+        const auto deadline = std::chrono::steady_clock::now() + responder_patience;
+
         const pvxs::ossl_ptr<BIO> connection(BIO_new_connect(host_port.c_str()));
-        if (BIO_do_connect(connection.get()) <= 0) {
-            throw std::runtime_error(pvxs::SB() << "cannot reach the responder at " << host_port);
+        BIO_set_nbio(connection.get(), 1);
+        while (BIO_do_connect(connection.get()) <= 0) {
+            if (!BIO_should_retry(connection.get()) || !waitForProgress(connection.get(), deadline)) {
+                throw std::runtime_error(pvxs::SB() << "cannot reach the responder at " << host_port);
+            }
         }
 
-        const pvxs::ossl_ptr<OCSP_RESPONSE> response(OCSP_sendreq_bio(connection.get(), request_path.c_str(), request.get()),
-                                               false);
+        OCSP_RESPONSE *answer = nullptr;
+        const request_ctx_ptr exchange(OCSP_sendreq_new(connection.get(), request_path.c_str(), request.get(), -1),
+                                       &OCSP_REQ_CTX_free);
+        if (!exchange) throw std::runtime_error("cannot begin asking");
+        while (OCSP_sendreq_nbio(&answer, exchange.get()) == -1) {
+            if (!waitForProgress(connection.get(), deadline)) {
+                throw std::runtime_error(pvxs::SB() << "the responder at " << host_port << " did not answer in time");
+            }
+        }
+
+        const pvxs::ossl_ptr<OCSP_RESPONSE> response(answer, false);
         if (!response) throw std::runtime_error("the responder gave no answer");
 
         // The same decode, signature check and freshness check the service already applies to
