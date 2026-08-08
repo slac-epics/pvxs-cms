@@ -919,9 +919,6 @@ Start from a working laboratory, with certificates issued and a write that succe
 ```sh
 authority_says
 #   the facility root stands
-
-run_in lab as guest pvxcert -l
-#   ... VALID ...
 ```
 
 Now revoke the root, as its own authority would:
@@ -931,12 +928,13 @@ authority_revoke
 #   the facility root is REVOKED
 ```
 
-Within a minute - the responder states how long its answer is good for, and the managers ask
-again when it lapses - every certificate beneath that root reports a state of its own:
+The certificate managers ask again when the answer they hold lapses - the responder states how
+long that is - and from then on every certificate beneath the root is answered differently.
+Ask for one certificate's status, by the identifier the listing shows:
 
 ```sh
-run_in lab as guest pvxcert -l
-#   ... AUTHORITY_REVOKED ...
+run_in lab as guest pvxcert "${LAB}:02665075835003669104"
+#   Status        : AUTHORITY_REVOKED
 ```
 
 That state is not `REVOKED`, and the difference is the point of it. The holder's own
@@ -944,22 +942,29 @@ certificate is untouched: it has not been revoked, it has not expired, and askin
 replacement would achieve nothing, because a replacement would be issued by the same
 authority. The certificate cannot be used, and the reason lies above it.
 
-Connections refuse accordingly, in both directions:
+Connections refuse accordingly:
 
 ```sh
 run_in lab as guest pvxput test:aiExample 42
-#   ERROR ... Put permission denied
 ```
 
-Nothing was written to any database to make this happen, so putting the root back is enough
-to put the laboratory back:
+The listing is the place to see that nothing was written to bring this about:
+
+```sh
+run_in lab-manager as admin pvxcert -l
+#   ... VALID ...
+```
+
+Those rows are what each certificate manager holds, and none of those certificates changed.
+What changed is above them, and it is read afresh each time a status is answered rather than
+recorded against anything. So putting the root back is enough to put the laboratory back:
 
 ```sh
 authority_restore
 #   the facility root stands
 
-run_in lab as guest pvxcert -l
-#   ... VALID ...
+run_in lab as guest pvxcert "${LAB}:02665075835003669104"
+#   Status        : VALID
 ```
 
 ### When the responder cannot be reached
@@ -976,8 +981,8 @@ A certificate manager that cannot check its own authority does not assume the an
 fifteen seconds it reports what it actually knows, which is nothing:
 
 ```sh
-run_in lab as guest pvxcert -l
-#   ... UNKNOWN ...
+run_in lab as guest pvxcert "${LAB}:02665075835003669104"
+#   Status        : UNKNOWN
 ```
 
 Connections refuse, exactly as they do for any status a client cannot establish. This is the
