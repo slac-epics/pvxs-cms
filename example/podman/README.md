@@ -227,7 +227,26 @@ run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 run_in ml-manager  as admin pvxcert --review-pending --all approve --yes
 ```
 
-Check that all seven arrived before going on. A gateway without a certificate refuses every
+Most of the people need them too. Everything from section 3 onwards is about what a
+certificate is worth to the person holding it, and none of it means anything until they
+hold one. Each asks the department it belongs to, and two of them carry the unit their
+department knows them by, which section 4 turns on:
+
+```sh
+run_in lab       as operator    authnstd -u client --ou lab --issuer ${LAB_SKID}
+run_in ml        as guest       authnstd -u client
+run_in perimeter as operator    authnstd -u client --issuer ${ML_SKID}
+run_in lab       as ml/operator authnstd -u client --ou ml  --issuer ${ML_SKID}
+
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+run_in ml-manager  as admin pvxcert --review-pending --all approve --yes
+```
+
+Two are deliberately left without one, and both are used later for what having none shows.
+The lab guest asks in the next section, where a request that has not been decided on is
+what makes the point about naming an authority. The perimeter guest never asks at all.
+
+Check that all twelve arrived before going on. A gateway without a certificate refuses every
 write on the boundary, which looks like a broken rule rather than a missing certificate:
 
 ```sh
@@ -278,7 +297,9 @@ The certificate identifiers make it plain: everything the first lists begins wit
 `<issuer>:<serial>` identifier says which department to ask about a certificate.
 
 Which department a service asks is decided by where it runs, not by which manager answers
-first. Each container carries its own department's issuer id:
+first. Each container is given the whole identifier of the authority its department trusts,
+which is forty digits, because on a first request there is nothing yet to check a delivered
+authority against and only the whole identifier decides it:
 
 ```sh
 run_in testioc as testioc printenv EPICS_PVA_AUTH_ISSUER   # lab
@@ -287,9 +308,9 @@ run_in ml-ioc  as mlioc   printenv EPICS_PVA_AUTH_ISSUER   # machine learning
 
 ### Naming an authority
 
-That id is the first eight digits of the authority's subject key identifier, which is what a
-process variable name can carry. The authority itself carries the whole forty, and that is
-what you see if you read its certificate:
+The `$LAB` and `$ML` above are the first eight digits of those, which is what a process
+variable name can carry. The whole forty is what the certificate holds, and that is what you
+see if you read it:
 
 ```sh
 run_in lab-manager as idm bash -c \
@@ -341,7 +362,11 @@ run_in lab as guest authnstd -u client --issuer ${LAB}
 #   The issuer '<yours>' is only 8 of the 40 digits of a subject key identifier, which is
 #   not enough to decide which certificate authority to trust ...
 run_in lab as guest authnstd -u client --issuer ${LAB_SKID}      # accepted
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 ```
+
+That last one is a request like any other, and it waits for a decision, so it is approved
+here: from section 3 on, the lab guest is someone who holds a certificate.
 
 Once a keychain holds an authority, that pinned authority is what a delivered one is
 compared against, and the short form is accepted again for naming. Certificate identifiers
@@ -396,6 +421,7 @@ run_in gateway as gateway cat /home/gateway/gateway.pvlist
 #   test:.* ALLOW                                 its controllers, readable
 #   tst:.* ALLOW
 #   test:spec ALLOW SPECIAL                       writable, to a certificate from either department
+#   test:open ALLOW OPEN_WRITE                    writable, to any certificate at all
 #   CERT:CREATE:<lab>(?::.*)? ALLOW CERT_CREATE   ask this department for a certificate
 #   CERT:STATUS:<lab>(?::.*)? ALLOW CERT_STATUS   check one it issued
 #   CERT:LIST:<lab>:ALL ALLOW CERT_STATUS         the two open views
@@ -479,17 +505,12 @@ anywhere, with nothing at all.
 
 This is the point of the whole arrangement, and it is worth walking through.
 
-A client outside both departments asks the **machine learning** department for a
-certificate. It cannot reach that certificate manager, so the request travels through the
-machine learning gateway:
+A client outside both departments holds a certificate from the **machine learning**
+department. It asked for that certificate when the others were issued, and it could not
+reach that certificate manager to ask: the request travelled through the machine learning
+gateway, which is the only way in.
 
-```sh
-run_in perimeter  as operator authnstd -u client --issuer ${ML_SKID}
-run_in ml-manager as admin    pvxcert --review-pending --all approve --yes
-```
-
-That client now holds a **machine-learning-issued** certificate. It uses it to write to a
-**lab** controller, through the **lab** gateway:
+It uses that certificate to write to a **lab** controller, through the **lab** gateway:
 
 ```sh
 run_in perimeter as operator <<'EOF'
@@ -544,17 +565,15 @@ machine-learning operator's certificate to compare against. A person written
 `<department>/<user>` is that user holding a certificate from that department rather than from
 the one they are sitting in, kept in a keychain of its own:
 
+Both were issued when the certificates were, each carrying its own department's unit:
+
 ```sh
 run_in lab as operator    authnstd -u client --ou lab --issuer ${LAB_SKID}
-run_in lab-manager as admin pvxcert --review-pending --all approve --yes
-
 run_in lab as ml/operator authnstd -u client --ou ml  --issuer ${ML_SKID}
-run_in ml-manager as admin  pvxcert --review-pending --all approve --yes
 ```
 
-Each carries its own department's unit, which also keeps the two subjects distinct: a
-certificate manager refuses a second certificate for a subject it has already issued, and the
-machine learning department issued one to `CN=operator,O=epics.org` in section 3.
+The unit also keeps the two subjects distinct, which is what lets one person hold both: a
+certificate manager refuses a second certificate for a subject it has already issued.
 
 Both are trusted by the lab controller, and only one may write:
 
