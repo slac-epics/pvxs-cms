@@ -448,9 +448,13 @@ the one they are sitting in, kept in a keychain of its own:
 run_in lab as operator    authnstd -u client --ou lab --issuer ${LAB_SKID}
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 
-run_in lab as ml/operator authnstd -u client --issuer ${ML_SKID}
+run_in lab as ml/operator authnstd -u client --ou ml  --issuer ${ML_SKID}
 run_in ml-manager as admin  pvxcert --review-pending --all approve --yes
 ```
+
+Each carries its own department's unit, which also keeps the two subjects distinct: a
+certificate manager refuses a second certificate for a subject it has already issued, and the
+machine learning department issued one to `CN=operator,O=epics.org` in section 3.
 
 Both are trusted by the lab controller, and only one may write:
 
