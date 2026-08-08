@@ -1,0 +1,14 @@
+# One process variable for the laboratory, beside the ones the pvxs test databases provide.
+#
+# test:spec shows what the shared facility root buys: an operator holding a certificate from
+# either department may write it, because the rule authorises on the root both departments
+# chain to.
+#
+# This one shows the other half. Its rule authorises on the same shared root, so a
+# certificate from either department is equally trusted, and then asks what the certificate
+# says about its holder: only one carrying the lab's organizational unit may write. Trust and
+# authorisation are separate questions, and this is where they part company.
+record(ao, "test:labspec") {
+   field(ASG, "LABSPEC")
+   field(DESC, "Writable only by the lab's own unit")
+}

@@ -17,6 +17,7 @@ demonstrating can be shown and checked directly.
   - [Naming an authority](#naming-an-authority)
 - [2. Crossing a boundary is only possible through a gateway](#2-crossing-a-boundary-is-only-possible-through-a-gateway)
 - [3. One facility root, so each department trusts the other's certificates](#3-one-facility-root-so-each-department-trusts-the-others-certificates)
+  - [Narrowing a write to a unit, not a department](#narrowing-a-write-to-a-unit-not-a-department)
 - [4. The request identifier an administrator checks](#4-the-request-identifier-an-administrator-checks)
 - [5. Listing certificates](#5-listing-certificates)
 - [6. Filtering the listing](#6-filtering-the-listing)
@@ -421,6 +422,58 @@ A certificate from the wrong department, or none at all, is refused:
 run_in perimeter as guest pvxput test:spec 9
 #   Put permission denied by gateway
 ```
+
+### Narrowing a write to a unit, not a department
+
+`test:spec` above shows what the shared root buys: either department's operator may write it.
+`test:labspec` shows the other half. Its rule authorises on the same shared root, so a
+certificate from either department is equally trusted, and then asks what the certificate
+says about its holder - only one carrying the lab's own unit may write:
+
+```
+UAG(LAB_UNIT) { "OU=lab" }
+
+ASG(LABSPEC) {
+    RULE(1,READ)
+    RULE(1,WRITE,TRAPWRITE) { UAG(LAB_UNIT) AUTHORITY(EPICS_CA) PROTOCOL(TLS) METHOD(X509) }
+}
+```
+
+Give the lab's operator a certificate that says so, and give the same workstation a
+machine-learning operator's certificate to compare against. A person written
+`<department>/<user>` is that user holding a certificate from that department rather than from
+the one they are sitting in, kept in a keychain of its own:
+
+```sh
+run_in lab as operator    authnstd -u client --ou lab --issuer ${LAB_SKID}
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+
+run_in lab as ml/operator authnstd -u client --issuer ${ML_SKID}
+run_in ml-manager as admin  pvxcert --review-pending --all approve --yes
+```
+
+Both are trusted by the lab controller, and only one may write:
+
+```sh
+run_in lab as operator    pvxput test:labspec 101      # allowed: carries OU=lab
+run_in lab as ml/operator pvxput test:labspec 202      # refused: no such unit
+#   ERROR ... Put not permitted
+run_in lab as ml/operator pvxget test:labspec          # reading is open to both
+```
+
+The refusal is on the unit and not on the authority. The machine learning certificate was
+verified, its status checked, and its holder found to be someone the rule does not name -
+which is what the same operator writing `test:spec` demonstrates by succeeding:
+
+```sh
+run_in lab as ml/operator pvxput test:spec 202         # allowed: authorised on the shared root
+```
+
+Note what naming a unit does and does not guarantee. The unit is a claim the issuing
+department vouched for, so a machine learning certificate asking for `--ou lab` would be
+admitted here. A rule that must not be crossed under any circumstances should name the
+authority as well; naming only the unit trusts every department sharing the root to issue
+that unit honestly.
 
 ## 4. The request identifier an administrator checks
 

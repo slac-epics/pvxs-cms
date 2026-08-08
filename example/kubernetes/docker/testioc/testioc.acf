@@ -46,12 +46,40 @@ UAG(BEAMLINE) {
     "OU=beamline"
 }
 
+# Anyone whose certificate places them in the lab's own unit. Named the same way as
+# BEAMLINE above, and used below to narrow a write to a unit rather than to a department.
+UAG(LAB_UNIT) {
+    "OU=lab"
+}
+
 # The test:spec special PV: operators (either department) may write; guests cannot.
 ASG(SPECIAL) {
     RULE(1,READ)
     RULE(1,WRITE,TRAPWRITE) {
         UAG(OPERATORS)
         AUTHORITY(AUTH_LAB, AUTH_ML)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
+
+# The test:labspec special PV: trust and authorisation asked separately.
+#
+# The rule authorises on EPICS_CA, the root both departments chain to, so a certificate from
+# either is equally trusted here - exactly as for test:spec. What it then asks is what the
+# certificate says about its holder: only one carrying the lab's own unit may write. An
+# operator from the machine learning department is refused on the unit, not on the authority,
+# which is the difference this PV exists to show.
+#
+# Note what that does and does not guarantee. The unit is a claim the issuing department
+# vouched for, so a rule which must not be crossed under any circumstances should name the
+# authority as well; naming only the unit trusts every department that shares the root to
+# issue that unit honestly.
+ASG(LABSPEC) {
+    RULE(1,READ)
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(LAB_UNIT)
+        AUTHORITY(EPICS_CA)
         PROTOCOL(TLS)
         METHOD(X509)
     }

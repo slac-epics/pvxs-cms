@@ -111,6 +111,20 @@ run_in() {
     fi
     shift 3
 
+    # A person may be written <department>/<user>, which is the same user holding a
+    # certificate from that department rather than from the one they are sitting in. It reads
+    # as what it is - "ml/operator in lab" is the machine learning operator, at a lab
+    # workstation - and it needs a keychain of its own, since the two certificates cannot
+    # share one file. Anything without a slash is unchanged.
+    local from_dept= keychain_name=client
+    case "${who}" in
+        */*) from_dept="${who%%/*}"; who="${who##*/}"; keychain_name="${from_dept}" ;;
+    esac
+    if [ -n "${from_dept}" ] && [ "${from_dept}" != lab ] && [ "${from_dept}" != ml ]; then
+        echo "run_in: no department called '${from_dept}'. Write lab/<user> or ml/<user>." >&2
+        return 2
+    fi
+
     while [ "$#" -gt 0 ]; do
         case "$1" in
             # "without a certificate" reads as English and says exactly what is being shown:
@@ -192,6 +206,7 @@ _ns_was=\${EPICS_PVA_NAME_SERVERS+set}; _ns=\${EPICS_PVA_NAME_SERVERS-}
 source ~/.${who}_bashrc 2>/dev/null
 if [ -n \"\${_addr_was}\" ]; then export EPICS_PVA_ADDR_LIST=\"\${_addr}\"; else unset EPICS_PVA_ADDR_LIST; fi
 if [ -n \"\${_ns_was}\" ]; then export EPICS_PVA_NAME_SERVERS=\"\${_ns}\"; else unset EPICS_PVA_NAME_SERVERS; fi
+export EPICS_PVA_TLS_KEYCHAIN=\${HOME}/.config/pva/1.5/${keychain_name}.p12
 ${prelude}" ;;
         *)
             # A service acting as itself, through its own login, which is where its keychain
