@@ -928,9 +928,10 @@ authority_revoke
 #   the facility root is REVOKED
 ```
 
-The certificate managers ask again when the answer they hold lapses - the responder states how
-long that is - and from then on every certificate beneath the root is answered differently.
-Ask for one certificate's status, by the identifier the listing shows:
+The certificate managers ask again when the answer they hold lapses. The responder states how
+long that is, and the laboratory's says one minute, so allow one before asking. From then on
+every certificate beneath the root is answered differently. Ask for one certificate's status,
+by the identifier the listing shows:
 
 ```sh
 run_in lab as guest pvxcert "${LAB}:02665075835003669104"
@@ -942,22 +943,29 @@ certificate is untouched: it has not been revoked, it has not expired, and askin
 replacement would achieve nothing, because a replacement would be issued by the same
 authority. The certificate cannot be used, and the reason lies above it.
 
-Connections refuse accordingly:
+A certificate that cannot be used is not presented, so the connection is made without an
+identity and the write is refused for want of one:
 
 ```sh
 run_in lab as guest pvxput test:aiExample 42
+#   ERROR ... Put not permitted
 ```
 
-The listing is the place to see that nothing was written to bring this about:
+Administration stops with it, and that is worth seeing rather than working around. An
+administrator's certificate was issued under the same root, so it is no more usable than
+anyone else's, and the listing does not answer at all:
 
 ```sh
 run_in lab-manager as admin pvxcert -l
-#   ... VALID ...
+#   ERR ... Timed out listing certificates from CERT:LIST
 ```
 
-Those rows are what each certificate manager holds, and none of those certificates changed.
-What changed is above them, and it is read afresh each time a status is answered rather than
-recorded against anything. So putting the root back is enough to put the laboratory back:
+Revoking a facility root is not a way to withdraw one department or one holder. It stops
+everyone who chains to it, including the people who would undo it, which is why it is the last
+thing a facility does and why what it takes to undo it is a file and a restart rather than a
+certificate operation.
+
+Putting the root back is enough to put the laboratory back:
 
 ```sh
 authority_restore
@@ -965,6 +973,15 @@ authority_restore
 
 run_in lab as guest pvxcert "${LAB}:02665075835003669104"
 #   Status        : VALID
+```
+
+Nothing was repaired to achieve that. The listing shows what it showed before, because no
+certificate was ever changed: what changed was above them, and it is read afresh each time a
+status is answered rather than recorded against anything.
+
+```sh
+run_in lab-manager as admin pvxcert -l --where "name:guest"
+#   7fdcbdea:15880246427277860638  CLIENT  CN=guest,O=epics.org,C=US  VALID  ...
 ```
 
 ### When the responder cannot be reached
@@ -977,8 +994,9 @@ authority_unreachable
 #   the responder is stopped; nothing can be learned about the root
 ```
 
-A certificate manager that cannot check its own authority does not assume the answer. Within
-fifteen seconds it reports what it actually knows, which is nothing:
+A certificate manager that cannot check its own authority does not assume the answer. It tries
+again every fifteen seconds, and until one succeeds it reports what it actually knows, which
+is nothing:
 
 ```sh
 run_in lab as guest pvxcert "${LAB}:02665075835003669104"
@@ -994,7 +1012,7 @@ certificate managers, and an unreachable responder then leaves them serving the 
 they verified. The trade is stated plainly: an outage of one web service no longer takes the
 facility with it, and a revocation issued during that outage is not seen until it ends.
 
-Put the responder back and the managers pick it up on their next attempt:
+Put the responder back and the managers pick it up within those fifteen seconds:
 
 ```sh
 authority_reachable
