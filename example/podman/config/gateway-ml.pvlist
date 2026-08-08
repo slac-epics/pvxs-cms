@@ -1,5 +1,6 @@
   
 ml:.* ALLOW
+ml:open ALLOW OPEN_WRITE
 CERT:CREATE:__ML_ISSUER__(?::.*)? ALLOW CERT_CREATE
 CERT:STATUS:__ML_ISSUER__(?::.*)? ALLOW CERT_STATUS
 # The two certificate listing views that are open to everyone, named by issuer so this

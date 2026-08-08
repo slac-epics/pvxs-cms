@@ -14,3 +14,11 @@ record(longin, "ml:longExample")
 {
     field(VAL, "42")
 }
+
+# The machine learning department's counterpart to test:open, so the same thing can be shown
+# in both directions.
+record(ao, "ml:open")
+{
+    field(ASG, "OPEN")
+    field(DESC, "Writable by any certificate holder, either zone")
+}

@@ -25,6 +25,25 @@ ASG(SPECIAL) {
     }
 }
 
+# Carried across the boundary for any certificate holder, whoever they are.
+#
+# SPECIAL above names operators; this one names nobody, so the condition is only that a
+# certificate was presented over TLS and chains to the facility root. It is what decides who
+# may write the variables the lists mark with it, because the controller upstream sees this
+# gateway rather than the client behind it.
+ASG(OPEN_WRITE) {
+    RULE(1,READ) {
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    RULE(1,WRITE,TRAPWRITE) {
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
+
 ASG(CERT_CREATE) {
     RULE(1,READ)
     RULE(1,WRITE)

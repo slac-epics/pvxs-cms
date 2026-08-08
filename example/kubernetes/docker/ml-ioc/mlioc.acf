@@ -21,6 +21,40 @@ UAG(GUESTS) {
     "mlsystem"
 }
 
+# The two gateways, by the common name each presents when it forwards a request upstream.
+UAG(GATEWAYS) {
+    "gateway",
+    "ml-gateway"
+}
+
+# A variable any certificate holder may write, from either zone.
+#
+# Two ways in, and they are checked differently. A client in this department connects to the
+# controller itself, so the rule sees that client: it names no user, only that a certificate
+# was presented over TLS and chains to the facility root, so anyone holding one qualifies.
+#
+# A client in another zone reaches this variable through a gateway, and a gateway makes its
+# upstream connection as itself. What this rule then sees is the gateway, not the client
+# behind it, which is why the gateway is named. Who the client was is decided at the gateway,
+# by the matching rule in its own access file - so opening this variable up here does not open
+# it to anyone the gateway would have refused.
+ASG(OPEN) {
+    RULE(1,READ)
+    # Anyone in this department holding a certificate.
+    RULE(1,WRITE,TRAPWRITE) {
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    # Forwarded from another zone, arriving as the gateway.
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(GATEWAYS)
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
+
 ASG(DEFAULT) {
     # READ open to anyone, including anonymous, in any zone.
     RULE(1,READ)

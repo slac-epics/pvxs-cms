@@ -12,3 +12,11 @@ record(ao, "test:labspec") {
    field(ASG, "LABSPEC")
    field(DESC, "Writable only by the lab's own unit")
 }
+
+# A variable any certificate holder may write, from either zone. Its access group asks for a
+# certificate and nothing else: no user is named, so anyone the facility root vouches for
+# qualifies. test:spec by contrast names operators, and test:labspec names a unit.
+record(ao, "test:open") {
+   field(ASG, "OPEN")
+   field(DESC, "Writable by any certificate holder, either zone")
+}
