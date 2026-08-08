@@ -95,6 +95,28 @@ _lab_quote() {
     printf '%s' "${out}"
 }
 
+# Whether the authority this shell names is still the one the laboratory has.
+#
+# Minting new authorities rewrites .env, but an exported variable in a shell that is already
+# open cannot be reached from outside it. Anything typed with ${LAB} or ${LAB_SKID} then names
+# an authority that no longer exists, and what comes back says nothing about why: a request
+# times out, because there is nothing to answer it, and a certificate manager that never saw
+# the authority has nothing to say about it either.
+_lab_ids_are_current() {
+    local env_file="${LAB_HELPERS_DIR:-.}/.env"
+    [ -r "${env_file}" ] || return 0
+    [ -n "${LAB:-}" ] || return 0          # nothing named yet, so nothing to disagree
+
+    local on_disk
+    on_disk=$(sed -n 's/^LAB_ISSUER=//p' "${env_file}")
+    [ -n "${on_disk}" ] || return 0
+    [ "${on_disk}" != "${LAB}" ] || return 0
+
+    echo "run_in: this shell names authority ${LAB}, but the laboratory now has ${on_disk}." >&2
+    echo "        The authorities were minted again since these were read. Run: lab_ids" >&2
+    return 1
+}
+
 run_in() {
     if [ "$#" -eq 0 ] || [ "$1" = --help ]; then
         sed -n '/^# ----* where things are/,/^_lab_place/p' "${LAB_HELPERS_DIR:-.}/helpers.sh" \
@@ -111,6 +133,8 @@ run_in() {
         echo "run_in: say it as: run_in <place> as <person> <command...>" >&2; return 2
     fi
     shift 3
+
+    _lab_ids_are_current || true
 
     # A person may be written <department>/<user>, which is the same user holding a
     # certificate from that department rather than from the one they are sitting in. It reads

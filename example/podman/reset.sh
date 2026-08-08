@@ -65,6 +65,13 @@ echo
 echo "The laboratory is running with no certificates issued."
 sed 's/^/    /' .env 2>/dev/null || true
 echo
+if [ "${new_authorities}" = yes ]; then
+    # A shell that read the old ones still holds them, and nothing here can reach into it.
+    echo "These are new. A shell that already read the old ones still holds them, so in each"
+    echo "one that has, run:"
+    echo "    lab_ids"
+    echo
+fi
 echo "Reading works now, from anywhere, over plain TCP:"
 echo "    podman exec podman_lab-client_1       bash -c 'pvxget test:aiExample'"
 echo "    podman exec podman_perimeter-client_1 bash -c 'pvxget ml:aiExample'"
