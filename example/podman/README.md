@@ -119,6 +119,20 @@ run_in lab as guest --show pvxget test:aiExample
 #   podman exec --user guest podman_lab-client_1 bash -lc '...'
 ```
 
+**With no command, it opens a shell there.** You land as that person, with everything set up
+that a command would have had, and a prompt saying who and where you are:
+
+```sh
+run_in lab-manager as admin
+#   [admin@lab-manager] > pvxcert -l
+#   [admin@lab-manager] > exit
+```
+
+That is how to answer anything that asks a question, since those read their answers from a
+terminal, and how to try a few things without writing `run_in` in front of each. Pass the
+command as arguments instead when scripting: piping into a shell will not do, because a
+terminal never reaches the end of its input.
+
 `run_in` on its own lists the places and people; `lab_status` shows what is running.
 
 ### First, what works with no certificates at all
@@ -394,12 +408,34 @@ run_in lab as guest    pvxput test:spec 11
 run_in lab as operator pvxput test:spec 22
 ```
 
-**From another zone, only the special variables cross at all.** The gateway's list carries
-reads for every `test:` variable and a write for `test:spec` alone, so a write to anything
-else stops at the boundary however good the certificate is:
+**From another zone, only what a gateway carries a write for crosses at all.** A gateway's
+list marks those individually; everything else it forwards is readable and not writable,
+however good the certificate is:
 
 ```sh
 run_in perimeter as operator pvxput test:stringExample "from outside"
+#   ERROR ... Put permission denied by gateway
+```
+
+Each department marks one variable that any certificate holder may write, and the two make
+the point in both directions. Neither of these people is an operator:
+
+```sh
+run_in lab as guest pvxput ml:open   11      # a lab guest, into the machine learning department
+run_in ml  as guest pvxput test:open 22      # a machine learning guest, into the lab
+```
+
+Who may write them is decided at the **gateway**, not at the controller. A gateway makes its
+upstream connection as itself, so what the controller sees is the gateway rather than the
+person behind it; the controller's rule therefore names the gateways, and the gateway's rule
+is the one that names nobody and asks only for a certificate. Opening the variable up at the
+controller does not open it to anyone the gateway would have turned away.
+
+**A variable that crosses may still name who may write it.** `test:spec` is carried across
+too, and names operators, so the same guest is refused where an operator is not:
+
+```sh
+run_in ml as guest    pvxput test:spec 33
 #   ERROR ... Put permission denied by gateway
 run_in perimeter as operator pvxput test:spec 33
 ```
@@ -660,10 +696,12 @@ and `--yes` answer one each. That gives four ways of working, from reading every
 approving a hundred without being asked anything, and you choose how far to go.
 
 **Neither.** Each certificate in turn, with its subject and its request identifier in front
-of you, and a decision for each:
+of you, and a decision for each. The prompts are read from a terminal, so open a shell and
+answer them yourself:
 
 ```sh
-run_in lab-manager as admin pvxcert --review-pending
+run_in lab-manager as admin
+#   [admin@lab-manager] > pvxcert --review-pending
 ```
 
 ```

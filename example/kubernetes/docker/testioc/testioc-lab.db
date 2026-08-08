@@ -18,5 +18,5 @@ record(ao, "test:labspec") {
 # qualifies. test:spec by contrast names operators, and test:labspec names a unit.
 record(ao, "test:open") {
    field(ASG, "OPEN")
-   field(DESC, "Writable by any certificate holder, either zone")
+   field(DESC, "Any certificate holder, either zone")
 }

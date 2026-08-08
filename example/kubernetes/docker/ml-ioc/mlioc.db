@@ -20,5 +20,5 @@ record(longin, "ml:longExample")
 record(ao, "ml:open")
 {
     field(ASG, "OPEN")
-    field(DESC, "Writable by any certificate holder, either zone")
+    field(DESC, "Any certificate holder, either zone")
 }

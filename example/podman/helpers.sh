@@ -100,6 +100,7 @@ run_in() {
         sed -n '/^# ----* where things are/,/^_lab_place/p' "${LAB_HELPERS_DIR:-.}/helpers.sh" \
             | sed -e '$d' -e 's/^# \{0,1\}//'
         echo "usage: run_in <place> as <person> [without a certificate] [--show] <command...>"
+        echo "       run_in <place> as <person>            with no command, opens a shell there"
         return 2
     fi
 
@@ -171,12 +172,17 @@ run_in() {
     local attach="podman exec"
     if [ -t 0 ] && [ -t 1 ]; then attach="podman exec -it"; fi
 
-    local script
+    # No command at a terminal opens a shell there, as that person, with everything set up
+    # that a command would have had. It is how to answer something that asks a question -
+    # pvxcert --review-pending puts its prompts to a terminal and reads the answers back from
+    # one - and how to try things without writing run_in in front of each.
+    local script interactive=no
     if [ "$#" -gt 0 ]; then
         script=$(_lab_quote "$@")
     elif [ -t 0 ]; then
-        echo "run_in: no command given, and nothing on standard input to read one from." >&2
-        return 2
+        interactive=yes
+        script="export PS1=\"[${who}@${place}] > \"
+exec bash --norc -i"
     else
         script=$(cat)
     fi
