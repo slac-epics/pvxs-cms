@@ -1632,7 +1632,7 @@ void onGetStatus(const ConfigCms &config,
                  const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                  const ossl_ptr<X509> &cert_auth_cert,
                  const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
-                 const AuthorityMonitor &authority_monitor) {
+                 const cms::cert::AuthorityMonitor &authority_monitor) {
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
@@ -1671,13 +1671,13 @@ void onGetStatus(const ConfigCms &config,
         // authority restores reporting with no repair step.
         if (status != REVOKED && status != EXPIRED) {
             switch (authority_monitor.state()) {
-                case authority_state_t::REVOKED:
+                case cms::cert::authority_state_t::REVOKED:
                     status = AUTHORITY_REVOKED;
                     break;
-                case authority_state_t::UNKNOWN:
+                case cms::cert::authority_state_t::UNKNOWN:
                     if (authority_monitor.isActive()) status = UNKNOWN;
                     break;
-                case authority_state_t::GOOD:
+                case cms::cert::authority_state_t::GOOD:
                     break;
             }
         }
@@ -3711,7 +3711,7 @@ int main(int argc, char *argv[]) {
 
         // The root states where its own revocation can be learned. Ask, so that a revoked
         // authority reaches the certificates issued beneath it.
-        AuthorityMonitor authority_monitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status);
+        cms::cert::AuthorityMonitor authority_monitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status);
         authority_monitor.start();
 
         if (!admin_name.empty()) {

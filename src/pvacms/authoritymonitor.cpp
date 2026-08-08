@@ -16,10 +16,10 @@
 
 #include "certstatusmanager.h"
 
-DEFINE_LOGGER(authmonitor, "pvxs.certs.auth.monitor");
+DEFINE_LOGGER(authmonitor, "cms.certs.status.authority");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 namespace {
 
@@ -87,10 +87,10 @@ AuthorityMonitor::AuthorityMonitor(X509 *trust_anchor, const bool hold_last_know
     // Keep our own reference: the certificate is read from the polling thread and should not
     // depend on the caller's copy staying put.
     X509_up_ref(trust_anchor);
-    cert_ = ossl_ptr<X509>(trust_anchor);
+    cert_ = pvxs::ossl_ptr<X509>(trust_anchor);
 
     // The anchor is the only certificate that can have signed a trustworthy answer about itself.
-    trusted_store_ = ossl_ptr<X509_STORE>(X509_STORE_new());
+    trusted_store_ = pvxs::ossl_ptr<X509_STORE>(X509_STORE_new());
     X509_STORE_add_cert(trusted_store_.get(), cert_.get());
 }
 
@@ -158,7 +158,7 @@ time_t AuthorityMonitor::pollOnce() {
 
         // Ask about the anchor. A self-signed anchor is its own issuer, which is what names it
         // to the responder.
-        const ossl_ptr<OCSP_REQUEST> request(OCSP_REQUEST_new());
+        const pvxs::ossl_ptr<OCSP_REQUEST> request(OCSP_REQUEST_new());
         OCSP_CERTID *cert_id = OCSP_cert_to_id(nullptr, cert_.get(), cert_.get());
         if (!cert_id) throw std::runtime_error("cannot name the trust anchor to the responder");
         if (!OCSP_request_add0_id(request.get(), cert_id)) {
@@ -166,21 +166,21 @@ time_t AuthorityMonitor::pollOnce() {
             throw std::runtime_error("cannot assemble the request");
         }
 
-        const ossl_ptr<BIO> connection(BIO_new_connect(host_port.c_str()));
+        const pvxs::ossl_ptr<BIO> connection(BIO_new_connect(host_port.c_str()));
         if (BIO_do_connect(connection.get()) <= 0) {
-            throw std::runtime_error(SB() << "cannot reach the responder at " << host_port);
+            throw std::runtime_error(pvxs::SB() << "cannot reach the responder at " << host_port);
         }
 
-        const ossl_ptr<OCSP_RESPONSE> response(OCSP_sendreq_bio(connection.get(), request_path.c_str(), request.get()),
+        const pvxs::ossl_ptr<OCSP_RESPONSE> response(OCSP_sendreq_bio(connection.get(), request_path.c_str(), request.get()),
                                                false);
         if (!response) throw std::runtime_error("the responder gave no answer");
 
         // The same decode, signature check and freshness check the service already applies to
         // every status it receives.
-        const auto parsed = CmsStatusManager::parse(response, trusted_store_.get());
+        const auto parsed = pvxs::certs::CmsStatusManager::parse(response, trusted_store_.get());
 
-        const auto reported = parsed.ocsp_status == OCSP_CERTSTATUS_REVOKED  ? authority_state_t::REVOKED
-                              : parsed.ocsp_status == OCSP_CERTSTATUS_GOOD   ? authority_state_t::GOOD
+        const auto reported = parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_REVOKED  ? authority_state_t::REVOKED
+                              : parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_GOOD   ? authority_state_t::GOOD
                                                                              : authority_state_t::UNKNOWN;
         state_.store(reported, std::memory_order_release);
 
@@ -206,5 +206,5 @@ time_t AuthorityMonitor::pollOnce() {
     }
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

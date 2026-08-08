@@ -17,8 +17,8 @@
 
 #include "ownedptr.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 /**
  * @brief What the trust anchor's own responder says about the trust anchor.
@@ -83,8 +83,8 @@ class AuthorityMonitor {
 
     std::string responder_uri_;
     const bool hold_last_known_;
-    ossl_ptr<X509> cert_;
-    ossl_ptr<X509_STORE> trusted_store_;
+    pvxs::ossl_ptr<X509> cert_;
+    pvxs::ossl_ptr<X509_STORE> trusted_store_;
 
     std::atomic<authority_state_t> state_{authority_state_t::UNKNOWN};
 
@@ -94,7 +94,7 @@ class AuthorityMonitor {
     bool stopping_{false};
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_AUTHORITYMONITOR_H
