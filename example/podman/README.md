@@ -274,23 +274,29 @@ run_in lab-manager as idm bash -c \
 #   53:E8:04:2C:F6:8B:D9:A0:BA:C0:A0:89:85:AB:47:BF:0F:BB:EB:D0
 ```
 
-All of these name that same authority, so any of them can be given to `--issuer` or to
-`EPICS_PVA_AUTH_ISSUER`, and the `issuer:` field of a filter takes them too:
+All of these are the same authority written four ways, and all four are understood
+wherever an authority is named. Separators are dropped and capitals folded:
 
 ```sh
-run_in lab as guest authnstd -u client --issuer 53e8042c
-run_in lab as guest authnstd -u client --issuer 53E8042C
-run_in lab as guest authnstd -u client --issuer 53E8042CF68BD9A0BAC0A08985AB47BF0FBBEBD0
-run_in lab as guest authnstd -u client --issuer 53:E8:04:2C:F6:8B:D9:A0:BA:C0:A0:89:85:AB:47:BF:0F:BB:EB:D0
+run_in lab-manager as admin pvxcert -l --where "issuer:53e8042c"
+run_in lab-manager as admin pvxcert -l --where "issuer:53E8042C"
+run_in lab-manager as admin pvxcert -l --where "issuer:53E8042CF68BD9A0BAC0A08985AB47BF0FBBEBD0"
+run_in lab-manager as admin pvxcert -l --where "issuer:'53:E8:04:2C:F6:8B:D9:A0:BA:C0:A0:89:85:AB:47:BF:0F:BB:EB:D0'"
 ```
 
-Separators are dropped and capitals folded. Something that is not an identifier at all, or
-is too short to name an authority, is refused rather than turned into a name nothing answers:
+The colon form needs quoting in a filter, because a bare colon is what separates the field
+from the value. Everywhere else it can be written as it comes.
+
+Something that is not an identifier at all, or is too short to name an authority, is refused
+rather than turned into a name nothing answers:
 
 ```sh
 run_in lab as guest authnstd -u client --issuer 53e80
 #   '53e80' is too short to name a certificate authority: at least 8 hexadecimal digits are needed
 ```
+
+How much of it is needed depends on what it is for. Naming takes as little as the eight
+digits; deciding what to trust takes all of it.
 
 **The whole identifier is required when nothing is trusted yet, and refused otherwise.**
 Eight digits is thirty-two bits, and a key whose identifier begins with any wanted

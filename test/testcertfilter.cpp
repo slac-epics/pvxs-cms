@@ -336,6 +336,11 @@ void testAnAuthorityCanBeNamedInFull() {
 
     // A pattern is left as written rather than shortened on the caller's behalf.
     testOk1(CertFilter::parse("issuer:a76e*", kNow).possibleFor("a76e613b"));
+
+    // The colon-separated form the certificate tools print, which has to be quoted here
+    // because a bare colon is what separates the field from the value.
+    testOk1(CertFilter::parse("issuer:'a7:6e:61:3b:d1:c5:8c:1b:9b:a0'", kNow).possibleFor("a76e613b"));
+    testOk1(!CertFilter::parse("issuer:'d7:42:1b:fe:d1:c5:8c:1b:9b:a0'", kNow).possibleFor("a76e613b"));
 }
 
 void testValuesAreBoundNotPastedIn() {
@@ -448,7 +453,7 @@ void testLimitsAreRefusedPlainly() {
 }  // namespace
 
 MAIN(testcertfilter) {
-    testPlan(100);
+    testPlan(102);
     testAJoiningWordCanBeAValue();
     testPrecedence();
     testBracketsOverridePrecedence();

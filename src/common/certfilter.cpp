@@ -999,13 +999,22 @@ bool CertFilter::possibleFor(const std::string &issuer_id) const {
         bool any_matches = false;
         for (const auto &value : test->values) {
             // An authority names itself in full on its own certificate and by the first eight
-            // digits of that in a channel name, and both get written down. Compare only as far
-            // as the shorter of the two runs, so either names the same authority. A pattern or
-            // a regular expression is left alone: what it was written to match is the caller's
-            // business, not something to shorten on their behalf.
-            if (value.kind == FilterValueKind::Text && value.text.find('*') == std::string::npos &&
-                value.text.size() > issuer_id.size()) {
-                if (textMatches(value.text.substr(0, issuer_id.size()), issuer_id)) {
+            // digits of that in a channel name, and both get written down, as are the colons
+            // the tools that print certificates put between the digits. Separators are dropped
+            // and only as far as the shorter of the two runs is compared, so every way of
+            // writing one authority finds it. A quoted value is needed for the form with
+            // colons, since a bare colon separates the field from the value.
+            //
+            // A pattern or a regular expression is left alone: what it was written to match is
+            // the caller's business, not something to rewrite on their behalf.
+            if (value.kind == FilterValueKind::Text && value.text.find('*') == std::string::npos) {
+                std::string digits;
+                digits.reserve(value.text.size());
+                for (const char c : value.text) {
+                    if (c != ':' && c != '-' && c != ' ') digits += c;
+                }
+                if (digits.size() > issuer_id.size() &&
+                    textMatches(digits.substr(0, issuer_id.size()), issuer_id)) {
                     any_matches = true;
                     continue;
                 }
