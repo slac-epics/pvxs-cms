@@ -73,6 +73,16 @@ TESTS += testtlswithcmsandstapling
 TESTPROD_HOST += testtlswithcmsandstapling
 testtlswithcmsandstapling_SRCS += testtlswithcmsandstapling.cpp
 
+# What a certificate manager makes of the responder its trust anchor names. The responder is
+# part of the test and bound to a port the operating system chooses on loopback, so it cannot
+# collide with another job or with a demonstration laboratory running on the same machine.
+TESTS += testauthoritystatus
+TESTPROD_HOST += testauthoritystatus
+testauthoritystatus_SRCS += testauthoritystatus.cpp
+testauthoritystatus_SRCS += authoritymonitor.cpp
+testauthoritystatus_LIBS += pvxsIoc dbRecStd dbCore ca
+testauthoritystatus_SYS_LIBS += sqlite3
+
 # Test TLS status operations
 TESTS += testtlsstatus
 TESTPROD_HOST += testtlsstatus
