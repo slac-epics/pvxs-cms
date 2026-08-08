@@ -169,8 +169,7 @@ run_in perimeter as guest without a certificate pvxput test:spec 3
 The two messages come from two different places, and which one you get says how far the
 request travelled. The first reached the controller, which applied its own access file. The
 other two never left the boundary: the gateway refused them there, whether the request came
-from the peer department or from outside both. Neither had been tried before, and neither is
-refused twice; the difference is where along the path each one stops.
+from the peer department or from outside both.
 
 Any other process variable is refused the same way, because every write rule in the
 laboratory names `PROTOCOL(TLS)` and `METHOD(X509)`:
