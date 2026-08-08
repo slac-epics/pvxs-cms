@@ -100,13 +100,24 @@ else
             set -e
             arch=\$(/opt/epics/epics-base/startup/EpicsHostArch)
             /opt/epics/pvxs-cms/test/O.\$arch/gen_lab_certs \
-                -O /certs -R '${ROOT_CN}' -L '${LAB_CN}' -M '${ML_CN}'
+                -O /certs -R '${ROOT_CN}' -L '${LAB_CN}' -M '${ML_CN}' \
+                -S 'http://pvxs-lab-authority-status:8888'
             ls -la /certs"
     cp certs/issuer_ids.env issuer_ids.env
     # compose substitutes ${LAB_ISSUER} and ${ML_ISSUER} in the file itself from .env,
     # which it reads before anything else. env_file only reaches the container, and by
     # then the substitution has already happened, so both are needed.
     cp certs/issuer_ids.env .env
+
+    # What the responder needs, under the names it is started with. It is kept apart from
+    # ./certs because ./certs holds authorities and this holds one service's configuration,
+    # and because the file that says whether the root still stands is rewritten during a
+    # demonstration while nothing in ./certs is.
+    rm -rf ocsp && mkdir -p ocsp
+    cp certs/ocsp_ca.pem     ocsp/ca.pem
+    cp certs/ocsp_signer.pem ocsp/signer.pem
+    cp certs/ocsp_signer.key ocsp/signer.key
+    cp certs/ocsp_index.txt  ocsp/index.txt
 fi
 
 echo

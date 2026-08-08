@@ -33,6 +33,14 @@ else
     echo "==> keeping the existing certificate authorities"
 fi
 
+# A demonstration may have left the facility root revoked, and a laboratory that starts with a
+# revoked authority issues nothing. Put it back.
+if [ -s ocsp/index.txt ] && [ "$(cut -f1 ocsp/index.txt)" != V ]; then
+    echo "==> putting the facility root back"
+    awk -F'\t' 'BEGIN{OFS="\t"} {print "V", $2, "", $4, $5, $6}' ocsp/index.txt > ocsp/index.new
+    mv ocsp/index.new ocsp/index.txt
+fi
+
 echo "==> starting the laboratory"
 podman-compose up -d >/dev/null 2>&1
 

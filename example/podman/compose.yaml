@@ -44,9 +44,45 @@ volumes:
 
 services:
 
+  # ------------------------------------------------------------- the facility authority
+  # The facility root is trusted by every node and has no status channel of its own, so its
+  # revocation reaches nowhere by the means the issued certificates use. It instead names
+  # this responder, which publishes whether the root still stands, and each department's
+  # certificate manager asks it.
+  #
+  # It sits on both departmental networks because both certificate managers chain to the same
+  # root and must both be able to ask. It signs with a certificate the root authorised for the
+  # purpose, so the root's own key is not here either.
+  #
+  # What it says is held in ./ocsp/index.txt. It is read at start, so revoking the authority is
+  # a matter of rewriting that file and restarting this one service.
+  pvxs-lab-authority-status:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
+    hostname: pvxs-lab-authority-status
+    networks: [net-lab, net-ml]
+    volumes:
+      - ./ocsp:/ocsp:ro,Z
+    command:
+      - openssl
+      - ocsp
+      - -index
+      - /ocsp/index.txt
+      - -CA
+      - /ocsp/ca.pem
+      - -rsigner
+      - /ocsp/signer.pem
+      - -rkey
+      - /ocsp/signer.key
+      - -port
+      - "8888"
+      - -nmin
+      - "1"
+
   # ---------------------------------------------------------------- lab department
   pvxs-lab-pvacms:
     init: true
+    depends_on: [pvxs-lab-authority-status]
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-pvacms
     networks: [net-lab]
@@ -121,6 +157,7 @@ services:
   # ------------------------------------------------- machine learning department
   pvxs-lab-ml:
     init: true
+    depends_on: [pvxs-lab-authority-status]
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml:latest
     hostname: pvxs-lab-ml
     networks: [net-ml]

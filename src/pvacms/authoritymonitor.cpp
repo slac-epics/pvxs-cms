@@ -23,8 +23,14 @@ namespace certs {
 
 namespace {
 
-/** How long to wait before asking again when the responder could not be reached. */
-constexpr time_t retry_after_failure_secs = 60;
+/**
+ * How long to wait before asking again when the responder could not be reached.
+ *
+ * Short, because a responder that did not answer has said nothing about when it will have
+ * something to say, and because the alternative to asking again is to keep denying
+ * connections. It is also what covers a responder that starts a moment after this service.
+ */
+constexpr time_t retry_after_failure_secs = 15;
 
 /** Bound on the wait, so that a responder promising a distant next update is still re-checked. */
 constexpr time_t longest_wait_secs = 60 * 60;

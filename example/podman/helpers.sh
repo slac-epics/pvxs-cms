@@ -266,6 +266,59 @@ lab_ids() {
     export LAB ML LAB_SKID ML_SKID
 }
 
+# What the facility root's responder says about the root, and how to change it.
+#
+# The root is the one certificate the laboratory cannot ask about over Secure PVAccess: it has
+# no status channel, and an answer carried over a connection it underwrites would be worth
+# nothing. It names a responder instead, and each certificate manager asks that responder
+# whether the root still stands.
+#
+# The responder reads its answer at start, so each of these rewrites the file and restarts it.
+authority_says() {
+    local index="${LAB_HELPERS_DIR:-.}/ocsp/index.txt"
+    [ -r "${index}" ] || { echo "no ${index} yet - run ./bootstrap.sh first" >&2; return 1; }
+    case "$(cut -f1 "${index}")" in
+        R) echo "the facility root is REVOKED" ;;
+        V) echo "the facility root stands" ;;
+        *) echo "the responder's index says something this does not understand" ;;
+    esac
+}
+
+# Revoke the facility root, as its own authority would.
+authority_revoke() {
+    local index="${LAB_HELPERS_DIR:-.}/ocsp/index.txt"
+    [ -r "${index}" ] || { echo "no ${index} yet - run ./bootstrap.sh first" >&2; return 1; }
+    # The revocation time is the two-digit-year form the index uses throughout; the four-digit
+    # form makes the responder answer with an internal error rather than a status.
+    awk -F'\t' -v when="$(date -u +%y%m%d%H%M%SZ)" 'BEGIN{OFS="\t"}
+        {print "R", $2, when, $4, $5, $6}' "${index}" > "${index}.new" && mv "${index}.new" "${index}"
+    (cd "${LAB_HELPERS_DIR:-.}" && podman-compose restart pvxs-lab-authority-status) >/dev/null 2>&1
+    authority_says
+}
+
+# Put the facility root back, so a demonstration can be run again.
+authority_restore() {
+    local index="${LAB_HELPERS_DIR:-.}/ocsp/index.txt"
+    [ -r "${index}" ] || { echo "no ${index} yet - run ./bootstrap.sh first" >&2; return 1; }
+    awk -F'\t' 'BEGIN{OFS="\t"} {print "V", $2, "", $4, $5, $6}' "${index}" > "${index}.new" \
+        && mv "${index}.new" "${index}"
+    (cd "${LAB_HELPERS_DIR:-.}" && podman-compose restart pvxs-lab-authority-status) >/dev/null 2>&1
+    authority_says
+}
+
+# Take the responder away without changing what it would have said, which is the other thing
+# that can happen to it.
+authority_unreachable() {
+    (cd "${LAB_HELPERS_DIR:-.}" && podman-compose stop pvxs-lab-authority-status) >/dev/null 2>&1
+    echo "the responder is stopped; nothing can be learned about the root"
+}
+
+authority_reachable() {
+    (cd "${LAB_HELPERS_DIR:-.}" && podman-compose start pvxs-lab-authority-status) >/dev/null 2>&1
+    echo "the responder is running again"
+    authority_says
+}
+
 # Which parts of the laboratory are up, named the way run_in names them.
 lab_status() {
     local place service
