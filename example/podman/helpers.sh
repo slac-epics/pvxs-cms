@@ -288,6 +288,24 @@ lab_ids() {
     LAB_SKID=$(sed -n 's/^LAB_ISSUER_SKID=//p' "${env_file}")
     ML_SKID=$(sed -n 's/^ML_ISSUER_SKID=//p'  "${env_file}")
     export LAB ML LAB_SKID ML_SKID
+    lab_ids_show
+}
+
+# Shows the authorities under the names a shell uses for them.
+#
+# The file holds LAB_ISSUER and the rest, which is what compose substitutes and what the
+# containers are given. A shell uses shorter names for the same four values. Printing the file
+# as it stands would name variables that lab_ids does not set, so it is printed the way it will
+# be typed, and this is the only place that knows both spellings.
+lab_ids_show() {
+    local env_file="${LAB_HELPERS_DIR:-.}/.env"
+    [ -r "${env_file}" ] || return 0
+    local lab ml lab_skid ml_skid
+    lab=$(sed -n 's/^LAB_ISSUER=//p' "${env_file}")
+    ml=$(sed -n 's/^ML_ISSUER=//p' "${env_file}")
+    lab_skid=$(sed -n 's/^LAB_ISSUER_SKID=//p' "${env_file}")
+    ml_skid=$(sed -n 's/^ML_ISSUER_SKID=//p' "${env_file}")
+    printf '    %-9s %s\n' "\$LAB" "${lab}" "\$ML" "${ml}" "\$LAB_SKID" "${lab_skid}" "\$ML_SKID" "${ml_skid}"
 }
 
 # What the facility root's responder says about the root, and how to change it.

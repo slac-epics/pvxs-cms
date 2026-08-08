@@ -63,7 +63,10 @@ sleep 10
 
 echo
 echo "The laboratory is running with no certificates issued."
-sed 's/^/    /' .env 2>/dev/null || true
+# Named the way a shell names them, which is not how the file spells them.
+# shellcheck source=helpers.sh
+. ./helpers.sh
+lab_ids_show
 echo
 if [ "${new_authorities}" = yes ]; then
     # A shell that read the old ones still holds them, and nothing here can reach into it.

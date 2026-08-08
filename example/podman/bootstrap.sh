@@ -122,7 +122,10 @@ fi
 
 echo
 echo "==> issuer ids"
-sed 's/^/    /' issuer_ids.env
+# Named the way a shell names them, which is not how the file spells them.
+# shellcheck source=helpers.sh
+. ./helpers.sh
+lab_ids_show
 echo
 echo "Now:  podman-compose up -d"
 echo
