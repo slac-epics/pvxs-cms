@@ -45,6 +45,17 @@ namespace certs {
 /** How many hex digits of a certificate authority's subject key identifier name it on the wire. */
 constexpr size_t kIssuerIdNameLength = 8;
 
+/** How many hex digits the whole subject key identifier has, being a SHA-1 digest. */
+constexpr size_t kIssuerIdFullLength = 40;
+
+/** Whether an identifier names an authority completely, rather than only enough to address it.
+ *
+ *  The naming length is 32 bits, which is few enough that a key pair whose identifier begins
+ *  with any wanted 32 bits can be generated in hours. That is adequate to say which certificate
+ *  manager to ask, and inadequate to decide which authority to trust.
+ */
+inline bool issuerIdIsComplete(const std::string &issuer_id) { return issuer_id.size() >= kIssuerIdFullLength; }
+
 /**
  * @brief Read an issuer identifier the way somebody wrote it down.
  *

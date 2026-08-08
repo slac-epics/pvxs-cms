@@ -536,6 +536,22 @@ inline std::string getTrustedIssuerId(const std::string &keychain_file, const st
 }
 
 /**
+ * @brief Refuse an issuer identifier that is too short to decide what to trust.
+ *
+ * @throws std::runtime_error naming the value and what is needed.
+ */
+inline void requireCompleteIssuerId(const std::string &issuer_id) {
+    if (issuerIdIsComplete(issuer_id)) return;
+    throw std::runtime_error(
+        SB() << "The issuer '" << issuer_id << "' is only " << issuer_id.size()
+             << " of the " << kIssuerIdFullLength
+             << " digits of a subject key identifier, which is not enough to decide which certificate "
+                "authority to trust. Nothing is trusted yet, so this identifier is the only thing "
+                "deciding it. Give the whole subject key identifier, as the certificate manager prints "
+                "it at startup, or pre-provision a keychain holding the authority to trust.");
+}
+
+/**
  * @brief Resolve the issuer ID that the caller has committed to trust, for this request.
  *
  * Trust must be asserted out-of-band before a certificate is accepted, otherwise the initial
@@ -570,6 +586,14 @@ inline std::string resolveExpectedIssuerId(const std::string &configured_issuer_
             "or pre-provision a keychain containing the certificate authority to trust (authnstd --trust-anchor --issuer <id>). "
             "This prevents silently trusting an authority delivered over an untrusted channel.");
     }
+
+    // Nothing is pinned, so this identifier is the only thing deciding which authority is
+    // trusted, and it has to be the whole one. The short form names an authority in a channel
+    // name and constrains 32 bits, which is few enough that an authority whose identifier
+    // begins with any wanted 32 bits can be generated in hours; trusting on that basis would
+    // accept one so generated. Once an authority is pinned the short form is enough, because
+    // the pinned value is what is compared.
+    requireCompleteIssuerId(configured_issuer_id);
     return configured_issuer_id;
 }
 

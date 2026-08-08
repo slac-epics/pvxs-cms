@@ -231,6 +231,15 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
             return 14;
         }
 
+        // Retrieving a trust anchor is the moment trust is decided, and there is nothing pinned
+        // to decide it against, so the identifier given has to be the whole one.
+        try {
+            certs::requireCompleteIssuerId(config.issuer_id);
+        } catch (const std::exception &e) {
+            std::cerr << e.what() << std::endl;
+            return 14;
+        }
+
         // Create a keychain file from a trust anchor
         AuthNStd authenticator{};
         auto credentials = authenticator.getCredentials(config, !IS_FOR_A_SERVER_(cert_usage));

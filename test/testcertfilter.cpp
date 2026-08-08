@@ -314,6 +314,14 @@ void testAnIssuerIsReadInEveryFormItIsWrittenIn() {
     // rather than turned into a name that goes unanswered.
     testThrows<std::runtime_error>([] { readIssuerId("not-hex-at-all"); });
     testThrows<std::runtime_error>([] { readIssuerId("807fed"); });
+
+    // Naming an authority and deciding to trust one need different amounts of it. The eight
+    // digits a channel name carries are enough to say which manager to ask and not enough to
+    // say which authority to trust, so only the whole identifier counts as complete.
+    testTrue(issuerIdIsComplete(full));
+    testFalse(issuerIdIsComplete("807feda5"));
+    testFalse(issuerIdIsComplete(""));
+    testFalse(issuerIdIsComplete(full.substr(0, kIssuerIdFullLength - 1)));
 }
 
 void testAnAuthorityCanBeNamedInFull() {
@@ -440,7 +448,7 @@ void testLimitsAreRefusedPlainly() {
 }  // namespace
 
 MAIN(testcertfilter) {
-    testPlan(96);
+    testPlan(100);
     testAJoiningWordCanBeAValue();
     testPrecedence();
     testBracketsOverridePrecedence();
