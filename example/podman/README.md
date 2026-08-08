@@ -298,15 +298,24 @@ run_in lab-manager as idm bash -c \
 #   53:E8:04:2C:F6:8B:D9:A0:BA:C0:A0:89:85:AB:47:BF:0F:BB:EB:D0
 ```
 
+> **Every identifier printed in this document came from one run.** Each laboratory mints its
+> own authorities, and mints them again on `./reset.sh --authorities`, so yours are different.
+> Where a command has to carry one, it is written `${LAB}` or `${LAB_SKID}`, which `lab_ids`
+> fills in from the laboratory in front of you. Where a certificate has to be named, take the
+> identifier from the listing rather than from here.
+
 All of these are the same authority written four ways, and all four are understood
 wherever an authority is named. Separators are dropped and capitals folded:
 
 ```sh
-run_in lab-manager as admin pvxcert -l --where "issuer:53e8042c"
-run_in lab-manager as admin pvxcert -l --where "issuer:53E8042C"
-run_in lab-manager as admin pvxcert -l --where "issuer:53E8042CF68BD9A0BAC0A08985AB47BF0FBBEBD0"
+run_in lab-manager as admin pvxcert -l --where "issuer:${LAB}"
+run_in lab-manager as admin pvxcert -l --where "issuer:$(echo ${LAB} | tr a-z A-Z)"
+run_in lab-manager as admin pvxcert -l --where "issuer:${LAB_SKID}"
 run_in lab-manager as admin pvxcert -l --where "issuer:'53:E8:04:2C:F6:8B:D9:A0:BA:C0:A0:89:85:AB:47:BF:0F:BB:EB:D0'"
 ```
+
+The last is the colon form, and is the one place here you would substitute your own: it is
+`${LAB_SKID}` with a colon between each pair of digits.
 
 The colon form needs quoting in a filter, because a bare colon is what separates the field
 from the value. Everywhere else it can be written as it comes.
@@ -329,7 +338,7 @@ authority conveniently but cannot establish that it is the right one:
 
 ```sh
 run_in lab as guest authnstd -u client --issuer ${LAB}
-#   The issuer '53e8042c' is only 8 of the 40 digits of a subject key identifier, which is
+#   The issuer '<yours>' is only 8 of the 40 digits of a subject key identifier, which is
 #   not enough to decide which certificate authority to trust ...
 run_in lab as guest authnstd -u client --issuer ${LAB_SKID}      # accepted
 ```
