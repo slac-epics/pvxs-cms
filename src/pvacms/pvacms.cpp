@@ -64,6 +64,7 @@
 #include "certfilefactory.h"
 #include "certrequestid.h"
 #include "certstatus.h"
+#include "authoritymonitor.h"
 #include "certstatusfactory.h"
 #include "cmsversion.h"
 #include "clusterctrl.h"
@@ -1630,7 +1631,8 @@ void onGetStatus(const ConfigCms &config,
                  const std::string &issuer_id,
                  const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                  const ossl_ptr<X509> &cert_auth_cert,
-                 const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
+                 const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+                 const AuthorityMonitor &authority_monitor) {
     const auto cert_status_creator(
         CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
     try {
@@ -1660,6 +1662,24 @@ void onGetStatus(const ConfigCms &config,
 
         for (const auto cert_auth_serial_number : cert_auth_serial_numbers) {
             getWorstCertificateStatus(certs_db, cert_auth_serial_number, status, status_date);
+        }
+
+        // The authority above this certificate has its say last. A certificate revoked in its
+        // own right keeps reporting that: the holder is told about their own certificate first,
+        // because that is the fact they can act on. Otherwise the authority's standing decides,
+        // and it is read at the point of answering rather than recorded, so restoring the
+        // authority restores reporting with no repair step.
+        if (status != REVOKED && status != EXPIRED) {
+            switch (authority_monitor.state()) {
+                case authority_state_t::REVOKED:
+                    status = AUTHORITY_REVOKED;
+                    break;
+                case authority_state_t::UNKNOWN:
+                    if (authority_monitor.isActive()) status = UNKNOWN;
+                    break;
+                case authority_state_t::GOOD:
+                    break;
+            }
         }
 
         const auto now = timeNow();
@@ -3689,6 +3709,11 @@ int main(int argc, char *argv[]) {
                                        is_initialising);
         auto our_issuer_id = CertStatus::getSkId(cert_auth_cert);
 
+        // The root states where its own revocation can be learned. Ask, so that a revoked
+        // authority reaches the certificates issued beneath it.
+        AuthorityMonitor authority_monitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status);
+        authority_monitor.start();
+
         if (!admin_name.empty()) {
             // Name the step that failed. Creating the certificate and registering the
             // administrator in the access security file fail for different reasons, and
@@ -3833,6 +3858,7 @@ int main(int argc, char *argv[]) {
                                   &cert_auth_pkey,
                                   &cert_auth_cert,
                                   &cert_auth_chain,
+                                  &authority_monitor,
                                   &our_issuer_id](WildcardPV &pv,
                                                   const std::string &pv_name,
                                                   const std::list<std::string> &parameters) {
@@ -3846,7 +3872,8 @@ int main(int argc, char *argv[]) {
                         our_issuer_id,
                         cert_auth_pkey,
                         cert_auth_cert,
-                        cert_auth_chain);
+                        cert_auth_chain,
+                        authority_monitor);
         });
         status_pv.onLastDisconnect([](WildcardPV &pv,
                                       const std::string &pv_name,

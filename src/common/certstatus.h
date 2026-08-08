@@ -466,7 +466,8 @@ class CertStatusSubscriptionException final : public CertStatusException {
     X_IT(PENDING_APPROVAL) \
     X_IT(PENDING_RENEWAL)  \
     X_IT(EXPIRED)          \
-    X_IT(REVOKED)
+    X_IT(REVOKED)          \
+    X_IT(AUTHORITY_REVOKED)
 
 // All OCSP certificate statuses
 #define OCSP_CERT_STATUS_LIST     \
@@ -1010,7 +1011,8 @@ struct OCSPStatus {
     virtual bool operator==(ocspcertstatus_t& rhs) const { return this->ocsp_status == rhs; }
     virtual bool operator!=(ocspcertstatus_t& rhs) const { return !(*this == rhs); }
     virtual bool operator==(certstatus_t& rhs) const {
-        return (rhs == VALID && this->ocsp_status == OCSP_CERTSTATUS_GOOD) || (rhs == REVOKED && this->ocsp_status == OCSP_CERTSTATUS_REVOKED);
+        return (rhs == VALID && this->ocsp_status == OCSP_CERTSTATUS_GOOD) ||
+               ((rhs == REVOKED || rhs == AUTHORITY_REVOKED) && this->ocsp_status == OCSP_CERTSTATUS_REVOKED);
     }
     virtual bool operator!=(certstatus_t& rhs) const { return !(*this == rhs); }
 
@@ -1192,7 +1194,10 @@ struct CertificateStatus {
      *
      * @return true if the certificate is Expired or Revoked
      */
-    bool isRevokedOrExpired() const noexcept { return status == REVOKED || status == EXPIRED; }
+    /** Whether the certificate itself, or the authority above it, denies its use. */
+    bool isRevokedOrExpired() const noexcept {
+        return status == REVOKED || status == EXPIRED || status == AUTHORITY_REVOKED;
+    }
 
      /**
       * @brief Check whether this *status result* is still current

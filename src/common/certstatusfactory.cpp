@@ -70,6 +70,11 @@ PVACertificateStatus CertStatusFactory::createPVACertificateStatus(const serial_
             ocsp_status = OCSP_CERTSTATUS_GOOD;
             break;
         case REVOKED:
+        // The response carries only good, revoked and unknown, so an authority's revocation is
+        // reported there as a revocation. A holder reading only the response is told the one
+        // thing that matters to it, that the certificate may not be used, and the state above
+        // says which certificate was revoked to cause it.
+        case AUTHORITY_REVOKED:
             ocsp_status = OCSP_CERTSTATUS_REVOKED;
             revocation_time_to_use = predicated_revocation_time;
             break;
