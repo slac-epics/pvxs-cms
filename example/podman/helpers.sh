@@ -288,7 +288,8 @@ lab_ids() {
     LAB_SKID=$(sed -n 's/^LAB_ISSUER_SKID=//p' "${env_file}")
     ML_SKID=$(sed -n 's/^ML_ISSUER_SKID=//p'  "${env_file}")
     export LAB ML LAB_SKID ML_SKID
-    lab_ids_show
+    # Silent: this is also run when the file is sourced, and sourcing should say nothing.
+    # Use lab_ids_show to see them.
 }
 
 # Shows the authorities under the names a shell uses for them.
