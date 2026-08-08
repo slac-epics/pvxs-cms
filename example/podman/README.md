@@ -153,23 +153,24 @@ readings.
 write for, and it still requires a certificate presented over TLS by an operator:
 
 ```sh
-# inside the department, refused by the controller itself
+# from inside the department: the request reaches the controller, which refuses it
 run_in lab as guest without a certificate pvxput test:spec 3
 #   ERROR ... Put not permitted
 
-# from the peer department, refused earlier, by the lab gateway
+# from the peer department: stopped at the lab's boundary, before reaching the controller
 run_in ml as guest without a certificate pvxput test:spec 3
 #   ERROR ... Put permission denied by gateway
 
-# from outside both departments, refused the same way
+# from outside both departments: stopped at that same boundary
 run_in perimeter as guest without a certificate pvxput test:spec 3
 #   ERROR ... Put permission denied by gateway
 ```
 
-The messages come from two different places, and the difference is worth noticing. In the
-first the request reached the controller, which applied its own access file. In the other
-two it never got that far: the gateway refused it on the boundary, whether the request came
-from the peer department or from outside both.
+The two messages come from two different places, and which one you get says how far the
+request travelled. The first reached the controller, which applied its own access file. The
+other two never left the boundary: the gateway refused them there, whether the request came
+from the peer department or from outside both. Neither had been tried before, and neither is
+refused twice; the difference is where along the path each one stops.
 
 Any other process variable is refused the same way, because every write rule in the
 laboratory names `PROTOCOL(TLS)` and `METHOD(X509)`:
