@@ -16,14 +16,17 @@ demonstrating can be shown and checked directly.
 - [1. Two certificate managers, one per department](#1-two-certificate-managers-one-per-department)
   - [Naming an authority](#naming-an-authority)
 - [2. Crossing a boundary is only possible through a gateway](#2-crossing-a-boundary-is-only-possible-through-a-gateway)
-- [3. One facility root, so each department trusts the other's certificates](#3-one-facility-root-so-each-department-trusts-the-others-certificates)
+- [3. What a certificate is worth, one step at a time](#3-what-a-certificate-is-worth-one-step-at-a-time)
+- [4. One facility root, so each department trusts the other's certificates](#4-one-facility-root-so-each-department-trusts-the-others-certificates)
   - [Narrowing a write to a unit, not a department](#narrowing-a-write-to-a-unit-not-a-department)
-- [4. The request identifier an administrator checks](#4-the-request-identifier-an-administrator-checks)
-- [5. Listing certificates](#5-listing-certificates)
-- [6. Filtering the listing](#6-filtering-the-listing)
-- [7. Approving, in batches or one at a time](#7-approving-in-batches-or-one-at-a-time)
-- [8. Denying and revoking](#8-denying-and-revoking)
-- [9. Only an administrator may decide](#9-only-an-administrator-may-decide)
+- [5. The request identifier an administrator checks](#5-the-request-identifier-an-administrator-checks)
+- [6. Listing certificates](#6-listing-certificates)
+- [7. Filtering the listing](#7-filtering-the-listing)
+- [8. Approving, in batches or one at a time](#8-approving-in-batches-or-one-at-a-time)
+- [9. Denying and revoking](#9-denying-and-revoking)
+- [10. Revoking the authority itself](#10-revoking-the-authority-itself)
+  - [When the responder cannot be reached](#when-the-responder-cannot-be-reached)
+- [11. Only an administrator may decide](#11-only-an-administrator-may-decide)
 - [Resetting between demonstrations](#resetting-between-demonstrations)
 - [Troubleshooting](#troubleshooting)
 
@@ -36,6 +39,7 @@ demonstrating can be shown and checked directly.
 | **Real network separation** | Three podman networks; a container reaches only those it is attached to, so a department's certificate manager is addressable only from inside it |
 | **Gateways on the boundary** | The only route between departments. Each forwards its own department's controller process variables, and its certificate traffic keyed by issuer id |
 | **Administration** | Listing, filtering, request identifiers, approval in batches or one at a time, denial and revocation, all restricted to administrators |
+| **Revoking the authority** | The root names a responder that publishes its own revocation, and every certificate beneath a revoked root reports a state that says so rather than claiming its own revocation |
 
 ## Installation
 
@@ -144,6 +148,9 @@ command as arguments instead when scripting: piping into a shell will not do, be
 terminal never reaches the end of its input.
 
 `run_in` on its own lists the places and people; `lab_status` shows what is running.
+`authority_says` reports what the facility root's responder says about the root, and
+`authority_revoke`, `authority_restore`, `authority_unreachable` and `authority_reachable`
+change it; section 10 is what they are for.
 
 ### First, what works with no certificates at all
 
@@ -389,7 +396,7 @@ run_in ml-gateway as gateway cat /home/gateway/gateway.pvlist
 
 Each names its **own** issuer only, so a request for the other department's certificates is
 not claimed by the wrong gateway. The view of certificates awaiting a decision appears in
-neither list, for the reason in section 9.
+neither list, for the reason in section 11.
 
 ## 3. What a certificate is worth, one step at a time
 
@@ -454,7 +461,7 @@ That last write is the one section 4 is about: it came from outside both departm
 holding a certificate the *other* department issued, and it succeeded.
 
 **And a variable may narrow further still, to what the certificate says about its holder.**
-That is section 5.
+That is "Narrowing a write to a unit, not a department", below.
 
 Read is untouched throughout. Every one of these variables can be read by anyone, from
 anywhere, with nothing at all.
@@ -563,7 +570,7 @@ admitted here. A rule that must not be crossed under any circumstances should na
 authority as well; naming only the unit trusts every department sharing the root to issue
 that unit honestly.
 
-## 4. The request identifier an administrator checks
+## 5. The request identifier an administrator checks
 
 The certificate creation request travels in clear text, so an administrator has to be able
 to compare what is on screen against what the requester sent. `authnstd` prints an
@@ -589,7 +596,7 @@ It is also a column in the listing:
 run_in lab-manager as admin pvxcert -l
 ```
 
-## 5. Listing certificates
+## 6. Listing certificates
 
 ```sh
 run_in lab-manager as admin pvxcert -l
@@ -625,9 +632,9 @@ run_in lab as guest pvxmonitor CERT:LIST:${LAB}:ALL
 run_in lab as guest pvxmonitor CERT:LIST:${LAB}:EXPIRING
 ```
 
-Those two are open to everyone. The third is not - see section 9.
+Those two are open to everyone. The third is not - see section 11.
 
-## 6. Filtering the listing
+## 7. Filtering the listing
 
 The expression is meant to be sayable aloud.
 
@@ -699,7 +706,7 @@ a dot in it does not quietly become a wildcard.
 Because dates are fixed width and year first, a partial bound selects by prefix and nothing
 needs parsing.
 
-## 7. Approving, in batches or one at a time
+## 8. Approving, in batches or one at a time
 
 There are two separate questions - *what is the decision* and *are you sure* - and `--all`
 and `--yes` answer one each. That gives four ways of working, from reading every request to
@@ -811,7 +818,7 @@ run_in lab-manager as admin pvxcert --review-pending < /dev/null ; echo "exit $?
 With nothing waiting for a decision there is nothing to be mistaken about, so the same
 command reports that and exits 0.
 
-## 8. Denying and revoking
+## 9. Denying and revoking
 
 A denial is not a separate state: the certificate manager writes `REVOKED`, and the review
 shows that before you confirm.
@@ -821,7 +828,7 @@ run_in lab-manager as admin pvxcert --review-pending --all deny --yes
 ```
 
 Revocation works over the issued certificates, and unlike a pending review it *can* be
-narrowed by the filter from section 6. The same three levels of control apply:
+narrowed by the filter from section 7. The same three levels of control apply:
 
 ```sh
 run_in lab-manager as admin pvxcert --review-issued --where "state:VALID"                 # one at a time
@@ -886,7 +893,111 @@ run_in lab-manager as admin pvxcert -R "${LAB}:11277229790059579580"   # the adm
 A failed write does not stop the ones after it, the certificate manager's own message is
 shown against the certificate it belongs to, and a partly successful batch exits 5.
 
-## 9. Only an administrator may decide
+## 10. Revoking the authority itself
+
+Everything so far revokes a certificate the laboratory issued, and the holder learns of it on
+the status channel that certificate names. The facility root has no such channel. It is the
+thing every node is configured to trust, so an answer about it carried over a connection it
+underwrites would be worth nothing, and nothing subscribes to it in any case.
+
+So the root says where its own revocation can be learned. It carries the address of a
+responder, and each department's certificate manager asks that responder whether the root
+still stands:
+
+```sh
+openssl x509 -in certs/ocsp_ca.pem -noout -text | grep -A 1 "Authority Information"
+#   Authority Information Access:
+#       OCSP - URI:http://pvxs-lab-authority-status:8888
+```
+
+That responder is the eleventh service in the laboratory. It sits on both departmental
+networks, because both managers chain to the same root, and it signs with a certificate the
+root authorised for the purpose, so the root's own key is not on it.
+
+Start from a working laboratory, with certificates issued and a write that succeeds:
+
+```sh
+authority_says
+#   the facility root stands
+
+run_in lab as guest pvxcert -l
+#   ... VALID ...
+```
+
+Now revoke the root, as its own authority would:
+
+```sh
+authority_revoke
+#   the facility root is REVOKED
+```
+
+Within a minute - the responder states how long its answer is good for, and the managers ask
+again when it lapses - every certificate beneath that root reports a state of its own:
+
+```sh
+run_in lab as guest pvxcert -l
+#   ... AUTHORITY_REVOKED ...
+```
+
+That state is not `REVOKED`, and the difference is the point of it. The holder's own
+certificate is untouched: it has not been revoked, it has not expired, and asking for a
+replacement would achieve nothing, because a replacement would be issued by the same
+authority. The certificate cannot be used, and the reason lies above it.
+
+Connections refuse accordingly, in both directions:
+
+```sh
+run_in lab as guest pvxput test:aiExample 42
+#   ERROR ... Put permission denied
+```
+
+Nothing was written to any database to make this happen, so putting the root back is enough
+to put the laboratory back:
+
+```sh
+authority_restore
+#   the facility root stands
+
+run_in lab as guest pvxcert -l
+#   ... VALID ...
+```
+
+### When the responder cannot be reached
+
+A responder is a web service, and a web service can be down. That is a different fact from a
+revoked authority: the root may be perfectly good and simply not answering for itself.
+
+```sh
+authority_unreachable
+#   the responder is stopped; nothing can be learned about the root
+```
+
+A certificate manager that cannot check its own authority does not assume the answer. Within
+fifteen seconds it reports what it actually knows, which is nothing:
+
+```sh
+run_in lab as guest pvxcert -l
+#   ... UNKNOWN ...
+```
+
+Connections refuse, exactly as they do for any status a client cannot establish. This is the
+laboratory failing closed, and it is a choice rather than a consequence: a facility that
+cannot check its authority stops, rather than continuing on an assumption.
+
+A site that would rather stay up sets `EPICS_PVACMS_AUTHORITY_HOLD_LAST_KNOWN=YES` on its
+certificate managers, and an unreachable responder then leaves them serving the last answer
+they verified. The trade is stated plainly: an outage of one web service no longer takes the
+facility with it, and a revocation issued during that outage is not seen until it ends.
+
+Put the responder back and the managers pick it up on their next attempt:
+
+```sh
+authority_reachable
+#   the responder is running again
+#   the facility root stands
+```
+
+## 11. Only an administrator may decide
 
 The administrator write rule names four things, and all of them are load bearing:
 
