@@ -81,6 +81,16 @@ machine with little memory, lower the compiler parallelism and make sure there i
 JOBS=2 ./bootstrap.sh
 ```
 
+**If you built before pulling**, rebuild the images. The process variables and the access
+rules live inside them, so a pull on its own leaves a controller serving the old set and the
+examples below timing out:
+
+```sh
+git pull && JOBS=2 ./bootstrap.sh --keep-certs && ./reset.sh
+```
+
+That keeps the certificate authorities, so the issuer ids you already noted still apply.
+
 `bootstrap.sh` writes `.env` and `issuer_ids.env`, holding the two departments' issuer ids.
 
 ### Say it once: where, and who
