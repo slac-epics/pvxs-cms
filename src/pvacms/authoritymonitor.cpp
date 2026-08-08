@@ -38,6 +38,8 @@ constexpr time_t longest_wait_secs = 60 * 60;
 /** Shortest wait, so that a responder promising an immediate next update is not asked in a spin. */
 constexpr time_t shortest_wait_secs = 10;
 
+using pvxs::certs::cert_authority_standing_t;
+
 using aia_ptr = std::unique_ptr<AUTHORITY_INFO_ACCESS, decltype(&AUTHORITY_INFO_ACCESS_free)>;
 
 /**
@@ -142,7 +144,7 @@ time_t AuthorityMonitor::pollOnce() {
     int use_ssl = 0;
     if (!OCSP_parse_url(responder_uri_.c_str(), &host, &port, &path, &use_ssl)) {
         log_err_printf(authmonitor, "Authority status: cannot read responder address %s\n", responder_uri_.c_str());
-        if (!hold_last_known_) state_.store(authority_state_t::UNKNOWN, std::memory_order_release);
+        if (!hold_last_known_) standing_.store(cert_authority_standing_t::UNKNOWN, std::memory_order_release);
         return 0;
     }
     // OCSP_parse_url hands back three separately allocated strings; free them however we leave.
@@ -152,7 +154,7 @@ time_t AuthorityMonitor::pollOnce() {
     OPENSSL_free(port);
     OPENSSL_free(path);
 
-    const authority_state_t previous = state();
+    const cert_authority_standing_t previous = standing();
     try {
         if (use_ssl) throw std::runtime_error("responder address names a protocol we do not speak");
 
@@ -179,24 +181,24 @@ time_t AuthorityMonitor::pollOnce() {
         // every status it receives.
         const auto parsed = pvxs::certs::CmsStatusManager::parse(response, trusted_store_.get());
 
-        const auto reported = parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_REVOKED  ? authority_state_t::REVOKED
-                              : parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_GOOD   ? authority_state_t::GOOD
-                                                                             : authority_state_t::UNKNOWN;
-        state_.store(reported, std::memory_order_release);
+        const auto reported = parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_REVOKED ? cert_authority_standing_t::REVOKED
+                              : parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_GOOD  ? cert_authority_standing_t::STANDING
+                                                                                         : cert_authority_standing_t::UNKNOWN;
+        standing_.store(reported, std::memory_order_release);
 
         if (reported != previous) {
-            log_warn_printf(authmonitor, "Authority status: now %s\n",
-                            reported == authority_state_t::REVOKED ? "REVOKED"
-                            : reported == authority_state_t::GOOD  ? "GOOD"
-                                                                   : "UNKNOWN");
+            log_warn_printf(authmonitor, "Authority status: the facility root %s\n",
+                            reported == cert_authority_standing_t::REVOKED ? "has been revoked"
+                            : reported == cert_authority_standing_t::STANDING ? "stands"
+                                                                             : "cannot be established");
         }
         return parsed.status_valid_until_date.t;
     } catch (const std::exception &e) {
         if (hold_last_known_) {
             log_warn_printf(authmonitor, "Authority status: %s; holding the last answer\n", e.what());
         } else {
-            state_.store(authority_state_t::UNKNOWN, std::memory_order_release);
-            if (previous != authority_state_t::UNKNOWN) {
+            standing_.store(cert_authority_standing_t::UNKNOWN, std::memory_order_release);
+            if (previous != cert_authority_standing_t::UNKNOWN) {
                 log_warn_printf(authmonitor, "Authority status: %s; now UNKNOWN\n", e.what());
             } else {
                 log_debug_printf(authmonitor, "Authority status: %s\n", e.what());

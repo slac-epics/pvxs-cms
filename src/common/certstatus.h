@@ -478,6 +478,15 @@ class CertStatusSubscriptionException final : public CertStatusException {
 // Define the enum
 #define X_IT(name) name,
 #define O_IT(name) name = V_##name,
+/**
+ * @brief What the authority above a certificate is known to be.
+ *
+ * A certificate manager learns this by asking the responder its trust anchor names, and
+ * answers every status through it, so a certificate that stands in its own right still
+ * reports that the authority above it does not.
+ */
+enum class cert_authority_standing_t { STANDING, REVOKED, UNKNOWN };
+
 enum certstatus_t { CERT_STATUS_LIST };
 enum ocspcertstatus_t { OCSP_CERT_STATUS_LIST };
 #undef X_IT

@@ -63,9 +63,22 @@ PVACertificateStatus CertStatusFactory::createPVACertificateStatus(const serial_
     const auto next_update = status_valid_until_time.toAsn1_Time();
     CertDate revocation_time_to_use = static_cast<time_t>(0);  // Default to 0
 
+    // The authority above this certificate has its say first, before anything is signed, so
+    // the state and the response it travels with cannot disagree. A certificate revoked or
+    // expired in its own right keeps reporting that: the holder is told about their own
+    // certificate, because that is the fact they can act on.
+    certstatus_t reported_status = status;
+    if (status != REVOKED && status != EXPIRED) {
+        if (authority_standing_ == cert_authority_standing_t::REVOKED) {
+            reported_status = AUTHORITY_REVOKED;
+        } else if (authority_standing_ == cert_authority_standing_t::UNKNOWN) {
+            reported_status = UNKNOWN;
+        }
+    }
+
     // Determine the OCSP status and revocation time
     ocspcertstatus_t ocsp_status;
-    switch (status) {
+    switch (reported_status) {
         case VALID:
             ocsp_status = OCSP_CERTSTATUS_GOOD;
             break;
@@ -109,13 +122,13 @@ PVACertificateStatus CertStatusFactory::createPVACertificateStatus(const serial_
     auto ocsp_response = ocspResponseToBytes(basic_resp);
     const auto ocsp_bytes = shared_array<const uint8_t>(ocsp_response.begin(), ocsp_response.end());
 
-    log_debug_printf(status_setup, "Status: %d\n", status);
+    log_debug_printf(status_setup, "Status: %d\n", reported_status);
     log_debug_printf(status_setup, "OCSP Status: %d\n", ocsp_status);
     log_debug_printf(status_setup, "Status Date: %s\n", status_date.s.c_str());
     log_debug_printf(status_setup, "Status Validity: %s\n", status_valid_until_time.s.c_str());
     log_debug_printf(status_setup, "Revocation Date: %s\n", revocation_time_to_use.s.c_str());
 
-    return PVACertificateStatus(status, ocsp_status, ocsp_bytes, status_date, status_valid_until_time, revocation_time_to_use, renew_by, renewal_due);
+    return PVACertificateStatus(reported_status, ocsp_status, ocsp_bytes, status_date, status_valid_until_time, revocation_time_to_use, renew_by, renewal_due);
 }
 
 /**

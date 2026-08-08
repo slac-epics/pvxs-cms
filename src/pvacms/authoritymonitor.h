@@ -15,19 +15,11 @@
 
 #include <openssl/x509.h>
 
+#include "certstatus.h"
 #include "ownedptr.h"
 
 namespace cms {
 namespace cert {
-
-/**
- * @brief What the trust anchor's own responder says about the trust anchor.
- *
- * These are the three answers the Online Certificate Status Protocol can carry, narrowed to
- * what this service acts on. `UNKNOWN` is also the answer when the responder could not be
- * reached or its reply could not be trusted: in each case the authority's standing is not known.
- */
-enum class authority_state_t { GOOD, REVOKED, UNKNOWN };
 
 /**
  * @brief Watches the responder named by the trust anchor, so that revocation of the anchor
@@ -65,8 +57,13 @@ class AuthorityMonitor {
     /** @brief The responder address read from the anchor, empty when it named none. */
     const std::string &responderUri() const noexcept { return responder_uri_; }
 
-    /** @brief The authority's standing as most recently established. */
-    authority_state_t state() const noexcept { return state_.load(std::memory_order_acquire); }
+    /**
+     * @brief The authority's standing as most recently established.
+     *
+     * `UNKNOWN` is what a responder that could not be reached, a reply that could not be
+     * verified and a malformed reply all come to: the standing is not known.
+     */
+    pvxs::certs::cert_authority_standing_t standing() const noexcept { return standing_.load(std::memory_order_acquire); }
 
     /** @brief Begins polling. Does nothing when the anchor named no responder. */
     void start();
@@ -86,7 +83,7 @@ class AuthorityMonitor {
     pvxs::ossl_ptr<X509> cert_;
     pvxs::ossl_ptr<X509_STORE> trusted_store_;
 
-    std::atomic<authority_state_t> state_{authority_state_t::UNKNOWN};
+    std::atomic<pvxs::certs::cert_authority_standing_t> standing_{pvxs::certs::cert_authority_standing_t::UNKNOWN};
 
     std::thread worker_;
     std::mutex mutex_;

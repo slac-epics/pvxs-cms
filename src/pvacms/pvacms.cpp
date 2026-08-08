@@ -88,6 +88,10 @@ DEFINE_LOGGER(pvacmsmonitor, "pvxs.certs");
 namespace pvxs {
 namespace certs {
 
+/** What the authority above this service's certificates is known to be. */
+cert_authority_standing_t authorityStanding();
+
+
 // fwd decl
 /**
  * @brief Render a certificate's key usage or extended key usage extension as text.
@@ -1167,7 +1171,7 @@ int64_t onCreateCertificate(ConfigCms &config,
     // First, make sure that we've updated any expired cert first
     auto const full_skid = CertStatus::getFullSkId(pub_key);
     auto cert_status_factory(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_cert_chain, config.cert_status_validity_mins));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_cert_chain, config.cert_status_validity_mins, 0, authorityStanding()));
     postUpdateToNextCertToExpire(cert_status_factory,
                                  shared_status_pv,
                                  certs_db,
@@ -1631,10 +1635,9 @@ void onGetStatus(const ConfigCms &config,
                  const std::string &issuer_id,
                  const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                  const ossl_ptr<X509> &cert_auth_cert,
-                 const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
-                 const cms::cert::AuthorityMonitor &authority_monitor) {
+                 const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
     try {
         std::vector<serial_number_t> cert_auth_serial_numbers;
         log_debug_printf(pvacms, "GET STATUS: Certificate %s\n", getCertId(our_issuer_id, serial).c_str());
@@ -1662,24 +1665,6 @@ void onGetStatus(const ConfigCms &config,
 
         for (const auto cert_auth_serial_number : cert_auth_serial_numbers) {
             getWorstCertificateStatus(certs_db, cert_auth_serial_number, status, status_date);
-        }
-
-        // The authority above this certificate has its say last. A certificate revoked in its
-        // own right keeps reporting that: the holder is told about their own certificate first,
-        // because that is the fact they can act on. Otherwise the authority's standing decides,
-        // and it is read at the point of answering rather than recorded, so restoring the
-        // authority restores reporting with no repair step.
-        if (status != REVOKED && status != EXPIRED) {
-            switch (authority_monitor.state()) {
-                case cms::cert::authority_state_t::REVOKED:
-                    status = AUTHORITY_REVOKED;
-                    break;
-                case cms::cert::authority_state_t::UNKNOWN:
-                    if (authority_monitor.isActive()) status = UNKNOWN;
-                    break;
-                case cms::cert::authority_state_t::GOOD:
-                    break;
-            }
         }
 
         const auto now = timeNow();
@@ -1720,7 +1705,7 @@ void onRevoke(const ConfigCms &config,
               const ossl_ptr<X509> &cert_auth_cert,
               const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
     try {
         Guard G(status_update_lock);
         serial_number_t serial = getParameters(parameters);
@@ -1768,7 +1753,7 @@ void onApprove(const ConfigCms &config,
                const ossl_ptr<X509> &cert_auth_cert,
                const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
     try {
         Guard G(status_update_lock);
         std::string issuer_id;
@@ -1829,7 +1814,7 @@ void onDeny(const ConfigCms &config,
             const ossl_ptr<X509> &cert_auth_cert,
             const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
     try {
         Guard G(status_update_lock);
         std::string issuer_id;
@@ -2829,6 +2814,23 @@ void setValue(Value &target, const std::string &field, const T &new_value) {
  * @param cert_status The status of the certificate (UNKNOWN, VALID, EXPIRED, REVOKED, PENDING_APPROVAL, PENDING).
  */
 
+/**
+ * @brief The one trust anchor this service issues beneath, and its standing.
+ *
+ * A process has exactly one, established before it serves anything, and every status it
+ * composes is answered through it. It is reached this way rather than passed down, so that a
+ * status cannot be composed anywhere in this service without it.
+ */
+std::unique_ptr<cms::cert::AuthorityMonitor> the_authority_monitor;
+
+cert_authority_standing_t authorityStanding() {
+    // Nothing is known about an authority nobody is watching, and nothing should be: a trust
+    // anchor that names no responder makes no claim to be checkable, and its certificates are
+    // answered on their own merits.
+    if (!the_authority_monitor || !the_authority_monitor->isActive()) return cert_authority_standing_t::STANDING;
+    return the_authority_monitor->standing();
+}
+
 Value postCertificateStatus(server::WildcardPV &status_pv,
                             const std::string &pv_name,
                             const uint64_t serial,
@@ -3289,12 +3291,69 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
  * @param status_monitor_params The status monitor parameters
  * @return true if we should continue to run the loop, false if we should exit
  */
+/**
+ * @brief Tell every certificate this service is answering for that the authority above them
+ * has changed.
+ *
+ * None of these certificates has changed; what they are told has. Only the ones a client is
+ * actually watching are posted to, because a status nobody is subscribed to is composed again
+ * the moment somebody asks.
+ *
+ * @param cert_status_creator composes each status, already carrying the new standing
+ * @param status_monitor_params the certificates database and the channel to post on
+ */
+void postAuthorityChangeToWatchers(const CertStatusFactory &cert_status_creator,
+                                   const StatusMonitor &status_monitor_params) {
+    Guard G(status_update_lock);
+    auto &certs_db = status_monitor_params.certs_db_;
+    const auto &prefix = status_monitor_params.config_.getCertPvPrefix();
+    const auto &issuer_id = status_monitor_params.issuer_id_;
+
+    SqliteStmt stmt;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_CURRENTLY_ANSWERABLE, -1, stmt.acquire(), nullptr) != SQLITE_OK) {
+        log_err_printf(pvacmsmonitor, "PVACMS Certificate Monitor Error: %s\n", sqlite3_errmsg(certs_db.get()));
+        return;
+    }
+    sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":now"), timeNow());
+
+    unsigned posted = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        int64_t db_serial = sqlite3_column_int64(stmt, 0);
+        const auto status = static_cast<certstatus_t>(sqlite3_column_int(stmt, 1));
+        const uint64_t serial = *reinterpret_cast<uint64_t *>(&db_serial);
+        const std::string pv_name(getCertStatusURI(prefix, issuer_id, serial));
+        if (!status_monitor_params.status_pv_.isOpen(pv_name)) continue;
+        try {
+            const auto db_cert = getCertificateValidity(certs_db, serial);
+            const auto cert_status = cert_status_creator.createPVACertificateStatus(
+                serial, status, timeNow(), CertDate(timeNow()), CertDate(db_cert.renew_by), false);
+            postCertificateStatus(status_monitor_params.status_pv_, pv_name, serial, cert_status);
+            ++posted;
+        } catch (const std::runtime_error &e) {
+            log_err_printf(pvacmsmonitor, "PVACMS Certificate Monitor Error: %s\n", e.what());
+        }
+    }
+    stmt.reset();
+    log_info_printf(pvacmsmonitor, "Authority standing changed: told %u watched certificates\n", posted);
+}
+
 timeval statusMonitor(const StatusMonitor &status_monitor_params) {
     log_debug_printf(pvacmsmonitor, "Certificate Monitor Thread Wake Up%s", "\n");
     const auto cert_status_creator(CertStatusFactory(status_monitor_params.cert_auth_cert_,
                                                      status_monitor_params.cert_auth_pkey_,
                                                      status_monitor_params.cert_auth_cert_chain_,
-                                                     status_monitor_params.config_.cert_status_validity_mins));
+                                                     status_monitor_params.config_.cert_status_validity_mins,
+                                                     0, authorityStanding()));
+
+    // The authority above every certificate is checked on its own schedule, so a change in it
+    // arrives between these wake-ups rather than at one. Carry it to whoever is listening now,
+    // instead of leaving them with an answer that is no longer what this service would give.
+    static cert_authority_standing_t last_reported_standing = cert_authority_standing_t::STANDING;
+    const auto standing_now = authorityStanding();
+    if (standing_now != last_reported_standing) {
+        last_reported_standing = standing_now;
+        postAuthorityChangeToWatchers(cert_status_creator, status_monitor_params);
+    }
 
     postUpdateToNextCertBecomingValid(cert_status_creator, status_monitor_params);
     postUpdateToNextCertToExpire(cert_status_creator, status_monitor_params);
@@ -3711,8 +3770,9 @@ int main(int argc, char *argv[]) {
 
         // The root states where its own revocation can be learned. Ask, so that a revoked
         // authority reaches the certificates issued beneath it.
-        cms::cert::AuthorityMonitor authority_monitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status);
-        authority_monitor.start();
+        the_authority_monitor.reset(
+            new cms::cert::AuthorityMonitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status));
+        the_authority_monitor->start();
 
         if (!admin_name.empty()) {
             // Name the step that failed. Creating the certificate and registering the
@@ -3858,7 +3918,6 @@ int main(int argc, char *argv[]) {
                                   &cert_auth_pkey,
                                   &cert_auth_cert,
                                   &cert_auth_chain,
-                                  &authority_monitor,
                                   &our_issuer_id](WildcardPV &pv,
                                                   const std::string &pv_name,
                                                   const std::list<std::string> &parameters) {
@@ -3872,8 +3931,7 @@ int main(int argc, char *argv[]) {
                         our_issuer_id,
                         cert_auth_pkey,
                         cert_auth_cert,
-                        cert_auth_chain,
-                        authority_monitor);
+                        cert_auth_chain);
         });
         status_pv.onLastDisconnect([](WildcardPV &pv,
                                       const std::string &pv_name,

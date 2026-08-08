@@ -248,6 +248,14 @@
     "  AND renew_by != 0 "          \
     "  AND renew_by <= :now "
 
+// Every certificate this service has a live answer for. Used when the authority above them
+// changes, since that changes what each of them is told without any of them having changed.
+#define SQL_CERT_CURRENTLY_ANSWERABLE  \
+    "SELECT serial, status "           \
+    "FROM certs "                      \
+    "WHERE not_before <= :now "        \
+    "  AND not_after > :now "
+
 #define SQL_CERT_STATUS_NEARLY_INVALID \
     "SELECT serial, status "        \
     "FROM certs "                   \
