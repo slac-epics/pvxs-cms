@@ -872,6 +872,19 @@ run_in lab-manager as admin pvxcert --review-issued --where "name:testioc" --all
 run_in lab-manager as admin pvxcert -R "${LAB}:0123456789"                                # one known certificate
 ```
 
+That third one stops the controller. A service whose certificate is revoked cannot present
+it, so put it back before going on, which is what a site would do having revoked one in
+error:
+
+```sh
+run_in testioc as testioc authnstd -u ioc --force
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+podman-compose restart pvxs-lab-testioc
+```
+
+`--force` is needed because the keychain still holds the revoked certificate, and what is
+on disk looks valid: a certificate carries its own dates, not its standing.
+
 The middle one is the useful shape for a revocation: the filter chooses, and the
 confirmation shows exactly what was chosen before anything is written.
 
@@ -1082,16 +1095,19 @@ run_in lab-manager as idm cat /etc/pvacms/pvacms.acf
 ```
 
 An ordinary user may look at everything and decide nothing. The same review command run
-both ways shows exactly where the line falls:
+both ways shows exactly where the line falls. Section 9 decided the last request there was,
+so ask for one again first:
 
 ```sh
+run_in perimeter as guest authnstd -u client -n visitor --issuer ${LAB_SKID} --force
+
 run_in lab-manager as admin pvxcert --review-pending < /dev/null
-#     Subject        : CN=operator,O=lab-client,C=US
+#     Subject        : CN=visitor,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
-#     Request ID     : A0MP-TAKG-JG1P-YJED
+#     Request ID     : NMBB-G9B1-W38K-Y0BT
 
 run_in lab as guest without a certificate pvxcert --review-pending < /dev/null
-#     Subject        : CN=operator,O=lab-client,C=US
+#     Subject        : CN=visitor,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
 #     Request ID     : (none)
 ```
