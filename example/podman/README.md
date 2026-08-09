@@ -242,12 +242,15 @@ run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 run_in ml-manager  as admin pvxcert --review-pending --all approve --yes
 ```
 
-Two are deliberately left without one, and both are used later for what having none shows.
-The lab guest asks in the next section, where a request that has not been decided on is
-what makes the point about naming an authority. The perimeter guest never asks at all.
+Two are deliberately left without one, and each is used later for something only someone
+without one can show. The lab guest asks in the next section, where a keychain that already
+held a certificate would answer before the point about naming an authority could be made.
+The perimeter guest waits until section 5, where its request is the one still undecided.
 
-Check that all twelve arrived before going on. A gateway without a certificate refuses every
-write on the boundary, which looks like a broken rule rather than a missing certificate:
+Check they all arrived before going on. Each department lists only what it issued, and each
+listing also holds three the department made for itself: its own authority, its certificate
+manager's, and its administrator's. A gateway without a certificate refuses every write on
+the boundary, which looks like a broken rule rather than a missing certificate:
 
 ```sh
 run_in lab-manager as admin pvxcert -l --where "state:VALID"
@@ -604,18 +607,22 @@ The certificate creation request travels in clear text, so an administrator has 
 to compare what is on screen against what the requester sent. `authnstd` prints an
 identifier for the requester to quote:
 
+Someone outside both departments asks the lab for one. They ask as `visitor`, because a
+certificate manager will not issue a second certificate for a subject it has already
+issued and both departments have a `guest` already:
+
 ```sh
-run_in lab as guest authnstd -u client
-#   email this Certificate Request ID: 4KFD-Z215-WGFD-977M, to your SPVA administrator
+run_in perimeter as guest authnstd -u client -n visitor --issuer ${LAB_SKID}
+#   email this Certificate Request ID: MM0C-WTSN-YGY2-FGRV, to your SPVA administrator for approval
 ```
 
 The administrator sees the same identifier, in the same grouping, against the request:
 
 ```sh
 run_in lab-manager as admin pvxcert --review-pending < /dev/null
-#     Subject        : CN=guest,O=epics.org,C=US
+#     Subject        : CN=visitor,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
-#     Request ID     : 4KFD-Z215-WGFD-977M
+#     Request ID     : MM0C-WTSN-YGY2-FGRV
 ```
 
 It is also a column in the listing:
@@ -887,24 +894,29 @@ Only certificates that can actually be revoked are offered. The rest are listed 
 reason and never asked about - a status outside `PENDING_APPROVAL`, `PENDING` and `VALID`:
 
 ```sh
-run_in lab-manager as admin pvxcert --review-issued --where "state:VALID" < /dev/null
+run_in lab-manager as admin pvxcert --review-issued < /dev/null
 #     Not offered    : status REVOKED cannot be revoked
 ```
+
+Without a filter, because one that selects only what can be revoked has nothing to leave out.
 
 **An ordinary user may revoke their own certificate, and that is the point of it for them.**
 A key has leaked and they want it stopped now, without finding an administrator first:
 
 ```sh
-run_in lab as guest pvxcert -R "${LAB}:02665075835003669104"
-#   Revoke ==> CERT:STATUS:ba71d9e3:02665075835003669104 ==> Completed Successfully
+run_in lab-manager as admin pvxcert -l --where "name:guest and state:VALID"   # its identifier
+run_in lab as guest pvxcert -R "${LAB}:<the serial that listing shows>"
+#   Revoke ==> CERT:STATUS:<that identifier> ==> Completed Successfully
 ```
 
 They may revoke that one and no other. Someone else's is refused, and the message names the
 identity the certificate manager saw rather than the certificate:
 
 ```sh
-run_in lab as guest pvxcert -R "${LAB}:04214365283771761526"    # the controller's
-#   ERROR ... REVOKED operation not authorized on ba71d9e3:... by ca/guest@...
+run_in lab as guest pvxcert -R "${LAB}:<a controller's serial>"
+#   ERR ... REVOKED operation not authorized on <that identifier> by
+#   TLS x509:<issuer>:<serial>:EPICS Root Certificate Authority -> EPICS Controls
+#   Intermediate CA/guest@...
 ```
 
 The one identity this runs the other way for is the administrator's own certificate. A
@@ -914,8 +926,8 @@ listing looks the same for both - so it offers the certificate like any other an
 what the manager says:
 
 ```sh
-run_in lab-manager as admin pvxcert -R "${LAB}:11277229790059579580"   # the administrator's own
-#   ERROR ... REVOKED Admin Self-Revoke not permitted on ba71d9e3:...
+run_in lab-manager as admin pvxcert -R "${LAB}:<the admin's own serial>"
+#   ERR ... REVOKED Admin Self-Revoke not permitted on <that identifier> by ...
 ```
 
 A failed write does not stop the ones after it, the certificate manager's own message is
@@ -971,13 +983,18 @@ certificate is untouched: it has not been revoked, it has not expired, and askin
 replacement would achieve nothing, because a replacement would be issued by the same
 authority. The certificate cannot be used, and the reason lies above it.
 
-A certificate that cannot be used is not presented, so the connection is made without an
-identity and the write is refused for want of one:
+A certificate that cannot be used is not presented, and the write does not go through:
 
 ```sh
 run_in lab as guest pvxput test:aiExample 42
-#   ERROR ... Put not permitted
+#   Timeout
 ```
+
+What it says depends on how far the client gets. If it can still be told about its own
+certificate it is refused for want of an identity, and if it cannot be told anything at all
+- which is the usual case here, since the certificate manager's own certificate is under the
+same root - nothing answers and it times out. Either way nothing is written, and reading the
+variable back shows the value it had.
 
 Administration stops with it, and that is worth seeing rather than working around. An
 administrator's certificate was issued under the same root, so it is no more usable than
@@ -1022,9 +1039,10 @@ authority_unreachable
 #   the responder is stopped; nothing can be learned about the root
 ```
 
-A certificate manager that cannot check its own authority does not assume the answer. It tries
-again every fifteen seconds, and until one succeeds it reports what it actually knows, which
-is nothing:
+A certificate manager that cannot check its own authority does not assume the answer. It
+notices when the answer it holds lapses, which here is up to the minute the responder asked
+for, and from then on it retries every fifteen seconds. Until one succeeds it reports what
+it actually knows, which is nothing:
 
 ```sh
 run_in lab as guest pvxcert "${LAB}:02665075835003669104"
@@ -1040,7 +1058,8 @@ certificate managers, and an unreachable responder then leaves them serving the 
 they verified. The trade is stated plainly: an outage of one web service no longer takes the
 facility with it, and a revocation issued during that outage is not seen until it ends.
 
-Put the responder back and the managers pick it up within those fifteen seconds:
+Put the responder back and the managers pick it up on one of those retries, within fifteen
+seconds:
 
 ```sh
 authority_reachable
@@ -1083,7 +1102,7 @@ outright:
 
 ```sh
 run_in lab as guest without a certificate pvxcert --review-issued --where "state:VALID" --all --yes
-#   ... FAILED: REVOKED operation not authorized on ba71d9e3:... by ca/guest@...
+#   ... FAILED: REVOKED operation not authorized on <identifier> by ca/guest@...
 
 run_in lab as guest without a certificate pvxput CERT:STATUS:${LAB}:0123456789 state=REVOKED
 #   ERROR ... REVOKED operation not authorized ... by ca/guest@...
