@@ -45,17 +45,9 @@ volumes:
 services:
 
   # ------------------------------------------------------------- the facility authority
-  # The facility root is trusted by every node and has no status channel of its own, so its
-  # revocation reaches nowhere by the means the issued certificates use. It instead names
-  # this responder, which publishes whether the root still stands, and each department's
-  # certificate manager asks it.
-  #
-  # It sits on both departmental networks because both certificate managers chain to the same
-  # root and must both be able to ask. It signs with a certificate the root authorised for the
-  # purpose, so the root's own key is not here either.
-  #
-  # What it says is held in ./ocsp/index.txt. It is read at start, so revoking the authority is
-  # a matter of rewriting that file and restarting this one service.
+  # Answers for the facility root, at the address named in the root's own extension. On both
+  # departmental networks, because both certificate managers chain to that root. What it says
+  # is in ./ocsp/index.txt, read when it starts.
   pvxs-lab-authority-status:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
@@ -63,12 +55,7 @@ services:
     networks: [net-lab, net-ml]
     volumes:
       - ./ocsp:/ocsp:ro,Z
-      # Two programs: the responder, and the check that it is still answering. Supervisor runs
-      # both, and restarting is left to it. See the file for why the check is needed at all.
       - ../kubernetes/docker/idm/ocsp-supervisor.conf:/etc/supervisor/conf.d/ocsp.conf:ro,z
-      # And a supervisor configuration that starts those two and nothing else. The image is the
-      # one the certificate managers run, and its own configuration would start a second
-      # certificate manager and a second Kerberos server on both departmental networks.
       - ../kubernetes/docker/idm/ocsp-only-supervisord.conf:/etc/supervisor/supervisord.conf:ro,z
     command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
 
