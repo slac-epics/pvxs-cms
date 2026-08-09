@@ -652,8 +652,8 @@ wanting to know whether their certificate arrived should not need an administrat
 difference is the **request identifier**, which is blank for everyone but an administrator:
 
 ```sh
-run_in lab-manager as admin pvxcert -l | awk '{print $NF}' | tail -n +2    # identifiers present
-run_in lab as guest without a certificate pvxcert -l | awk '{print $NF}' | tail -n +2    # blank
+run_in lab-manager as admin pvxcert -l                  # a Request column, with identifiers in it
+run_in lab as guest without a certificate pvxcert -l    # the same column, empty
 ```
 
 That identifier is what the requester quotes to prove a request is theirs, so it is shown
@@ -922,6 +922,14 @@ run_in lab as guest pvxcert -R "${LAB}:<the serial that listing shows>"
 #   Revoke ==> CERT:STATUS:<that identifier> ==> Completed Successfully
 ```
 
+That leaves them without one, so they ask again, which is what anyone would do having
+stopped a key they no longer trust:
+
+```sh
+run_in lab as guest authnstd -u client --issuer ${LAB_SKID} --force
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+```
+
 They may revoke that one and no other. Someone else's is refused, and the message names the
 identity the certificate manager saw rather than the certificate:
 
@@ -1098,16 +1106,20 @@ An ordinary user may look at everything and decide nothing. The same review comm
 both ways shows exactly where the line falls. Section 9 decided the last request there was,
 so ask for one again first:
 
+It asks under a name nobody has been issued yet, because whether the visitor from section 5
+still holds a certificate depends on which of section 8's two endings you ran, and a subject
+that already has one cannot ask again:
+
 ```sh
-run_in perimeter as guest authnstd -u client -n visitor --issuer ${LAB_SKID} --force
+run_in perimeter as guest authnstd -u client -n reviewer --issuer ${LAB_SKID} --force
 
 run_in lab-manager as admin pvxcert --review-pending < /dev/null
-#     Subject        : CN=visitor,O=epics.org,C=US
+#     Subject        : CN=reviewer,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
-#     Request ID     : NMBB-G9B1-W38K-Y0BT
+#     Request ID     : 2JSQ-NJFE-JPFF-732Z
 
 run_in lab as guest without a certificate pvxcert --review-pending < /dev/null
-#     Subject        : CN=visitor,O=epics.org,C=US
+#     Subject        : CN=reviewer,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
 #     Request ID     : (none)
 ```
