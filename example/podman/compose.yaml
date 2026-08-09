@@ -63,21 +63,10 @@ services:
     networks: [net-lab, net-ml]
     volumes:
       - ./ocsp:/ocsp:ro,Z
-    command:
-      - openssl
-      - ocsp
-      - -index
-      - /ocsp/index.txt
-      - -CA
-      - /ocsp/ca.pem
-      - -rsigner
-      - /ocsp/signer.pem
-      - -rkey
-      - /ocsp/signer.key
-      - -port
-      - "8888"
-      - -nmin
-      - "1"
+      - ./scripts/authority-responder.sh:/usr/local/bin/authority-responder:ro,z
+    # Watched rather than run directly: the responder it starts stops answering if a caller
+    # gives up mid-question, and says nothing about it. See the script.
+    command: ["/usr/local/bin/authority-responder"]
 
   # ---------------------------------------------------------------- lab department
   pvxs-lab-pvacms:

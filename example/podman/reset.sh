@@ -61,6 +61,47 @@ echo "==> restarting the gateways"
 podman-compose restart pvxs-lab-gateway pvxs-lab-ml-gateway >/dev/null 2>&1
 sleep 10
 
+# The authority has to be established before anything can be issued, and a laboratory that
+# looks up but cannot establish it is the worst state to hand back: every certificate is
+# reported unusable, and administration stops with them, so the tools that would show you why
+# have stopped too. Prove it works rather than assume it.
+echo "==> checking the facility root can be established"
+authority_ok=no
+for i in $(seq 1 12); do
+    if podman exec podman_pvxs-lab-authority-status_1 \
+        timeout 8 openssl ocsp -issuer /ocsp/ca.pem -cert /ocsp/ca.pem \
+                               -url http://127.0.0.1:8888 -CAfile /ocsp/ca.pem >/dev/null 2>&1; then
+        authority_ok=yes
+        break
+    fi
+    sleep 5
+done
+if [ "${authority_ok}" != yes ]; then
+    echo "    the responder for the facility root is not answering." >&2
+    echo "    Nothing can be issued until it does. Look at:" >&2
+    echo "        podman logs podman_pvxs-lab-authority-status_1" >&2
+    exit 1
+fi
+
+# The managers ask again every fifteen seconds after a failure, so give them one round to
+# notice, then check the thing a person would actually try first.
+echo "==> waiting for the certificate managers to agree"
+listing_ok=no
+for i in $(seq 1 12); do
+    if podman exec podman_pvxs-lab-pvacms_1 \
+        bash -lc 'EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12 pvxcert -l' >/dev/null 2>&1; then
+        listing_ok=yes
+        break
+    fi
+    sleep 5
+done
+if [ "${listing_ok}" != yes ]; then
+    echo "    the certificate manager will not answer its administrator." >&2
+    echo "    That is what a facility root nobody can establish looks like. Look at:" >&2
+    echo "        podman logs podman_pvxs-lab-pvacms_1 | grep -i 'authority status'" >&2
+    exit 1
+fi
+
 echo
 echo "The laboratory is running with no certificates issued."
 # Named the way a shell names them, which is not how the file spells them.
