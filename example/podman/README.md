@@ -1164,9 +1164,10 @@ podman-compose restart pvxs-lab-gateway pvxs-lab-ml-gateway
 **Containers vanish when you log out.** `loginctl enable-linger "$USER"`, then bring them
 up again. Rootless containers are killed with your last session otherwise.
 
-**`authnstd` says there is no trusted issuer.** The department's issuer id has not reached
-the shell. A login shell resets the environment; the start scripts write it to
-`/etc/epics/issuer` for the profile in the image to read back. Check it:
+**`authnstd` says there is no trusted issuer.** The whole identifier of the department's
+authority has not reached the shell. A login shell resets the environment; the start scripts
+write it to `/etc/epics/issuer` for the profile in the image to read back, and it is the
+forty-digit form, because that is what a first request needs. Check it:
 
 ```sh
 run_in testioc as testioc cat /etc/epics/issuer
