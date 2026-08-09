@@ -17,6 +17,7 @@
 
 #include "certfilter.h"
 #include "certlistcols.h"
+#include "certstatus.h"
 
 namespace pvxs {
 namespace certs {
@@ -99,6 +100,29 @@ enum class CertListView {
  * scalar arrays and has nowhere to put per-column units or display form, so what the server
  * puts in the column is exactly what a viewer shows.
  */
+/**
+ * @brief The facility root, for the listing.
+ *
+ * No certificate manager issued it, and none can be asked about it: a status answer about the
+ * trust anchor would be carried over a connection that anchor underwrites. It is therefore not
+ * in the certificates database and cannot be selected by a query, so it is assembled from the
+ * certificate the manager loaded and offered to the same view and filter tests as every other
+ * row.
+ *
+ * It is listed because of when it expires. Every certificate beneath it stops working the day
+ * it does, and an authority that appears in no listing is one nobody is watching the calendar
+ * for.
+ */
+struct RootAuthority {
+    bool names_responder{false};  //!< whether the certificate says where its revocation is published
+    certstatus_t standing{UNKNOWN};  //!< what that responder says, or UNKNOWN when there is none
+    std::string cert_id;          //!< its own subject key identifier and serial, since it issued itself
+    std::string common_name, organization, country;
+    std::vector<std::string> organizational_units;
+    uint64_t serial{0};
+    time_t not_before{0}, not_after{0};
+};
+
 struct CertListRow {
     std::string cert_id;         //!< issuer id and serial, the form a status channel name accepts
     std::string type;            //!< what the certificate is for, from its stored usage
@@ -147,7 +171,8 @@ std::string renderCertType(const std::string &key_usage, const std::string &exte
  */
 std::vector<CertListRow> queryCertList(sqlite3 *certs_db, CertListView view, const std::string &issuer_id,
                                        bool with_request_id, time_t expiry_window_secs,
-                                       const CertFilter *filter = nullptr);
+                                       const CertFilter *filter = nullptr,
+                                       const RootAuthority *root = nullptr);
 
 /**
  * @brief Build the normative table a listing is served as.

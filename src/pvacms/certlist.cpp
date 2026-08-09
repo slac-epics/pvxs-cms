@@ -95,6 +95,9 @@ std::string renderCertType(const std::string &key_usage, const std::string &exte
     return "UNKNOWN";
 }
 
+/** What the Type column says for the facility root: an authority that issued itself. */
+const char *const kRootAuthorityType = "ROOT_AUTH";
+
 std::vector<std::string> certListColumns(const bool with_request_id) {
     std::vector<std::string> names;
     names.reserve(sizeof(kColumns) / sizeof(kColumns[0]) + 1);
@@ -105,7 +108,7 @@ std::vector<std::string> certListColumns(const bool with_request_id) {
 
 std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListView view, const std::string &issuer_id,
                                        const bool with_request_id, const time_t expiry_window_secs,
-                                       const CertFilter *const filter) {
+                                       const CertFilter *const filter, const RootAuthority *const root) {
     // A filter naming another certificate authority cannot match a row here, so say so rather
     // than run a query that cannot return one.
     if (filter && !filter->possibleFor(issuer_id)) return {};
@@ -221,6 +224,49 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
         }
 
         rows.push_back(std::move(row));
+    }
+
+    // The facility root, which no query can reach because it is in no table. It is offered to
+    // the same two tests every other row passed: the view, and then the whole filter
+    // expression. Nothing that was never requested can be awaiting a decision, so the view of
+    // requests awaiting one is the only place it can never appear.
+    if (root && view != CertListView::PendingApproval) {
+        const auto now = time(nullptr);
+        const bool within_view = view != CertListView::Expiring ||
+                                 (root->not_after >= now && root->not_after <= now + expiry_window_secs);
+        bool wanted = within_view;
+        if (wanted && filter) {
+            FilterRow candidate;
+            candidate.cert_id = root->cert_id;
+            candidate.serial = root->serial;
+            candidate.common_name = root->common_name;
+            candidate.organization = root->organization;
+            candidate.organizational_units = root->organizational_units;
+            candidate.country = root->country;
+            candidate.type = kRootAuthorityType;
+            candidate.status = static_cast<int>(root->standing);
+            candidate.status_date = 0;
+            candidate.not_before = root->not_before;
+            candidate.not_after = root->not_after;
+            candidate.renew_by = 0;
+            wanted = filter->matches(candidate);
+        }
+        if (wanted) {
+            CertListRow row;
+            row.cert_id = root->cert_id;
+            row.type = kRootAuthorityType;
+            row.subject = renderSubject(root->common_name, root->organizational_units, root->organization,
+                                        root->country);
+            row.status = CERT_STATE(static_cast<int>(root->standing));
+            row.issued = renderDate(root->not_before);
+            row.expires = renderDate(root->not_after);
+            // Nothing here changed its standing and nothing here will renew it: both are the
+            // authority's own business, which is what the request column says.
+            row.status_changed = renderDate(0);
+            row.renew_by = renderDate(0);
+            if (with_request_id) row.request_id = root->names_responder ? "EXTERN OCSP" : "EXTERN";
+            rows.push_back(std::move(row));
+        }
     }
 
     return rows;

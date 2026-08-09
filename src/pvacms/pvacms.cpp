@@ -91,6 +91,9 @@ namespace certs {
 /** What the authority above this service's certificates is known to be. */
 cert_authority_standing_t authorityStanding();
 
+/** The facility root as the listing needs it, or nothing when none is loaded. */
+std::unique_ptr<RootAuthority> currentRootAuthority();
+
 
 // fwd decl
 /**
@@ -1461,8 +1464,9 @@ class CertListViews {
         // The identifier column rides only on the pending view: it is what an administrator
         // searches on to find the row, and the other two views have no use for it.
         const bool with_request_id = view == CertListView::PendingApproval;
+        const auto root = currentRootAuthority();
         const auto rows = queryCertList(certs_db_.get(), view, issuer_id_, with_request_id,
-                                        config_.cert_list_expiry_window_secs);
+                                        config_.cert_list_expiry_window_secs, nullptr, root.get());
         return buildCertListTable(rows, with_request_id,
                                   view == CertListView::Expiring ? config_.cert_list_expiry_window_secs : 0);
     }
@@ -1596,8 +1600,9 @@ void onListCertificates(const ConfigCms &config, const sql_ptr &certs_db, const 
             }
         }
 
+        const auto root = currentRootAuthority();
         const auto rows = queryCertList(certs_db.get(), view, our_issuer_id, is_admin,
-                                        config.cert_list_expiry_window_secs, filter.get());
+                                        config.cert_list_expiry_window_secs, filter.get(), root.get());
         auto table = buildCertListTable(rows, true,
                                         view == CertListView::Expiring ? config.cert_list_expiry_window_secs : 0);
         op->reply(table);
@@ -2831,6 +2836,56 @@ cert_authority_standing_t authorityStanding() {
     return the_authority_monitor->standing();
 }
 
+/** The facility root this service issues beneath, kept so the listing can name it. */
+ossl_ptr<X509> the_root_certificate;
+
+/**
+ * @brief The facility root as the listing needs it, assembled fresh each time it is asked for.
+ *
+ * Fresh because its standing is not recorded anywhere: it is what the responder last said, and
+ * that is read at the point of answering like every other status this service composes.
+ *
+ * @return the root, or nothing when this service has not loaded one
+ */
+std::unique_ptr<RootAuthority> currentRootAuthority() {
+    if (!the_root_certificate) return {};
+    X509 *const cert = the_root_certificate.get();
+
+    std::unique_ptr<RootAuthority> root(new RootAuthority());
+
+    // A responder that was never named cannot have said anything, so nothing is known about
+    // the authority rather than nothing being wrong with it.
+    root->names_responder = the_authority_monitor && the_authority_monitor->isActive();
+    if (root->names_responder) {
+        switch (the_authority_monitor->standing()) {
+            case cert_authority_standing_t::STANDING: root->standing = VALID; break;
+            case cert_authority_standing_t::REVOKED: root->standing = REVOKED; break;
+            default: root->standing = UNKNOWN; break;
+        }
+    }
+
+    // It issued itself, so the identifier carries its own subject key identifier rather than
+    // this service's: nobody can ask this service about it, and the identifier should not
+    // suggest otherwise.
+    root->serial = CertStatusFactory::getSerialNumber(cert);
+    root->cert_id = getCertId(CertStatus::getSkId(cert), root->serial);
+
+    auto *const subject = X509_get_subject_name(cert);
+    const auto field = [subject](const int nid) -> std::string {
+        char buf[512] = {0};
+        const int len = X509_NAME_get_text_by_NID(subject, nid, buf, sizeof(buf));
+        return len < 0 ? std::string() : std::string(buf, static_cast<size_t>(len));
+    };
+    root->common_name = field(NID_commonName);
+    root->organization = field(NID_organizationName);
+    root->country = field(NID_countryName);
+    root->organizational_units = getSubjectOrganizationalUnits(subject);
+
+    root->not_before = CertDate(X509_get0_notBefore(cert)).t;
+    root->not_after = CertDate(X509_get0_notAfter(cert)).t;
+    return root;
+}
+
 Value postCertificateStatus(server::WildcardPV &status_pv,
                             const std::string &pv_name,
                             const uint64_t serial,
@@ -3770,6 +3825,7 @@ int main(int argc, char *argv[]) {
 
         // The root states where its own revocation can be learned. Ask, so that a revoked
         // authority reaches the certificates issued beneath it.
+        the_root_certificate.reset(X509_dup(cert_auth_root_cert.get()));
         the_authority_monitor.reset(
             new cms::cert::AuthorityMonitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status));
         the_authority_monitor->start();

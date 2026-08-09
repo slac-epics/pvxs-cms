@@ -407,6 +407,95 @@ void testPendingViewShowsOnlyWhatAwaitsADecision() {
     testEq(rows[0].request_id, std::string("YV6Q-56SG-JTVZ-HKP3"));
 }
 
+// The facility root is in no table, because no certificate manager issued it and none can be
+// asked about it. It is listed anyway, because the day it expires every certificate beneath it
+// stops working, and an authority in no listing is one nobody is watching the calendar for.
+RootAuthority aRoot(const time_t not_after, const bool names_responder = true,
+                    const certstatus_t standing = VALID) {
+    RootAuthority root;
+    root.names_responder = names_responder;
+    root.standing = standing;
+    root.cert_id = "5ed0fe96:00000000009876543212";
+    root.common_name = "EPICS Root Certificate Authority";
+    root.organization = "certs.epics.org";
+    root.country = "US";
+    root.serial = 9876543212;
+    root.not_before = not_after - 3650 * 86400;
+    root.not_after = not_after;
+    return root;
+}
+
+void testTheRootIsListedAmongWhatWasIssued() {
+    testDiag("== %s", __func__);
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(4, "no database"); return; }
+
+    const time_t now = time(nullptr);
+    store.add(100, "issued", VALID, now - 3000, now, now + 86400);
+    const auto root = aRoot(now + 365 * 86400);
+
+    const auto rows = queryCertList(store.db, CertListView::All, "a76e613b", true, 0, nullptr, &root);
+    testEq(rows.size(), size_t(2));
+    if (rows.size() < 2) { testSkip(3, "no root row"); return; }
+    testEq(rows[1].type, std::string("ROOT_AUTH"));
+    testEq(rows[1].cert_id, std::string("5ed0fe96:00000000009876543212"));
+    // The column that would carry a request identifier says where its standing comes from
+    // instead: nothing here issued it, and something outside publishes its revocation.
+    testEq(rows[1].request_id, std::string("EXTERN OCSP"));
+}
+
+void testARootNamingNoResponderSaysSo() {
+    testDiag("== %s", __func__);
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(2, "no database"); return; }
+
+    const auto root = aRoot(time(nullptr) + 365 * 86400, false, UNKNOWN);
+    const auto rows = queryCertList(store.db, CertListView::All, "a76e613b", true, 0, nullptr, &root);
+    testEq(rows.size(), size_t(1));
+    if (rows.empty()) { testSkip(1, "no root row"); return; }
+    // Nothing establishes its standing, so nothing is claimed about it.
+    testEq(rows[0].status, std::string("UNKNOWN"));
+}
+
+void testTheRootIsNeverAwaitingADecision() {
+    testDiag("== %s", __func__);
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(1, "no database"); return; }
+
+    const auto root = aRoot(time(nullptr) + 365 * 86400);
+    // It was never requested, so it cannot be waiting for anyone to decide about it.
+    const auto rows = queryCertList(store.db, CertListView::PendingApproval, "a76e613b", true, 0, nullptr, &root);
+    testEq(rows.size(), size_t(0));
+}
+
+void testTheRootFollowsTheExpiryWindowLikeAnyRow() {
+    testDiag("== %s", __func__);
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(2, "no database"); return; }
+
+    const time_t now = time(nullptr);
+    const auto distant = aRoot(now + 200 * 86400);
+    const auto soon = aRoot(now + 10 * 86400);
+
+    testEq(queryCertList(store.db, CertListView::Expiring, "a76e613b", false, 30 * 86400, nullptr, &distant).size(),
+           size_t(0));
+    testEq(queryCertList(store.db, CertListView::Expiring, "a76e613b", false, 30 * 86400, nullptr, &soon).size(),
+           size_t(1));
+}
+
+void testAFilterDecidesOnTheRootToo() {
+    testDiag("== %s", __func__);
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(2, "no database"); return; }
+
+    const auto root = aRoot(time(nullptr) + 365 * 86400);
+    const auto wanted = CertFilter::parse("type:ROOT_AUTH", time(nullptr));
+    const auto unwanted = CertFilter::parse("type:IOC", time(nullptr));
+
+    testEq(queryCertList(store.db, CertListView::All, "a76e613b", false, 0, &wanted, &root).size(), size_t(1));
+    testEq(queryCertList(store.db, CertListView::All, "a76e613b", false, 0, &unwanted, &root).size(), size_t(0));
+}
+
 // The identifier is a search key an administrator uses to find a row and read it. Handing it
 // to everyone would let it be treated as proof that a request is genuine.
 void testRequestIdIsWithheldFromNonAdministrators() {
@@ -541,7 +630,7 @@ void testFilteringPreservesTheOrder() {
 }  // namespace
 
 MAIN(testcertlist) {
-    testPlan(62);
+    testPlan(73);
     testSubjectIsCanonical();
     testCertTypeNamesWhatItIsFor();
     testTableIsNormative();
@@ -562,5 +651,10 @@ MAIN(testcertlist) {
     testDatesCompareAsPlainText();
     testColumnsTheInteractiveModesDecideFrom();
     testFilteringPreservesTheOrder();
+    testTheRootIsListedAmongWhatWasIssued();
+    testARootNamingNoResponderSaysSo();
+    testTheRootIsNeverAwaitingADecision();
+    testTheRootFollowsTheExpiryWindowLikeAnyRow();
+    testAFilterDecidesOnTheRootToo();
     return testDone();
 }
