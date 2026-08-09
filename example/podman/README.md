@@ -659,6 +659,27 @@ run_in lab as guest without a certificate pvxcert -l    # the same column, empty
 That identifier is what the requester quotes to prove a request is theirs, so it is shown
 only to whoever is deciding.
 
+One row in that listing was issued by nobody: the facility root. Its Type says `ROOT_AUTH`,
+and the column that would carry a request identifier says where its standing comes from
+instead - `EXTERN`, or `EXTERN OCSP` where the certificate names a responder, which is what
+section 10 is about.
+
+```sh
+run_in lab-manager as admin pvxcert -l --where "type:ROOT_AUTH"
+```
+
+It is listed because of when it expires. Every certificate beneath it stops working the day
+it does, so it answers to `--expiring` like anything else, and planning its replacement does
+not depend on anyone remembering it is there:
+
+```sh
+run_in lab-manager as admin pvxcert -l --expiring 30d
+```
+
+It appears in every view it fits and nowhere else. The one it can never appear in is the
+view of requests awaiting a decision: nothing that was never requested can be waiting for
+anyone to decide about it.
+
 The same listing is served as standing views a client can subscribe to, named by issuer so
 that two certificate managers on one network are never ambiguous:
 
