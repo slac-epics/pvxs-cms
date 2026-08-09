@@ -66,6 +66,10 @@ services:
       # Two programs: the responder, and the check that it is still answering. Supervisor runs
       # both, and restarting is left to it. See the file for why the check is needed at all.
       - ../kubernetes/docker/idm/ocsp-supervisor.conf:/etc/supervisor/conf.d/ocsp.conf:ro,z
+      # And a supervisor configuration that starts those two and nothing else. The image is the
+      # one the certificate managers run, and its own configuration would start a second
+      # certificate manager and a second Kerberos server on both departmental networks.
+      - ../kubernetes/docker/idm/ocsp-only-supervisord.conf:/etc/supervisor/supervisord.conf:ro,z
     command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
 
   # ---------------------------------------------------------------- lab department
