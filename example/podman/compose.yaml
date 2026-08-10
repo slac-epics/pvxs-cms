@@ -115,16 +115,31 @@ services:
     command: ["/usr/local/bin/start-ioc", "tstioc"]
     depends_on: [pvxs-lab-pvacms]
 
-  # The only route between the lab department and the perimeter.
+  # The only route between the lab department and the perimeter. Its server side answers no
+  # UDP search at all ("bcastport": "NO" in its configuration): the perimeter stands in for
+  # the Internet and carries deliberate connections, never broadcast, and the department's
+  # own workstations must reach their controllers directly rather than through their own
+  # boundary. The name servers are for the server side's inner client, which resolves a peer
+  # certificate's status - its own department's manager for certificates it issued, the peer
+  # gateway for the other department's.
+  #
+  # The perimeter alias is not used by anything today. Naming the interface to bind by alias
+  # was tried and withdrawn: podman gives a container a new address on every start, and the
+  # gateway resolving its own alias can be handed the previous one and bind an address it no
+  # longer holds.
   pvxs-lab-gateway:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
     hostname: pvxs-lab-gateway
-    networks: [net-lab, net-perimeter]
+    networks:
+      net-lab:
+      net-perimeter:
+        aliases: [lab-gw-perimeter]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+      EPICS_PVA_NAME_SERVERS: "pvxs-lab-pvacms:5075 pvxs-lab-ml-gateway:5075"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - gateway-config:/home/gateway/.config/pva/1.5
@@ -171,15 +186,20 @@ services:
     command: ["/usr/local/bin/start-ioc", "mlioc"]
     depends_on: [pvxs-lab-ml]
 
+  # The machine learning boundary, arranged exactly as the lab gateway above.
   pvxs-lab-ml-gateway:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
     hostname: pvxs-lab-ml-gateway
-    networks: [net-ml, net-perimeter]
+    networks:
+      net-ml:
+      net-perimeter:
+        aliases: [ml-gw-perimeter]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
+      EPICS_PVA_NAME_SERVERS: "pvxs-lab-ml:5075 pvxs-lab-gateway:5075"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
     volumes:
       - ml-gateway-config:/home/gateway/.config/pva/1.5
@@ -202,7 +222,11 @@ services:
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+      # Discovery inside the department is by broadcast, as on a real site: anything new on
+      # net-lab is found with nothing edited here. The perimeter is broadcast-silent - the
+      # gateways answer no UDP search - so the only thing this reaches across it is the name
+      # server below.
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_NAME_SERVERS: "pvxs-lab-ml-gateway:5075"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -221,7 +245,8 @@ services:
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
+      # Broadcast discovery inside the department, exactly as lab-client above.
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_NAME_SERVERS: "pvxs-lab-gateway:5075"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
