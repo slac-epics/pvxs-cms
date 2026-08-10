@@ -38,7 +38,6 @@ demonstrating can be shown and checked directly.
 | **Two departments** | Each runs its own certificate manager, signing with its own intermediate certificate authority, holding only the certificates it issued |
 | **One facility root** | Both intermediates are signed by it, so a certificate from either department is trusted laboratory-wide, while authorisation stays per department |
 | **Real network separation** | Three podman networks; a container reaches only those it is attached to, so a department's certificate manager is addressable only from inside it |
-| **Discovery that matches the model** | Inside a department, broadcast, as on a real site. Across the perimeter, nothing is broadcast and nothing answers one: it stands in for the Internet, so the only way over is to name a gateway |
 | **Gateways on the boundary** | The only route between departments. Each forwards its own department's controller process variables, and its certificate traffic keyed by issuer id |
 | **Administration** | Listing, filtering, request identifiers, approval in batches or one at a time, denial and revocation, all restricted to administrators |
 | **Revoking the authority** | The root names a responder that publishes its own revocation, and every certificate beneath a revoked root reports a state that says so rather than claiming its own revocation |
@@ -435,24 +434,6 @@ run_in perimeter as guest getent hosts pvxs-lab-ml
 
 podman enforces the separation itself: a container reaches only the networks it is
 attached to. Only the two gateways sit on a department network **and** the perimeter.
-
-Inside a department, things are found by broadcast, as on a real site: a workstation names
-no controller, and anything new on the department's network is found with nothing edited.
-The perimeter is the opposite, and deliberately so - it stands in for the Internet, where
-nobody shouts. Each gateway serves it with its UDP search listener switched off
-(`"bcastport": "NO"`), so a broadcast there is answered by nothing at all. The only way
-across is to name a gateway and connect to it, which is what `EPICS_PVA_NAME_SERVERS` on
-each workstation does:
-
-```sh
-run_in lab as guest sh -c 'echo "$EPICS_PVA_AUTO_ADDR_LIST  $EPICS_PVA_NAME_SERVERS"'
-#   YES  pvxs-lab-ml-gateway:5075      broadcast at home, one named gateway across
-```
-
-That also settles a question the separation alone does not: a department's own gateway
-never answers its own department's searches, so a workstation talks straight to the
-controller beside it and its writes are judged by the controller's access file, not by the
-boundary's.
 
 What a gateway carries is exactly what its list names - its department's controllers, and
 its department's certificate traffic keyed by issuer id:

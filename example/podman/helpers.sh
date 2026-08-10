@@ -211,14 +211,6 @@ exec bash --norc -i"
         script=$(cat)
     fi
 
-    # The container's own addressing, to put back after a login profile has run. The
-    # profiles are baked into the images: they name the lab department's hosts and turn
-    # automatic discovery off, which was right when every container was given an explicit
-    # address list and is wrong now that a department is found by broadcast. The container
-    # knows which department it is in and how discovery is configured there, so it wins.
-    local addressing
-    addressing=$(_lab_podman "${container}" bash -c 'for v in EPICS_PVA_ADDR_LIST EPICS_PVA_AUTO_ADDR_LIST EPICS_PVA_NAME_SERVERS; do if [ "${!v+set}" = set ]; then printf "export %s=\"%s\"\n" "$v" "${!v}"; else printf "unset %s\n" "$v"; fi; done' 2>/dev/null)
-
     # Whatever the person needs set before their command runs. Held as one string rather
     # than an array, because arrays are not written the same way in every shell and this
     # file is sourced by whichever one the reader happens to use.
@@ -239,15 +231,17 @@ export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076
             # which department it is actually in, so put its own addressing back afterwards -
             # otherwise a command run on the machine learning workstation, or on the
             # perimeter, quietly talks to the lab instead.
-            prelude="source ~/.${who}_bashrc 2>/dev/null
-${addressing}
+            prelude="_addr_was=\${EPICS_PVA_ADDR_LIST+set}; _addr=\${EPICS_PVA_ADDR_LIST-}
+_ns_was=\${EPICS_PVA_NAME_SERVERS+set}; _ns=\${EPICS_PVA_NAME_SERVERS-}
+source ~/.${who}_bashrc 2>/dev/null
+if [ -n \"\${_addr_was}\" ]; then export EPICS_PVA_ADDR_LIST=\"\${_addr}\"; else unset EPICS_PVA_ADDR_LIST; fi
+if [ -n \"\${_ns_was}\" ]; then export EPICS_PVA_NAME_SERVERS=\"\${_ns}\"; else unset EPICS_PVA_NAME_SERVERS; fi
 export EPICS_PVA_TLS_KEYCHAIN=\${HOME}/.config/pva/1.5/${keychain_name}.p12
 ${prelude}" ;;
         *)
             # A service acting as itself, through its own login, which is where its keychain
             # path and its department's addressing come from.
             prelude="source ~/.${who}_bashrc 2>/dev/null
-${addressing}
 ${prelude}" ;;
     esac
     script="
