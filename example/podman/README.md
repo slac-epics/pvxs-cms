@@ -49,9 +49,13 @@ controllers, the certificate managers, the certificate authorities with their is
 identifiers, the responder for the facility root, and the full text of every access
 security file and gateway process variable list.
 
+<!-- The click-through target is an absolute raw.githubusercontent.com address: GitHub's
+in-page navigation fails on a relative link with ?raw=true, showing an error page instead
+of following the redirect. Absolute means the branch is hardcoded - update it here when
+this work moves off scratch/fy26-integration-testing. -->
 [![The demonstration laboratory: the lab and machine learning zones side by side, the
 perimeter and the certificate authorities between them, and every access file attached to
-the component that loads it](topology-infographic.svg)](topology-infographic.svg?raw=true)
+the component that loads it](topology-infographic.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-integration-testing/example/podman/topology-infographic.svg)
 
 The picture is wide. Click it to open the raw file, which the browser renders full size
 and zoomable: every access rule and process variable list is readable there.
