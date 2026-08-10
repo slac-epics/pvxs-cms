@@ -9,6 +9,7 @@ demonstrating can be shown and checked directly.
 ## Contents
 
 - [What it demonstrates](#what-it-demonstrates)
+- [Topology](#topology)
 - [Installation](#installation)
 - [Bringing it up](#bringing-it-up)
 - [Say it once: where, and who](#say-it-once-where-and-who)
@@ -40,6 +41,20 @@ demonstrating can be shown and checked directly.
 | **Gateways on the boundary** | The only route between departments. Each forwards its own department's controller process variables, and its certificate traffic keyed by issuer id |
 | **Administration** | Listing, filtering, request identifiers, approval in batches or one at a time, denial and revocation, all restricted to administrators |
 | **Revoking the authority** | The root names a responder that publishes its own revocation, and every certificate beneath a revoked root reports a state that says so rather than claiming its own revocation |
+
+## Topology
+
+Every component of the laboratory, on one map: the three networks, the two gateways, the
+controllers, the certificate managers, the certificate authorities with their issuer
+identifiers, the responder for the facility root, and the full text of every access
+security file and gateway process variable list.
+
+![The demonstration laboratory: the lab and machine learning zones side by side, the
+perimeter and the certificate authorities between them, and every access file attached to
+the component that loads it](topology-infographic.svg)
+
+The picture is wide. Open it in its own tab and zoom: every access rule and process
+variable list is readable at full size.
 
 ## Installation
 
