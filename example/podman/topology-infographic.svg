@@ -436,8 +436,8 @@
 <text x="2872.0" y="538.5" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">names</text>
 <path d="M 2644.0 618 L 2644.0 709 L 2155.0 709 L 2155.0 726" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
 <text x="2652.0" y="705" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">signs its answers</text>
-<path d="M 2283.0 280 L 2283.0 302 L 1746.0 302 L 1746.0 929 L 1420.5 929 L 1420.5 1115" fill="none" stroke="#FB8C00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 2383.0 280 L 2383.0 314 L 2920.0 314 L 2920.0 1007 L 3213.5 1007 L 3213.5 1115" fill="none" stroke="#FB8C00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 2283.0 280 L 2283.0 308 L 1746.0 308 L 1746.0 929 L 1420.5 929 L 1420.5 1115" fill="none" stroke="#FB8C00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 2383.0 280 L 2383.0 308 L 2920.0 308 L 2920.0 1007 L 3213.5 1007 L 3213.5 1115" fill="none" stroke="#FB8C00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 314.0 1115 L 314.0 955 L 3245.5 955 L 3245.5 1115" fill="none" stroke="#FB8C00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 3825.5 1115 L 3825.5 981 L 1452.5 981 L 1452.5 1115" fill="none" stroke="#FB8C00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <g><rect x="1521.45" y="920" width="123.60000000000001" height="18" rx="9" fill="white" stroke="#FB8C00" stroke-width="1.2"/><text x="1583.25" y="932.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#FB8C00">net-perimeter:5075</text></g>
