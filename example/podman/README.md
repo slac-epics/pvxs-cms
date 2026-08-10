@@ -49,12 +49,12 @@ controllers, the certificate managers, the certificate authorities with their is
 identifiers, the responder for the facility root, and the full text of every access
 security file and gateway process variable list.
 
-![The demonstration laboratory: the lab and machine learning zones side by side, the
+[![The demonstration laboratory: the lab and machine learning zones side by side, the
 perimeter and the certificate authorities between them, and every access file attached to
-the component that loads it](topology-infographic.svg)
+the component that loads it](topology-infographic.svg)](topology-infographic.svg?raw=true)
 
-The picture is wide. Open it in its own tab and zoom: every access rule and process
-variable list is readable at full size.
+The picture is wide. Click it to open the raw file, which the browser renders full size
+and zoomable: every access rule and process variable list is readable there.
 
 ## Installation
 
