@@ -44,6 +44,26 @@
 #   testioc, tstioc, mlioc,   the account a service runs as
 #   gateway, idm
 
+# Which laboratory is up, written by reset.sh. run_in uses it to tell "this laboratory has no
+# gateway" apart from "the gateway is not running", which are different problems with
+# different answers.
+_lab_topology() {
+    local f="${LAB_HELPERS_DIR:-.}/.topology"
+    [ -r "${f}" ] && head -1 "${f}" || echo unknown
+}
+
+_lab_topology_places() {
+    local t var env="${LAB_HELPERS_DIR:-.}/topologies/topologies.env"
+    t=$(_lab_topology)
+    [ "${t}" = unknown ] && return 1
+    [ -r "${env}" ] || return 1
+    # shellcheck disable=SC1090
+    . "${env}"
+    var="TOPOLOGY_${t//-/_}_PLACES"
+    [ -n "${!var:-}" ] || return 1
+    printf '%s' "${!var}"
+}
+
 _lab_place() {          # place -> compose service
     case "$1" in
         lab)          echo lab-client ;;
@@ -66,7 +86,7 @@ _lab_container() {
     local name
     name=$(podman ps --filter "label=com.docker.compose.service=$1" --format '{{.Names}}' 2>/dev/null | head -1)
     if [ -z "${name}" ]; then
-        echo "run_in: nothing is running for '$1'. Start the laboratory with: podman-compose up -d" >&2
+        echo "run_in: nothing is running for '$1'. Start a laboratory with: ./reset.sh <topology>" >&2
         return 1
     fi
     printf '%s' "${name}"
@@ -163,10 +183,23 @@ run_in() {
         esac
     done
 
-    local service container
+    local service container places topology
     if ! service=$(_lab_place "${place}"); then
         echo "run_in: no place called '${place}'. Places: lab ml perimeter lab-manager ml-manager testioc tstioc ml-ioc gateway ml-gateway" >&2
         return 2
+    fi
+
+    # A real place, but one this laboratory has none of: say which laboratory is up and what
+    # it does have, rather than reporting nothing is running for it.
+    if places=$(_lab_topology_places); then
+        case " ${places} " in
+            *" ${place} "*) ;;
+            *) topology=$(_lab_topology)
+               echo "run_in: the ${topology} laboratory has no '${place}'." >&2
+               echo "        It has: ${places}" >&2
+               echo "        Another topology does: ./reset.sh <topology>" >&2
+               return 2 ;;
+        esac
     fi
 
     # The administrator is not a user of a workstation. Say why rather than quietly running
@@ -366,7 +399,9 @@ authority_reachable() {
 lab_status() {
     local place service
     printf '%-12s %-18s %-10s %s\n' PLACE SERVICE STATE CONTAINER
-    for place in lab-manager testioc tstioc gateway ml-manager ml-ioc ml-gateway lab ml perimeter; do
+    local all="lab-manager testioc tstioc gateway ml-manager ml-ioc ml-gateway lab ml perimeter"
+    local places; places=$(_lab_topology_places) || places="${all}"
+    for place in ${places}; do
         service=$(_lab_place "${place}")
         printf '%-12s %-18s %-10s %s\n' "${place}" "${service}" \
             "$(podman ps -a --filter "label=com.docker.compose.service=${service}" --format '{{.State}}' 2>/dev/null | head -1)" \

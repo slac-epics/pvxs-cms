@@ -12,22 +12,68 @@
 # It ends by trying the things a demonstration depends on. If any of them fails, this exits
 # non-zero and says where to look, rather than handing back a laboratory that looks up.
 #
-#   ./reset.sh                discard the certificates, keep the authorities
-#   ./reset.sh --authorities  mint new authorities as well; the issuer ids change
+#   ./reset.sh <topology>                discard the certificates, keep the authorities
+#   ./reset.sh --authorities <topology>  mint new authorities as well; the issuer ids change
+#
+# The topology names, and what each one is, are in topologies/topologies.env. Whichever one
+# you name is the laboratory you get, and the walkthrough section of the same name is the one
+# that applies to it.
 #
 set -euo pipefail
 cd "$(dirname "$0")"
 
+. topologies/topologies.env
+
+_usage() {
+    echo "usage: ./reset.sh [--authorities] <topology>" >&2
+    echo >&2
+    echo "topologies:" >&2
+    local t var
+    for t in ${TOPOLOGY_NAMES}; do
+        var="TOPOLOGY_${t//-/_}_TITLE"
+        printf '    %-28s %s\n' "${t}" "${!var}" >&2
+        [ -e "topologies/${t}/.stub" ] && printf '    %-28s %s\n' "" "(not built yet)" >&2
+    done
+    exit 2
+}
+
 new_authorities=no
+topology=
 for arg in "$@"; do
     case "${arg}" in
         --authorities) new_authorities=yes ;;
-        *) echo "usage: ./reset.sh [--authorities]" >&2; exit 2 ;;
+        -h|--help)     _usage ;;
+        -*)            echo "./reset.sh: no option '${arg}'" >&2; _usage ;;
+        *)             [ -z "${topology}" ] || { echo "./reset.sh: one topology at a time" >&2; _usage; }
+                       topology="${arg}" ;;
     esac
 done
+[ -n "${topology}" ] || { echo "./reset.sh: name a topology" >&2; _usage; }
 
-# podman-compose names everything it makes after the directory this file sits in.
+case " ${TOPOLOGY_NAMES} " in
+    *" ${topology} "*) ;;
+    *) echo "./reset.sh: no topology called '${topology}'" >&2; _usage ;;
+esac
+
+if [ -e "topologies/${topology}/.stub" ]; then
+    echo "'${topology}' is drawn but not built yet." >&2
+    echo >&2
+    echo "Its picture is topology/topology-${topology}.svg, and what building it needs is" >&2
+    echo "written at the top of topologies/${topology}/compose.yaml." >&2
+    echo >&2
+    echo "Built today: federated-shared-root." >&2
+    exit 2
+fi
+
+# podman-compose names everything it makes after the directory this file sits in. The name is
+# pinned rather than taken from the compose file's own directory, so every topology makes and
+# destroys the same set and switching between them leaves nothing of the last one behind.
 project=$(basename "$(pwd)")
+compose_file="topologies/${topology}/compose.yaml"
+_compose() { podman-compose -p "${project}" -f "${compose_file}" "$@"; }
+
+# What is up, for helpers.sh to read: it decides from this which places run_in will accept.
+printf '%s\n' "${topology}" > .topology
 
 # ---------------------------------------------------------------- the blunt instrument
 # Everything below works from what podman reports, filtered by the project name, so a
@@ -38,7 +84,7 @@ _volumes()    { podman volume ls -q 2>/dev/null | grep -E "^${project}_" || true
 _networks()   { podman network ls --format '{{.Name}}' 2>/dev/null | grep -E "^${project}_" || true; }
 
 _destroy_containers() {
-    podman-compose down >/dev/null 2>&1 || true
+    _compose down >/dev/null 2>&1 || true
     local ids; ids=$(_containers)
     [ -n "${ids}" ] && podman rm -f ${ids} >/dev/null 2>&1 || true
 }
@@ -53,17 +99,17 @@ _destroy_everything() {
 _bring_up() {
     # podman-compose reports failures per service on stdout rather than in its exit code, so
     # the count of running containers is what says whether this worked.
-    podman-compose up -d >/dev/null 2>&1 || true
+    _compose up -d >/dev/null 2>&1 || true
     local want got
-    want=$(podman-compose config --services 2>/dev/null | grep -c . || echo 0)
+    want=$(_compose config --services 2>/dev/null | grep -c . || echo 0)
     for _ in $(seq 1 30); do
         got=$(_containers | wc -l | tr -d ' ')
         [ "${got}" -ge "${want}" ] && [ "${want}" -gt 0 ] && return 0
         sleep 2
-        podman-compose up -d >/dev/null 2>&1 || true
+        _compose up -d >/dev/null 2>&1 || true
     done
     echo "    only ${got} of ${want} containers started. Look at:" >&2
-    echo "        cd $(pwd) && podman-compose up -d" >&2
+    echo "        cd $(pwd) && podman-compose -p ${project} -f ${compose_file} up -d" >&2
     return 1
 }
 
