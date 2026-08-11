@@ -787,6 +787,19 @@ There are two separate questions - *what is the decision* and *are you sure* - a
 and `--yes` answer one each. That gives four ways of working, from reading every request to
 approving a hundred without being asked anything, and you choose how far to go.
 
+Section 5's request is still waiting - it was shown, not decided - and the walk below needs
+more than one, to show what `skip` and `stop` leave behind. So ask for one more, under a
+name nobody has been issued, from the one place that can ask the lab department without
+already holding one of its certificates:
+
+```sh
+run_in perimeter as guest authnstd -u client -n trainee --issuer ${LAB_SKID} --force
+```
+
+`--force` because that keychain already holds section 5's request and only one fits in it.
+What matters here is the pair the certificate manager now has waiting, not what the
+requester kept: `visitor` and `trainee` are separate subjects, and neither has been decided.
+
 **Neither.** Each certificate in turn, with its subject and its request identifier in front
 of you, and a decision for each. The prompts are read from a terminal, so open a shell and
 answer them yourself:
@@ -800,21 +813,21 @@ run_in lab-manager as admin
 Compare the request identifier shown below against the one the requester sent you before approving.
 
 [1/2] ba71d9e3:02665075835003669104
-  Subject        : CN=guest,O=epics.org,C=US
+  Subject        : CN=visitor,O=epics.org,C=US
   Status         : PENDING_APPROVAL
   Request ID     : VY14-FM0S-3HTV-V77Q
   Status changed : 2026-08-06 21:27:38 UTC
   approve / deny / skip / stop / cancel ? approve
 
 [2/2] ba71d9e3:01457147623119291338
-  Subject        : CN=operator,O=epics.org,C=US
+  Subject        : CN=trainee,O=epics.org,C=US
   Status         : PENDING_APPROVAL
   Request ID     : Y6W7-HZMY-FX8R-R65E
   Status changed : 2026-08-06 21:27:37 UTC
   approve / deny / skip / stop / cancel ? skip
 
 About to change 1 certificate:
-  ba71d9e3:02665075835003669104  CN=guest,O=epics.org,C=US
+  ba71d9e3:02665075835003669104  CN=visitor,O=epics.org,C=US
       PENDING_APPROVAL -> VALID  (APPROVE)
   The certificate manager decides the final value for an approval, from the certificate's own dates.
 
@@ -836,9 +849,9 @@ run_in lab-manager as admin pvxcert --review-pending --all approve
 
 ```
 About to change 2 certificates:
-  ba71d9e3:02665075835003669104  CN=guest,O=epics.org,C=US
+  ba71d9e3:02665075835003669104  CN=visitor,O=epics.org,C=US
       PENDING_APPROVAL -> VALID  (APPROVE)
-  ba71d9e3:01457147623119291338  CN=operator,O=epics.org,C=US
+  ba71d9e3:01457147623119291338  CN=trainee,O=epics.org,C=US
       PENDING_APPROVAL -> VALID  (APPROVE)
   The certificate manager decides the final value for an approval, from the certificate's own dates.
 
@@ -856,7 +869,7 @@ narrowed: `--where` applies to `--list` and to `--review-issued`, and asking for
 through them one at a time and `skip` the rest.
 
 ```sh
-run_in lab-manager as admin pvxcert --review-pending --where "name:guest" --all approve
+run_in lab-manager as admin pvxcert --review-pending --where "name:trainee" --all approve
 #   Error: --where, --pending and --expiring only apply to --list and --review-issued.
 ```
 
@@ -903,14 +916,23 @@ run_in lab-manager as admin pvxcert --review-pending --all deny --yes
 ```
 
 Revocation works over the issued certificates, and unlike a pending review it *can* be
-narrowed by the filter from section 7. The same three levels of control apply:
+narrowed by the filter from section 7. The same three levels of control apply, and a fourth
+form revokes one certificate you already know the identifier of:
 
 ```sh
-run_in lab-manager as admin pvxcert --review-issued --where "state:VALID"                 # one at a time
-run_in lab-manager as admin pvxcert --review-issued --where "name:guest" --all            # decided, still confirmed
-run_in lab-manager as admin pvxcert --review-issued --where "name:testioc" --all --yes    # the whole batch
-run_in lab-manager as admin pvxcert -R "${LAB}:0123456789"                                # one known certificate
+run_in lab-manager as admin pvxcert --review-issued --where "state:VALID"                 # one at a time  - answer skip, then stop
+run_in lab-manager as admin pvxcert --review-issued --where "name:guest" --all            # asks once      - answer n
+run_in lab-manager as admin pvxcert --review-issued --where "name:testioc" --all --yes    # no questions   - this one goes through
+run_in lab-manager as admin pvxcert -R "${LAB}:0123456789"                                # one certificate - that serial does not exist
 ```
+
+**Only the third is meant to be carried through.** The first two are for reading rather
+than deciding: the first walks every valid certificate this department has issued, the
+administrator's own among them, so answer `skip` to move past each and `stop` when you have
+seen enough - revoking that one would end the demonstration. The second is answered `n` at
+the confirmation, as the transcript below shows. The fourth names a serial that does not
+exist, so it reports that and writes nothing; put a real identifier in its place to see it
+work.
 
 That third one stops the controller. A service whose certificate is revoked cannot present
 it, so put it back before going on, which is what a site would do having revoked one in
@@ -925,8 +947,8 @@ podman-compose restart pvxs-lab-testioc
 `--force` is needed because the keychain still holds the revoked certificate, and what is
 on disk looks valid: a certificate carries its own dates, not its standing.
 
-The middle one is the useful shape for a revocation: the filter chooses, and the
-confirmation shows exactly what was chosen before anything is written.
+The second is the useful shape for a revocation: the filter chooses, and the confirmation
+shows exactly what was chosen before anything is written.
 
 ```
 About to change 2 certificates:
@@ -1029,15 +1051,47 @@ authority_revoke
 #   the facility root is REVOKED
 ```
 
-The certificate managers ask again when the answer they hold lapses. The responder states how
-long that is, and the laboratory's says one minute, so allow one before asking. From then on
-every certificate beneath the root is answered differently. Ask for one certificate's status,
-by the identifier the listing shows:
+### Wait a minute for the authority status to propagate
+
+**Nothing changes in the laboratory at the moment the root is revoked, and this step is not
+optional.** Each certificate manager holds the responder's last answer until it lapses, and
+the laboratory's responder asks to be believed for one minute. The revocation reaches the
+departments when that minute is up, not before:
 
 ```sh
-run_in lab as guest pvxcert "${LAB}:02665075835003669104"
+sleep 60
+```
+
+Ask before it is up and you will see one of two answers, both correct for the moment they
+are given:
+
+- `VALID`, when the manager's held answer has not lapsed yet. Nothing above the certificate
+  has reached that manager, so it says what it last established.
+- `UNKNOWN`, when the answer lapsed while the responder was restarting. `authority_revoke`
+  rewrites the responder's file and restarts it, because the responder reads its answer once
+  at start; for the second or two that takes, a manager that asks gets nothing back. It does
+  not assume an answer it could not get, which is the behaviour described under *When the
+  responder cannot be reached* below, arriving a step earlier than you were expecting it.
+
+Neither is the certificate manager being unclear about the revocation. It is the ordinary
+sequence: last answer, then no answer, then the new one.
+
+### What every certificate says once it has propagated
+
+Once the minute is up, every certificate beneath the root is answered differently. Ask the
+guest's own keychain for its status, so nothing has to be copied from the listing:
+
+```sh
+run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 #   Status        : AUTHORITY_REVOKED
 ```
+
+`-f` names a keychain instead of an identifier, and the status address is read from the
+certificate inside it, so nothing has to be copied and the line stays right however the
+serial numbers fall. The path is written out in full because it is a path inside the
+container, where the guest's home is `/home/guest`. Writing `~` there would be expanded by
+your own shell first, to your home directory on this machine, and the file it named would
+not exist.
 
 That state is not `REVOKED`, and the difference is the point of it. The holder's own
 certificate is untouched: it has not been revoked, it has not expired, and asking for a
@@ -1071,15 +1125,42 @@ everyone who chains to it, including the people who would undo it, which is why 
 thing a facility does and why what it takes to undo it is a file and a restart rather than a
 certificate operation.
 
-Putting the root back is enough to put the laboratory back:
+Putting the root back takes the same minute to be believed, for the same reason, and the
+gateways need one thing more:
 
 ```sh
 authority_restore
 #   the facility root stands
 
-run_in lab as guest pvxcert "${LAB}:02665075835003669104"
+sleep 60
+
+podman-compose restart pvxs-lab-gateway pvxs-lab-ml-gateway
+
+run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 #   Status        : VALID
 ```
+
+Ask too early here and the answer is `AUTHORITY_REVOKED` or `UNKNOWN` exactly as before. That
+is the wait, not a restore that did not work.
+
+**Do not skip the gateway restart.** Everything inside a department comes back on its own:
+each certificate manager asks the responder again, and every holder is told over the status
+channel it already subscribes to. A gateway does not. Its connections to the department were
+torn down when the root was revoked, and it does not rebuild them once the root stands again,
+so it goes on answering searches while no request through it ever completes. Everything the
+perimeter workstation can see is reached through a gateway, so the symptom is a workstation
+that cannot read a variable or ask for a certificate:
+
+```
+No certificate manager answered CERT:CREATE:<issuer> within 5 seconds. Nothing serves that
+name, so either no certificate manager for this authority is running, or it cannot be
+reached from here.
+```
+
+The certificate manager is running and perfectly healthy when that appears. The department
+can read its own variables, the administrator can list every certificate, and the gateway's
+own certificate is `VALID`: the only thing wrong is the gateway's side of a connection that
+was cut a section ago. Restarting the two gateways is the whole repair.
 
 Nothing was repaired to achieve that. The listing shows what it showed before, because no
 certificate was ever changed: what changed was above them, and it is read afresh each time a
@@ -1103,10 +1184,13 @@ authority_unreachable
 A certificate manager that cannot check its own authority does not assume the answer. It
 notices when the answer it holds lapses, which here is up to the minute the responder asked
 for, and from then on it retries every fifteen seconds. Until one succeeds it reports what
-it actually knows, which is nothing:
+it actually knows, which is nothing. That is the same minute again, so wait it out before
+reading anything into the answer:
 
 ```sh
-run_in lab as guest pvxcert "${LAB}:02665075835003669104"
+sleep 60
+
+run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 #   Status        : UNKNOWN
 ```
 
@@ -1120,13 +1204,19 @@ they verified. The trade is stated plainly: an outage of one web service no long
 facility with it, and a revocation issued during that outage is not seen until it ends.
 
 Put the responder back and the managers pick it up on one of those retries, within fifteen
-seconds:
+seconds. The gateways need the same restart as before, for the same reason: they were cut off
+while the standing was unknown, and they do not reconnect by themselves:
 
 ```sh
 authority_reachable
 #   the responder is running again
 #   the facility root stands
+
+podman-compose restart pvxs-lab-gateway pvxs-lab-ml-gateway
 ```
+
+That restart is what leaves the perimeter workstation able to reach either department again,
+and the next section starts by asking for a certificate from there.
 
 ## 11. Only an administrator may decide
 
@@ -1222,8 +1312,11 @@ Configuration worth reading:
 
 ## Troubleshooting
 
-**Nothing crosses a boundary.** Restart the two gateways. One that started before the
-controllers were serving does not retry.
+**Nothing crosses a boundary.** Restart the two gateways. A gateway does not retry a
+connection it never made or has lost: one that started before the controllers were serving
+never made it, and one whose department was cut off by a revoked authority (section 10) lost
+it. Neither comes back on its own, and the gateway goes on answering searches meanwhile, so
+the symptom is a request that times out rather than one that is refused.
 
 ```sh
 podman-compose restart pvxs-lab-gateway pvxs-lab-ml-gateway
