@@ -1,9 +1,9 @@
 #!/bin/bash
-# Build the images and mint the certificate authorities for the demonstration laboratory.
+# Build the images the demonstration laboratories are made from.
 #
-# Run once, before the first `podman-compose up`. Running it again mints fresh
-# authorities, which invalidates every certificate already issued: use --keep-certs to
-# rebuild the images without touching them.
+# Run once, before the first ./reset.sh. The images are the same whichever laboratory you
+# bring up; what differs between them is their certificate authorities, and those are minted
+# by ./reset.sh into the topology that owns them.
 #
 # JOBS controls how many compiler processes run at once. Each can take most of a
 # gigabyte, so on a machine with little memory set it low:
@@ -12,10 +12,6 @@
 #
 set -euo pipefail
 cd "$(dirname "$0")"
-
-ROOT_CN="${ROOT_CN:-EPICS Root Certificate Authority}"
-LAB_CN="${LAB_CN:-EPICS Controls Intermediate CA}"
-ML_CN="${ML_CN:-EPICS ML Intermediate CA}"
 
 # The build scripts shared with the Kubernetes laboratory call `docker`. On podman that
 # is the podman-docker shim, so check for it early rather than failing halfway through.
@@ -51,19 +47,14 @@ build_image() {
     ( cd "${dir}" && ./build_docker.sh "${args[@]}" "$@" )
 }
 
-keep_certs=no
-build_the_images=yes
+# --keep-certs is accepted and ignored: it meant "rebuild the images without reminting", and
+# building no longer mints anything, so that is what it does now anyway.
 case "${1:-}" in
-    --keep-certs) keep_certs=yes ;;
-    # Mint the authorities and nothing else. The images are already built and none of this
-    # changes them, so rebuilding them to hand out new authorities costs many minutes and
-    # recompiles EPICS Base, pvxs, pvxs-cms and p4p for no gain. reset.sh uses this.
-    --certs-only) build_the_images=no ;;
-    "") ;;
-    *) echo "usage: ./bootstrap.sh [--keep-certs | --certs-only]" >&2; exit 2 ;;
+    --keep-certs|"") ;;
+    *) echo "usage: ./bootstrap.sh [--keep-certs]" >&2; exit 2 ;;
 esac
 
-if [ "${build_the_images}" = yes ]; then
+if true; then
 
 # The images form a chain, each built on the one before:
 #
@@ -90,45 +81,10 @@ done
 
 fi
 
-if [ "${keep_certs}" = yes ] && [ -s issuer_ids.env ] && [ -d certs ]; then
-    echo "==> keeping the existing certificate authorities"
-else
-    echo "==> minting the facility root and both departmental intermediates"
-    rm -rf certs && mkdir -p certs
-    podman run --rm -v "$(pwd)/certs:/certs:Z" \
-        "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/idm:latest" bash -c "
-            set -e
-            arch=\$(/opt/epics/epics-base/startup/EpicsHostArch)
-            /opt/epics/pvxs-cms/test/O.\$arch/gen_lab_certs \
-                -O /certs -R '${ROOT_CN}' -L '${LAB_CN}' -M '${ML_CN}' \
-                -S 'http://pvxs-lab-authority-status:8888'
-            ls -la /certs"
-    cp certs/issuer_ids.env issuer_ids.env
-    # compose substitutes ${LAB_ISSUER} and ${ML_ISSUER} in the file itself from .env,
-    # which it reads before anything else. env_file only reaches the container, and by
-    # then the substitution has already happened, so both are needed.
-    cp certs/issuer_ids.env .env
-
-    # What the responder needs, under the names it is started with. It is kept apart from
-    # ./certs because ./certs holds authorities and this holds one service's configuration,
-    # and because the file that says whether the root still stands is rewritten during a
-    # demonstration while nothing in ./certs is.
-    rm -rf ocsp && mkdir -p ocsp
-    cp certs/ocsp_ca.pem     ocsp/ca.pem
-    cp certs/ocsp_signer.pem ocsp/signer.pem
-    cp certs/ocsp_signer.key ocsp/signer.key
-    cp certs/ocsp_index.txt  ocsp/index.txt
-fi
-
 echo
-echo "==> issuer ids"
-# Named the way a shell names them, which is not how the file spells them.
-# shellcheck source=helpers.sh
-. ./helpers.sh
-lab_ids_show
+echo "The images are built. Certificate authorities belong to a laboratory rather than to the"
+echo "images, so they are minted when you bring one up:"
 echo
-echo "Now:  podman-compose up -d"
+echo "    ./reset.sh <topology>"
 echo
-echo "After 'podman-compose up -d', issue the certificates, then restart the two gateways."
-echo "A gateway that starts before the controllers are serving does not retry, and nothing"
-echo "reaches across a boundary until it is restarted."
+echo "./reset.sh with no name lists the four and says what each one is."

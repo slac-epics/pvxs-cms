@@ -72,7 +72,7 @@ services:
     hostname: pvxs-lab-authority-status
     networks: [net-lab, net-ml]
     volumes:
-      - ../../ocsp:/ocsp:ro,Z
+      - ./ocsp:/ocsp:ro,Z
       - ../../../kubernetes/docker/idm/ocsp-supervisor.conf:/etc/supervisor/conf.d/ocsp.conf:ro,z
       - ../../../kubernetes/docker/idm/ocsp-only-supervisord.conf:/etc/supervisor/supervisord.conf:ro,z
     command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
@@ -84,7 +84,7 @@ services:
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-pvacms
     networks: [net-lab]
-    env_file: [../../issuer_ids.env]
+    env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
@@ -96,7 +96,7 @@ services:
       # Only this department's own authority, and only this container mounts it, so it
       # can carry a label private to it rather than one every container on the host
       # can read. The facility root's own key is never mounted into a running service.
-      - ../../certs/lab_intermediate.p12:/certs/lab_intermediate.p12:ro,Z
+      - ./certs/lab_intermediate.p12:/certs/lab_intermediate.p12:ro,Z
       - ./config/pvacms-lab.acf:/etc/pvacms/pvacms.acf:ro,z
       - ../../scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
     command: ["/usr/local/bin/start-pvacms", "lab"]
@@ -106,7 +106,7 @@ services:
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/testioc:latest
     hostname: pvxs-lab-testioc
     networks: [net-lab]
-    env_file: [../../issuer_ids.env]
+    env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms"
@@ -122,7 +122,7 @@ services:
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/tstioc:latest
     hostname: pvxs-lab-tstioc
     networks: [net-lab]
-    env_file: [../../issuer_ids.env]
+    env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms"
@@ -139,7 +139,7 @@ services:
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
     hostname: pvxs-lab-gateway
     networks: [net-lab, net-perimeter]
-    env_file: [../../issuer_ids.env]
+    env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
@@ -159,7 +159,7 @@ services:
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml:latest
     hostname: pvxs-lab-ml
     networks: [net-ml]
-    env_file: [../../issuer_ids.env]
+    env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
@@ -168,7 +168,7 @@ services:
     volumes:
       - ml-config:/home/idm/.config/pva/1.5
       - ml-data:/home/idm/.local/share/pva/1.5
-      - ../../certs/ml_intermediate.p12:/certs/ml_intermediate.p12:ro,Z
+      - ./certs/ml_intermediate.p12:/certs/ml_intermediate.p12:ro,Z
       - ./config/pvacms-ml.acf:/etc/pvacms/pvacms.acf:ro,z
       - ../../scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
     command: ["/usr/local/bin/start-pvacms", "ml"]
@@ -178,7 +178,7 @@ services:
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml-ioc:latest
     hostname: pvxs-lab-ml-ioc
     networks: [net-ml]
-    env_file: [../../issuer_ids.env]
+    env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml"
@@ -194,7 +194,7 @@ services:
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
     hostname: pvxs-lab-ml-gateway
     networks: [net-ml, net-perimeter]
-    env_file: [../../issuer_ids.env]
+    env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
@@ -217,7 +217,7 @@ services:
     # department's gateway. There is still no route to the other department's
     # certificate manager or controllers except through that gateway.
     networks: [net-lab, net-perimeter]
-    env_file: [../../issuer_ids.env]
+    env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
@@ -236,7 +236,7 @@ services:
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
     hostname: ml-client
     networks: [net-ml, net-perimeter]
-    env_file: [../../issuer_ids.env]
+    env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
@@ -255,7 +255,7 @@ services:
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/internet:latest
     hostname: perimeter-client
     networks: [net-perimeter]
-    env_file: [../../issuer_ids.env]
+    env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_NAME_SERVERS: "pvxs-lab-gateway:5075 pvxs-lab-ml-gateway:5075"

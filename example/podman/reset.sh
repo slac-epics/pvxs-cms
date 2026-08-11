@@ -75,6 +75,26 @@ _compose() { podman-compose -p "${project}" -f "${compose_file}" "$@"; }
 # What is up, for helpers.sh to read: it decides from this which places run_in will accept.
 printf '%s\n' "${topology}" > .topology
 
+# A laboratory with more than one certificate manager has to be told which authority each one
+# signs with, and the issuer ids have to exist before anything starts, so those topologies
+# mint beside their own compose file. A laboratory with one certificate manager needs none of
+# that: pvacms creates its own self-signed authority the first time it starts, and with only
+# one of them the unqualified CERT:CREATE is unambiguous.
+topology_dir="topologies/${topology}"
+if [ -x "${topology_dir}/mint.sh" ]; then
+    if [ "${new_authorities}" = yes ] || [ ! -s "${topology_dir}/issuer_ids.env" ]; then
+        "${topology_dir}/mint.sh"
+    else
+        echo "==> keeping the existing certificate authorities"
+    fi
+    # compose substitutes ${LAB_ISSUER} and the rest in the file itself, and reads .env from
+    # the directory it is run from, which is this one whichever topology is up.
+    cp "${topology_dir}/issuer_ids.env" .env
+else
+    echo "==> the certificate manager will create its own authority when it starts"
+    : > .env
+fi
+
 # ---------------------------------------------------------------- the blunt instrument
 # Everything below works from what podman reports, filtered by the project name, so a
 # service added to or removed from compose.yaml needs no change here.
@@ -114,6 +134,12 @@ _bring_up() {
 }
 
 # ---------------------------------------------------------------- checks
+# Each laboratory is checked for what it has. A responder, a second department and a
+# perimeter are not universal, and asking about one a topology lacks would report a fault
+# where there is none.
+_places=$(eval "printf '%s' \"\${TOPOLOGY_${topology//-/_}_PLACES}\"")
+_has() { case " ${_places} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
 # Each returns non-zero and says where to look. They ask the laboratory the same questions a
 # person would, rather than inspecting anything's insides.
 
@@ -145,7 +171,7 @@ _check_managers() {
     local ok=no
     for _ in $(seq 1 18); do
         if run_in lab-manager as admin pvxcert -l >/dev/null 2>&1 \
-        && run_in ml-manager  as admin pvxcert -l >/dev/null 2>&1; then
+        && { ! _has ml-manager || run_in ml-manager as admin pvxcert -l >/dev/null 2>&1; }; then
             ok=yes; break
         fi
         sleep 5
@@ -160,10 +186,10 @@ _check_managers() {
 _check_reads() {
     local ok=no
     for _ in $(seq 1 18); do
-        if run_in lab       as guest without a certificate pvxget test:aiExample >/dev/null 2>&1 \
-        && run_in ml        as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1 \
-        && run_in perimeter as guest without a certificate pvxget test:aiExample >/dev/null 2>&1 \
-        && run_in perimeter as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; then
+        if run_in lab as guest without a certificate pvxget test:aiExample >/dev/null 2>&1 \
+        && { ! _has ml        || run_in ml        as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; } \
+        && { ! _has perimeter || run_in perimeter as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; } \
+        && { ! _has perimeter || run_in perimeter as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; }; then
             ok=yes; break
         fi
         sleep 5
@@ -192,7 +218,7 @@ _check_refusals() {
         echo "    a request with no certificate was not refused by the controller." >&2
         return 1
     fi
-    if ! _says 'denied by gateway' \
+    if _has perimeter && ! _says 'denied by gateway' \
          run_in perimeter as guest without a certificate pvxput test:stringExample hello; then
         echo "    a request with no certificate was not refused at the boundary." >&2
         return 1
@@ -231,8 +257,11 @@ _bring_up
 . ./helpers.sh
 lab_ids >/dev/null 2>&1 || true
 
-echo "==> checking the facility root can be established"
-_check_responder
+if _has ml-manager; then
+    echo "==> checking the facility root can be established"
+    _check_responder
+fi
+
 echo "==> checking each certificate manager answers its administrator"
 _check_managers
 
@@ -252,10 +281,16 @@ if [ "${new_authorities}" = yes ]; then
     echo "    lab_ids"
     echo
 fi
-echo "The laboratory is up with no certificates issued, and this much was just checked:"
-echo "    the responder answers for the facility root"
+echo "The ${topology} laboratory is up with no certificates issued, and this much was just"
+echo "checked:"
+_has ml-manager && echo "    the responder answers for the facility root"
 echo "    each certificate manager answers its administrator"
-echo "    reading works, from every department and from outside"
-echo "    a write with no certificate is refused, by the controller and at the boundary"
+if _has perimeter; then
+    echo "    reading works, from every department and from outside"
+    echo "    a write with no certificate is refused, by the controller and at the boundary"
+else
+    echo "    reading works"
+    echo "    a write with no certificate is refused by the controller"
+fi
 echo
 echo "Follow 'Issue the certificates' to go on."
