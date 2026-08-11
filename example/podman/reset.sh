@@ -14,18 +14,15 @@
 #
 #   ./reset.sh                discard the certificates, keep the authorities
 #   ./reset.sh --authorities  mint new authorities as well; the issuer ids change
-#   ./reset.sh --no-certs     leave it with no certificates issued, and check only that far
 #
 set -euo pipefail
 cd "$(dirname "$0")"
 
 new_authorities=no
-issue_certs=yes
 for arg in "$@"; do
     case "${arg}" in
         --authorities) new_authorities=yes ;;
-        --no-certs)    issue_certs=no ;;
-        *) echo "usage: ./reset.sh [--authorities] [--no-certs]" >&2; exit 2 ;;
+        *) echo "usage: ./reset.sh [--authorities]" >&2; exit 2 ;;
     esac
 done
 
@@ -140,24 +137,10 @@ _says() { # _says <expected text> <command...>   - true when the output contains
     printf '%s' "${out}" | grep -q -- "${want}"
 }
 
-_check_writes() {
-    # What a certificate is worth, in both directions, and what its absence is worth. These
-    # are the four outcomes every later section of the walkthrough builds on.
-    local fails=0
-    for _ in $(seq 1 12); do
-        fails=0
-        run_in lab as operator pvxput test:open 5   >/dev/null 2>&1 || fails=$((fails+1))
-        run_in lab as operator pvxput ml:open 42    >/dev/null 2>&1 || fails=$((fails+1))
-        run_in ml  as guest    pvxput test:open 7   >/dev/null 2>&1 || fails=$((fails+1))
-        [ "${fails}" -eq 0 ] && break
-        sleep 5
-    done
-    if [ "${fails}" -ne 0 ]; then
-        echo "    a certificate holder cannot write (${fails} of 3 failed). Try:" >&2
-        echo "        run_in lab as operator pvxput test:open 5" >&2
-        echo "        run_in lab as operator pvxput ml:open 42" >&2
-        return 1
-    fi
+_check_refusals() {
+    # Nothing holds a certificate at this point, so what can be checked is that the laboratory
+    # refuses a write, and refuses it in the right place: by the controller in its own
+    # department, and at the boundary from outside it.
     if ! _says 'Put not permitted' \
          run_in lab as guest without a certificate pvxput test:stringExample hello; then
         echo "    a request with no certificate was not refused by the controller." >&2
@@ -207,51 +190,11 @@ _check_responder
 echo "==> checking each certificate manager answers its administrator"
 _check_managers
 
-if [ "${issue_certs}" = yes ]; then
-    # The services first. Their keychains are in volumes, so they survive the rebuild below,
-    # and a server reads its keychain when it starts - which is what the rebuild is for.
-    echo "==> issuing the certificates the services hold"
-    run_in testioc as testioc authnstd -u ioc >/dev/null 2>&1 || true
-    run_in tstioc  as tstioc  authnstd -u ioc >/dev/null 2>&1 || true
-    run_in ml-ioc  as mlioc   authnstd -u ioc >/dev/null 2>&1 || true
-    run_in gateway    as gateway authnstd -u ioc >/dev/null 2>&1 || true
-    run_in ml-gateway as gateway authnstd -u ioc -n ml-gateway >/dev/null 2>&1 || true
-    run_in lab-manager as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
-    run_in ml-manager  as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
-
-    # Rather than work out which services were handed a certificate while they were running
-    # and restart those, make the whole laboratory again. Every service then comes back
-    # holding its own, and every container is new, so nothing is left pointing at an address
-    # that has moved.
-    echo "==> building it again, so every service starts holding what it was issued"
-    _destroy_containers
-    _bring_up
-
-    echo "==> checking the facility root can still be established"
-    _check_responder
-    echo "==> checking each certificate manager answers its administrator"
-    _check_managers
-
-    # The people last, and only now. A person's keychain is not in a volume - only the
-    # guest's directory is - so anything issued to one before the rebuild would be thrown
-    # away with the container. Nothing needs restarting for these: a command is a fresh
-    # process that reads its keychain when it runs.
-    echo "==> issuing the certificates the people hold"
-    run_in lab       as operator    authnstd -u client --ou lab --issuer "${LAB_SKID}" >/dev/null 2>&1 || true
-    run_in ml        as guest       authnstd -u client >/dev/null 2>&1 || true
-    run_in perimeter as operator    authnstd -u client --issuer "${ML_SKID}" >/dev/null 2>&1 || true
-    run_in lab       as ml/operator authnstd -u client --ou ml --issuer "${ML_SKID}" >/dev/null 2>&1 || true
-    run_in lab-manager as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
-    run_in ml-manager  as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
-fi
-
 echo "==> checking reading works from everywhere"
 _check_reads
 
-if [ "${issue_certs}" = yes ]; then
-    echo "==> checking writing works, and that its absence is refused"
-    _check_writes
-fi
+echo "==> checking a write with no certificate is refused"
+_check_refusals
 
 echo
 lab_ids_show
@@ -263,15 +206,10 @@ if [ "${new_authorities}" = yes ]; then
     echo "    lab_ids"
     echo
 fi
-if [ "${issue_certs}" = yes ]; then
-    echo "The laboratory is up, every identity is issued, and all of this was just checked:"
-    echo "    reading, from every department and from outside"
-    echo "    writing, in a department and across the boundary both ways"
-    echo "    a request with no certificate, refused by the controller and at the boundary"
-    echo
-    echo "Two identities are deliberately left without a certificate, for the sections that"
-    echo "need that: the lab guest, and the perimeter guest."
-else
-    echo "The laboratory is up with no certificates issued. Reading was checked; writing is"
-    echo "refused until an identity is issued. Follow 'Issue the certificates'."
-fi
+echo "The laboratory is up with no certificates issued, and this much was just checked:"
+echo "    the responder answers for the facility root"
+echo "    each certificate manager answers its administrator"
+echo "    reading works, from every department and from outside"
+echo "    a write with no certificate is refused, by the controller and at the boundary"
+echo
+echo "Follow 'Issue the certificates' to go on."
