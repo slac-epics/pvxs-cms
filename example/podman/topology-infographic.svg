@@ -474,9 +474,10 @@
 <path d="M 1448.5 1354 L 1448.5 1649 L 1662.0 1649 L 1662.0 1677" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 3217.5 1354 L 3217.5 1661 L 3037.5 1661 L 3037.5 1677" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 3241.5 1354 L 3241.5 1649 L 3385.0 1649 L 3385.0 1677" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
-<rect x="40" y="90" width="560" height="993" rx="10" fill="white" stroke="#B0BEC5" stroke-width="1.4"/>
-<path d="M 40 100 a10 10 0 0 1 10 -10 h540 a10 10 0 0 1 10 10 v20 h-560 z" fill="#455A64"/>
+<rect x="40" y="90" width="1002" height="586" rx="10" fill="white" stroke="#B0BEC5" stroke-width="1.4"/>
+<path d="M 40 100 a10 10 0 0 1 10 -10 h982 a10 10 0 0 1 10 10 v20 h-1002 z" fill="#455A64"/>
 <text x="54" y="110" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" font-weight="bold" fill="white">Legend</text>
+<line x1="541.0" y1="128" x2="541.0" y2="666" stroke="#CFD8DC" stroke-width="1"/>
 <rect x="54" y="130" width="14" height="14" rx="3" fill="#5E35B1"/>
 <text x="78" y="141" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">CA or certificate - a file, on no network</text>
 <rect x="54" y="154" width="14" height="14" rx="3" fill="#E53935"/>
@@ -508,36 +509,38 @@
 <text x="104" y="534" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">certificate relationship - signs / names</text>
 <line x1="54" y1="554" x2="94" y2="554" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4"/>
 <text x="104" y="558" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a file the component loads</text>
-<text x="54" y="592" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238">Notation</text>
-<text x="54" y="607" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">10.89.0.0/24 : the segment, in CIDR. Three podman bridges with</text>
-<text x="54" y="622" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               no routing between them, so a host reaches only</text>
-<text x="54" y="637" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               the segments it is attached to</text>
-<text x="54" y="652" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0, eth1   : the host's interface on each segment. A host on</text>
-<text x="54" y="667" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               two segments is marked dual-homed</text>
-<text x="54" y="682" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/5075     : PVAccess, plaintext</text>
-<text x="54" y="697" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/5076     : PVAccess over TLS</text>
-<text x="54" y="712" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">udp/5076     : PVAccess search and beacons, sent to the</text>
-<text x="54" y="727" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               segment broadcast address</text>
-<text x="54" y="742" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/8888     : OCSP over HTTP, to the responder</text>
-<text x="54" y="757" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
-<text x="54" y="772" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Host addresses within a segment are assigned by podman when a</text>
-<text x="54" y="787" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">container starts, and the segment CIDRs come from podman's</text>
-<text x="54" y="802" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">default pool: neither is pinned in compose.yaml, so both can</text>
-<text x="54" y="817" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">change when the networks are made again.</text>
-<text x="54" y="842" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">CA     : certificate authority</text>
-<text x="54" y="857" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">SKID   : subject key identifier, 40 hex digits</text>
-<text x="54" y="872" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Issuer ID: the first 8 digits of a SKID</text>
-<text x="54" y="887" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS : certificate manager</text>
-<text x="54" y="902" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC    : input output controller</text>
-<text x="54" y="917" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF    : access security file</text>
-<text x="54" y="932" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVList : gateway process variable list</text>
-<text x="54" y="947" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP   : online certificate status protocol</text>
-<text x="54" y="962" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">AIA    : authority information access extension</text>
-<text x="54" y="977" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ML     : machine learning</text>
-<text x="54" y="1002" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">A line claims attachment, not direction.</text>
-<text x="54" y="1017" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">Arrowheads only where a direction is real.</text>
-<text x="54" y="1032" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve"></text>
-<text x="54" y="1047" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">LAB_ISSUER, ML_ISSUER and the _SKID forms are</text>
-<text x="54" y="1062" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">named, not printed: a fresh mint changes them.</text>
-<text x="54" y="1077" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">Values: issuer_ids.env</text>
+<text x="558" y="140" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Notation</text>
+<text x="558" y="155" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">10.89.0.0/24 : the segment, in CIDR. Three podman bridges with</text>
+<text x="558" y="170" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               no routing between them, so a host reaches only</text>
+<text x="558" y="185" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               the segments it is attached to</text>
+<text x="558" y="200" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0, eth1   : the host's interface on each segment. A host on</text>
+<text x="558" y="215" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               two segments is marked dual-homed</text>
+<text x="558" y="230" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/5075     : PVAccess, plaintext</text>
+<text x="558" y="245" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/5076     : PVAccess over TLS</text>
+<text x="558" y="260" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">udp/5076     : PVAccess search and beacons, sent to the</text>
+<text x="558" y="275" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               segment broadcast address</text>
+<text x="558" y="290" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/8888     : OCSP over HTTP, to the responder</text>
+<text x="558" y="305" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="558" y="320" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">The segment CIDRs are pinned in compose.yaml, so they are</text>
+<text x="558" y="335" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">these on every laboratory. Host addresses within a segment are</text>
+<text x="558" y="350" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">assigned by podman when a container starts and are not fixed:</text>
+<text x="558" y="365" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">per-container addresses cannot be set, because podman refuses</text>
+<text x="558" y="380" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">them on a container attached to more than one segment.</text>
+<text x="558" y="405" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Abbreviations</text>
+<text x="558" y="420" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">CA     : certificate authority</text>
+<text x="558" y="435" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">SKID   : subject key identifier, 40 hex digits</text>
+<text x="558" y="450" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Issuer ID: the first 8 digits of a SKID</text>
+<text x="558" y="465" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS : certificate manager</text>
+<text x="558" y="480" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC    : input output controller</text>
+<text x="558" y="495" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF    : access security file</text>
+<text x="558" y="510" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVList : gateway process variable list</text>
+<text x="558" y="525" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP   : online certificate status protocol</text>
+<text x="558" y="540" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">AIA    : authority information access extension</text>
+<text x="558" y="555" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ML     : machine learning</text>
+<text x="558" y="580" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">A line claims attachment, not direction.</text>
+<text x="558" y="595" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">Arrowheads only where a direction is real.</text>
+<text x="558" y="610" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve"></text>
+<text x="558" y="625" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">LAB_ISSUER, ML_ISSUER and the _SKID forms are</text>
+<text x="558" y="640" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">named, not printed: a fresh mint changes them.</text>
+<text x="558" y="655" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">Values: issuer_ids.env</text>
 </svg>

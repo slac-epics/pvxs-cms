@@ -23,10 +23,28 @@
 x-lab-env: &lab-env
   EPICS_PVA_AUTO_ADDR_LIST: "NO"
 
+# The three segments are pinned, so what a diagram or a note says about them stays true.
+# Left to itself podman allocates them from its own pool in whatever order the networks
+# happen to be made, and reset.sh makes them again every time. Host addresses within a
+# segment are still assigned by podman when a container starts: per-container addresses
+# cannot be set here, because podman-compose passes them as --ip, which podman refuses on a
+# container attached to more than one network.
 networks:
   net-lab:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.0.0/24
   net-ml:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.1.0/24
   net-perimeter:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.2.0/24
 
 volumes:
   idm-config:
