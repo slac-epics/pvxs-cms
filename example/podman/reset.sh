@@ -1,19 +1,20 @@
 #!/bin/bash
 # Return the laboratory to the state it is in immediately after a fresh build, so a
-# demonstration can be run from the top.
+# demonstration can be run from the top - and prove it before handing it back.
 #
-# Every certificate the laboratory has issued is discarded, along with every keychain the
-# services hold, so nothing is trusted by anything until the certificates are issued again.
-# The two departmental certificate authorities are kept, so the issuer ids stay the same and
-# anything written down about them still applies.
+# The route is deliberately the blunt one: every container, every volume and every network
+# the laboratory owns is destroyed and made again from the compose file. Nothing here knows
+# which service keeps what where, so nothing here goes stale when a service changes. The
+# certificates are then issued, and the whole laboratory is made again a second time so that
+# every service starts already holding what it was issued - which is why no service is
+# restarted individually anywhere in this script.
 #
-# The certificates are issued too, and everything is restarted in the order that makes them
-# take effect, so what you get back is a laboratory that works rather than one that needs a
-# remembered sequence run after it.
+# It ends by trying the things a demonstration depends on. If any of them fails, this exits
+# non-zero and says where to look, rather than handing back a laboratory that looks up.
 #
 #   ./reset.sh                discard the certificates, keep the authorities
 #   ./reset.sh --authorities  mint new authorities as well; the issuer ids change
-#   ./reset.sh --no-certs     stop after starting, issue nothing (the old behaviour)
+#   ./reset.sh --no-certs     leave it with no certificates issued, and check only that far
 #
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -28,16 +29,157 @@ for arg in "$@"; do
     esac
 done
 
-echo "==> stopping the laboratory and discarding its volumes"
-# The volumes hold every issued keychain, the certificate databases, and the administrator
-# identity each certificate manager created for itself.
-podman-compose down -v >/dev/null 2>&1 || true
+# podman-compose names everything it makes after the directory this file sits in.
+project=$(basename "$(pwd)")
+
+# ---------------------------------------------------------------- the blunt instrument
+# Everything below works from what podman reports, filtered by the project name, so a
+# service added to or removed from compose.yaml needs no change here.
+
+_containers() { podman ps -aq --filter "label=io.podman.compose.project=${project}"; }
+_volumes()    { podman volume ls -q 2>/dev/null | grep -E "^${project}_" || true; }
+_networks()   { podman network ls --format '{{.Name}}' 2>/dev/null | grep -E "^${project}_" || true; }
+
+_destroy_containers() {
+    podman-compose down >/dev/null 2>&1 || true
+    local ids; ids=$(_containers)
+    [ -n "${ids}" ] && podman rm -f ${ids} >/dev/null 2>&1 || true
+}
+
+_destroy_everything() {
+    _destroy_containers
+    local vols nets
+    vols=$(_volumes); [ -n "${vols}" ] && podman volume rm -f ${vols} >/dev/null 2>&1 || true
+    nets=$(_networks); [ -n "${nets}" ] && podman network rm -f ${nets} >/dev/null 2>&1 || true
+}
+
+_bring_up() {
+    # podman-compose reports failures per service on stdout rather than in its exit code, so
+    # the count of running containers is what says whether this worked.
+    podman-compose up -d >/dev/null 2>&1 || true
+    local want got
+    want=$(podman-compose config --services 2>/dev/null | grep -c . || echo 0)
+    for _ in $(seq 1 30); do
+        got=$(_containers | wc -l | tr -d ' ')
+        [ "${got}" -ge "${want}" ] && [ "${want}" -gt 0 ] && return 0
+        sleep 2
+        podman-compose up -d >/dev/null 2>&1 || true
+    done
+    echo "    only ${got} of ${want} containers started. Look at:" >&2
+    echo "        cd $(pwd) && podman-compose up -d" >&2
+    return 1
+}
+
+# ---------------------------------------------------------------- checks
+# Each returns non-zero and says where to look. They ask the laboratory the same questions a
+# person would, rather than inspecting anything's insides.
+
+_check_responder() {
+    # The authority has to be establishable before anything can be issued. A laboratory that
+    # looks up but cannot establish it is the worst state to hand back: every certificate is
+    # reported unusable, administration stops with them, and the tools that would show you
+    # why have stopped too.
+    local c; c=$(podman ps --format '{{.Names}}' | grep -- '-authority-status' | head -1)
+    [ -n "${c}" ] || { echo "    no responder container is running" >&2; return 1; }
+    for _ in $(seq 1 12); do
+        if podman exec "${c}" timeout 8 openssl ocsp \
+                -issuer /ocsp/ca.pem -cert /ocsp/ca.pem \
+                -url http://127.0.0.1:8888 -CAfile /ocsp/ca.pem 2>/dev/null \
+                | grep -q ': good'; then
+            return 0
+        fi
+        sleep 5
+    done
+    echo "    the responder for the facility root is not answering 'good'." >&2
+    echo "    Nothing can be issued until it does. Look at:" >&2
+    echo "        podman logs ${c}" >&2
+    return 1
+}
+
+_check_managers() {
+    # Each manager answering its own administrator is the first thing a demonstration needs,
+    # and the thing that fails when the facility root cannot be established.
+    local ok=no
+    for _ in $(seq 1 18); do
+        if run_in lab-manager as admin pvxcert -l >/dev/null 2>&1 \
+        && run_in ml-manager  as admin pvxcert -l >/dev/null 2>&1; then
+            ok=yes; break
+        fi
+        sleep 5
+    done
+    [ "${ok}" = yes ] && return 0
+    echo "    a certificate manager will not answer its administrator." >&2
+    echo "    That is what a facility root nobody can establish looks like. Look at:" >&2
+    echo "        podman logs \$(podman ps --format '{{.Names}}' | grep pvacms)" >&2
+    return 1
+}
+
+_check_reads() {
+    local ok=no
+    for _ in $(seq 1 18); do
+        if run_in lab       as guest without a certificate pvxget test:aiExample >/dev/null 2>&1 \
+        && run_in ml        as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1 \
+        && run_in perimeter as guest without a certificate pvxget test:aiExample >/dev/null 2>&1 \
+        && run_in perimeter as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; then
+            ok=yes; break
+        fi
+        sleep 5
+    done
+    [ "${ok}" = yes ] && return 0
+    echo "    reading does not work from everywhere yet." >&2
+    echo "    Try them one at a time to see which:" >&2
+    echo "        run_in perimeter as guest without a certificate pvxget ml:aiExample" >&2
+    return 1
+}
+
+_says() { # _says <expected text> <command...>   - true when the output contains the text
+    # The output is captured before it is searched: these commands are expected to fail, and
+    # under 'set -o pipefail' their failure would sink the pipeline even when the text matched.
+    local want="$1"; shift
+    local out; out=$("$@" 2>&1 || true)
+    printf '%s' "${out}" | grep -q -- "${want}"
+}
+
+_check_writes() {
+    # What a certificate is worth, in both directions, and what its absence is worth. These
+    # are the four outcomes every later section of the walkthrough builds on.
+    local fails=0
+    for _ in $(seq 1 12); do
+        fails=0
+        run_in lab as operator pvxput test:open 5   >/dev/null 2>&1 || fails=$((fails+1))
+        run_in lab as operator pvxput ml:open 42    >/dev/null 2>&1 || fails=$((fails+1))
+        run_in ml  as guest    pvxput test:open 7   >/dev/null 2>&1 || fails=$((fails+1))
+        [ "${fails}" -eq 0 ] && break
+        sleep 5
+    done
+    if [ "${fails}" -ne 0 ]; then
+        echo "    a certificate holder cannot write (${fails} of 3 failed). Try:" >&2
+        echo "        run_in lab as operator pvxput test:open 5" >&2
+        echo "        run_in lab as operator pvxput ml:open 42" >&2
+        return 1
+    fi
+    if ! _says 'Put not permitted' \
+         run_in lab as guest without a certificate pvxput test:stringExample hello; then
+        echo "    a request with no certificate was not refused by the controller." >&2
+        return 1
+    fi
+    if ! _says 'denied by gateway' \
+         run_in perimeter as guest without a certificate pvxput test:stringExample hello; then
+        echo "    a request with no certificate was not refused at the boundary." >&2
+        return 1
+    fi
+    return 0
+}
+
+# ---------------------------------------------------------------- do it
+echo "==> destroying the laboratory: containers, volumes, networks"
+_destroy_everything
 
 if [ "${new_authorities}" = yes ]; then
     echo "==> minting new certificate authorities"
     # Authorities only. The images are already built and nothing here changes them, so a
     # full bootstrap would recompile EPICS Base, pvxs, pvxs-cms and p4p to hand out a new
-    # pair of keys, which is where the Kerberos and gateway output people see comes from.
+    # pair of keys, which is where the long silence people see comes from.
     ./bootstrap.sh --certs-only >/dev/null
 else
     [ -s certs/lab_intermediate.p12 ] || {
@@ -53,70 +195,65 @@ if [ -s ocsp/index.txt ] && [ "$(cut -f1 ocsp/index.txt)" != V ]; then
     mv ocsp/index.new ocsp/index.txt
 fi
 
-echo "==> starting the laboratory"
-podman-compose up -d >/dev/null 2>&1
+echo "==> building the laboratory"
+_bring_up
 
-# Each certificate manager creates its own administrator identity on first start, and the
-# controllers need a moment before anything should be asked of them.
-echo "==> waiting for the certificate managers"
-for i in $(seq 1 30); do
-    if podman exec podman_pvxs-lab-pvacms_1 test -s /home/idm/.config/pva/1.5/admin.p12 2>/dev/null \
-    && podman exec podman_pvxs-lab-ml_1     test -s /home/idm/.config/pva/1.5/admin.p12 2>/dev/null; then
-        break
-    fi
-    sleep 2
-done
-
-# A gateway that starts before its department is serving does not retry, so the gateways go
-# last, once everything they forward to is up.
-echo "==> restarting the gateways"
-podman-compose restart pvxs-lab-gateway pvxs-lab-ml-gateway >/dev/null 2>&1
-sleep 10
-
-# The authority has to be established before anything can be issued, and a laboratory that
-# looks up but cannot establish it is the worst state to hand back: every certificate is
-# reported unusable, and administration stops with them, so the tools that would show you why
-# have stopped too. Prove it works rather than assume it.
-echo "==> checking the facility root can be established"
-authority_ok=no
-for i in $(seq 1 12); do
-    if podman exec podman_pvxs-lab-authority-status_1 \
-        timeout 8 openssl ocsp -issuer /ocsp/ca.pem -cert /ocsp/ca.pem \
-                               -url http://127.0.0.1:8888 -CAfile /ocsp/ca.pem >/dev/null 2>&1; then
-        authority_ok=yes
-        break
-    fi
-    sleep 5
-done
-if [ "${authority_ok}" != yes ]; then
-    echo "    the responder for the facility root is not answering." >&2
-    echo "    Nothing can be issued until it does. Look at:" >&2
-    echo "        podman logs podman_pvxs-lab-authority-status_1" >&2
-    exit 1
-fi
-
-# The managers ask again every fifteen seconds after a failure, so give them one round to
-# notice, then check the thing a person would actually try first.
-echo "==> waiting for the certificate managers to agree"
-listing_ok=no
-for i in $(seq 1 12); do
-    if podman exec podman_pvxs-lab-pvacms_1 \
-        bash -lc 'EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12 pvxcert -l' >/dev/null 2>&1; then
-        listing_ok=yes
-        break
-    fi
-    sleep 5
-done
-if [ "${listing_ok}" != yes ]; then
-    echo "    the certificate manager will not answer its administrator." >&2
-    echo "    That is what a facility root nobody can establish looks like. Look at:" >&2
-    echo "        podman logs podman_pvxs-lab-pvacms_1 | grep -i 'authority status'" >&2
-    exit 1
-fi
-
-# Named the way a shell names them, which is not how the file spells them.
 # shellcheck source=helpers.sh
 . ./helpers.sh
+lab_ids >/dev/null 2>&1 || true
+
+echo "==> checking the facility root can be established"
+_check_responder
+echo "==> checking each certificate manager answers its administrator"
+_check_managers
+
+if [ "${issue_certs}" = yes ]; then
+    # The services first. Their keychains are in volumes, so they survive the rebuild below,
+    # and a server reads its keychain when it starts - which is what the rebuild is for.
+    echo "==> issuing the certificates the services hold"
+    run_in testioc as testioc authnstd -u ioc >/dev/null 2>&1 || true
+    run_in tstioc  as tstioc  authnstd -u ioc >/dev/null 2>&1 || true
+    run_in ml-ioc  as mlioc   authnstd -u ioc >/dev/null 2>&1 || true
+    run_in gateway    as gateway authnstd -u ioc >/dev/null 2>&1 || true
+    run_in ml-gateway as gateway authnstd -u ioc -n ml-gateway >/dev/null 2>&1 || true
+    run_in lab-manager as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
+    run_in ml-manager  as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
+
+    # Rather than work out which services were handed a certificate while they were running
+    # and restart those, make the whole laboratory again. Every service then comes back
+    # holding its own, and every container is new, so nothing is left pointing at an address
+    # that has moved.
+    echo "==> building it again, so every service starts holding what it was issued"
+    _destroy_containers
+    _bring_up
+
+    echo "==> checking the facility root can still be established"
+    _check_responder
+    echo "==> checking each certificate manager answers its administrator"
+    _check_managers
+
+    # The people last, and only now. A person's keychain is not in a volume - only the
+    # guest's directory is - so anything issued to one before the rebuild would be thrown
+    # away with the container. Nothing needs restarting for these: a command is a fresh
+    # process that reads its keychain when it runs.
+    echo "==> issuing the certificates the people hold"
+    run_in lab       as operator    authnstd -u client --ou lab --issuer "${LAB_SKID}" >/dev/null 2>&1 || true
+    run_in ml        as guest       authnstd -u client >/dev/null 2>&1 || true
+    run_in perimeter as operator    authnstd -u client --issuer "${ML_SKID}" >/dev/null 2>&1 || true
+    run_in lab       as ml/operator authnstd -u client --ou ml --issuer "${ML_SKID}" >/dev/null 2>&1 || true
+    run_in lab-manager as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
+    run_in ml-manager  as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
+fi
+
+echo "==> checking reading works from everywhere"
+_check_reads
+
+if [ "${issue_certs}" = yes ]; then
+    echo "==> checking writing works, and that its absence is refused"
+    _check_writes
+fi
+
+echo
 lab_ids_show
 echo
 if [ "${new_authorities}" = yes ]; then
@@ -126,58 +263,15 @@ if [ "${new_authorities}" = yes ]; then
     echo "    lab_ids"
     echo
 fi
-
-# ------------------------------------------------------------------ issue the certificates
-# Everything below is what a person would otherwise have to remember to run after a reset,
-# in the one order that works. Two things make the order matter, and neither announces
-# itself: a service that is handed its first certificate while it is running does not load
-# it until it restarts, and a name server address is resolved once at startup, so anything
-# pointing at a gateway has to restart after that gateway does.
 if [ "${issue_certs}" = yes ]; then
-    lab_ids >/dev/null 2>&1 || true
-    echo "==> issuing the certificates"
-    run_in testioc as testioc authnstd -u ioc >/dev/null 2>&1 || true
-    run_in tstioc  as tstioc  authnstd -u ioc >/dev/null 2>&1 || true
-    run_in ml-ioc  as mlioc   authnstd -u ioc >/dev/null 2>&1 || true
-    run_in lab-manager as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
-    run_in ml-manager  as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
-
-    run_in gateway    as gateway authnstd -u ioc >/dev/null 2>&1 || true
-    run_in ml-gateway as gateway authnstd -u ioc -n ml-gateway >/dev/null 2>&1 || true
-
-    run_in lab       as operator    authnstd -u client --ou lab --issuer "${LAB_SKID}" >/dev/null 2>&1 || true
-    run_in ml        as guest       authnstd -u client >/dev/null 2>&1 || true
-    run_in perimeter as operator    authnstd -u client --issuer "${ML_SKID}" >/dev/null 2>&1 || true
-    run_in lab       as ml/operator authnstd -u client --ou ml --issuer "${ML_SKID}" >/dev/null 2>&1 || true
-
-    run_in lab-manager as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
-    run_in ml-manager  as admin pvxcert --review-pending --all approve --yes >/dev/null 2>&1 || true
-
-    # The controllers first, so they hold what they were just issued, then the gateways once
-    # the controllers are serving again. The workstations need nothing: a command is a fresh
-    # process that reads its keychain and resolves its name servers when it runs.
-    echo "==> restarting so each service holds what it was issued"
-    podman restart podman_pvxs-lab-testioc_1 podman_pvxs-lab-tstioc_1 podman_pvxs-lab-ml-ioc_1 >/dev/null 2>&1
-    sleep 8
-    podman restart podman_pvxs-lab-gateway_1 podman_pvxs-lab-ml-gateway_1 >/dev/null 2>&1
-    sleep 10
-
+    echo "The laboratory is up, every identity is issued, and all of this was just checked:"
+    echo "    reading, from every department and from outside"
+    echo "    writing, in a department and across the boundary both ways"
+    echo "    a request with no certificate, refused by the controller and at the boundary"
     echo
-    echo "The laboratory is running, with every identity issued and in place."
-    echo "Two of them are deliberately left without one, for the sections that need that:"
-    echo "    the lab guest, and the perimeter guest."
+    echo "Two identities are deliberately left without a certificate, for the sections that"
+    echo "need that: the lab guest, and the perimeter guest."
 else
-    echo
-    echo "The laboratory is running with no certificates issued."
-fi
-
-echo "Reading works now, from anywhere, over plain TCP:"
-echo "    podman exec podman_lab-client_1       bash -c 'pvxget test:aiExample'"
-echo "    podman exec podman_perimeter-client_1 bash -c 'pvxget ml:aiExample'"
-echo
-if [ "${issue_certs}" = yes ]; then
-    echo "Writing works for anyone holding an identity:"
-    echo "    run_in lab as operator pvxput test:open 5"
-else
-    echo "Writing is refused until an identity is issued. Follow 'Issue the certificates'."
+    echo "The laboratory is up with no certificates issued. Reading was checked; writing is"
+    echo "refused until an identity is issued. Follow 'Issue the certificates'."
 fi
