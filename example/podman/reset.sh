@@ -230,24 +230,13 @@ _check_refusals() {
 echo "==> destroying the laboratory: containers, volumes, networks"
 _destroy_everything
 
-if [ "${new_authorities}" = yes ]; then
-    echo "==> minting new certificate authorities"
-    # Authorities only. The images are already built and nothing here changes them, so a
-    # full bootstrap would recompile EPICS Base, pvxs, pvxs-cms and p4p to hand out a new
-    # pair of keys, which is where the long silence people see comes from.
-    ./bootstrap.sh --certs-only >/dev/null
-else
-    [ -s certs/lab_intermediate.p12 ] || {
-        echo "no certificate authorities in ./certs - run ./bootstrap.sh first" >&2; exit 1; }
-    echo "==> keeping the existing certificate authorities"
-fi
-
 # A demonstration may have left the facility root revoked, and a laboratory that starts with a
-# revoked authority issues nothing. Put it back.
-if [ -s ocsp/index.txt ] && [ "$(cut -f1 ocsp/index.txt)" != V ]; then
+# revoked authority issues nothing. Put it back. Only a laboratory with a responder has one.
+_ocsp="${topology_dir}/ocsp/index.txt"
+if [ -s "${_ocsp}" ] && [ "$(cut -f1 "${_ocsp}")" != V ]; then
     echo "==> putting the facility root back"
-    awk -F'\t' 'BEGIN{OFS="\t"} {print "V", $2, "", $4, $5, $6}' ocsp/index.txt > ocsp/index.new
-    mv ocsp/index.new ocsp/index.txt
+    awk -F'\t' 'BEGIN{OFS="\t"} {print "V", $2, "", $4, $5, $6}' "${_ocsp}" > "${_ocsp}.new"
+    mv "${_ocsp}.new" "${_ocsp}"
 fi
 
 echo "==> building the laboratory"

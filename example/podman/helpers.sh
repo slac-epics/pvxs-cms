@@ -260,15 +260,21 @@ export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076
 " ;;
         guest|operator)
             # The login profile supplies the tool paths and the organisation, but it was
-            # written for the lab department and names the lab's hosts. The container knows
-            # which department it is actually in, so put its own addressing back afterwards -
+            # written for the federated laboratory and names its hosts. The container knows
+            # which laboratory it is actually in, so put its own addressing back afterwards -
             # otherwise a command run on the machine learning workstation, or on the
             # perimeter, quietly talks to the lab instead.
+            #
+            # All three of these, not just the two lists: a laboratory that finds everything
+            # by broadcast sets neither list and turns automatic discovery on, and leaving the
+            # profile's "NO" in place would leave it with nowhere to search at all.
             prelude="_addr_was=\${EPICS_PVA_ADDR_LIST+set}; _addr=\${EPICS_PVA_ADDR_LIST-}
 _ns_was=\${EPICS_PVA_NAME_SERVERS+set}; _ns=\${EPICS_PVA_NAME_SERVERS-}
+_auto_was=\${EPICS_PVA_AUTO_ADDR_LIST+set}; _auto=\${EPICS_PVA_AUTO_ADDR_LIST-}
 source ~/.${who}_bashrc 2>/dev/null
 if [ -n \"\${_addr_was}\" ]; then export EPICS_PVA_ADDR_LIST=\"\${_addr}\"; else unset EPICS_PVA_ADDR_LIST; fi
 if [ -n \"\${_ns_was}\" ]; then export EPICS_PVA_NAME_SERVERS=\"\${_ns}\"; else unset EPICS_PVA_NAME_SERVERS; fi
+if [ -n \"\${_auto_was}\" ]; then export EPICS_PVA_AUTO_ADDR_LIST=\"\${_auto}\"; else unset EPICS_PVA_AUTO_ADDR_LIST; fi
 export EPICS_PVA_TLS_KEYCHAIN=\${HOME}/.config/pva/1.5/${keychain_name}.p12
 ${prelude}" ;;
         *)
