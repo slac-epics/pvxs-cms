@@ -92,8 +92,11 @@ if [ -x "${topology_dir}/mint.sh" ]; then
         echo "==> keeping the existing certificate authorities"
     fi
     # compose substitutes ${LAB_ISSUER} and the rest in the file itself, and reads .env from
-    # the directory it is run from, which is this one whichever topology is up.
+    # the directory the compose file is in - not the one it is run from, whatever the run
+    # command says. Without the second copy every substitution comes out empty, and a
+    # controller starts with no issuer to trust and can ask for nothing.
     cp "${topology_dir}/issuer_ids.env" .env
+    cp "${topology_dir}/issuer_ids.env" "${topology_dir}/.env"
 else
     echo "==> the certificate manager will create its own authority when it starts"
     : > .env

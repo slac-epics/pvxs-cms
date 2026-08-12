@@ -1,23 +1,34 @@
 #!/usr/bin/env python3
-# The federated shared-root topology: two isolated zones, each with its own gateway and
-# certificate manager, both chaining to one facility root certificate authority whose
-# status is answered by a single shared OCSP responder.
+# The federated shared-root topology, as compose.yaml builds it: five segments, two
+# departments each with its own gateway and certificate manager, a facility load balancer
+# owning one address for the whole facility, and an OCSP responder on the facility's own IT
+# segment answering for the root both departments chain to.
+#
+# THIS PICTURE MATCHES THE RUNNING LABORATORY. topology-federated-shared-root-routed.svg
+# draws the same laboratory with a routing firewall in it, which is a design study: here the
+# host forwards between the bridges and permits everything.
 # Every coordinate is computed here. See topology_kit for the primitives.
 from topology_kit import (C, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields,
                           measure, output_path)
 
 # ---------------------------------------------------------------- content
-lab_client_l = fields('Role: client (dual-homed)','Image: lab',
+lab_client_l = fields('Role: client','Image: lab',
  'eth0  net-lab        10.89.0.0/24',
- 'eth1  net-perimeter  10.89.2.0/24',
  'Listens: none (client only)','Logins: guest, operator',
  'EPICS_PVA_ADDR_LIST: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc',
- 'EPICS_PVA_NAME_SERVERS: pvxs-lab-ml-gateway:5075')
+ '    its own department, found on the segment it stands on',
+ 'EPICS_PVA_NAME_SERVERS: facility:5175',
+ '    the ML department, at the facility address, by its port')
 lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-perimeter','Image: gateway',
- 'eth0  net-lab        10.89.0.0/24',
- 'eth1  net-perimeter  10.89.2.0/24',
- 'Program: p4p pvagw','Config: config/gateway-lab.conf',
+ 'eth0  net-lab        10.89.0.0/24   upstream side, to its department',
+ 'eth1  net-perimeter  10.89.2.0/24   server side, where it is asked',
+ 'Program: p4p pvagw, layer 7','Config: config/gateway-lab.conf',
+ 'Serves on eth1 alone: "interface" pinned to its net-perimeter',
+ '    address, so a lab workstation searching on net-lab is answered',
+ '    by its own controller and by this gateway never',
+ '    - and so the balancer must be told to dial that address too',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
+ 'Reached from outside at facility:5075 and facility:5076',
  'Presents: CN=gateway',
  'Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc','ACF: gateway.acf','PVList: config/gateway-lab.pvlist')
 testioc_l = fields('Role: IOC','Image: testioc','eth0  net-lab        10.89.0.0/24',
@@ -30,7 +41,9 @@ tstioc_l = fields('Role: IOC','Image: tstioc','eth0  net-lab        10.89.0.0/24
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: image.db, image.json','ACF: tstioc.acf',
  'Serves: tst:ArrayData, tst:ColorMode,','    and the rest of the image database')
-pvacms_l = fields('Role: PVACMS','Image: idm','eth0  net-lab        10.89.0.0/24',
+pvacms_l = fields('Role: PVACMS (dual-homed)','Image: idm',
+ 'eth0  net-lab        10.89.0.0/24',
+ 'eth1  net-it         10.89.3.0/24   to ask about the facility root',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/lab_intermediate.p12',
  'ACF: /etc/pvacms/pvacms.acf','Serves:','    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER',
@@ -38,36 +51,75 @@ pvacms_l = fields('Role: PVACMS','Image: idm','eth0  net-lab        10.89.0.0/24
  '    CERT:LIST:LAB_ISSUER:ALL, :EXPIRING, :PENDING_APPROVAL',
  '    CERT:STATUS:LAB_ISSUER:<serial>')
 ml_gw_l = fields('Role: gateway (dual-homed), net-ml <-> net-perimeter','Image: gateway',
- 'eth0  net-ml         10.89.1.0/24',
- 'eth1  net-perimeter  10.89.2.0/24',
- 'Program: p4p pvagw','Config: config/gateway-ml.conf',
- 'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
+ 'eth0  net-ml         10.89.1.0/24   upstream side, to its department',
+ 'eth1  net-perimeter  10.89.2.0/24   server side, where it is asked',
+ 'Program: p4p pvagw, layer 7','Config: config/gateway-ml.conf',
+ 'Serves on eth1 alone, and on its own ports: serverport 5175,',
+ '    EPICS_PVAS_TLS_PORT 5176',
+ 'Listens: tcp/5175 PVA   tcp/5176 PVA over TLS   udp/5176 PVA search',
+ 'Reached from outside at facility:5175 and facility:5176',
+ 'Its own ports, so a reply naming them sends a client back here',
  'Presents: CN=ml-gateway',
  'Upstream: pvxs-lab-ml, pvxs-lab-ml-ioc','ACF: gateway.acf','PVList: config/gateway-ml.pvlist')
-ml_client_l = fields('Role: client (dual-homed)','Image: lab',
+ml_client_l = fields('Role: client','Image: lab',
  'eth0  net-ml         10.89.1.0/24',
- 'eth1  net-perimeter  10.89.2.0/24',
  'Listens: none (client only)','Logins: guest, operator',
- 'EPICS_PVA_ADDR_LIST: pvxs-lab-ml, pvxs-lab-ml-ioc','EPICS_PVA_NAME_SERVERS: pvxs-lab-gateway:5075')
+ 'EPICS_PVA_ADDR_LIST: pvxs-lab-ml, pvxs-lab-ml-ioc',
+ '    its own department, found on the segment it stands on',
+ 'EPICS_PVA_NAME_SERVERS: facility:5075',
+ '    the lab department, at the facility address, by its port')
 mlioc_l = fields('Role: IOC','Image: ml-ioc','eth0  net-ml         10.89.1.0/24',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: mlioc.db','ACF: mlioc.acf',
  'Serves: ml:aiExample, ml:stringExample,','    ml:longExample, ml:open (OPEN)')
-mlcms_l = fields('Role: PVACMS','Image: ml','eth0  net-ml         10.89.1.0/24',
+mlcms_l = fields('Role: PVACMS (dual-homed)','Image: ml',
+ 'eth0  net-ml         10.89.1.0/24',
+ 'eth1  net-it         10.89.3.0/24   to ask about the facility root',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/ml_intermediate.p12',
  'ACF: /etc/pvacms/pvacms.acf','Serves:','    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER',
  '    CERT:CREATE:ML_ISSUER, CERT:ISSUER:ML_ISSUER, CERT:ROOT:ML_ISSUER',
  '    CERT:LIST:ML_ISSUER:ALL, :EXPIRING, :PENDING_APPROVAL',
  '    CERT:STATUS:ML_ISSUER:<serial>')
+# One appliance owns the facility address. Mapping a port to a different port would break
+# PVAccess: a server names its own port in a search reply and the client dials that port on
+# the address the reply arrived from, so a translated port sends it to the other department.
+lb_l = fields('Role: facility load balancer, layer 4','Image: haproxy',
+ 'eth0  net-internet   10.89.4.0/24   the facility address',
+ 'eth1  net-perimeter  10.89.2.0/24   its foot in the DMZ',
+ 'eth2  net-lab        10.89.0.0/24   so the name answers there',
+ 'eth3  net-ml         10.89.1.0/24   and there',
+ 'Alias "facility" on each of those four segments. Podman answers a',
+ '    name only for a container sharing a segment with the asker, so',
+ '    an appliance addressed by name stands on every segment that',
+ '    names it. At a site one DNS record and a route would do it.',
+ 'The gateways stand only in the DMZ, so this is the one way in',
+ 'Maps inward, port for port:',
+ '    facility:5075 -> pvxs-lab-gateway:5075',
+ '    facility:5076 -> pvxs-lab-gateway:5076      over TLS',
+ '    facility:5175 -> pvxs-lab-ml-gateway:5175',
+ '    facility:5176 -> pvxs-lab-ml-gateway:5176   over TLS',
+ 'Each backend carries resolve-net 10.89.2.0/24: a gateway name now',
+ '    resolves to two addresses from here, and only the DMZ one is',
+ '    served',
+ 'One address is published for the facility, and a department is',
+ '    chosen by port. That is also what lets each department name',
+ '    the other without naming itself.',
+ 'It answers as itself to the gateway, so replies come back through',
+ '    it. The gateway loses nothing by that: it authorises on the',
+ '    certificate presented, not on the address it came from.')
+
 pc_l = fields('Role: client','Image: internet',
- 'eth0  net-perimeter  10.89.2.0/24',
+ 'eth0  net-internet   10.89.4.0/24',
  'Listens: none (client only)','Logins: guest, operator',
  'EPICS_PVA_ADDR_LIST: none',
- 'EPICS_PVA_NAME_SERVERS: pvxs-lab-gateway:5075, pvxs-lab-ml-gateway:5075')
-resp_l = fields('Role: OCSP responder for the Facility Root CA (dual-homed)','Image: idm',
- 'eth0  net-lab        10.89.0.0/24',
- 'eth1  net-ml         10.89.1.0/24',
+ 'EPICS_PVA_NAME_SERVERS: facility:5075, facility:5175',
+ '    one address, one port per department')
+resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
+ 'eth0  net-it         10.89.3.0/24',
+ 'An IT service, on the facility\'s own segment: it belongs to',
+ '    neither department, as the root does not. Both certificate',
+ '    managers stand on this segment to ask it',
  'Listens: tcp/8888 OCSP over HTTP',
  'Program: openssl ocsp, under supervisor with a watchdog',
  'Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt')
@@ -190,6 +242,69 @@ CANVAS_W = ml_x + W_ml + M
 
 # top band geometry
 legend_x, legend_y = M, title_h + 26
+
+# The legend's height decides where everything below the top band starts, so it is worked
+# out here rather than while drawing.
+chips = [('CA or certificate - a file, on no network', C['ca'][1]),
+         ('OCSP responder', C['ocsp'][1]),
+         ('PVACMS - certificate manager', C['pvacms'][1]),
+         ('IOC - controller', C['ioc'][1]),
+         ('gateway - proxies PVAccess between a zone', C['gateway'][1]),
+         ('    and the perimeter', None),
+         ('load balancer - owns the facility address', C['lb'][1]),
+         ('    and maps a port to a department', None),
+         ('client - workstation', C['client'][1]),
+         ('ACF or PVList - a file a component loads', C['file'][1])]
+samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, None),
+           ('net-ml bus - the same for net-ml', C['bus_ml'], 4, None),
+           ('net-it bus - the same for net-it', C['bus_it'], 4, None),
+           ('net-perimeter bus - tapping it = attached', C['perim'], 4, None),
+           ('    to net-perimeter', None, 0, None),
+           ('certificate relationship - signs / names', C['cert'], 2, '6 5'),
+           ('a file the component loads', C['filedrop'], 1.6, '2 4')]
+notation = ['10.89.0.0/24 : the segment, in CIDR. Five podman bridges. What a',
+            '               segment separates is discovery and naming, not',
+            '               routing: a broadcast search does not leave the',
+            '               segment it was sent to, and podman answers a name',
+            '               only for a container sharing a segment with the',
+            '               asker. The host forwards between the bridges and',
+            '               permits everything, so it is this laboratory\'s',
+            '               router, and a router with no policy in it. Every',
+            '               request stopped below is stopped by an access rule',
+            '               or by a gateway, which is where a site puts those',
+            '               decisions too. See the routed picture for what a',
+            '               site would build instead.',
+            'eth0, eth1   : the host\'s interface on each segment. A host on',
+            '               more than one is marked dual-homed',
+            'tcp/5075     : PVAccess, plaintext',
+            'tcp/5076     : PVAccess over TLS',
+            'udp/5076     : PVAccess search and beacons, sent to the',
+            '               segment broadcast address',
+            'tcp/8888     : OCSP over HTTP, to the responder',
+            '',
+            'The segment CIDRs are pinned in compose.yaml, so they are',
+            'these on every laboratory. Host addresses within a segment are',
+            'assigned by podman when a container starts and are not fixed:',
+            'per-container addresses cannot be set, because podman refuses',
+            'them on a container attached to more than one segment.']
+abbrev = ['CA     : certificate authority','SKID   : subject key identifier, 40 hex digits',
+          'Issuer ID: the first 8 digits of a SKID','PVACMS : certificate manager',
+          'IOC    : input output controller','ACF    : access security file',
+          'PVList : gateway process variable list','OCSP   : online certificate status protocol',
+          'AIA    : authority information access extension','ML     : machine learning']
+note = ['A line claims attachment, not direction.','Arrowheads only where a direction is real.','',
+        'LAB_ISSUER, ML_ISSUER and the _SKID forms are','named, not printed: a fresh mint changes them.',
+        'Values: issuer_ids.env']
+# Two columns: the swatches and line kinds on the left, the notation and the
+# abbreviations on the right. One column ran past the zones below and crossed the line
+# into lab-client.
+col_gap = 34
+colw_l, colw_r = 470, 470
+lg_w = 14 + colw_l + col_gap + colw_r + 14
+left_h  = 12 + len(chips)*24 + 10 + len(samples)*24
+right_h = 12 + LH + len(notation)*LH + 10 + LH + len(abbrev)*LH + 10 + len(note)*LH
+lg_h = HDR + max(left_h, right_h) + 14
+
 # gateway centres (local): over its two file columns
 gw1_span = (lx[2], lx[3] + lw[3])
 gx1_local = (gw1_span[0] + gw1_span[1]) / 2
@@ -214,17 +329,37 @@ ca_y = title_h + 26
 # which is where the simple-with-gateway picture puts it too.
 pz_x, pz_y = ca_x - pz_w - 60, ca_y
 
+# Every segment is one horizontal line, tapped by each host standing on it, labelled once.
+# The perimeter line runs under the left end of the legend to reach the lab side, and the
+# line-through-card assertion guards that, since the legend registers as a rectangle.
+lb_w, lb_h = measure('pvxs-facility-lb', lb_l)
 resp_w, resp_h = measure('pvxs-lab-authority-status', resp_l)
-resp_x = rx - resp_w/2
-resp_y = ca_y + ca_h + 46
 
-# The perimeter segment is drawn the way every other segment is: one horizontal line, tapped
-# by each host that stands on it, labelled once. It runs between the top band and the zones.
-# It has to clear the legend, whose left end it runs under to reach the lab workstation.
-# The line-through-card assertion guards that, since the legend registers as a rectangle.
-perim_bus_y = resp_y + resp_h + 90
-zone_y = perim_bus_y + 60
+# The facility's own segments and the services standing on them, in one box, the way each
+# department is in one box. The two lines belong to it; the departments and the outside
+# workstation reach across into them.
+# It reaches from under the outside workstation to over the far gateway, which is the span
+# the facility's own segments actually cover.
+gw2_w = measure('pvxs-lab-ml-gateway', ml_gw_l)[0]
+itz_x = pz_x
+itz_w = (gx2 + gw2_w/2) - pz_x
+# The IT zone stands entirely right of the legend, so only what is directly above it counts.
+# net-internet belongs to nobody in the facility, so its line is drawn above the IT zone
+# rather than inside it, and the balancer reaches up out of the box to stand on it.
+inet_bus_y = max(ca_y + ca_h, pz_y + pz_h) + 44
+itz_y = inet_bus_y + 44
+
+# The services sit above both lines, so every connector coming up from a department stops at
+# a line and never has to cross a card to get there.
+svc_y = itz_y + ZTITLE + 14
+svc_h = max(lb_h, resp_h)
+perim_bus_y = svc_y + svc_h + 40
+it_bus_y = perim_bus_y + 40
+itz_h = (it_bus_y - itz_y) + 30
+# The departments do span under the legend, so they are the ones that have to clear it.
+zone_y = max(itz_y + itz_h + 46, legend_y + lg_h + 44)
 CANVAS_H = 0  # set after zones
+
 
 # ---------------------------------------------------------------- emit
 def build(cv):
@@ -245,9 +380,9 @@ def build(cv):
     zone_h = (files_y - zone_y) + files_h + ZP
     CANVAS_H = zone_y + zone_h + M
 
-    cv.zone(lab_x, zone_y, W_lab, zone_h, 'net-lab   10.89.0.0/24   bridge, isolated   -   Lab zone (accelerator)', 'zone_lab')
-    cv.zone(ml_x, zone_y, W_ml, zone_h, 'net-ml   10.89.1.0/24   bridge, isolated   -   ML zone', 'zone_ml')
-    cv.zone(pz_x, pz_y, pz_w, pz_h, 'net-perimeter   10.89.2.0/24   bridge, isolated   -   outside both zones', 'zone_perim')
+    cv.zone(lab_x, zone_y, W_lab, zone_h, 'net-lab   10.89.0.0/24   bridge   -   Lab zone (accelerator)', 'zone_lab')
+    cv.zone(ml_x, zone_y, W_ml, zone_h, 'net-ml   10.89.1.0/24   bridge   -   ML zone', 'zone_ml')
+    cv.zone(pz_x, pz_y, pz_w, pz_h, 'net-internet   10.89.4.0/24   -   outside the facility', 'zone_perim')
     cv.zone(ca_x, ca_y, ca_w, ca_h, 'Certificate Authorities', 'zone_ca')
 
     # --- buses (under cards)
@@ -255,8 +390,8 @@ def build(cv):
     busM0, busM1 = ml_x + ZP, ml_x + W_ml - ZP
     cv.hv([(busL0, bus_lab_y), (busL1, bus_lab_y)], C['bus_lab'], 4)
     cv.hv([(busM0, bus_lab_y), (busM1, bus_lab_y)], C['bus_ml'], 4)
-    cv.pill(busL0 + 120, bus_lab_y - 16, 'net-lab  10.89.0.0/24  tcp/5075, tcp/5076, udp/5076, tcp/8888', C['bus_lab'])
-    cv.pill(busM0 + 120, bus_lab_y - 16, 'net-ml  10.89.1.0/24  tcp/5075, tcp/5076, udp/5076, tcp/8888', C['bus_ml'])
+    cv.pill(busL0 + 120, bus_lab_y - 16, 'net-lab  10.89.0.0/24  tcp/5075, tcp/5076, udp/5076', C['bus_lab'])
+    cv.pill(busM0 + 120, bus_lab_y - 16, 'net-ml  10.89.1.0/24  tcp/5075, tcp/5076, udp/5076', C['bus_ml'])
 
     # --- lab cards
     cl = cv.card(lab_x + ZP + lx[0], row1_y, 'lab-client', lab_client_l, 'client', 'client')
@@ -297,14 +432,22 @@ def build(cv):
     c1 = cv.card(ca_x + ZP, ch_y, 'Lab Intermediate CA', labca_l, 'ca', 'ca')
     c2 = cv.card(ca_x + ZP + colw('Lab Intermediate CA', labca_l) + GAP, ch_y, 'ML Intermediate CA', mlca_l, 'ca', 'ca')
     c3 = cv.card(ca_x + ZP + colw('Lab Intermediate CA', labca_l) + colw('ML Intermediate CA', mlca_l) + 2*GAP, ch_y, 'OCSP Signing Cert', signer_l, 'ca', 'ca')
-    rc = cv.card(resp_x, resp_y, 'pvxs-lab-authority-status', resp_l, 'ocsp', 'ocsp')
+    cv.zone(itz_x, itz_y, itz_w, itz_h,
+            'IT zone   -   the facility\'s own segments: net-perimeter, and net-it behind it', 'zone_it')
+    svc_span = lb_w + 70 + resp_w
+    svc_x = itz_x + (itz_w - svc_span)/2
+    lb = cv.card(svc_x, svc_y, 'pvxs-facility-lb', lb_l, 'lb', 'lb')
+    # Bottom-aligned with the load balancer, which leaves the run down from the signing
+    # certificate long enough to read as arriving from above.
+    rc = cv.card(svc_x + lb_w + 70, svc_y + max(0, lb_h - resp_h),
+                 'pvxs-lab-authority-status', resp_l, 'ocsp', 'ocsp')
 
     # --- certificate relationships (dashed purple, arrowheads)
     for cc in (c1, c2, c3):
         cv.hv([(rootc['cx'], rootc['bot']), (rootc['cx'], rootc['bot']+16), (cc['cx'], rootc['bot']+16), (cc['cx'], cc['top']-3)], C['cert'], 2, dash='6 5', marker=True)
     cv.emit(f'<text x="{rootc["cx"]+8}" y="{rootc["bot"]+30}" font-family="Menlo,Consolas,monospace" font-size="10" fill="{C["cert"]}">signs</text>')
     # root names the responder (route around the right of the children row)
-    nx = ca_x + ca_w - 12
+    nx = ca_x + ca_w + 40      # outside the authority group, which it must not cut through
     cv.hv([(rootc['x']+rootc['w'], rootc['top']+rootc['h']/2), (nx, rootc['top']+rootc['h']/2), (nx, rc['top']+24), (rc['x']+rc['w']+3, rc['top']+24)], C['cert'], 2, dash='6 5', marker=True)
     cv.emit(f'<text x="{nx+6}" y="{(rootc["top"]+ca_y+ca_h)/2}" font-family="Menlo,Consolas,monospace" font-size="10" fill="{C["cert"]}">names</text>')
     # signer signs the responder's answers
@@ -312,28 +455,79 @@ def build(cv):
     cv.emit(f'<text x="{c3["cx"]+8}" y="{ca_y+ca_h+22}" font-family="Menlo,Consolas,monospace" font-size="10" fill="{C["cert"]}">signs its answers</text>')
 
     # --- the perimeter segment: one line, tapped by every host that stands on it. The two
-    # --- gateways and both dual-homed workstations reach it from below, the outside
-    # --- workstation from above.
-    perim_hosts = [cl, gw1, gw2, mcl]
-    pbus0 = min(h['cx'] for h in perim_hosts) - 40
-    pbus1 = max(h['cx'] for h in perim_hosts) + 40
+    # --- gateways reach it from below and the balancer from above; nothing else is on it,
+    # --- which is what makes a gateway the only way in.
+    perim_hosts = [gw1, gw2]
+    pbus_x = [h['cx'] for h in perim_hosts] + [lb['cx']]
+    pbus0 = min(pbus_x) - 40
+    pbus1 = max(pbus_x) + 40
     cv.hv([(pbus0, perim_bus_y), (pbus1, perim_bus_y)], C['perim'], 4)
     for h in perim_hosts:
         cv.hv([(h['cx'], perim_bus_y), (h['cx'], h['top'])], C['perim'], 2)
         cv.dot(h['cx'], perim_bus_y, C['perim'])
-    cv.hv([(pcc['cx'], pcc['bot']), (pcc['cx'], perim_bus_y)], C['perim'], 2)
-    cv.dot(pcc['cx'], perim_bus_y, C['perim'])
-    # centred on the open span between the two zones, clear of the legend at the left end
-    cv.pill(rx, perim_bus_y - 16, 'net-perimeter  10.89.2.0/24  tcp/5075, tcp/5076, udp/5076', C['perim'])
+    cv.hv([(lb['cx'], lb['bot']), (lb['cx'], perim_bus_y)], C['perim'], 2)
+    cv.dot(lb['cx'], perim_bus_y, C['perim'])
 
-    # --- the responder stands on both departmental segments, so it taps each of them. The
-    # --- port it answers on is named once, on each segment's own label.
-    dxl = lab_x + ZP + (lx[1] + lw[1] + lx[2]) / 2                    # corridor between tstioc.acf and gateway.acf cols
-    dxm = ml_x + ZP + (mx[0] + mw[0] + mx[1]) / 2
-    cv.hv([(rc['x']+30, rc['bot']), (rc['x']+30, perim_bus_y+22), (dxl, perim_bus_y+22), (dxl, bus_lab_y)], C['bus_lab'], 2)
-    cv.dot(dxl, bus_lab_y, C['bus_lab'])
-    cv.hv([(rc['x']+rc['w']-30, rc['bot']), (rc['x']+rc['w']-30, perim_bus_y+34), (dxm, perim_bus_y+34), (dxm, bus_lab_y)], C['bus_ml'], 2)
-    cv.dot(dxm, bus_lab_y, C['bus_ml'])
+    # the segment outside the facility: the workstation on it, and the balancer's other foot
+    inet_x = [pcc['cx'], lb['cx'] + 40]
+    cv.hv([(min(inet_x) - 70, inet_bus_y), (max(inet_x) + 70, inet_bus_y)], C['bus_inet'], 4)
+    cv.hv([(pcc['cx'], pcc['bot']), (pcc['cx'], inet_bus_y)], C['bus_inet'], 2)
+    cv.dot(pcc['cx'], inet_bus_y, C['bus_inet'])
+    cv.hv([(lb['cx'] + 40, lb['top']), (lb['cx'] + 40, inet_bus_y)], C['bus_inet'], 2)
+    cv.dot(lb['cx'] + 40, inet_bus_y, C['bus_inet'])
+    cv.pill((min(inet_x) + max(inet_x))/2, inet_bus_y - 16,
+            'net-internet  10.89.4.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176', C['bus_inet'])
+    # centred on the open span between the two zones, clear of the legend at the left end
+    cv.pill(rx, perim_bus_y - 16, 'net-perimeter  10.89.2.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176', C['perim'])
+
+    # --- the IT segment: the responder is the service on it, and each department's
+    # --- certificate manager stands on it to ask.
+    #
+    # A manager sits in the second row of its zone and the line has to climb past the first,
+    # so the corridor is chosen rather than guessed: the widest gap in the first row that
+    # lies over the card the line starts from. Card widths follow the text on them, so a
+    # column that is clear today closes the moment a line is added to a card above it.
+    def corridor(card, row1_cards, span=None):
+        lo, hi = span or (card['x'] + 20, card['x'] + card['w'] - 20)
+        blocked = sorted((c['x'] - 24, c['x'] + c['w'] + 24) for c in row1_cards)
+        free, cur = [], lo
+        for b0, b1 in blocked:
+            if b0 > cur:
+                free.append((cur, min(b0, hi)))
+            cur = max(cur, b1)
+            if cur >= hi:
+                break
+        if cur < hi:
+            free.append((cur, hi))
+        free = [(a, b) for a, b in free if b - a > 8]
+        assert free, f'no clear corridor above {card["x"]}..{card["x"]+card["w"]}'
+        a, b = max(free, key=lambda p: p[1] - p[0])
+        return (a + b) / 2
+
+    lab_row1 = [cl, gw1]
+    ml_row1 = [gw2, mcl]
+    pv_up = corridor(pv, lab_row1)
+    mp_up = corridor(mp, ml_row1)
+    it_taps = [pv_up, mp_up, rc['cx']]
+    it0 = min(it_taps) - 30
+    it1 = max(it_taps) + 30
+    cv.hv([(it0, it_bus_y), (it1, it_bus_y)], C['bus_it'], 4)
+    for h, hx in ((pv, pv_up), (mp, mp_up)):
+        cv.hv([(hx, it_bus_y), (hx, h['top'])], C['bus_it'], 2)
+        cv.dot(hx, it_bus_y, C['bus_it'])
+    cv.hv([(rc['cx'], it_bus_y), (rc['cx'], rc['bot'])], C['bus_it'], 2)
+    cv.dot(rc['cx'], it_bus_y, C['bus_it'])
+    cv.pill(rx, it_bus_y - 16, 'net-it  10.89.3.0/24  tcp/8888', C['bus_it'])
+
+    # --- the balancer's other two legs, one into each department, so the name it is
+    # --- addressed by can be answered where it is asked.
+    lab_down = corridor(cl, lab_row1, span=(busL0, busL1))
+    ml_down = corridor(mcl, ml_row1, span=(busM0, busM1))
+    for colr, bx, down in (('bus_lab', lb['cx'] - 20, lab_down),
+                           ('bus_ml', lb['cx'] + 20, ml_down)):
+        cv.hv([(bx, lb['bot']), (bx, it_bus_y + 26), (down, it_bus_y + 26),
+               (down, bus_lab_y)], C[colr], 2)
+        cv.dot(down, bus_lab_y, C[colr])
 
     # --- file drops (dotted grey)
     def drop(comp, filecard, xoff=0):
@@ -349,53 +543,6 @@ def build(cv):
     # --- legend
     ly = legend_y
     lx0 = legend_x
-    chips = [('CA or certificate - a file, on no network', C['ca'][1]),
-             ('OCSP responder', C['ocsp'][1]),
-             ('PVACMS - certificate manager', C['pvacms'][1]),
-             ('IOC - controller', C['ioc'][1]),
-             ('gateway - the only route between a zone', C['gateway'][1]),
-             ('    and the perimeter', None),
-             ('client - workstation', C['client'][1]),
-             ('ACF or PVList - a file a component loads', C['file'][1])]
-    samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, None),
-               ('net-ml bus - the same for net-ml', C['bus_ml'], 4, None),
-               ('net-perimeter bus - tapping it = attached', C['perim'], 4, None),
-               ('    to net-perimeter', None, 0, None),
-               ('certificate relationship - signs / names', C['cert'], 2, '6 5'),
-               ('a file the component loads', C['filedrop'], 1.6, '2 4')]
-    notation = ['10.89.0.0/24 : the segment, in CIDR. Three podman bridges with',
-                '               no routing between them, so a host reaches only',
-                '               the segments it is attached to',
-                'eth0, eth1   : the host\'s interface on each segment. A host on',
-                '               two segments is marked dual-homed',
-                'tcp/5075     : PVAccess, plaintext',
-                'tcp/5076     : PVAccess over TLS',
-                'udp/5076     : PVAccess search and beacons, sent to the',
-                '               segment broadcast address',
-                'tcp/8888     : OCSP over HTTP, to the responder',
-                '',
-                'The segment CIDRs are pinned in compose.yaml, so they are',
-                'these on every laboratory. Host addresses within a segment are',
-                'assigned by podman when a container starts and are not fixed:',
-                'per-container addresses cannot be set, because podman refuses',
-                'them on a container attached to more than one segment.']
-    abbrev = ['CA     : certificate authority','SKID   : subject key identifier, 40 hex digits',
-              'Issuer ID: the first 8 digits of a SKID','PVACMS : certificate manager',
-              'IOC    : input output controller','ACF    : access security file',
-              'PVList : gateway process variable list','OCSP   : online certificate status protocol',
-              'AIA    : authority information access extension','ML     : machine learning']
-    note = ['A line claims attachment, not direction.','Arrowheads only where a direction is real.','',
-            'LAB_ISSUER, ML_ISSUER and the _SKID forms are','named, not printed: a fresh mint changes them.',
-            'Values: issuer_ids.env']
-    # Two columns: the swatches and line kinds on the left, the notation and the
-    # abbreviations on the right. One column ran past the zones below and crossed the line
-    # into lab-client.
-    col_gap = 34
-    colw_l, colw_r = 470, 470
-    lg_w = 14 + colw_l + col_gap + colw_r + 14
-    left_h  = 12 + len(chips)*24 + 10 + len(samples)*24
-    right_h = 12 + LH + len(notation)*LH + 10 + LH + len(abbrev)*LH + 10 + len(note)*LH
-    lg_h = HDR + max(left_h, right_h) + 14
 
     cv.emit(f'<rect x="{lx0}" y="{ly}" width="{lg_w}" height="{lg_h}" rx="10" fill="white" stroke="#B0BEC5" stroke-width="1.4"/>')
     cv.emit(f'<path d="M {lx0} {ly+10} a10 10 0 0 1 10 -10 h{lg_w-20} a10 10 0 0 1 10 10 v{HDR-10} h-{lg_w} z" fill="#455A64"/>')
@@ -439,7 +586,7 @@ def build(cv):
 
     # --- page title
     hdr.append(f'<text x="{M}" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="{C["ink"]}">Secure PVAccess demonstration laboratory</text>')
-    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates, so every certificate traces to it - example/podman</text>')
+    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates, so every certificate traces to it - the laboratory topologies/federated-shared-root/compose.yaml builds</text>')
     return hdr
 
 

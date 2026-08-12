@@ -4,9 +4,10 @@
 # leaves a department, and one facility load balancer owning the facility address and mapping
 # ports inward to the two gateways. The responder is an IT service on its own segment.
 #
-# THIS PICTURE DESCRIBES A DESIGN, NOT THE RUNNING LABORATORY. compose.yaml dual-homes its
-# workstations and has neither router nor load balancer. topology-federated-shared-root.svg
-# is the one that matches what runs.
+# THIS PICTURE DESCRIBES A DESIGN, NOT THE RUNNING LABORATORY. The difference is the two
+# routers: rootless podman cannot carry traffic through a forwarding container, so the host
+# does the forwarding and permits everything. topology-federated-shared-root.svg is the one
+# that matches what runs, and is otherwise the same laboratory.
 # Every coordinate is computed here. See topology_kit for the primitives.
 from topology_kit import (C, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields,
                           measure, output_path)
@@ -578,7 +579,7 @@ def build(cv):
 
     # --- page title
     hdr.append(f'<text x="{M}" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="{C["ink"]}">Secure PVAccess demonstration laboratory</text>')
-    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates, so every certificate traces to it - example/podman</text>')
+    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root, drawn the way a site would build it: a routing firewall carries what leaves each department. A DESIGN STUDY - compose.yaml has no routers, and the host forwards instead. topology-federated-shared-root.svg is what runs</text>')
     return hdr
 
 

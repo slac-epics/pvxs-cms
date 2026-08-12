@@ -3,7 +3,7 @@
 <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8E24AA"/></marker></defs>
 <rect x="0" y="0" width="4066" height="2379" fill="#FAFAFA"/>
 <text x="40" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="#263238">Secure PVAccess demonstration laboratory</text>
-<text x="40" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates, so every certificate traces to it - example/podman</text>
+<text x="40" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root, drawn the way a site would build it: a routing firewall carries what leaves each department. A DESIGN STUDY - compose.yaml has no routers, and the host forwards instead. topology-federated-shared-root.svg is what runs</text>
 <rect x="40" y="1064" width="2283" height="1275" rx="10" fill="#E8EAF6" stroke="#3949AB" stroke-width="1.6"/>
 <path d="M 40 1074 a10 10 0 0 1 10 -10 h2263 a10 10 0 0 1 10 10 v34 h-2283 z" fill="#3949AB" fill-opacity="0.92"/>
 <circle cx="57" cy="1091" r="2.6" fill="white"/><circle cx="67" cy="1091" r="2.6" fill="white"/><circle cx="62" cy="1081" r="2.6" fill="white"/><path d="M 62 1081 L 57 1091 M 62 1081 L 67 1091 M 57 1091 H 67" stroke="white" stroke-width="1.4"/>
