@@ -851,11 +851,18 @@ run_in perimeter as guest authnstd -u client -n remote
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 ```
 
-Restart the three that read a keychain at start:
+Restart the three that read a keychain at start. **The controllers first, and the gateway
+only once they are serving**, because a gateway makes its upstream connections when it starts
+and does not retry the ones it could not make. Restart them together and the gateway comes up
+against controllers that are still starting, forwards nothing, and every read across the
+boundary times out with bytes visibly flowing:
 
 ```sh
 podman-compose -p podman -f topologies/simple-with-gateway/compose.yaml \
-    restart pvxs-lab-testioc pvxs-lab-tstioc pvxs-lab-gateway
+    restart pvxs-lab-testioc pvxs-lab-tstioc
+sleep 15
+podman-compose -p podman -f topologies/simple-with-gateway/compose.yaml \
+    restart pvxs-lab-gateway
 ```
 
 Now read across the boundary:
