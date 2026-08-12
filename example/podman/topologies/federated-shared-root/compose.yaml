@@ -45,6 +45,16 @@ networks:
       driver: default
       config:
         - subnet: 10.89.2.0/24
+  net-it:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.3.0/24
+  net-internet:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.4.0/24
 
 volumes:
   idm-config:
@@ -70,7 +80,7 @@ services:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-authority-status
-    networks: [net-lab, net-ml]
+    networks: [net-it]
     volumes:
       - ./ocsp:/ocsp:ro,Z
       - ../../../kubernetes/docker/idm/ocsp-supervisor.conf:/etc/supervisor/conf.d/ocsp.conf:ro,z
@@ -144,6 +154,7 @@ services:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
+      GATEWAY_SERVE_SUBNET: "10.89.2."
     volumes:
       - gateway-config:/home/gateway/.config/pva/1.5
       - ./config/gateway-lab.conf:/home/gateway/gateway.conf.in:ro,z
@@ -199,6 +210,7 @@ services:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
+      GATEWAY_SERVE_SUBNET: "10.89.2."
     volumes:
       - ml-gateway-config:/home/gateway/.config/pva/1.5
       - ./config/gateway-ml.conf:/home/gateway/gateway.conf.in:ro,z
@@ -213,15 +225,14 @@ services:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
     hostname: lab-client
-    # Its own department directly, and the perimeter so it can reach the other
-    # department's gateway. There is still no route to the other department's
-    # certificate manager or controllers except through that gateway.
-    networks: [net-lab, net-perimeter]
+    # One interface, as a workstation has. What carries it to the facility address is the
+    # host, which routes between podman's segments: see the note in the README.
+    networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
-      EPICS_PVA_NAME_SERVERS: "pvxs-lab-ml-gateway:5075"
+      EPICS_PVA_NAME_SERVERS: "facility:5175"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
@@ -235,12 +246,12 @@ services:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
     hostname: ml-client
-    networks: [net-ml, net-perimeter]
+    networks: [net-ml]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
-      EPICS_PVA_NAME_SERVERS: "pvxs-lab-gateway:5075"
+      EPICS_PVA_NAME_SERVERS: "facility:5075"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
@@ -254,13 +265,28 @@ services:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/internet:latest
     hostname: perimeter-client
-    networks: [net-perimeter]
+    networks: [net-internet]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
-      EPICS_PVA_NAME_SERVERS: "pvxs-lab-gateway:5075 pvxs-lab-ml-gateway:5075"
+      EPICS_PVA_NAME_SERVERS: "facility:5075 facility:5175"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - perimeter-client-config:/home/guest/.config/pva/1.5
       - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
+
+  # ------------------------------------------------------------------- the facility address
+  # One address published for the whole facility; the port chooses the department. HAProxy in
+  # tcp mode: it forwards a stream and understands nothing about what is inside it.
+  pvxs-facility-lb:
+    init: true
+    image: docker.io/library/haproxy:lts-alpine
+    hostname: pvxs-facility-lb
+    networks:
+      net-internet:
+        aliases: [facility]
+      net-perimeter:
+    volumes:
+      - ./config/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro,z
+    depends_on: [pvxs-lab-gateway, pvxs-lab-ml-gateway]
