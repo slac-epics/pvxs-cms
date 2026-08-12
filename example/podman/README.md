@@ -378,23 +378,30 @@ The whole forty digits is what a holder needs the first time it asks, because ei
 enough to decide which authority is meant.
 
 It goes to the holder, so it is given where the holder runs rather than in the shell you are
-typing in. Here that is inside a container, which is what `run_in` is for. **Any one of these
-three, not all of them:**
+typing in. Here that is inside a container, which is what `run_in` is for. The form worth
+running is the one that settles the question permanently: fetch the authority and keep it.
 
 ```sh
-# once, on this one request
-run_in lab as guest authnstd -u client --issuer "${ROOT_SKID}"
-
-# for every request this holder makes, until its shell ends
-run_in lab as guest env EPICS_PVA_AUTH_ISSUER="${ROOT_SKID}" authnstd -u client
-
-# fetched once and written into the keychain, so nothing need be given again
 run_in lab as guest authnstd --trust-anchor --issuer "${ROOT_SKID}"
+#   Cert file backed up: .../client.p12 ==> .../client.2608120049.p12
 #   Trust Anchor retrieved
 ```
 
 `${ROOT_SKID}` is expanded by the shell you type in, by `lab_ids`, and the value is what
-reaches the container.
+reaches the container. The keychain now holds the authority, so this holder needs no
+identifier again, and the certificate it held before was renamed out of the way rather than
+lost.
+
+The other two forms give the same identifier for less time, and are worth knowing rather than
+running here. `authnstd -u client --issuer "${ROOT_SKID}"` gives it for that one request and
+keeps nothing. Setting `EPICS_PVA_AUTH_ISSUER` gives it to every request a holder makes for as
+long as that environment lasts, which is how the containers in this laboratory are told, from
+`/etc/epics/issuer` at start. Both leave the holder needing to be told again next time; only
+`--trust-anchor` writes the authority where it stays.
+
+Running more than one of the three in turn is worth avoiding: once a request has succeeded the
+keychain holds a valid certificate, and the next attempt stops with `Valid certificate found:
+Use --force flag to overwrite` rather than demonstrating anything.
 
 In this laboratory every container is given the identifier at start, in `/etc/epics/issuer`,
 which a login shell reads back, so the walkthrough below needs none of the three.
