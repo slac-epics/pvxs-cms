@@ -60,8 +60,13 @@ _lab_topology_places() {
     # shellcheck disable=SC1090
     . "${env}"
     var="TOPOLOGY_${t//-/_}_PLACES"
-    [ -n "${!var:-}" ] || return 1
-    printf '%s' "${!var}"
+    # eval rather than ${!var}: this file is sourced by whichever shell the reader uses, and
+    # indirect expansion is spelt differently in each. zsh answers ${!var} with
+    # "bad substitution", which is what a person sees instead of their command running.
+    local places
+    places=$(eval "printf '%s' \"\${${var}-}\"")
+    [ -n "${places}" ] || return 1
+    printf '%s' "${places}"
 }
 
 _lab_place() {          # place -> compose service
