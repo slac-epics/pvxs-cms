@@ -527,11 +527,13 @@ controller itself, because nothing stands between them - worth noting now, becau
 the same question through a gateway and gets a different answer:
 
 ```sh
-run_in lab as operator pvxinfo -v test:open
-#   # TLS x509:3526ff13:1694782238910258531:EPICS Root Certificate Authority/testioc@10.89.0.71:5076
+run_in lab as operator pvxinfo -v test:open | grep '^#'
+#   # TLS x509:0b5ee2fc:7327241123256509997:EPICS Root Certificate Authority/testioc@10.89.0.95:5076
 ```
 
-The name after the authority is the certificate the controller presented, and the address is
+`pvxinfo -v` prints the whole effective configuration first; the identity of the peer it
+reached is the one line beginning `#`, which is what the pipe keeps. The name after the
+authority is the certificate the controller presented, and the address is
 where it is. On one segment, with nothing in between, they name the same machine.
 
 **What the certificate manager holds**, as a standing view anyone may subscribe to. The guest
@@ -880,15 +882,15 @@ with the identity of the peer it reached, so ask the same question from both sid
 From inside the laboratory, the peer is the controller itself:
 
 ```sh
-run_in lab as operator pvxinfo -v test:open
-#   # TLS x509:3526ff13:1694782238910258531:EPICS Root Certificate Authority/testioc@10.89.0.71:5076
+run_in lab as operator pvxinfo -v test:open | grep '^#'
+#   # TLS x509:0b5ee2fc:7327241123256509997:EPICS Root Certificate Authority/testioc@10.89.0.95:5076
 ```
 
 From outside, the peer is the **gateway**, at the load balancer's address:
 
 ```sh
-run_in perimeter as guest pvxinfo -v test:open
-#   # TLS x509:3526ff13:3528026900444958368:EPICS Root Certificate Authority/gateway@10.89.4.10:5076
+run_in perimeter as guest pvxinfo -v test:open | grep '^#'
+#   # TLS x509:0b5ee2fc:9808356842445051647:EPICS Root Certificate Authority/gateway@10.89.4.14:5076
 ```
 
 Two things in one line. The identity is `gateway`, because the secure connection is
@@ -963,6 +965,12 @@ run_in lab as operator pvxput test:stringExample 3    # written
 run_in lab as operator pvxput test:spec 3             # written
 run_in lab as operator pvxput test:open 3             # written
 ```
+
+> **If a read across the boundary stops working after a while**, restart the gateway. It makes
+> its upstream connections when it starts and does not re-make one it has lost, so a
+> laboratory left running answers its own status variable perfectly while forwarding nothing.
+> `podman restart podman_pvxs-lab-gateway_1` puts it back, and it is the same fact as the
+> restart order above.
 
 That is the whole difference a gateway makes. Inside, a rule may name you. Outside, the
 controller's rules can only name the gateway, so anything about *you* has to be said in the
