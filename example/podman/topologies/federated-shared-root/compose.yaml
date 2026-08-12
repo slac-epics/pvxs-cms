@@ -281,12 +281,22 @@ services:
   # ------------------------------------------------------------------- the facility address
   # One address published for the whole facility; the port chooses the department. HAProxy in
   # tcp mode: it forwards a stream and understands nothing about what is inside it.
+  #
+  # A leg on every segment that names it, and the alias repeated on each. Podman answers a
+  # name only for containers that share a segment with the asker, and each department's
+  # workstation reaches the other department by that name - the same accommodation the
+  # certificate managers need to reach the responder. At a real site one address in DNS and a
+  # route would do it; here the name has to be answerable where it is asked.
   pvxs-facility-lb:
     init: true
     image: docker.io/library/haproxy:lts-alpine
     hostname: pvxs-facility-lb
     networks:
       net-internet:
+        aliases: [facility]
+      net-lab:
+        aliases: [facility]
+      net-ml:
         aliases: [facility]
       net-perimeter:
     volumes:
