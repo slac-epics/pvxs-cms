@@ -370,16 +370,29 @@ echo "${ROOT_SKID}"   # e37fcf9d...0124   establishes trust in it, the first tim
 ```
 
 The whole forty digits is what a holder needs the first time it asks, because eight is not
-enough to decide which authority is meant. Give it in any of three ways:
+enough to decide which authority is meant.
+
+It goes to the holder, so it is given where the holder runs rather than in the shell you are
+typing in. Here that is inside a container, which is what `run_in` is for. **Any one of these
+three, not all of them:**
 
 ```sh
-authnstd -u client --issuer "${ROOT_SKID}"       # once, on this request
-EPICS_PVA_AUTH_ISSUER="${ROOT_SKID}"             # for every request this shell makes
-authnstd --trust-anchor --issuer "${ROOT_SKID}"  # fetched and written into the keychain, once
+# once, on this one request
+run_in lab as guest authnstd -u client --issuer "${ROOT_SKID}"
+
+# for every request this holder makes, until its shell ends
+run_in lab as guest env EPICS_PVA_AUTH_ISSUER="${ROOT_SKID}" authnstd -u client
+
+# fetched once and written into the keychain, so nothing need be given again
+run_in lab as guest authnstd --trust-anchor --issuer "${ROOT_SKID}"
+#   Trust Anchor retrieved
 ```
 
-In this laboratory every container is given it at start, in `/etc/epics/issuer`, which a login
-shell reads back, so the walkthrough below needs none of the three.
+`${ROOT_SKID}` is expanded by the shell you type in, by `lab_ids`, and the value is what
+reaches the container.
+
+In this laboratory every container is given the identifier at start, in `/etc/epics/issuer`,
+which a login shell reads back, so the walkthrough below needs none of the three.
 
 ### Handing over the authority itself, rather than its name
 
