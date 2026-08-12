@@ -522,8 +522,8 @@ run_in testioc as testioc cat /home/testioc/testioc.acf
 #   }
 ```
 
-**What the certificate manager holds**, as a standing view anyone may subscribe to, named by
-the authority so that it is never ambiguous:
+**What the certificate manager holds**, as a standing view anyone may subscribe to. The guest
+still holds the certificate approved a moment ago, so it can ask as itself:
 
 ```sh
 # a monitor runs until you stop it: Ctrl-C to come back
@@ -654,19 +654,29 @@ It appears in every view it fits and nowhere else. The one it can never appear i
 view of requests awaiting a decision: nothing that was never requested can be waiting for
 anyone to decide about it.
 
-The same listing is served as standing views a client can subscribe to, named by issuer so
-that two certificate managers on one network are never ambiguous:
+The same listing is served as standing views a client can subscribe to. These two are open to
+everyone, so they are read here with no certificate at all - which is just as well, because
+the guest's keychain currently holds the request from section 2, still waiting for a decision,
+and a certificate nobody has approved yet establishes nothing:
 
 ```sh
 # a monitor runs until you stop it: Ctrl-C to come back
-run_in lab as guest pvxmonitor CERT:LIST:ALL
+run_in lab as guest without a certificate pvxmonitor CERT:LIST:ALL
 ```
 
 ```sh
-run_in lab as guest pvxmonitor CERT:LIST:EXPIRING
+run_in lab as guest without a certificate pvxmonitor CERT:LIST:EXPIRING
 ```
 
-Those two are open to everyone. The third is not - see section 11.
+Ask with the keychain as it stands and the answer is about the asker rather than the view:
+
+```sh
+run_in lab as guest pvxmonitor CERT:LIST:ALL
+#   WARN pvxs.certs.mon Certificate not valid: PENDING_APPROVAL
+```
+
+The third view, of requests awaiting a decision, is open to nobody but an administrator, which
+is section 4.
 
 ## 4. Only an administrator may decide
 
