@@ -1,13 +1,156 @@
-# simple-with-gateway - not built yet.
+# The simple laboratory, published at a facility address.
 #
-# The picture is drawn: topology/topology-simple-with-gateway.svg. What is missing is this file and the
-# configuration beside it. Until then ./reset.sh simple-with-gateway stops here rather than starting a
-# laboratory that would only half work.
+# Three segments. The laboratory is on net-lab, as in the simple topology. A gateway stands in
+# the DMZ with one foot in each, proxying PVAccess inward. A load balancer owns the facility
+# address on net-internet and maps a port to the gateway, so the gateway is never published
+# directly and the workstation outside knows one address.
 #
-# What building it means, beyond copying the federated-shared-root file:
-#   - its own authorities, minted by bootstrap.sh into certs/ in the shape this topology
-#     needs, which is the part that differs most between the four
-#   - its own config/ beside this file: an access security file per certificate manager,
-#     and a gateway configuration and process variable list per gateway
-#   - the segments the picture shows, with only the services that stand on them
-services: {}
+# Nothing inside the laboratory originates traffic outward - there is no second department to
+# reach and no service on another segment - so there is no router here. Every crossing is
+# inbound, and the gateway is the only thing that crosses.
+#
+# Picture: topology/topology-simple-with-gateway.svg
+
+x-lab-env: &lab-env
+  EPICS_PVA_AUTO_ADDR_LIST: "YES"
+
+networks:
+  net-lab:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.0.0/24
+  net-perimeter:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.2.0/24
+  net-internet:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.4.0/24
+
+volumes:
+  idm-config:
+  idm-data:
+  testioc-config:
+  tstioc-config:
+  lab-client-config:
+  gateway-config:
+  perimeter-client-config:
+
+services:
+
+  # ---------------------------------------------------------------- the laboratory
+  pvxs-lab-pvacms:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
+    hostname: pvxs-lab-pvacms
+    networks: [net-lab]
+    environment:
+      <<: *lab-env
+      EPICS_PVACMS_DB: /home/idm/.local/share/pva/1.5/certs.db
+      EPICS_PVA_TLS_KEYCHAIN: /home/idm/.config/pva/1.5/server.p12
+      EPICS_CERT_AUTH_NAME: EPICS Root Certificate Authority
+      EPICS_CERT_AUTH_ORGANIZATION: certs.epics.org
+      EPICS_CERT_AUTH_ORGANIZATIONAL_UNIT: epics.org Certificate Authority
+    volumes:
+      - idm-config:/home/idm/.config/pva/1.5
+      - idm-data:/home/idm/.local/share/pva/1.5
+      - ./config/pvacms.acf:/etc/pvacms/pvacms.acf:ro,z
+      - ../../scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
+    command: ["/usr/local/bin/start-pvacms", "own"]
+
+  pvxs-lab-testioc:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/testioc:latest
+    hostname: pvxs-lab-testioc
+    networks: [net-lab]
+    environment:
+      <<: *lab-env
+    volumes:
+      - testioc-config:/home/testioc/.config/pva/1.5
+      - ./config/testioc.acf:/home/testioc/testioc.acf:ro,z
+      - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
+    command: ["/usr/local/bin/start-ioc", "testioc"]
+    depends_on: [pvxs-lab-pvacms]
+
+  pvxs-lab-tstioc:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/tstioc:latest
+    hostname: pvxs-lab-tstioc
+    networks: [net-lab]
+    environment:
+      <<: *lab-env
+    volumes:
+      - tstioc-config:/home/tstioc/.config/pva/1.5
+      - ./config/tstioc.acf:/home/tstioc/tstioc.acf:ro,z
+      - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
+    command: ["/usr/local/bin/start-ioc", "tstioc"]
+    depends_on: [pvxs-lab-pvacms]
+
+  lab-client:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
+    hostname: lab-client
+    networks: [net-lab]
+    environment:
+      <<: *lab-env
+      PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    volumes:
+      - lab-client-config:/home/guest/.config/pva/1.5
+      - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
+    command: ["/usr/local/bin/start-shell", "guest", "operator"]
+
+  # ---------------------------------------------------------------- the DMZ
+  # One foot in the laboratory, one in the DMZ. It is asked on its DMZ interface and reaches
+  # the controllers and the certificate manager on the other.
+  pvxs-lab-gateway:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
+    hostname: pvxs-lab-gateway
+    networks: [net-lab, net-perimeter]
+    environment:
+      <<: *lab-env
+    volumes:
+      - gateway-config:/home/gateway/.config/pva/1.5
+      - ./config/gateway.conf:/home/gateway/gateway.conf.in:ro,z
+      - ./config/gateway.pvlist:/home/gateway/gateway.pvlist.in:ro,z
+      - ../../scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro,z
+    # 'none' because this laboratory's certificate process variables carry no issuer in their
+    # names, and its issuer id does not exist until the certificate manager has started.
+    command: ["/usr/local/bin/start-gateway", "none"]
+    depends_on: [pvxs-lab-pvacms]
+
+  # The facility address, and the only way in. HAProxy in tcp mode: it forwards a stream and
+  # understands nothing about what is inside it, which is what layer 4 means.
+  pvxs-facility-lb:
+    init: true
+    image: docker.io/library/haproxy:lts-alpine
+    hostname: pvxs-facility-lb
+    networks:
+      net-internet:
+        aliases: [facility]
+      net-perimeter:
+    volumes:
+      - ./config/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro,z
+    depends_on: [pvxs-lab-gateway]
+
+  # ---------------------------------------------------------------- outside
+  # It knows one address for the whole facility and nothing about what is behind it.
+  perimeter-client:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/internet:latest
+    hostname: perimeter-client
+    networks: [net-internet]
+    environment:
+      <<: *lab-env
+      EPICS_PVA_AUTO_ADDR_LIST: "NO"
+      EPICS_PVA_NAME_SERVERS: "facility:5075"
+      PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    volumes:
+      - perimeter-client-config:/home/guest/.config/pva/1.5
+      - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
+    command: ["/usr/local/bin/start-shell", "guest", "operator"]
+    depends_on: [pvxs-facility-lb]
