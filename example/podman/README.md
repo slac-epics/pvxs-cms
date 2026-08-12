@@ -706,18 +706,22 @@ Section 2's was approved, so make another.
 **The operator asks, and the guest does the looking.** That way one holder has a request
 pending while another still holds a valid certificate, which is what the rest of this section
 needs. A holder whose own certificate is awaiting a decision cannot establish a secure
-connection at all, and would fail for that reason rather than the one being shown:
+connection at all, and would fail for that reason rather than the one being shown.
+
+It asks under a name nothing has used yet. The operator's own name is taken: section 2 got it
+a certificate, and a certificate manager refuses a second one for a subject it has already
+issued, answering `Duplicate Certificate Subject`.
 
 ```sh
-run_in lab as operator authnstd -u client --force
+run_in lab as operator authnstd -u client -n reviewer --force
 
 run_in lab-manager as admin pvxcert --review-pending < /dev/null
-#     Subject        : CN=operator,O=epics.org,C=US
+#     Subject        : CN=reviewer,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
-#     Request ID     : 2JSQ-NJFE-JPFF-732Z
+#     Request ID     : FDGB-CYEV-R5D1-4QBQ
 
 run_in lab as guest without a certificate pvxcert --review-pending < /dev/null
-#     Subject        : CN=operator,O=epics.org,C=US
+#     Subject        : CN=reviewer,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
 #     Request ID     : (none)
 ```
@@ -745,7 +749,8 @@ it is rather than about what it presented:
 ```sh
 # a monitor runs until you stop it: Ctrl-C to come back
 run_in lab as guest pvxmonitor CERT:LIST:PENDING_APPROVAL
-#   Server ... refuses channel to 'CERT:LIST:PENDING_APPROVAL' : Refused to create Channel
+#   WARN pvxs.cli.io Server 10.89.0.22:5076 refuses channel to
+#        'CERT:LIST:PENDING_APPROVAL' : Refused to create Channel
 ```
 
 while the open views are served to that same holder without complaint:
@@ -759,7 +764,8 @@ authority, and still refused - because the rule names an administrator and this 
 one. A `Certificate not valid` message instead would mean something different, that the asker
 never got far enough for any rule to apply to it.
 
-Approve the operator's request to leave the laboratory as this part found it:
+Approve the request to finish, which leaves the operator holding a certificate again, under
+the name it asked for:
 
 ```sh
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
