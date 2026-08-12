@@ -375,112 +375,66 @@ echo "${ROOT_SKID}"   # e37fcf9d...0124   establishes trust in it, the first tim
 ```
 
 The whole forty digits is what a holder needs the first time it asks, because eight is not
-enough to decide which authority is meant.
+enough to decide which authority is meant. In this laboratory every container is given it at
+start, in `/etc/epics/issuer`, which a login shell reads back, so **the walkthrough below needs
+nothing further** and you can go straight to section 1.
 
-It goes to the holder, so it is given where the holder runs rather than in the shell you are
-typing in. Here that is inside a container, which is what `run_in` is for. The form worth
-running is the one that settles the question permanently: fetch the authority and keep it.
+### Reference: giving a holder the identifier
 
-```sh
-run_in lab as guest authnstd --trust-anchor --issuer "${ROOT_SKID}"
-#   Cert file backed up: .../client.p12 ==> .../client.2608120049.p12
-#   Trust Anchor retrieved
-```
+> **Nothing in this subsection is part of the walkthrough. Do not run it here.** Each one
+> replaces a keychain or takes away what a later section depends on. It is written down
+> because it is what an operator does for a machine the laboratory does not manage, and it is
+> in this list rather than in a block so it cannot be copied out by accident.
 
-`${ROOT_SKID}` is expanded by the shell you type in, by `lab_ids`, and the value is what
-reaches the container. The keychain now holds the authority, so this holder needs no
-identifier again, and the certificate it held before was renamed out of the way rather than
-lost.
+The identifier goes to the holder, so it is given where the holder runs, which here means
+inside a container and therefore through `run_in`. Three ways, in increasing order of how long
+they last:
 
-The other two forms give the same identifier for less time, and are worth knowing rather than
-running here. `authnstd -u client --issuer "${ROOT_SKID}"` gives it for that one request and
-keeps nothing. Setting `EPICS_PVA_AUTH_ISSUER` gives it to every request a holder makes for as
-long as that environment lasts, which is how the containers in this laboratory are told, from
-`/etc/epics/issuer` at start. Both leave the holder needing to be told again next time; only
-`--trust-anchor` writes the authority where it stays.
+- `authnstd -u client --issuer "${ROOT_SKID}"` gives it for that one request and keeps nothing.
+- `EPICS_PVA_AUTH_ISSUER="${ROOT_SKID}"` gives it to every request that environment covers.
+  This is how the containers here are told, from `/etc/epics/issuer` at start.
+- `authnstd --trust-anchor --issuer "${ROOT_SKID}"` fetches the authority and writes it into
+  the keychain, answering `Trust Anchor retrieved`. Only this one leaves the holder needing no
+  identifier again, and it replaces whatever the keychain held, renaming the old file aside.
 
-Running more than one of the three in turn is worth avoiding: once a request has succeeded the
-keychain holds a valid certificate, and the next attempt stops with `Valid certificate found:
-Use --force flag to overwrite` rather than demonstrating anything.
+Running more than one in turn demonstrates nothing: once a request has succeeded the keychain
+holds a valid certificate and the next attempt stops with `Valid certificate found: Use
+--force flag to overwrite`.
 
-In this laboratory every container is given the identifier at start, in `/etc/epics/issuer`,
-which a login shell reads back, so the walkthrough below needs none of the three.
+### Reference: handing over the authority itself, rather than its name
 
-### Handing over the authority itself, rather than its name
+> **Nothing in this subsection is part of the walkthrough either. Do not run it here.** It
+> overwrites the workstation's keychain and removes the identifier every later section relies
+> on.
 
-All three of those tell a holder which authority to *expect*, and it then fetches that
-authority and stores it. There is a simpler way for a machine the laboratory does not manage:
-put the authority in its keychain yourself. A holder whose keychain already contains the
-authority needs no identifier at all, because there is nothing left to decide.
+All three above tell a holder which authority to *expect*, and it then fetches and stores it.
+For a machine the laboratory does not manage there is a simpler route: put the authority into
+its keychain yourself. A holder whose keychain already contains the authority needs no
+identifier at all, because there is nothing left to decide.
 
-That file is the authority with its private key removed, which is exactly what
-`authnstd --trust-anchor` produces, and openssl makes one in two steps:
+The file to hand over is the authority with its private key removed, which is what
+`authnstd --trust-anchor` produces. openssl makes one in two steps, run on the certificate
+manager, which holds `/home/idm/.local/share/pva/1.5/cert_auth.p12`:
 
-```sh
-run_in lab-manager as admin bash -c '
-    cd /tmp
-    openssl pkcs12 -in /home/idm/.local/share/pva/1.5/cert_auth.p12 \
-        -nokeys -passin pass: -out root.pem
-    openssl pkcs12 -export -nokeys -in root.pem -out trust_anchor.p12 -passout pass:'
-```
+- `openssl pkcs12 -in cert_auth.p12 -nokeys -passin pass: -out root.pem` takes the certificate
+  out and leaves the key behind.
+- `openssl pkcs12 -export -nokeys -in root.pem -out trust_anchor.p12 -passout pass:` puts that
+  certificate, and only it, into a keychain.
+- `openssl pkcs12 -in trust_anchor.p12 -passin pass: -info -noout` should answer with one
+  `Certificate bag` and no shrouded key bag. Worth checking: a keychain that kept the key would
+  hand out the power to issue certificates rather than the ability to trust them.
 
-The first takes the certificate out and leaves the key behind. The second puts that
-certificate, and only it, into a keychain. Check what you made before handing it to anyone:
+Then put that file where the holder's `EPICS_PVA_TLS_KEYCHAIN` names, which for the laboratory
+workstation is `/home/guest/.config/pva/1.5/client.p12`, and make it readable by that user:
+`podman cp` it in and `chown guest`. From that moment `authnstd -u client` succeeds there with
+no `--issuer` and no `EPICS_PVA_AUTH_ISSUER` set, and the certificate comes back issued under
+the authority you copied in. Asking keeps the authority and adds the holder's own identity
+beside it, so one file ends up carrying both.
 
-```sh
-run_in lab-manager as admin \
-    openssl pkcs12 -in /tmp/trust_anchor.p12 -passin pass: -info -noout
-#   MAC: sha256, Iteration 2048
-#   MAC length: 32, salt length: 8
-#   PKCS7 Encrypted data: PBES2, PBKDF2, AES-256-CBC, Iteration 2048, PRF hmacWithSHA256
-#   Certificate bag
-```
-
-One certificate bag, and no shrouded key bag: the authority is in there and its private key
-is not. That is the whole check, and it is worth making, because a keychain that still held
-the key would hand out the power to issue certificates rather than the ability to trust them.
-
-That file is still inside the certificate manager, so bring it out to this machine and put it
-where the holder's keychain is named by `EPICS_PVA_TLS_KEYCHAIN`. For the laboratory
-workstation that is `/home/guest/.config/pva/1.5/client.p12`:
-
-```sh
-podman exec podman_pvxs-lab-pvacms_1 cat /tmp/trust_anchor.p12 > /tmp/trust_anchor.p12
-podman cp /tmp/trust_anchor.p12 podman_lab-client_1:/home/guest/.config/pva/1.5/client.p12
-podman exec --user root podman_lab-client_1 \
-    chown guest /home/guest/.config/pva/1.5/client.p12
-```
-
-This laboratory hands every container the identifier at start, in `/etc/epics/issuer`, so take
-that away first or you will not be able to tell which of the two did the work:
-
-```sh
-podman exec --user root podman_lab-client_1 rm -f /etc/epics/issuer
-
-run_in lab as guest sh -c 'echo issuer=[$EPICS_PVA_AUTH_ISSUER]'
-#   issuer=[]
-```
-
-Now ask, with nothing anywhere to look up:
-
-```sh
-run_in lab as guest authnstd -u client
-#   Cert file backed up: .../client.p12 ==> .../client.2608120032.p12
-#   Keychain file created   : /home/guest/.config/pva/1.5/client.p12
-#   Certificate identifier  : 54beb3d9:4697177437531998724
-```
-
-The identifier it was issued under is the authority you copied in, which is the point: the
-keychain already held the authority, so there was nothing left to decide.
-
-Asking for a certificate keeps the authority and adds the holder's own identity beside it, so
-the one file ends up carrying both. The keychain it replaces is not thrown away: `authnstd`
-renames the old one out of the way first and says where it put it.
-
-What makes either approach safe is the same thing in both cases: the authority, or its name,
-reached the holder by a route the laboratory does not depend on. Copying a file over is such a
-route. Being handed an authority by whatever answered the request is not, which is why a
-holder that has neither refuses to ask at all.
+What makes either route safe is the same in both cases: the authority, or its name, reached
+the holder by a path the laboratory does not depend on. Copying a file across is such a path.
+Being handed an authority by whatever answered the request is not, which is why a holder with
+neither refuses to ask at all.
 
 ## 1. What a certificate is worth, one step at a time
 
@@ -649,7 +603,11 @@ The same listing is served as standing views a client can subscribe to, named by
 that two certificate managers on one network are never ambiguous:
 
 ```sh
+# a monitor runs until you stop it: Ctrl-C to come back
 run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:ALL
+```
+
+```sh
 run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:EXPIRING
 ```
 
@@ -710,6 +668,7 @@ The view of certificates **awaiting a decision** is gated the same way, at chann
 creation:
 
 ```sh
+# a monitor runs until you stop it: Ctrl-C to come back
 run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:PENDING_APPROVAL
 #   Server ... refuses channel to 'CERT:LIST:ba71d9e3:PENDING_APPROVAL' : Refused to create Channel
 ```
