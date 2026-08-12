@@ -269,7 +269,10 @@ if [ ! -x "${topology_dir}/mint.sh" ]; then
     for _svc in $(_compose config --services 2>/dev/null); do
         _c=$(podman ps --filter "label=com.docker.compose.service=${_svc}" --format '{{.Names}}' | head -1)
         [ -n "${_c}" ] || continue
-        podman exec "${_c}" bash -c 'mkdir -p /etc/epics && printf "%s" "$1" > /etc/epics/issuer' _ "${_skid}" 2>/dev/null || true
+        # As root: the images run their shells as an unprivileged user, and /etc is root's.
+        podman exec --user root "${_c}" \
+            bash -c 'mkdir -p /etc/epics && printf "%s" "$1" > /etc/epics/issuer' _ "${_skid}" \
+            || echo "    could not give ${_svc} the issuer id" >&2
     done
 fi
 
