@@ -44,7 +44,26 @@ if [ -n "${issuer}" ]; then
 else
     cp /home/gateway/gateway.pvlist.in /home/gateway/gateway.pvlist
 fi
-cp /home/gateway/gateway.conf.in /home/gateway/gateway.conf
+
+# Which interface the gateway serves on.
+#
+# Left to itself it binds every interface it has, which includes the department's own
+# segment. A workstation there searching by broadcast is then answered twice for the same
+# name, once by the controller and once by the gateway forwarding to that controller, and
+# every command it runs stops with 'Duplicate PV name'.
+#
+# The address cannot be written into the configuration because podman assigns it at start, so
+# the subnet is named instead and the address is looked up here.
+if [ -n "${GATEWAY_SERVE_SUBNET:-}" ]; then
+    serve_addr=$(ip -o -4 addr show \
+        | awk -v p="${GATEWAY_SERVE_SUBNET}" '$4 ~ "^"p {split($4,a,"/"); print a[1]; exit}')
+    [ -n "${serve_addr}" ] || {
+        echo "no interface on ${GATEWAY_SERVE_SUBNET} - is this container on that segment?" >&2; exit 1; }
+    echo "serving on ${serve_addr}, the ${GATEWAY_SERVE_SUBNET}0/24 segment, and on no other"
+    sed "s/__SERVE_ADDR__/${serve_addr}/g" /home/gateway/gateway.conf.in > /home/gateway/gateway.conf
+else
+    cp /home/gateway/gateway.conf.in /home/gateway/gateway.conf
+fi
 echo "gateway process variable list, with the issuer substituted:"
 sed 's/^/    /' /home/gateway/gateway.pvlist
 

@@ -113,6 +113,9 @@ services:
     networks: [net-lab, net-perimeter]
     environment:
       <<: *lab-env
+      # Which segment it serves on. Binding every interface would answer laboratory
+      # workstations twice for the same name, once from the controller and once from here.
+      GATEWAY_SERVE_SUBNET: "10.89.2."
     volumes:
       - gateway-config:/home/gateway/.config/pva/1.5
       - ./config/gateway.conf:/home/gateway/gateway.conf.in:ro,z
