@@ -415,16 +415,38 @@ One certificate bag, and no shrouded key bag: the authority is in there and its 
 is not. That is the whole check, and it is worth making, because a keychain that still held
 the key would hand out the power to issue certificates rather than the ability to trust them.
 
-Copy that file to where the holder's keychain is named, `EPICS_PVA_TLS_KEYCHAIN`, and it
-trusts this laboratory from that moment:
+That file is still inside the certificate manager, so bring it out to this machine and put it
+where the holder's keychain is named by `EPICS_PVA_TLS_KEYCHAIN`. For the laboratory
+workstation that is `/home/guest/.config/pva/1.5/client.p12`:
 
 ```sh
-podman cp /tmp/trust_anchor.p12 <container>:/home/guest/.config/pva/1.5/client.p12
-
-authnstd -u client        # no --issuer, no EPICS_PVA_AUTH_ISSUER, nothing to look up
-#   Keychain file created   : /home/guest/.config/pva/1.5/client.p12
-#   Certificate identifier  : 54beb3d9:2331251389057494943
+podman exec podman_pvxs-lab-pvacms_1 cat /tmp/trust_anchor.p12 > /tmp/trust_anchor.p12
+podman cp /tmp/trust_anchor.p12 podman_lab-client_1:/home/guest/.config/pva/1.5/client.p12
+podman exec --user root podman_lab-client_1 \
+    chown guest /home/guest/.config/pva/1.5/client.p12
 ```
+
+This laboratory hands every container the identifier at start, in `/etc/epics/issuer`, so take
+that away first or you will not be able to tell which of the two did the work:
+
+```sh
+podman exec --user root podman_lab-client_1 rm -f /etc/epics/issuer
+
+run_in lab as guest sh -c 'echo issuer=[$EPICS_PVA_AUTH_ISSUER]'
+#   issuer=[]
+```
+
+Now ask, with nothing anywhere to look up:
+
+```sh
+run_in lab as guest authnstd -u client
+#   Cert file backed up: .../client.p12 ==> .../client.2608120032.p12
+#   Keychain file created   : /home/guest/.config/pva/1.5/client.p12
+#   Certificate identifier  : 54beb3d9:4697177437531998724
+```
+
+The identifier it was issued under is the authority you copied in, which is the point: the
+keychain already held the authority, so there was nothing left to decide.
 
 Asking for a certificate keeps the authority and adds the holder's own identity beside it, so
 the one file ends up carrying both. The keychain it replaces is not thrown away: `authnstd`
