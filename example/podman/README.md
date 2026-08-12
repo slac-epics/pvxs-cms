@@ -573,23 +573,23 @@ A request arrives at the certificate manager with a subject on it, and a subject
 asker chose to call itself. What ties the request in front of the administrator to the person
 who made it is a separate identifier, printed to the asker and to nobody else.
 
-Ask under a name nothing has used yet. `--force` is needed because this keychain already holds
-a valid certificate from section 1, and only one fits in it:
+The operator needs a certificate anyway: section 1 revoked the one it had. Ask again.
+`--force` is needed because a revoked certificate is still a certificate, and only one fits in
+a keychain:
 
 ```sh
-run_in lab as guest authnstd -u client -n visitor --force
+run_in lab as operator authnstd -u client --force
 #   email this Certificate Request ID: EPHH-RJJV-A9CE-K996, to your SPVA administrator
-#   Keychain file created   : /home/guest/.config/pva/1.5/client.p12
+#   Keychain file created   : /home/operator/.config/pva/1.5/client.p12
 #   Certificate identifier  : bf95cd24:14240780177074030135
 ```
 
-The administrator sees the same identifier against the request, and nothing else that the
-asker could have chosen:
+The administrator sees that same identifier against the request:
 
 ```sh
 run_in lab-manager as admin pvxcert --review-pending < /dev/null
 #   [1/1] bf95cd24:14240780177074030135
-#     Subject        : CN=visitor,O=epics.org,C=US
+#     Subject        : CN=operator,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
 #     Request ID     : EPHH-RJJV-A9CE-K996
 #     Status changed : 2026-08-12 00:55:07 UTC
@@ -598,12 +598,24 @@ run_in lab-manager as admin pvxcert --review-pending < /dev/null
 ```
 
 `< /dev/null` is what makes it show and stop. Given a terminal it would ask about each in turn,
-which section 6 covers in the laboratory that has enough requests to be worth doing in bulk.
+which section 6 covers in the laboratory that has enough requests for that to be worth doing.
 
-The subject says `CN=visitor` because that is what was asked for. Anyone may ask for any
-subject; asking is free. The request identifier is what an administrator checks against what
-the person told them out of band, and it is the only thing in that listing the asker could not
-have chosen for themselves.
+The subject says `CN=operator` because that is what was asked for, and asking is free: anyone
+may ask for any subject, including one that belongs to somebody else. Nothing in the request
+proves who sent it. The request identifier is what the administrator checks against what the
+person told them out of band, and it is the only thing in that listing the asker could not
+have chosen for itself.
+
+Approve it, which also puts the operator back:
+
+```sh
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+#         PENDING_APPROVAL -> VALID  (APPROVE)
+```
+
+Everyone now holds a valid certificate under their own name, which is what the rest of this
+part assumes. A certificate awaiting a decision establishes nothing, so leaving one pending
+here would make later commands fail for that reason rather than the one being demonstrated.
 
 ## 3. Listing certificates
 
@@ -611,7 +623,7 @@ have chosen for themselves.
 run_in lab-manager as admin pvxcert -l
 ```
 
-Every certificate the department has issued, with its type, subject, status, dates and
+Every certificate this laboratory has issued, with its type, subject, status, dates and
 request identifier. Dates are rendered year first in one fixed-width layout everywhere, so
 they sort and compare as plain text.
 
@@ -621,7 +633,7 @@ they sort and compare as plain text.
 run_in lab as guest without a certificate pvxcert -l
 ```
 
-Both see the same rows - what a department has issued is not a secret, and an operator
+Both see the same rows - what the laboratory has issued is not a secret, and an operator
 wanting to know whether their certificate arrived should not need an administrator. The
 difference is the **request identifier**, which is blank for everyone but an administrator:
 
@@ -655,28 +667,23 @@ view of requests awaiting a decision: nothing that was never requested can be wa
 anyone to decide about it.
 
 The same listing is served as standing views a client can subscribe to. These two are open to
-everyone, so they are read here with no certificate at all - which is just as well, because
-the guest's keychain currently holds the request from section 2, still waiting for a decision,
-and a certificate nobody has approved yet establishes nothing:
+everyone:
 
 ```sh
 # a monitor runs until you stop it: Ctrl-C to come back
-run_in lab as guest without a certificate pvxmonitor CERT:LIST:ALL
-```
-
-```sh
-run_in lab as guest without a certificate pvxmonitor CERT:LIST:EXPIRING
-```
-
-Ask with the keychain as it stands and the answer is about the asker rather than the view:
-
-```sh
 run_in lab as guest pvxmonitor CERT:LIST:ALL
-#   WARN pvxs.certs.mon Certificate not valid: PENDING_APPROVAL
+```
+
+```sh
+run_in lab as guest pvxmonitor CERT:LIST:EXPIRING
 ```
 
 The third view, of requests awaiting a decision, is open to nobody but an administrator, which
 is section 4.
+
+> If either of those answers `Certificate not valid: PENDING_APPROVAL` rather than a view, the
+> guest is holding a request nobody has approved. Approve it and try again:
+> `run_in lab-manager as admin pvxcert --review-pending --all approve --yes`
 
 ## 4. Only an administrator may decide
 
@@ -686,30 +693,31 @@ The administrator write rule names four things, and all of them are load bearing
 run_in lab-manager as idm cat /etc/pvacms/pvacms.acf
 #   RULE(1,WRITE) {
 #       UAG(CMS_ADMIN)        who
-#       AUTHORITY(CMS_AUTH)   issued by this department, not the other one
+#       AUTHORITY(CMS_AUTH)   issued by this laboratory's own authority
 #       PROTOCOL(TLS)         over a secure transport, not plain
 #       METHOD("x509")        having actually presented a certificate
 #   }
 ```
 
-An ordinary user may look at everything and decide nothing. The same review command run
-both ways shows exactly where the line falls. Section 9 decided the last request there was,
-so ask for one again first:
+An ordinary user may look at everything and decide nothing. The same review command run two
+ways shows exactly where the line falls, and it needs a request waiting to be looked at.
+Section 2's was approved, so make another.
 
-It asks under a name nobody has been issued yet, because whether the visitor from section 5
-still holds a certificate depends on which of section 8's two endings you ran, and a subject
-that already has one cannot ask again:
+**The operator asks, and the guest does the looking.** That way one holder has a request
+pending while another still holds a valid certificate, which is what the rest of this section
+needs. A holder whose own certificate is awaiting a decision cannot establish a secure
+connection at all, and would fail for that reason rather than the one being shown:
 
 ```sh
-run_in lab as guest authnstd -u client -n reviewer --force
+run_in lab as operator authnstd -u client --force
 
 run_in lab-manager as admin pvxcert --review-pending < /dev/null
-#     Subject        : CN=reviewer,O=epics.org,C=US
+#     Subject        : CN=operator,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
 #     Request ID     : 2JSQ-NJFE-JPFF-732Z
 
 run_in lab as guest without a certificate pvxcert --review-pending < /dev/null
-#     Subject        : CN=reviewer,O=epics.org,C=US
+#     Subject        : CN=operator,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
 #     Request ID     : (none)
 ```
@@ -730,25 +738,35 @@ run_in lab as guest without a certificate pvxput CERT:STATUS:${ROOT}:0123456789 
 `ca/guest` is the whole explanation: the connection presented no certificate, so the rule
 could not match however the user is named.
 
-The view of certificates **awaiting a decision** is gated the same way, at channel
-creation:
+The view of certificates **awaiting a decision** is gated the same way, at channel creation.
+The guest asks holding the certificate approved in section 2, so what comes back is about who
+it is rather than about what it presented:
 
 ```sh
 # a monitor runs until you stop it: Ctrl-C to come back
 run_in lab as guest pvxmonitor CERT:LIST:PENDING_APPROVAL
-#   Server ... refuses channel to 'CERT:LIST:ba71d9e3:PENDING_APPROVAL' : Refused to create Channel
+#   Server ... refuses channel to 'CERT:LIST:PENDING_APPROVAL' : Refused to create Channel
 ```
 
-while the open views are served to the same user without complaint:
+while the open views are served to that same holder without complaint:
 
 ```sh
 run_in lab as guest pvxmonitor CERT:LIST:ALL
 ```
 
-Neither gateway forwards the awaiting-decision view or a certificate status write, because
-a gateway makes its upstream connection as itself and the certificate manager would see
-the gateway rather than the administrator behind it. Decisions are made from inside the
-department.
+That is the distinction worth having: a good certificate, from this laboratory's own
+authority, and still refused - because the rule names an administrator and this holder is not
+one. A `Certificate not valid` message instead would mean something different, that the asker
+never got far enough for any rule to apply to it.
+
+Approve the operator's request to leave the laboratory as this part found it:
+
+```sh
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+```
+
+Decisions are made at the certificate
+manager, by somebody the certificate manager's own access file names.
 
 # Part 2 - simple, with a gateway
 
