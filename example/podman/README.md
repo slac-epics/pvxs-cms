@@ -373,15 +373,67 @@ The whole forty digits is what a holder needs the first time it asks, because ei
 enough to decide which authority is meant. Give it in any of three ways:
 
 ```sh
-authnstd -u client --issuer "${ROOT_SKID}"     # once, on this request
-EPICS_PVA_AUTH_ISSUER="${ROOT_SKID}"           # for every request this shell makes
-authnstd --trust-anchor --issuer "${ROOT_SKID}"  # written into the keychain, once and for all
+authnstd -u client --issuer "${ROOT_SKID}"       # once, on this request
+EPICS_PVA_AUTH_ISSUER="${ROOT_SKID}"             # for every request this shell makes
+authnstd --trust-anchor --issuer "${ROOT_SKID}"  # fetched and written into the keychain, once
 ```
 
 In this laboratory every container is given it at start, in `/etc/epics/issuer`, which a login
-shell reads back - so the walkthrough below needs none of the three. On a machine the
-laboratory does not manage, the third is what you want: the authority is stored in the
-keychain, and nothing has to be told again.
+shell reads back, so the walkthrough below needs none of the three.
+
+### Handing over the authority itself, rather than its name
+
+All three of those tell a holder which authority to *expect*, and it then fetches that
+authority and stores it. There is a simpler way for a machine the laboratory does not manage:
+put the authority in its keychain yourself. A holder whose keychain already contains the
+authority needs no identifier at all, because there is nothing left to decide.
+
+That file is the authority with its private key removed, which is exactly what
+`authnstd --trust-anchor` produces, and openssl makes one in two steps:
+
+```sh
+run_in lab-manager as admin bash -c '
+    cd /tmp
+    openssl pkcs12 -in /home/idm/.local/share/pva/1.5/cert_auth.p12 \
+        -nokeys -passin pass: -out root.pem
+    openssl pkcs12 -export -nokeys -in root.pem -out trust_anchor.p12 -passout pass:'
+```
+
+The first takes the certificate out and leaves the key behind. The second puts that
+certificate, and only it, into a keychain. Check what you made before handing it to anyone:
+
+```sh
+run_in lab-manager as admin \
+    openssl pkcs12 -in /tmp/trust_anchor.p12 -passin pass: -info -noout
+#   MAC: sha256, Iteration 2048
+#   MAC length: 32, salt length: 8
+#   PKCS7 Encrypted data: PBES2, PBKDF2, AES-256-CBC, Iteration 2048, PRF hmacWithSHA256
+#   Certificate bag
+```
+
+One certificate bag, and no shrouded key bag: the authority is in there and its private key
+is not. That is the whole check, and it is worth making, because a keychain that still held
+the key would hand out the power to issue certificates rather than the ability to trust them.
+
+Copy that file to where the holder's keychain is named, `EPICS_PVA_TLS_KEYCHAIN`, and it
+trusts this laboratory from that moment:
+
+```sh
+podman cp /tmp/trust_anchor.p12 <container>:/home/guest/.config/pva/1.5/client.p12
+
+authnstd -u client        # no --issuer, no EPICS_PVA_AUTH_ISSUER, nothing to look up
+#   Keychain file created   : /home/guest/.config/pva/1.5/client.p12
+#   Certificate identifier  : 54beb3d9:2331251389057494943
+```
+
+Asking for a certificate keeps the authority and adds the holder's own identity beside it, so
+the one file ends up carrying both. The keychain it replaces is not thrown away: `authnstd`
+renames the old one out of the way first and says where it put it.
+
+What makes either approach safe is the same thing in both cases: the authority, or its name,
+reached the holder by a route the laboratory does not depend on. Copying a file over is such a
+route. Being handed an authority by whatever answered the request is not, which is why a
+holder that has neither refuses to ask at all.
 
 ## 1. What a certificate is worth, one step at a time
 
