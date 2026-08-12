@@ -438,13 +438,30 @@ neither refuses to ask at all.
 
 ## 1. What a certificate is worth, one step at a time
 
-Everything so far has been read without a certificate, because reading is open here. Writing
-is not, and this laboratory has one authority and one segment, so what a certificate is worth
-comes down to two questions: whether the holder has one at all, and which user access group
-its common name falls in.
+Nothing holds a certificate yet, and the laboratory is already running. That is the baseline
+to come back to whenever something later looks broken.
 
-Nothing has been issued yet. Ask for the two people, and for both controllers, then approve
-the four together:
+**Reading needs nothing.** Both controllers answer anyone on the segment:
+
+```sh
+run_in lab as guest without a certificate pvxget test:aiExample
+#   value double = 10
+run_in lab as guest without a certificate pvxget tst:ColorMode
+#   value.index int32_t = 0
+```
+
+**Writing is refused, whatever you write to.** Every write rule in `testioc.acf` names
+`PROTOCOL(TLS)` and `METHOD(X509)`, so with no certificate nothing is writable:
+
+```sh
+run_in lab as guest without a certificate pvxput test:stringExample hello
+#   ERROR ... Put not permitted
+```
+
+The refusal comes from the controller itself. There is nowhere else it could come from: one
+segment, and the holder is on it.
+
+**So issue certificates.** Two people, and both controllers, then approve the four together:
 
 ```sh
 run_in lab as guest    authnstd -u client
@@ -455,33 +472,29 @@ run_in tstioc  as tstioc  authnstd -u ioc
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 ```
 
-A controller reads its keychain when it starts and was already running when its certificate
-arrived, so it goes on serving plain traffic until it is restarted. Restart both, or every
-write below is refused for a reason that has nothing to do with the rule being tested:
+A controller reads its keychain when it starts, and both were already running when their
+certificates arrived, so they go on serving plain traffic until restarted. Restart them, or
+every write below is refused for a reason that has nothing to do with the rule being tested:
 
 ```sh
 podman-compose -p podman -f topologies/simple/compose.yaml \
     restart pvxs-lab-testioc pvxs-lab-tstioc
 ```
 
-Now the four outcomes the access file describes. `testioc.acf` puts operators and guests in
-the default group, operators alone on `test:spec`, and lets any certificate at all write
-`test:open`:
+**Now the same write goes through**, and the rule that separates the two people shows itself.
+`testioc.acf` puts operators and guests in the default group, and operators alone on
+`test:spec`:
 
 ```sh
-run_in lab as guest    pvxput test:stringExample "from the guest"      # written
-run_in lab as operator pvxput test:stringExample "from the operator"   # written
-run_in lab as operator pvxput test:spec 22                             # written
-run_in lab as guest    pvxput test:open 33                             # written
+run_in lab as guest    pvxput test:stringExample hello   # written
+run_in lab as operator pvxput test:spec 22               # written
 
 run_in lab as guest    pvxput test:spec 11
 #   ERROR ... Put not permitted
 ```
 
-Only the last is refused, and it is refused by the controller rather than anywhere else,
-because there is nowhere else: one segment, and the holder is on it. The guest holds a
-perfectly good certificate from this laboratory's own authority. What it lacks is membership
-of the group the rule names:
+The guest holds a perfectly good certificate from this laboratory's own authority. What it
+lacks is membership of the group the rule names:
 
 ```sh
 run_in testioc as testioc cat /home/testioc/testioc.acf
@@ -504,13 +517,45 @@ run_in testioc as testioc cat /home/testioc/testioc.acf
 #   }
 ```
 
-Reading is untouched by any of it. The value the operator wrote comes back to someone holding
-nothing at all:
+**What the certificate manager holds**, as a standing view anyone may subscribe to, named by
+the authority so that it is never ambiguous:
+
+```sh
+# a monitor runs until you stop it: Ctrl-C to come back
+run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:ALL
+```
+
+**Take one away and watch it stop working.** Revoke the operator's certificate, the one it
+just wrote `test:spec` with:
+
+```sh
+run_in lab-manager as admin pvxcert -l --where "name:operator"
+#   6e93ed57:15059513235269544035  CLIENT  CN=operator,O=epics.org,C=US  VALID ...
+
+run_in lab-manager as admin pvxcert --review-issued --where "name:operator" --all --yes
+#         VALID -> REVOKED  (REVOKE)
+#   6e93ed57:15059513235269544035  done
+```
+
+The write it made a moment ago is refused now, and nothing was restarted or reconfigured to
+make that happen. The controller asked about the certificate and was told:
+
+```sh
+run_in lab as operator pvxput test:spec 44
+#   ERROR ... Put not permitted
+```
+
+Reading is untouched by any of it, because it never needed a certificate. The value the
+operator wrote before it lost the right to write is still there:
 
 ```sh
 run_in lab as guest without a certificate pvxget test:spec
 #   value double = 22
 ```
+
+That is the whole of what a certificate is worth here: it is the difference between reading
+and writing, the group it puts you in decides which writes, and it stops meaning anything the
+moment the certificate manager says so.
 
 ## 2. The request identifier an administrator checks
 
