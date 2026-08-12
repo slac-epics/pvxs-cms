@@ -93,7 +93,9 @@ services:
     depends_on: [pvxs-lab-authority-status]
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-pvacms
-    networks: [net-lab]
+    # net-it as well: the root names its responder by hostname, and podman answers a name
+    # only for containers that share a segment with the asker.
+    networks: [net-lab, net-it]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
@@ -169,7 +171,7 @@ services:
     depends_on: [pvxs-lab-authority-status]
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml:latest
     hostname: pvxs-lab-ml
-    networks: [net-ml]
+    networks: [net-ml, net-it]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
