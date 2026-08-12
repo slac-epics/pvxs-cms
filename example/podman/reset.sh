@@ -186,10 +186,14 @@ _check_managers() {
 _check_reads() {
     local ok=no
     for _ in $(seq 1 18); do
+        # Each line is guarded by what it needs, which is a place to ask from AND a
+        # controller to answer. ml:aiExample needs the machine learning controller however
+        # many other places a laboratory has.
         if run_in lab as guest without a certificate pvxget test:aiExample >/dev/null 2>&1 \
-        && { ! _has ml        || run_in ml        as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; } \
+        && { ! _has ml-ioc    || run_in ml        as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; } \
         && { ! _has perimeter || run_in perimeter as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; } \
-        && { ! _has perimeter || run_in perimeter as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; }; then
+        && { ! _has perimeter || ! _has ml-ioc \
+                              || run_in perimeter as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; }; then
             ok=yes; break
         fi
         sleep 5
@@ -197,7 +201,8 @@ _check_reads() {
     [ "${ok}" = yes ] && return 0
     echo "    reading does not work from everywhere yet." >&2
     echo "    Try them one at a time to see which:" >&2
-    echo "        run_in perimeter as guest without a certificate pvxget ml:aiExample" >&2
+    echo "        run_in lab as guest without a certificate pvxget test:aiExample" >&2
+    _has perimeter && echo "        run_in perimeter as guest without a certificate pvxget test:aiExample" >&2
     return 1
 }
 
