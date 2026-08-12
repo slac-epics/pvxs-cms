@@ -553,33 +553,41 @@ run_in lab as guest without a certificate pvxget test:spec
 
 ## 2. The request identifier an administrator checks
 
-The certificate creation request travels in clear text, so an administrator has to be able
-to compare what is on screen against what the requester sent. `authnstd` prints an
-identifier for the requester to quote:
+A request arrives at the certificate manager with a subject on it, and a subject is what the
+asker chose to call itself. What ties the request in front of the administrator to the person
+who made it is a separate identifier, printed to the asker and to nobody else.
 
-Someone outside both departments asks the lab for one. They ask as `visitor`, because a
-certificate manager will not issue a second certificate for a subject it has already
-issued and both departments have a `guest` already:
+Ask under a name nothing has used yet. `--force` is needed because this keychain already holds
+a valid certificate from section 1, and only one fits in it:
 
 ```sh
-run_in perimeter as guest authnstd -u client -n visitor --issuer ${LAB_SKID}
-#   email this Certificate Request ID: MM0C-WTSN-YGY2-FGRV, to your SPVA administrator for approval
+run_in lab as guest authnstd -u client -n visitor --force
+#   email this Certificate Request ID: EPHH-RJJV-A9CE-K996, to your SPVA administrator
+#   Keychain file created   : /home/guest/.config/pva/1.5/client.p12
+#   Certificate identifier  : bf95cd24:14240780177074030135
 ```
 
-The administrator sees the same identifier, in the same grouping, against the request:
+The administrator sees the same identifier against the request, and nothing else that the
+asker could have chosen:
 
 ```sh
 run_in lab-manager as admin pvxcert --review-pending < /dev/null
+#   [1/1] bf95cd24:14240780177074030135
 #     Subject        : CN=visitor,O=epics.org,C=US
 #     Status         : PENDING_APPROVAL
-#     Request ID     : MM0C-WTSN-YGY2-FGRV
+#     Request ID     : EPHH-RJJV-A9CE-K996
+#     Status changed : 2026-08-12 00:55:07 UTC
+#
+#   Nothing to read answers from, and no --all given. Nothing was written.
 ```
 
-It is also a column in the listing:
+`< /dev/null` is what makes it show and stop. Given a terminal it would ask about each in turn,
+which section 6 covers in the laboratory that has enough requests to be worth doing in bulk.
 
-```sh
-run_in lab-manager as admin pvxcert -l
-```
+The subject says `CN=visitor` because that is what was asked for. Anyone may ask for any
+subject; asking is free. The request identifier is what an administrator checks against what
+the person told them out of band, and it is the only thing in that listing the asker could not
+have chosen for themselves.
 
 ## 3. Listing certificates
 
@@ -634,8 +642,8 @@ The same listing is served as standing views a client can subscribe to, named by
 that two certificate managers on one network are never ambiguous:
 
 ```sh
-run_in lab as guest pvxmonitor CERT:LIST:${LAB}:ALL
-run_in lab as guest pvxmonitor CERT:LIST:${LAB}:EXPIRING
+run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:ALL
+run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:EXPIRING
 ```
 
 Those two are open to everyone. The third is not - see section 11.
@@ -663,7 +671,7 @@ still holds a certificate depends on which of section 8's two endings you ran, a
 that already has one cannot ask again:
 
 ```sh
-run_in perimeter as guest authnstd -u client -n reviewer --issuer ${LAB_SKID} --force
+run_in lab as guest authnstd -u client -n reviewer --force
 
 run_in lab-manager as admin pvxcert --review-pending < /dev/null
 #     Subject        : CN=reviewer,O=epics.org,C=US
@@ -684,7 +692,7 @@ outright:
 run_in lab as guest without a certificate pvxcert --review-issued --where "state:VALID" --all --yes
 #   ... FAILED: REVOKED operation not authorized on <identifier> by ca/guest@...
 
-run_in lab as guest without a certificate pvxput CERT:STATUS:${LAB}:0123456789 state=REVOKED
+run_in lab as guest without a certificate pvxput CERT:STATUS:${ROOT}:0123456789 state=REVOKED
 #   ERROR ... REVOKED operation not authorized ... by ca/guest@...
 ```
 
@@ -695,14 +703,14 @@ The view of certificates **awaiting a decision** is gated the same way, at chann
 creation:
 
 ```sh
-run_in lab as guest pvxmonitor CERT:LIST:${LAB}:PENDING_APPROVAL
+run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:PENDING_APPROVAL
 #   Server ... refuses channel to 'CERT:LIST:ba71d9e3:PENDING_APPROVAL' : Refused to create Channel
 ```
 
 while the open views are served to the same user without complaint:
 
 ```sh
-run_in lab as guest pvxmonitor CERT:LIST:${LAB}:ALL
+run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:ALL
 ```
 
 Neither gateway forwards the awaiting-decision view or a certificate status write, because
