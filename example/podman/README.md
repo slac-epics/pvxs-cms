@@ -485,7 +485,7 @@ run_in lab-manager as admin pvxcert --review-pending < /dev/null
 ```
 
 `< /dev/null` is what makes it show and stop. Given a terminal it would ask about each in turn,
-which section 6 covers in the laboratory that has enough requests for that to be worth doing.
+which section 9 covers in the laboratory that has enough requests for that to be worth doing.
 
 The subject says `CN=operator` because that is what was asked for, and asking is free: anyone
 may ask for any subject, including one that belongs to somebody else. Nothing in the request

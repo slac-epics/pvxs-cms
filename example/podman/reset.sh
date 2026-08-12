@@ -112,15 +112,47 @@ _networks()   { podman network ls --format '{{.Name}}' 2>/dev/null | grep -E "^$
 
 _destroy_containers() {
     _compose down >/dev/null 2>&1 || true
-    local ids; ids=$(_containers)
-    [ -n "${ids}" ] && podman rm -f ${ids} >/dev/null 2>&1 || true
+    # Two things make this a loop over one container at a time rather than one command over
+    # all of them:
+    #
+    #   depends_on makes a podman dependency, and 'podman rm -f' refuses a container another
+    #   still depends on - so a single pass leaves behind exactly the services the others
+    #   depend on, which for a laboratory being switched away from are its certificate
+    #   manager and its responder. Those then answer the next laboratory's searches, which
+    #   looks like the new one misbehaving. --depend takes the dependents with it.
+    #
+    #   Removing one that way removes others named later in the same command, and podman
+    #   stops at the first name that has gone rather than passing over it.
+    local pass ids id
+    for pass in 1 2 3; do
+        ids=$(_containers)
+        [ -n "${ids}" ] || return 0
+        for id in ${ids}; do
+            podman rm -f --depend "${id}" >/dev/null 2>&1 || true
+        done
+    done
 }
 
 _destroy_everything() {
     _destroy_containers
+    # Said rather than assumed. Everything above hides its output, because most of what it
+    # reports is a container that was already gone, and a laboratory built on top of another
+    # one's leftovers fails later in ways that point at the wrong thing.
+    local left; left=$(_containers)
+    if [ -n "${left}" ]; then
+        echo "    these containers could not be removed:" >&2
+        podman ps -a --filter "label=io.podman.compose.project=${project}" \
+                     --format '        {{.Names}}  {{.Status}}' >&2
+        echo "    Remove them and run this again:" >&2
+        echo "        podman rm -f --depend \$(podman ps -aq --filter label=io.podman.compose.project=${project})" >&2
+        return 1
+    fi
     local vols nets
+    # shellcheck disable=SC2086
     vols=$(_volumes); [ -n "${vols}" ] && podman volume rm -f ${vols} >/dev/null 2>&1 || true
+    # shellcheck disable=SC2086
     nets=$(_networks); [ -n "${nets}" ] && podman network rm -f ${nets} >/dev/null 2>&1 || true
+    return 0
 }
 
 _bring_up() {
@@ -352,4 +384,15 @@ else
     echo "    a write with no certificate is refused by the controller"
 fi
 echo
-echo "Follow 'Issue the certificates' to go on."
+# Each laboratory has one part of the README to itself, and the walkthrough in another part
+# names places this one may not have. Say which, rather than leaving the reader to find out
+# by running a command that cannot work here.
+case "${topology}" in
+    simple)                    _part="Part 1 - simple" ;;
+    simple-with-gateway)       _part="Part 2 - simple, with a gateway" ;;
+    federated-shared-root)     _part="Part 3 - federated, one facility root" ;;
+    federated-non-shared-root) _part="Part 4 - federated, two independent roots" ;;
+    *)                         _part="the part of README.md named after this laboratory" ;;
+esac
+echo "Its walkthrough is '${_part}' in README.md. Follow that one: another part is written"
+echo "for another laboratory and names places this one has none of."
