@@ -324,12 +324,64 @@ department is in the way.
 ./reset.sh simple
 ```
 
-**This laboratory is drawn but not built yet.** `./reset.sh simple` says so and stops.
-Its picture is `topology/topology-simple.svg`, and what building it needs is written at the
-top of `topologies/simple/compose.yaml`. The walkthroughs below are the ones that belong
-here, carried over from when every walkthrough ran against the one laboratory that existed.
-Their commands still name that laboratory's places in a few spots, and will be corrected
-against this one when it runs.
+Nothing is minted for this laboratory before it starts. The certificate manager finds no
+authority where it is told to look, mints a self-signed one there, and issues every
+certificate under it. That is the whole hierarchy: one authority, and the certificates it
+signs.
+
+> The walkthroughs below were written when the federated laboratory was the only one, and a
+> few of their commands still name its places. They are being corrected against this one.
+
+## Telling this laboratory's holders what to trust
+
+An authority the certificate manager made itself has an identifier nobody chose, and nothing
+may trust an authority it was told about over the very channel it is trying to secure. So
+before anyone can ask for a certificate, the identifier has to reach them another way. This is
+what `./reset.sh` does for you, and it is worth being able to do by hand, because it is what
+an operator does when distributing trust to a machine the laboratory does not manage.
+
+The authority is a keychain the certificate manager wrote, and its identifier is that
+certificate's subject key identifier:
+
+```sh
+run_in lab-manager as admin \
+    openssl pkcs12 -in /home/idm/.local/share/pva/1.5/cert_auth.p12 -nokeys -passin pass: \
+  | openssl x509 -noout -ext subjectKeyIdentifier
+#   X509v3 Subject Key Identifier:
+#       E3:7F:CF:9D:DF:0B:AC:65:D3:30:2B:4D:B5:88:71:F9:6E:E1:01:24
+```
+
+Written the way the tools want it, which is the same digits without separators and in lower
+case:
+
+```sh
+run_in lab-manager as admin bash -c \
+  'openssl pkcs12 -in /home/idm/.local/share/pva/1.5/cert_auth.p12 -nokeys -passin pass: \
+   | openssl x509 -noout -ext subjectKeyIdentifier | tail -1 | tr -d " :" | tr "A-F" "a-f"'
+#   e37fcf9ddf0bac65d3302b4db58871f96ee10124
+```
+
+Both forms of it are wanted, in different places, and `lab_ids` puts them in a shell:
+
+```sh
+lab_ids
+echo "${ROOT}"        # e37fcf9d          names the authority in a process variable name
+echo "${ROOT_SKID}"   # e37fcf9d...0124   establishes trust in it, the first time
+```
+
+The whole forty digits is what a holder needs the first time it asks, because eight is not
+enough to decide which authority is meant. Give it in any of three ways:
+
+```sh
+authnstd -u client --issuer "${ROOT_SKID}"     # once, on this request
+EPICS_PVA_AUTH_ISSUER="${ROOT_SKID}"           # for every request this shell makes
+authnstd --trust-anchor --issuer "${ROOT_SKID}"  # written into the keychain, once and for all
+```
+
+In this laboratory every container is given it at start, in `/etc/epics/issuer`, which a login
+shell reads back - so the walkthrough below needs none of the three. On a machine the
+laboratory does not manage, the third is what you want: the authority is stored in the
+keychain, and nothing has to be told again.
 
 ## 1. What a certificate is worth, one step at a time
 
