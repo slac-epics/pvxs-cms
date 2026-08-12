@@ -317,7 +317,7 @@ ${script}"
 lab_ids() {
     local env_file="${LAB_HELPERS_DIR:-.}/.env"
     if [ ! -r "${env_file}" ]; then
-        echo "no ${env_file} yet - run ./bootstrap.sh first" >&2; return 1
+        echo "no ${env_file} yet - run ./reset.sh <topology> first" >&2; return 1
     fi
     # Two forms, wanted in different places. The short one names an authority in a process
     # variable name, such as CERT:LIST:${LAB}:ALL. The whole one is what establishes trust in
@@ -326,7 +326,10 @@ lab_ids() {
     ML=$(sed -n 's/^ML_ISSUER=//p'  "${env_file}")
     LAB_SKID=$(sed -n 's/^LAB_ISSUER_SKID=//p' "${env_file}")
     ML_SKID=$(sed -n 's/^ML_ISSUER_SKID=//p'  "${env_file}")
-    export LAB ML LAB_SKID ML_SKID
+    # A laboratory with one authority names it $ROOT, and has no departments.
+    ROOT=$(sed -n 's/^ROOT_ISSUER=//p' "${env_file}")
+    ROOT_SKID=$(sed -n 's/^ROOT_ISSUER_SKID=//p' "${env_file}")
+    export LAB ML LAB_SKID ML_SKID ROOT ROOT_SKID
     # Silent: this is also run when the file is sourced, and sourcing should say nothing.
     # Use lab_ids_show to see them.
 }
@@ -345,6 +348,14 @@ lab_ids_show() {
     ml=$(sed -n 's/^ML_ISSUER=//p' "${env_file}")
     lab_skid=$(sed -n 's/^LAB_ISSUER_SKID=//p' "${env_file}")
     ml_skid=$(sed -n 's/^ML_ISSUER_SKID=//p' "${env_file}")
+    # A laboratory with one authority names it differently, and has no departments to show.
+    local root root_skid
+    root=$(sed -n 's/^ROOT_ISSUER=//p' "${env_file}")
+    root_skid=$(sed -n 's/^ROOT_ISSUER_SKID=//p' "${env_file}")
+    if [ -n "${root}" ]; then
+        printf '    %-10s %s\n' "\$ROOT" "${root}" "\$ROOT_SKID" "${root_skid}"
+        return 0
+    fi
     printf '    %-9s %s\n' "\$LAB" "${lab}" "\$ML" "${ml}" "\$LAB_SKID" "${lab_skid}" "\$ML_SKID" "${ml_skid}"
 }
 

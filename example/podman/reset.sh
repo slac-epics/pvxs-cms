@@ -242,6 +242,37 @@ fi
 echo "==> building the laboratory"
 _bring_up
 
+# A laboratory whose certificate manager mints its own authority does not know its issuer id
+# until that has happened. Nothing may trust an authority it was told about over the channel
+# it is trying to establish, so a client refuses to ask until it has been given the id out of
+# band - which is what this does, once the authority exists.
+if [ ! -x "${topology_dir}/mint.sh" ]; then
+    echo "==> reading the issuer id from the authority the certificate manager made"
+    _mgr=$(podman ps --filter "label=com.docker.compose.service=pvxs-lab-pvacms" --format '{{.Names}}' | head -1)
+    _skid=
+    for _ in $(seq 1 18); do
+        _skid=$(podman exec "${_mgr}" bash -c '
+            k=$(dirname "${EPICS_PVACMS_DB}")/cert_auth.p12
+            [ -s "$k" ] || exit 1
+            openssl pkcs12 -in "$k" -nokeys -passin pass: 2>/dev/null               | openssl x509 -noout -ext subjectKeyIdentifier 2>/dev/null               | tail -1 | tr -d " :" | tr "A-F" "a-f"' 2>/dev/null || true)
+        [ -n "${_skid}" ] && break
+        sleep 5
+    done
+    [ -n "${_skid}" ] || { echo "    the certificate manager has not written an authority yet." >&2
+                           echo "    Look at: podman logs ${_mgr}" >&2; exit 1; }
+    { printf 'ROOT_ISSUER=%s\n' "${_skid:0:8}"
+      printf 'ROOT_ISSUER_SKID=%s\n' "${_skid}"; } > "${topology_dir}/issuer_ids.env"
+    cp "${topology_dir}/issuer_ids.env" .env
+
+    # Every place that may ask for a certificate needs it, and a login shell resets the
+    # environment, so the images read it back from this file rather than from the environment.
+    for _svc in $(_compose config --services 2>/dev/null); do
+        _c=$(podman ps --filter "label=com.docker.compose.service=${_svc}" --format '{{.Names}}' | head -1)
+        [ -n "${_c}" ] || continue
+        podman exec "${_c}" bash -c 'mkdir -p /etc/epics && printf "%s" "$1" > /etc/epics/issuer' _ "${_skid}" 2>/dev/null || true
+    done
+fi
+
 # shellcheck source=helpers.sh
 . ./helpers.sh
 lab_ids >/dev/null 2>&1 || true
