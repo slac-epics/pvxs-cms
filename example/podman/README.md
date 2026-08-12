@@ -50,10 +50,10 @@ laboratory that can show it.
 
 | laboratory | walkthrough | what it is |
 |---|---|---|
-| [`simple`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-integration-testing/example/podman/topology/topology-simple.svg) | Part 1 | One segment, one self-signed authority, no boundary to cross |
-| [`simple-with-gateway`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-integration-testing/example/podman/topology/topology-simple-with-gateway.svg) | Part 2 | One laboratory, published at a facility address and reached through a gateway |
-| [`federated-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-integration-testing/example/podman/topology/topology-federated-shared-root.svg) | Part 3 | Two departments under one facility root, with a responder answering for it |
-| [`federated-non-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-integration-testing/example/podman/topology/topology-federated-non-shared-root.svg) | Part 4 | Two departments under two independent roots, every keychain trusting both |
+| [`simple`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-simple.svg) | Part 1 | One segment, one self-signed authority, no boundary to cross |
+| [`simple-with-gateway`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-simple-with-gateway.svg) | Part 2 | One laboratory, published at a facility address and reached through a gateway |
+| [`federated-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-shared-root.svg) | Part 3 | Two departments under one facility root, with a responder answering for it |
+| [`federated-non-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-non-shared-root.svg) | Part 4 | Two departments under two independent roots, every keychain trusting both |
 
 Each picture is one map of its laboratory: every segment, every appliance, the certificate
 authorities with their issuer identifiers, and the full text of every access security file and
@@ -63,7 +63,7 @@ renders full size and zoomable, and every rule is readable there.
 <!-- These are absolute raw.githubusercontent.com addresses: GitHub's in-page navigation fails
 on a relative link with ?raw=true, showing an error page instead of following the redirect.
 Absolute means the branch is hardcoded - update it here when this work moves off
-scratch/fy26-integration-testing. -->
+scratch/fy26-four-topologies. -->
 
 **Only `federated-shared-root` is built today.** The other three are drawn, and `./reset.sh`
 says so and stops when you name one. What building each needs is written at the top of its own
@@ -90,7 +90,7 @@ the image builds reference them by name.
 
 ```sh
 mkdir -p ~/slac && cd ~/slac
-B=scratch/fy26-integration-testing
+B=scratch/fy26-four-topologies
 git clone -b $B --recurse-submodules https://github.com/slac-epics/pvxs-cms.git       pvxs-cms
 git clone -b $B --recurse-submodules https://github.com/slac-epics/pvxs-tls.git       pvxs
 git clone -b $B --recurse-submodules https://github.com/slac-epics/epics-base-tls.git epics-base
@@ -323,6 +323,11 @@ department is in the way.
 ```sh
 ./reset.sh simple
 ```
+
+[![The simple laboratory: one segment carrying a certificate manager, two controllers and a workstation, and one self-signed authority beside it](topology/topology-simple.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-simple.svg)
+
+The picture is wide. Click it to open the raw file, which the browser renders full size and
+zoomable: every access rule and process variable list is readable there.
 
 Nothing is minted for this laboratory before it starts. The certificate manager finds no
 authority where it is told to look, mints a self-signed one there, and issues every
@@ -708,6 +713,11 @@ requests that arrive across it.
 ./reset.sh simple-with-gateway
 ```
 
+[![The simple laboratory published at a facility address: a load balancer and a gateway in the DMZ, the laboratory segment behind them, and a workstation outside](topology/topology-simple-with-gateway.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-simple-with-gateway.svg)
+
+The picture is wide. Click it to open the raw file, which the browser renders full size and
+zoomable: every access rule and process variable list is readable there.
+
 **This laboratory is drawn but not built yet.** `./reset.sh simple-with-gateway` says so and stops.
 Its picture is `topology/topology-simple-with-gateway.svg`, and what building it needs is written at the
 top of `topologies/simple-with-gateway/compose.yaml`. The walkthroughs below are the ones that belong
@@ -903,6 +913,16 @@ the whole facility, which is the last thing this part shows.
 ```sh
 ./reset.sh federated-shared-root
 ```
+
+[![Two departments side by side, each with its own certificate manager and gateway, one facility root above them and a responder answering for it](topology/topology-federated-shared-root.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-shared-root.svg)
+
+The picture is wide. Click it to open the raw file, which the browser renders full size and
+zoomable: every access rule and process variable list is readable there.
+
+There is a second picture of this laboratory, [drawn the way a site would build it](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-shared-root-routed.svg): workstations with one network interface
+and a route, a routing firewall carrying what leaves each department, a load balancer owning
+the facility address, and the responder on an IT segment of its own. It is a design study
+rather than a description - `compose.yaml` builds the one above - and it says so on itself.
 
 ## 7. Two certificate managers, one per department
 
@@ -1420,6 +1440,11 @@ the part that exercises the capability the other three do without.
 ```sh
 ./reset.sh federated-non-shared-root
 ```
+
+[![Two departments side by side under two independent roots, with a keychain below them holding one identity and both roots as trust anchors](topology/topology-federated-non-shared-root.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-non-shared-root.svg)
+
+The picture is wide. Click it to open the raw file, which the browser renders full size and
+zoomable: every access rule and process variable list is readable there.
 
 **This laboratory is drawn but not built yet.** `./reset.sh federated-non-shared-root` says so and stops.
 Its picture is `topology/topology-federated-non-shared-root.svg`, and what building it needs is written at the
