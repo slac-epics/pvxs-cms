@@ -370,9 +370,14 @@ Both forms of it are wanted, in different places, and `lab_ids` puts them in a s
 
 ```sh
 lab_ids
-echo "${ROOT}"        # e37fcf9d          names the authority in a process variable name
-echo "${ROOT_SKID}"   # e37fcf9d...0124   establishes trust in it, the first time
+echo "${ROOT}"        # 39ed6dd4          names the authority where a name needs one
+echo "${ROOT_SKID}"   # 39ed6dd4...  40   establishes trust in it, the first time
 ```
+
+Both are variables in the shell you type in. A command sent into a container is expanded by
+this shell before it gets there, so `"${ROOT_SKID}"` reaches the container as its value - but
+typing the same thing *inside* a container's own shell finds nothing, because `lab_ids` set it
+out here.
 
 The whole forty digits is what a holder needs the first time it asks, because eight is not
 enough to decide which authority is meant. In this laboratory every container is given it at
@@ -522,8 +527,13 @@ the authority so that it is never ambiguous:
 
 ```sh
 # a monitor runs until you stop it: Ctrl-C to come back
-run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:ALL
+run_in lab as guest pvxmonitor CERT:LIST:ALL
 ```
+
+The name has no authority in it. Where two certificate managers share a network each view is
+named by issuer, `CERT:LIST:<issuer>:ALL`, so a request is never ambiguous. Here there is one
+manager and nothing to be ambiguous about, so the plain name is the one to use - and it is a
+name, not a shell variable, so it means the same typed anywhere.
 
 **Take one away and watch it stop working.** Revoke the operator's certificate, the one it
 just wrote `test:spec` with:
@@ -649,11 +659,11 @@ that two certificate managers on one network are never ambiguous:
 
 ```sh
 # a monitor runs until you stop it: Ctrl-C to come back
-run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:ALL
+run_in lab as guest pvxmonitor CERT:LIST:ALL
 ```
 
 ```sh
-run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:EXPIRING
+run_in lab as guest pvxmonitor CERT:LIST:EXPIRING
 ```
 
 Those two are open to everyone. The third is not - see section 11.
@@ -702,6 +712,7 @@ outright:
 run_in lab as guest without a certificate pvxcert --review-issued --where "state:VALID" --all --yes
 #   ... FAILED: REVOKED operation not authorized on <identifier> by ca/guest@...
 
+lab_ids   # ${ROOT} is a variable in this shell, not in the container
 run_in lab as guest without a certificate pvxput CERT:STATUS:${ROOT}:0123456789 state=REVOKED
 #   ERROR ... REVOKED operation not authorized ... by ca/guest@...
 ```
@@ -714,14 +725,14 @@ creation:
 
 ```sh
 # a monitor runs until you stop it: Ctrl-C to come back
-run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:PENDING_APPROVAL
+run_in lab as guest pvxmonitor CERT:LIST:PENDING_APPROVAL
 #   Server ... refuses channel to 'CERT:LIST:ba71d9e3:PENDING_APPROVAL' : Refused to create Channel
 ```
 
 while the open views are served to the same user without complaint:
 
 ```sh
-run_in lab as guest pvxmonitor CERT:LIST:${ROOT}:ALL
+run_in lab as guest pvxmonitor CERT:LIST:ALL
 ```
 
 Neither gateway forwards the awaiting-decision view or a certificate status write, because
