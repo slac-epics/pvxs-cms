@@ -477,71 +477,79 @@ holder that has neither refuses to ask at all.
 
 ## 1. What a certificate is worth, one step at a time
 
-Access widens in steps, and each step is a separate condition in the access file. Walking
-them in order shows what each one buys. All of these run from a lab workstation except where
-they say otherwise.
+Everything so far has been read without a certificate, because reading is open here. Writing
+is not, and this laboratory has one authority and one segment, so what a certificate is worth
+comes down to two questions: whether the holder has one at all, and which user access group
+its common name falls in.
 
-**No certificate: nothing is writable.** That is the baseline above, and it holds for every
-process variable, ordinary or special.
-
-**A certificate, in its own department: ordinary variables open up.** The rule for them
-names lab guests and operators, so either may write:
+Nothing has been issued yet. Ask for the two people, and for both controllers, then approve
+the four together:
 
 ```sh
-run_in lab as guest    pvxput test:stringExample "from the guest"
-run_in lab as operator pvxput test:stringExample "from the operator"
+run_in lab as guest    authnstd -u client
+run_in lab as operator authnstd -u client
+run_in testioc as testioc authnstd -u ioc
+run_in tstioc  as tstioc  authnstd -u ioc
+
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 ```
 
-**A special variable narrows that to operators.** `test:spec` carries its own access group,
-which names operators and not guests, so a guest holding a perfectly good certificate is
-still refused:
+A controller reads its keychain when it starts and was already running when its certificate
+arrived, so it goes on serving plain traffic until it is restarted. Restart both, or every
+write below is refused for a reason that has nothing to do with the rule being tested:
 
 ```sh
+podman-compose -p podman -f topologies/simple/compose.yaml \
+    restart pvxs-lab-testioc pvxs-lab-tstioc
+```
+
+Now the four outcomes the access file describes. `testioc.acf` puts operators and guests in
+the default group, operators alone on `test:spec`, and lets any certificate at all write
+`test:open`:
+
+```sh
+run_in lab as guest    pvxput test:stringExample "from the guest"      # written
+run_in lab as operator pvxput test:stringExample "from the operator"   # written
+run_in lab as operator pvxput test:spec 22                             # written
+run_in lab as guest    pvxput test:open 33                             # written
+
 run_in lab as guest    pvxput test:spec 11
 #   ERROR ... Put not permitted
-run_in lab as operator pvxput test:spec 22
 ```
 
-**From another zone, only what a gateway carries a write for crosses at all.** A gateway's
-list marks those individually; everything else it forwards is readable and not writable,
-however good the certificate is:
+Only the last is refused, and it is refused by the controller rather than anywhere else,
+because there is nowhere else: one segment, and the holder is on it. The guest holds a
+perfectly good certificate from this laboratory's own authority. What it lacks is membership
+of the group the rule names:
 
 ```sh
-run_in perimeter as operator pvxput test:stringExample "from outside"
-#   ERROR ... Put permission denied by gateway
+run_in testioc as testioc cat /home/testioc/testioc.acf
+#   UAG(OPERATORS) {
+#       "operator"
+#   }
+#
+#   UAG(GUESTS) {
+#       "guest"
+#   }
+#
+#   ASG(SPECIAL) {                          test:spec
+#       RULE(1,READ)
+#       RULE(1,WRITE,TRAPWRITE) {
+#           UAG(OPERATORS)
+#           AUTHORITY(EPICS_CA)
+#           PROTOCOL(TLS)
+#           METHOD(X509)
+#       }
+#   }
 ```
 
-Each department marks one variable that any certificate holder may write, and the two make
-the point in both directions. Neither of these people is an operator:
+Reading is untouched by any of it. The value the operator wrote comes back to someone holding
+nothing at all:
 
 ```sh
-run_in lab as guest pvxput ml:open   11      # a lab guest, into the machine learning department
-run_in ml  as guest pvxput test:open 22      # a machine learning guest, into the lab
+run_in lab as guest without a certificate pvxget test:spec
+#   value double = 22
 ```
-
-Who may write them is decided at the **gateway**, not at the controller. A gateway makes its
-upstream connection as itself, so what the controller sees is the gateway rather than the
-person behind it; the controller's rule therefore names the gateways, and the gateway's rule
-is the one that names nobody and asks only for a certificate. Opening the variable up at the
-controller does not open it to anyone the gateway would have turned away.
-
-**A variable that crosses may still name who may write it.** `test:spec` is carried across
-too, and names operators, so the same guest is refused where an operator is not:
-
-```sh
-run_in ml as guest    pvxput test:spec 33
-#   ERROR ... Put permission denied by gateway
-run_in perimeter as operator pvxput test:spec 33
-```
-
-That last write is the one section 4 is about: it came from outside both departments,
-holding a certificate the *other* department issued, and it succeeded.
-
-**And a variable may narrow further still, to what the certificate says about its holder.**
-That is "Narrowing a write to a unit, not a department", below.
-
-Read is untouched throughout. Every one of these variables can be read by anyone, from
-anywhere, with nothing at all.
 
 ## 2. The request identifier an administrator checks
 
