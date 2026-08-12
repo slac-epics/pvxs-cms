@@ -522,6 +522,18 @@ run_in testioc as testioc cat /home/testioc/testioc.acf
 #   }
 ```
 
+**Who answered.** `pvxinfo -v` ends with the identity of the peer it reached. Here that is the
+controller itself, because nothing stands between them - worth noting now, because Part 2 asks
+the same question through a gateway and gets a different answer:
+
+```sh
+run_in lab as operator pvxinfo -v test:open
+#   # TLS x509:3526ff13:1694782238910258531:EPICS Root Certificate Authority/testioc@10.89.0.71:5076
+```
+
+The name after the authority is the certificate the controller presented, and the address is
+where it is. On one segment, with nothing in between, they name the same machine.
+
 **What the certificate manager holds**, as a standing view anyone may subscribe to. The guest
 still holds the certificate approved a moment ago, so it can ask as itself:
 
@@ -777,9 +789,9 @@ manager, by somebody the certificate manager's own access file names.
 # Part 2 - simple, with a gateway
 
 The same laboratory, published at a facility address. A gateway stands in the DMZ and proxies
-inward, and a load balancer owns the address and maps a port to the gateway. Everything here
-is about the boundary: what crosses it, what does not, and what an administrator does with
-requests that arrive across it.
+inward; a load balancer owns the address and maps a port to the gateway. Nothing inside
+originates traffic outward, so there is no router here: every crossing is inbound, and the
+gateway is the only thing that crosses.
 
 ```sh
 ./reset.sh simple-with-gateway
@@ -790,190 +802,166 @@ requests that arrive across it.
 The picture is wide. Click it to open the raw file, which the browser renders full size and
 zoomable: every access rule and process variable list is readable there.
 
-**This laboratory is drawn but not built yet.** `./reset.sh simple-with-gateway` says so and stops.
-Its picture is `topology/topology-simple-with-gateway.svg`, and what building it needs is written at the
-top of `topologies/simple-with-gateway/compose.yaml`. The walkthroughs below are the ones that belong
-here, carried over from when every walkthrough ran against the one laboratory that existed.
-Their commands still name that laboratory's places in a few spots, and will be corrected
-against this one when it runs.
+## 5. Reaching the laboratory from outside it
 
-## 5. Crossing a boundary is only possible through a gateway
-
-Inside a department, a client talks to its controllers directly:
+The workstation outside knows one address and one port. It has never heard of the gateway, and
+it cannot reach the laboratory segment at all:
 
 ```sh
-run_in lab as guest pvxget test:aiExample
+run_in perimeter as guest sh -c 'echo ${EPICS_PVA_NAME_SERVERS}'
+#   facility:5075
 ```
 
-From outside both departments, the same read has to cross a gateway, and does:
+`facility` is the load balancer. It is HAProxy in `tcp` mode: it maps a port to a gateway and
+forwards the stream without looking inside it, which is what layer 4 means. Its configuration
+is `topologies/simple-with-gateway/config/haproxy.cfg`, and the part that matters is two pairs:
+
+- `frontend pva_plain` binds `:5075` and its backend is `pvxs-lab-gateway:5075`
+- `frontend pva_tls` binds `:5076` and its backend is `pvxs-lab-gateway:5076`
+
+Both port numbers are the same on each line, deliberately. A server names its own port in a
+search reply and the client then dials that port on the address the reply came from, so a
+client answered "come back on 5075" would land on whatever 5075 maps to. Translate the port
+and it lands somewhere else.
+
+**Everything the laboratory has is issued as in Part 1, and the gateway needs one too.** It
+asks for an `ioc` certificate rather than a `server` one, because it is a server to the
+workstation outside and a client to the controllers, and only an `ioc` certificate is both:
+
+```sh
+run_in lab as guest    authnstd -u client
+run_in lab as operator authnstd -u client
+run_in testioc as testioc authnstd -u ioc
+run_in tstioc  as tstioc  authnstd -u ioc
+run_in gateway as gateway authnstd -u ioc
+
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+```
+
+The workstation outside asks too, and this is the first proof the path works: its request
+crosses the load balancer and the gateway to reach a certificate manager it cannot address.
+It asks under a name of its own, because the laboratory already has a `guest` and a
+certificate manager refuses a second certificate for a subject it has issued:
+
+```sh
+run_in perimeter as guest authnstd -u client -n remote
+#   email this Certificate Request ID: CSCS-DCQV-WJQ9-JPZT, to your SPVA administrator
+#   Certificate identifier  : b1d050ed:17275979695046077977
+
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+```
+
+Restart the three that read a keychain at start:
+
+```sh
+podman-compose -p podman -f topologies/simple-with-gateway/compose.yaml \
+    restart pvxs-lab-testioc pvxs-lab-tstioc pvxs-lab-gateway
+```
+
+Now read across the boundary:
 
 ```sh
 run_in perimeter as guest pvxget test:aiExample
-run_in perimeter as guest pvxget ml:aiExample
+#   value double = 4
 ```
 
-And a lab client reaching the other department goes through that department's gateway:
+## 6. Who the controller thinks you are
+
+This is the part that differs from Part 1, and it changes which rules apply. `pvxinfo -v` ends
+with the identity of the peer it reached, so ask the same question from both sides.
+
+From inside the laboratory, the peer is the controller itself:
 
 ```sh
-run_in lab as guest pvxget ml:aiExample
+run_in lab as operator pvxinfo -v test:open
+#   # TLS x509:3526ff13:1694782238910258531:EPICS Root Certificate Authority/testioc@10.89.0.71:5076
 ```
 
-A gateway is the only route. Every direct approach is refused:
+From outside, the peer is the **gateway**, at the load balancer's address:
 
 ```sh
-run_in lab       as guest getent hosts pvxs-lab-ml        # other department's manager
-run_in lab       as guest getent hosts pvxs-lab-ml-ioc    # other department's controller
-run_in perimeter as guest getent hosts pvxs-lab-pvacms    # a certificate manager
-run_in perimeter as guest getent hosts pvxs-lab-ml
+run_in perimeter as guest pvxinfo -v test:open
+#   # TLS x509:3526ff13:3528026900444958368:EPICS Root Certificate Authority/gateway@10.89.4.10:5076
 ```
 
-podman enforces the separation itself: a container reaches only the networks it is
-attached to. Only the two gateways sit on a department network **and** the perimeter.
+Two things in one line. The identity is `gateway`, because the secure connection is
+established with the gateway and terminates there; the address is `10.89.4.10`, the load
+balancer's, because that is the path the bytes took. Identity comes from the certificate
+presented, and the address from the route, and they name different machines.
 
-What a gateway carries is exactly what its list names - its department's controllers, and
-its department's certificate traffic keyed by issuer id:
+**So a request that crosses is judged twice, against two different files.**
+
+The gateway judges you. It sees your certificate, and `gateway.acf` decides what may cross:
 
 ```sh
-run_in gateway as gateway cat /home/gateway/gateway.pvlist
-#   test:.* ALLOW                                 its controllers, readable
-#   tst:.* ALLOW
-#   test:spec ALLOW SPECIAL                       writable, to a certificate from either department
-#   test:open ALLOW OPEN_WRITE                    writable, to any certificate at all
-#   CERT:CREATE:<lab>(?::.*)? ALLOW CERT_CREATE   ask this department for a certificate
-#   CERT:STATUS:<lab>(?::.*)? ALLOW CERT_STATUS   check one it issued
-#   CERT:LIST:<lab>:ALL ALLOW CERT_STATUS         the two open views
-#   CERT:LIST:<lab>:EXPIRING ALLOW CERT_STATUS
-run_in ml-gateway as gateway cat /home/gateway/gateway.pvlist
+run_in gateway as gateway cat /home/gateway/gateway.acf
+#   UAG(USERS)         { "guest", "operator", "remote" }
+#   UAG(SPECIAL_USERS) { "operator" }
+#
+#   ASG(DEFAULT)    { RULE(1,READ)  { UAG(USERS) ... } }
+#   ASG(SPECIAL)    { RULE(1,READ)  { UAG(USERS) ... }
+#                     RULE(1,WRITE) { UAG(SPECIAL_USERS) ... } }
+#   ASG(OPEN_WRITE) { RULE(1,READ)  { AUTHORITY(EPICS_CA) ... }
+#                     RULE(1,WRITE) { AUTHORITY(EPICS_CA) ... } }
 ```
 
-Each names its **own** issuer only, so a request for the other department's certificates is
-not claimed by the wrong gateway. The view of certificates awaiting a decision appears in
-neither list, for the reason in section 11.
+The controller then judges the **gateway**, because that is who is asking it. It never sees
+you at all, which is why `testioc.acf` cannot express anything about who you are.
 
-## 6. Approving, in batches or one at a time
-
-There are two separate questions - *what is the decision* and *are you sure* - and `--all`
-and `--yes` answer one each. That gives four ways of working, from reading every request to
-approving a hundred without being asked anything, and you choose how far to go.
-
-Section 5's request is still waiting - it was shown, not decided - and the walk below needs
-more than one, to show what `skip` and `stop` leave behind. So ask for one more, under a
-name nobody has been issued, from the one place that can ask the lab department without
-already holding one of its certificates:
+Which variable you write decides where you are stopped:
 
 ```sh
-run_in perimeter as guest authnstd -u client -n trainee --issuer ${LAB_SKID} --force
+run_in perimeter as guest pvxput test:stringExample 9
+#   ERROR ... Put permission denied by gateway
+
+run_in perimeter as guest pvxput test:spec 9
+#   ERROR ... Put permission denied by gateway
+
+run_in perimeter as guest pvxput test:open 9
+#   written
 ```
 
-`--force` because that keychain already holds section 5's request and only one fits in it.
-What matters here is the pair the certificate manager now has waiting, not what the
-requester kept: `visitor` and `trainee` are separate subjects, and neither has been decided.
+The first two never left the DMZ. `config/gateway.pvlist` maps `test:stringExample` to
+`ASG(DEFAULT)`, which grants read and nothing else, and `test:spec` to `ASG(SPECIAL)`, which
+grants write only to `UAG(SPECIAL_USERS)` - `operator`, and this holder is `remote`.
 
-**Neither.** Each certificate in turn, with its subject and its request identifier in front
-of you, and a decision for each. The prompts are read from a terminal, so open a shell and
-answer them yourself:
+The third crossed, and then had to satisfy the controller as well. `test:open` is
+`ASG(OPEN_WRITE)` at the gateway, which any certificate holder may write, and `ASG(OPEN)` at
+the controller, whose rule names an authority and no user group at all:
 
 ```sh
-run_in lab-manager as admin
-#   [admin@lab-manager] > pvxcert --review-pending
+run_in testioc as testioc cat /home/testioc/testioc.acf
+#   ASG(OPEN) {
+#       RULE(1,READ)
+#       RULE(1,WRITE,TRAPWRITE) {
+#           AUTHORITY(EPICS_CA)      <- any certificate this laboratory issued
+#           PROTOCOL(TLS)
+#           METHOD(X509)
+#       }
+#   }
 ```
 
-```
-Compare the request identifier shown below against the one the requester sent you before approving.
-
-[1/2] ba71d9e3:02665075835003669104
-  Subject        : CN=visitor,O=epics.org,C=US
-  Status         : PENDING_APPROVAL
-  Request ID     : VY14-FM0S-3HTV-V77Q
-  Status changed : 2026-08-06 21:27:38 UTC
-  approve / deny / skip / stop / cancel ? approve
-
-[2/2] ba71d9e3:01457147623119291338
-  Subject        : CN=trainee,O=epics.org,C=US
-  Status         : PENDING_APPROVAL
-  Request ID     : Y6W7-HZMY-FX8R-R65E
-  Status changed : 2026-08-06 21:27:37 UTC
-  approve / deny / skip / stop / cancel ? skip
-
-About to change 1 certificate:
-  ba71d9e3:02665075835003669104  CN=visitor,O=epics.org,C=US
-      PENDING_APPROVAL -> VALID  (APPROVE)
-  The certificate manager decides the final value for an approval, from the certificate's own dates.
-
-Apply these 1 changes? [y/N]
-```
-
-The five answers differ in what they leave behind. `skip` moves on and decides this one
-another day; `stop` keeps the decisions made so far and stops asking about the rest;
-`cancel` abandons everything, written or not. `a`, `d` and `c` are accepted as shorthand,
-but **`s` is refused** - it begins both `skip` and `stop`, and getting those two the wrong
-way round is not something to guess at.
-
-**`--all` alone.** One decision for every certificate, without being asked each time - but
-still shown what that means, and still asked once:
+`CN=gateway` satisfies that, so the write lands. Read it back from inside to be sure it did:
 
 ```sh
-run_in lab-manager as admin pvxcert --review-pending --all approve
+run_in lab as guest without a certificate pvxget test:open
+#   value double = 9
 ```
 
-```
-About to change 2 certificates:
-  ba71d9e3:02665075835003669104  CN=visitor,O=epics.org,C=US
-      PENDING_APPROVAL -> VALID  (APPROVE)
-  ba71d9e3:01457147623119291338  CN=trainee,O=epics.org,C=US
-      PENDING_APPROVAL -> VALID  (APPROVE)
-  The certificate manager decides the final value for an approval, from the certificate's own dates.
-
-Apply these 2 changes? [y/N] n
-Cancelled. Nothing was written.
-```
-
-Every certificate is named, with the status it holds now and the status it would hold, so
-the confirmation is a last chance to read the list rather than a formality. It defaults to
-no: pressing return changes nothing.
-
-`--all` here means every certificate awaiting a decision, and a pending review cannot be
-narrowed: `--where` applies to `--list` and to `--review-issued`, and asking for it with
-`--review-pending` is refused rather than quietly ignored. To approve part of a batch, go
-through them one at a time and `skip` the rest.
+The same three writes from inside all succeed, because the controller is looking at
+`CN=operator` rather than `CN=gateway`, and `UAG(OPERATORS)` names it:
 
 ```sh
-run_in lab-manager as admin pvxcert --review-pending --where "name:trainee" --all approve
-#   Error: --where, --pending and --expiring only apply to --list and --review-issued.
+run_in lab as operator pvxput test:stringExample 3    # written
+run_in lab as operator pvxput test:spec 3             # written
+run_in lab as operator pvxput test:open 3             # written
 ```
 
-**Both.** No questions at all, for a script or a hundred controllers coming up at once:
-
-```sh
-run_in lab-manager as admin pvxcert --review-pending --all approve --yes
-run_in lab-manager as admin pvxcert --review-pending --all deny --yes
-```
-
-This approves without putting a single request identifier in front of anyone, which is the
-one thing that identifier exists for. The tool says so rather than assuming you meant it.
-
-Whichever way is used, nothing is written until that final point, and every decided
-certificate is re-read just before the write. Any that changed since the listing is dropped
-and reported rather than written over.
-
-**One known certificate**, when you already have its identifier:
-
-```sh
-run_in lab-manager as admin pvxcert -A "${LAB}:0123456789"      # approve
-run_in lab-manager as admin pvxcert -D "${LAB}:0123456789"      # deny
-```
-
-With no terminal to read answers from and no `--all`, the listing is printed, nothing is
-written, and the exit code is 3 - asking for an interactive run with nothing able to answer
-is a command line mistake rather than something to guess at:
-
-```sh
-run_in lab-manager as admin pvxcert --review-pending < /dev/null ; echo "exit $?"
-#   exit 3
-```
-
-With nothing waiting for a decision there is nothing to be mistaken about, so the same
-command reports that and exits 0.
+That is the whole difference a gateway makes. Inside, a rule may name you. Outside, the
+controller's rules can only name the gateway, so anything about *you* has to be said in the
+gateway's own file, and the controller has to be willing to accept whatever the gateway
+forwards. Granting a controller's variable to `AUTHORITY` with no user group, as `test:open`
+does, is how you say "and I accept it through the gateway too".
 
 # Part 3 - federated, one facility root
 
