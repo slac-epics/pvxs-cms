@@ -7,11 +7,11 @@
 <rect x="40" y="1154" width="2283" height="1290" rx="10" fill="#E8EAF6" stroke="#3949AB" stroke-width="1.6"/>
 <path d="M 40 1164 a10 10 0 0 1 10 -10 h2263 a10 10 0 0 1 10 10 v34 h-2283 z" fill="#3949AB" fill-opacity="0.92"/>
 <circle cx="57" cy="1181" r="2.6" fill="white"/><circle cx="67" cy="1181" r="2.6" fill="white"/><circle cx="62" cy="1171" r="2.6" fill="white"/><path d="M 62 1171 L 57 1181 M 62 1171 L 67 1181 M 57 1181 H 67" stroke="white" stroke-width="1.4"/>
-<text x="80" y="1182" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">net-lab   10.89.0.0/24   bridge   -   Lab zone (accelerator)</text>
+<text x="80" y="1182" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">net-lab   10.89.0.0/24   bridge, isolated   -   Lab zone (accelerator)</text>
 <rect x="2413" y="1154" width="1613" height="1290" rx="10" fill="#E0F2F1" stroke="#00897B" stroke-width="1.6"/>
 <path d="M 2413 1164 a10 10 0 0 1 10 -10 h1593 a10 10 0 0 1 10 10 v34 h-1613 z" fill="#00897B" fill-opacity="0.92"/>
 <circle cx="2430" cy="1181" r="2.6" fill="white"/><circle cx="2440" cy="1181" r="2.6" fill="white"/><circle cx="2435" cy="1171" r="2.6" fill="white"/><path d="M 2435 1171 L 2430 1181 M 2435 1171 L 2440 1181 M 2430 1181 H 2440" stroke="white" stroke-width="1.4"/>
-<text x="2453" y="1182" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">net-ml   10.89.1.0/24   bridge   -   ML zone</text>
+<text x="2453" y="1182" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">net-ml   10.89.1.0/24   bridge, isolated   -   ML zone</text>
 <rect x="1307.0" y="90" width="421" height="240" rx="10" fill="#FFF8E1" stroke="#FFB300" stroke-width="1.6"/>
 <path d="M 1307.0 100 a10 10 0 0 1 10 -10 h401 a10 10 0 0 1 10 10 v34 h-421 z" fill="#FFB300" fill-opacity="0.92"/>
 <circle cx="1324.0" cy="117" r="2.6" fill="white"/><circle cx="1334.0" cy="117" r="2.6" fill="white"/><circle cx="1329.0" cy="107" r="2.6" fill="white"/><path d="M 1329.0 107 L 1324.0 117 M 1329.0 107 L 1334.0 117 M 1324.0 117 H 1334.0" stroke="white" stroke-width="1.4"/>
@@ -477,16 +477,19 @@
 <text x="1895.25" y="973" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    it. The gateway loses nothing by that: it authorises on the</text>
 <text x="1895.25" y="988" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    certificate presented, not on the address it came from.</text>
 </g>
-<g><rect x="2415.25" y="819" width="476" height="179" rx="8" fill="#FFEBEE" stroke="#E53935" stroke-width="1.4"/>
-<path d="M 2415.25 827 a8 8 0 0 1 8 -8 h460 a8 8 0 0 1 8 8 v22 h-476 z" fill="#E53935"/>
-<circle cx="2432.25" cy="834" r="7" fill="none" stroke="white" stroke-width="1.8"/><path d="M 2426.75 834 h3 l1.6 -3.6 l2.4 7 l1.6 -3.4 h2.4" stroke="white" stroke-width="1.6" fill="none"/>
-<text x="2447.25" y="839" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-authority-status</text>
-<text x="2427.25" y="868" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: OCSP responder for the Facility Root CA</text>
-<text x="2427.25" y="883" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm</text>
-<text x="2427.25" y="898" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-it         10.89.3.0/24</text>
-<text x="2427.25" y="913" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">An IT service, on the facility's own segment: it belongs to</text>
-<text x="2427.25" y="928" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    neither department, as the root does not. Both certificate</text>
-<text x="2427.25" y="943" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    managers stand on this segment to ask it</text>
+<g><rect x="2415.25" y="774" width="476" height="224" rx="8" fill="#FFEBEE" stroke="#E53935" stroke-width="1.4"/>
+<path d="M 2415.25 782 a8 8 0 0 1 8 -8 h460 a8 8 0 0 1 8 8 v22 h-476 z" fill="#E53935"/>
+<circle cx="2432.25" cy="789" r="7" fill="none" stroke="white" stroke-width="1.8"/><path d="M 2426.75 789 h3 l1.6 -3.6 l2.4 7 l1.6 -3.4 h2.4" stroke="white" stroke-width="1.6" fill="none"/>
+<text x="2447.25" y="794" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-authority-status</text>
+<text x="2427.25" y="823" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: OCSP responder for the Facility Root CA</text>
+<text x="2427.25" y="838" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm</text>
+<text x="2427.25" y="853" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-it         10.89.3.0/24</text>
+<text x="2427.25" y="868" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">An IT service, on the facility's own segment: it belongs to</text>
+<text x="2427.25" y="883" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    neither department, as the root does not. Both certificate</text>
+<text x="2427.25" y="898" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    managers stand on this segment to ask it, and nothing else in</text>
+<text x="2427.25" y="913" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    the laboratory does, so nothing else can reach it at all</text>
+<text x="2427.25" y="928" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Answers one request at a time - it is openssl ocsp, not a server -</text>
+<text x="2427.25" y="943" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    so two probes at once will show one of them refused</text>
 <text x="2427.25" y="958" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/8888 OCSP over HTTP</text>
 <text x="2427.25" y="973" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Program: openssl ocsp, under supervisor with a watchdog</text>
 <text x="2427.25" y="988" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt</text>
@@ -495,9 +498,9 @@
 <path d="M 2333.0 248 L 2333.0 264 L 2276.5 264 L 2276.5 291" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 2333.0 248 L 2333.0 264 L 2644.0 264 L 2644.0 291" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
 <text x="2341.0" y="278" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">signs</text>
-<path d="M 2491.0 196.0 L 2918.0 196.0 L 2918.0 843 L 2894.25 843" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 2491.0 196.0 L 2918.0 196.0 L 2918.0 798 L 2894.25 798" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
 <text x="2924.0" y="288.5" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">names</text>
-<path d="M 2644.0 368 L 2644.0 459 L 2475.25 459 L 2475.25 816" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 2644.0 368 L 2644.0 459 L 2475.25 459 L 2475.25 771" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
 <text x="2652.0" y="455" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">signs its answers</text>
 <path d="M 1396.5 1038 L 3269.5 1038" fill="none" stroke="#FB8C00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 1436.5 1038 L 1436.5 1212" fill="none" stroke="#FB8C00" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
@@ -534,10 +537,10 @@
 <path d="M 1448.5 1496 L 1448.5 1806 L 1662.0 1806 L 1662.0 1834" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 3217.5 1481 L 3217.5 1818 L 3037.5 1818 L 3037.5 1834" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 3241.5 1481 L 3241.5 1806 L 3385.0 1806 L 3385.0 1834" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
-<rect x="40" y="90" width="1002" height="721" rx="10" fill="white" stroke="#B0BEC5" stroke-width="1.4"/>
+<rect x="40" y="90" width="1002" height="826" rx="10" fill="white" stroke="#B0BEC5" stroke-width="1.4"/>
 <path d="M 40 100 a10 10 0 0 1 10 -10 h982 a10 10 0 0 1 10 10 v20 h-1002 z" fill="#455A64"/>
 <text x="54" y="110" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" font-weight="bold" fill="white">Legend</text>
-<line x1="541.0" y1="128" x2="541.0" y2="801" stroke="#CFD8DC" stroke-width="1"/>
+<line x1="541.0" y1="128" x2="541.0" y2="906" stroke="#CFD8DC" stroke-width="1"/>
 <rect x="54" y="130" width="14" height="14" rx="3" fill="#5E35B1"/>
 <text x="78" y="141" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">CA or certificate - a file, on no network</text>
 <rect x="54" y="154" width="14" height="14" rx="3" fill="#E53935"/>
@@ -570,46 +573,53 @@
 <line x1="54" y1="530" x2="94" y2="530" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4"/>
 <text x="104" y="534" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a file the component loads</text>
 <text x="558" y="140" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Notation</text>
-<text x="558" y="155" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">10.89.0.0/24 : the segment, in CIDR. Five podman bridges. What a</text>
-<text x="558" y="170" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               segment separates is discovery and naming, not</text>
-<text x="558" y="185" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               routing: a broadcast search does not leave the</text>
-<text x="558" y="200" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               segment it was sent to, and podman answers a name</text>
-<text x="558" y="215" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               only for a container sharing a segment with the</text>
-<text x="558" y="230" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               asker. The host forwards between the bridges and</text>
-<text x="558" y="245" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               permits everything, so it is this laboratory's</text>
-<text x="558" y="260" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               router, and a router with no policy in it. Every</text>
-<text x="558" y="275" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               request stopped below is stopped by an access rule</text>
-<text x="558" y="290" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               or by a gateway, which is where a site puts those</text>
-<text x="558" y="305" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               decisions too. See the routed picture for what a</text>
-<text x="558" y="320" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               site would build instead.</text>
-<text x="558" y="335" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0, eth1   : the host's interface on each segment. A host on</text>
-<text x="558" y="350" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               more than one is marked dual-homed</text>
-<text x="558" y="365" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/5075     : PVAccess, plaintext</text>
-<text x="558" y="380" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/5076     : PVAccess over TLS</text>
-<text x="558" y="395" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">udp/5076     : PVAccess search and beacons, sent to the</text>
-<text x="558" y="410" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               segment broadcast address</text>
-<text x="558" y="425" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/8888     : OCSP over HTTP, to the responder</text>
-<text x="558" y="440" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
-<text x="558" y="455" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">The segment CIDRs are pinned in compose.yaml, so they are</text>
-<text x="558" y="470" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">these on every laboratory. Host addresses within a segment are</text>
-<text x="558" y="485" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">assigned by podman when a container starts and are not fixed:</text>
-<text x="558" y="500" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">per-container addresses cannot be set, because podman refuses</text>
-<text x="558" y="515" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">them on a container attached to more than one segment.</text>
-<text x="558" y="540" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Abbreviations</text>
-<text x="558" y="555" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">CA     : certificate authority</text>
-<text x="558" y="570" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">SKID   : subject key identifier, 40 hex digits</text>
-<text x="558" y="585" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Issuer ID: the first 8 digits of a SKID</text>
-<text x="558" y="600" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS : certificate manager</text>
-<text x="558" y="615" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC    : input output controller</text>
-<text x="558" y="630" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF    : access security file</text>
-<text x="558" y="645" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVList : gateway process variable list</text>
-<text x="558" y="660" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP   : online certificate status protocol</text>
-<text x="558" y="675" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">AIA    : authority information access extension</text>
-<text x="558" y="690" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ML     : machine learning</text>
-<text x="558" y="715" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">A line claims attachment, not direction.</text>
-<text x="558" y="730" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">Arrowheads only where a direction is real.</text>
-<text x="558" y="745" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve"></text>
-<text x="558" y="760" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">LAB_ISSUER, ML_ISSUER and the _SKID forms are</text>
-<text x="558" y="775" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">named, not printed: a fresh mint changes them.</text>
-<text x="558" y="790" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">Values: issuer_ids.env</text>
+<text x="558" y="155" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">10.89.0.0/24 : the segment, in CIDR. Five podman bridges, each</text>
+<text x="558" y="170" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               carrying isolate=true in compose.yaml, so podman</text>
+<text x="558" y="185" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               drops a packet sent from one segment to a host on</text>
+<text x="558" y="200" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               another. Nothing here reaches another segment by</text>
+<text x="558" y="215" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               addressing it. What crosses does so through a</text>
+<text x="558" y="230" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               container standing on both sides, and there are</text>
+<text x="558" y="245" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               five of those - every one is drawn.</text>
+<text x="558" y="260" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               A broadcast search does not leave its segment, and</text>
+<text x="558" y="275" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               podman answers a name only for a container that</text>
+<text x="558" y="290" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               shares one with the asker. That is why the</text>
+<text x="558" y="305" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               balancer stands on four segments and each</text>
+<text x="558" y="320" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               certificate manager on two: not to carry traffic,</text>
+<text x="558" y="335" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               but so the name they are called by can be</text>
+<text x="558" y="350" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               answered where it is asked.</text>
+<text x="558" y="365" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               A routing firewall would enforce the same</text>
+<text x="558" y="380" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               separation and could permit single ports across</text>
+<text x="558" y="395" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               it, which isolate=true cannot: it is all or</text>
+<text x="558" y="410" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               nothing. The routed picture draws that firewall</text>
+<text x="558" y="425" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               and says what stands in for it here.</text>
+<text x="558" y="440" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0, eth1   : the host's interface on each segment. A host on</text>
+<text x="558" y="455" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               more than one is marked dual-homed</text>
+<text x="558" y="470" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/5075     : PVAccess, plaintext</text>
+<text x="558" y="485" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/5076     : PVAccess over TLS</text>
+<text x="558" y="500" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">udp/5076     : PVAccess search and beacons, sent to the</text>
+<text x="558" y="515" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               segment broadcast address</text>
+<text x="558" y="530" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/8888     : OCSP over HTTP, to the responder</text>
+<text x="558" y="545" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="558" y="560" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">The segment CIDRs are pinned in compose.yaml, so they are</text>
+<text x="558" y="575" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">these on every laboratory. Host addresses within a segment are</text>
+<text x="558" y="590" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">assigned by podman when a container starts and are not fixed:</text>
+<text x="558" y="605" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">per-container addresses cannot be set, because podman refuses</text>
+<text x="558" y="620" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">them on a container attached to more than one segment.</text>
+<text x="558" y="645" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Abbreviations</text>
+<text x="558" y="660" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">CA     : certificate authority</text>
+<text x="558" y="675" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">SKID   : subject key identifier, 40 hex digits</text>
+<text x="558" y="690" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Issuer ID: the first 8 digits of a SKID</text>
+<text x="558" y="705" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS : certificate manager</text>
+<text x="558" y="720" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC    : input output controller</text>
+<text x="558" y="735" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF    : access security file</text>
+<text x="558" y="750" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVList : gateway process variable list</text>
+<text x="558" y="765" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP   : online certificate status protocol</text>
+<text x="558" y="780" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">AIA    : authority information access extension</text>
+<text x="558" y="795" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ML     : machine learning</text>
+<text x="558" y="820" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">A line claims attachment, not direction.</text>
+<text x="558" y="835" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">Arrowheads only where a direction is real.</text>
+<text x="558" y="850" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve"></text>
+<text x="558" y="865" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">LAB_ISSUER, ML_ISSUER and the _SKID forms are</text>
+<text x="558" y="880" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">named, not printed: a fresh mint changes them.</text>
+<text x="558" y="895" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">Values: issuer_ids.env</text>
 </svg>

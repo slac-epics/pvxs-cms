@@ -4,9 +4,10 @@
 # owning one address for the whole facility, and an OCSP responder on the facility's own IT
 # segment answering for the root both departments chain to.
 #
-# THIS PICTURE MATCHES THE RUNNING LABORATORY. topology-federated-shared-root-routed.svg
-# draws the same laboratory with a routing firewall in it, which is a design study: here the
-# host forwards between the bridges and permits everything.
+# THIS PICTURE MATCHES THE RUNNING LABORATORY. Every segment carries isolate=true, so the
+# separation drawn here is enforced by podman rather than merely configured.
+# topology-federated-shared-root-routed.svg draws the same laboratory with the routing
+# firewall a site would install, and says on the firewall itself what stands in for it here.
 # Every coordinate is computed here. See topology_kit for the primitives.
 from topology_kit import (C, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields,
                           measure, output_path)
@@ -119,7 +120,10 @@ resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
  'eth0  net-it         10.89.3.0/24',
  'An IT service, on the facility\'s own segment: it belongs to',
  '    neither department, as the root does not. Both certificate',
- '    managers stand on this segment to ask it',
+ '    managers stand on this segment to ask it, and nothing else in',
+ '    the laboratory does, so nothing else can reach it at all',
+ 'Answers one request at a time - it is openssl ocsp, not a server -',
+ '    so two probes at once will show one of them refused',
  'Listens: tcp/8888 OCSP over HTTP',
  'Program: openssl ocsp, under supervisor with a watchdog',
  'Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt')
@@ -262,18 +266,25 @@ samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, N
            ('    to net-perimeter', None, 0, None),
            ('certificate relationship - signs / names', C['cert'], 2, '6 5'),
            ('a file the component loads', C['filedrop'], 1.6, '2 4')]
-notation = ['10.89.0.0/24 : the segment, in CIDR. Five podman bridges. What a',
-            '               segment separates is discovery and naming, not',
-            '               routing: a broadcast search does not leave the',
-            '               segment it was sent to, and podman answers a name',
-            '               only for a container sharing a segment with the',
-            '               asker. The host forwards between the bridges and',
-            '               permits everything, so it is this laboratory\'s',
-            '               router, and a router with no policy in it. Every',
-            '               request stopped below is stopped by an access rule',
-            '               or by a gateway, which is where a site puts those',
-            '               decisions too. See the routed picture for what a',
-            '               site would build instead.',
+notation = ['10.89.0.0/24 : the segment, in CIDR. Five podman bridges, each',
+            '               carrying isolate=true in compose.yaml, so podman',
+            '               drops a packet sent from one segment to a host on',
+            '               another. Nothing here reaches another segment by',
+            '               addressing it. What crosses does so through a',
+            '               container standing on both sides, and there are',
+            '               five of those - every one is drawn.',
+            '               A broadcast search does not leave its segment, and',
+            '               podman answers a name only for a container that',
+            '               shares one with the asker. That is why the',
+            '               balancer stands on four segments and each',
+            '               certificate manager on two: not to carry traffic,',
+            '               but so the name they are called by can be',
+            '               answered where it is asked.',
+            '               A routing firewall would enforce the same',
+            '               separation and could permit single ports across',
+            '               it, which isolate=true cannot: it is all or',
+            '               nothing. The routed picture draws that firewall',
+            '               and says what stands in for it here.',
             'eth0, eth1   : the host\'s interface on each segment. A host on',
             '               more than one is marked dual-homed',
             'tcp/5075     : PVAccess, plaintext',
@@ -380,8 +391,8 @@ def build(cv):
     zone_h = (files_y - zone_y) + files_h + ZP
     CANVAS_H = zone_y + zone_h + M
 
-    cv.zone(lab_x, zone_y, W_lab, zone_h, 'net-lab   10.89.0.0/24   bridge   -   Lab zone (accelerator)', 'zone_lab')
-    cv.zone(ml_x, zone_y, W_ml, zone_h, 'net-ml   10.89.1.0/24   bridge   -   ML zone', 'zone_ml')
+    cv.zone(lab_x, zone_y, W_lab, zone_h, 'net-lab   10.89.0.0/24   bridge, isolated   -   Lab zone (accelerator)', 'zone_lab')
+    cv.zone(ml_x, zone_y, W_ml, zone_h, 'net-ml   10.89.1.0/24   bridge, isolated   -   ML zone', 'zone_ml')
     cv.zone(pz_x, pz_y, pz_w, pz_h, 'net-internet   10.89.4.0/24   -   outside the facility', 'zone_perim')
     cv.zone(ca_x, ca_y, ca_w, ca_h, 'Certificate Authorities', 'zone_ca')
 
