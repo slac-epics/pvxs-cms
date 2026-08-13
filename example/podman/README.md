@@ -870,8 +870,8 @@ zoomable: every access rule and process variable list is readable there.
 
 There is a second picture of this laboratory, [drawn the way a site would build it](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-shared-root-routed.svg): a routing
 firewall carrying what leaves each department. `compose.yaml` builds the one above, and each
-router in that picture carries a **`SIMULATED BY`** note saying which part of it does that
-router's job here.
+router in that picture has **`SIMULATED`** where every other card names its image, saying what
+does that router's job here.
 
 ## One address for the facility, and the port says which department
 

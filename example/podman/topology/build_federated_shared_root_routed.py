@@ -115,26 +115,19 @@ lb_l = fields('Role: facility load balancer, layer 4 (dual-homed)','Image: lb',
  '    certificate presented, not on the address it came from.')
 
 def _router(dept, seg, cidr, far_gw, far_ports):
-    return fields('Role: routing firewall, layers 3 and 4','Image: router',
+    # Not an image. This is the one box in the picture that no container corresponds to, so
+    # what stands in for it goes where every other card names its image.
+    return fields('Role: routing firewall, layers 3 and 4',
+     '§Image: SIMULATED - isolate=true on every network, and',
+     '§    pvxs-facility-lb and pvxs-lab-authority-status each get an',
+     '§    interface in every network that names them',
      f'eth0  {seg:<14} {cidr}',
      'eth1  net-perimeter  10.89.2.0/24',
      'eth2  net-it         10.89.3.0/24',
      f'Carries every packet leaving the {dept} department',
-     'Routes on the destination subnet alone, layer 3: the port has no',
-     '    part in choosing where a packet goes. The port decides only',
-     '    whether it is permitted at all, layer 4:',
+     'Routes:',
      f'    {far_ports[0]}, {far_ports[1]} to {far_gw} on net-perimeter',
-     '    tcp/8888 to pvxs-lab-authority-status on net-it',
-     'Broadcast stays on the segment it was sent to, so a PVAccess',
-     '    search stays inside the department. Anything past it is',
-     '    reached by naming a server, which is unicast and routes.',
-     '',
-     '§SIMULATED BY  -  there is no such container',
-     'separation: isolate=true on every network - no network forwards',
-     '    to another',
-     'routing:    pvxs-facility-lb and pvxs-lab-authority-status each',
-     '    get an interface in every network that names them, so what',
-     '    would have been routed is reached by name directly')
+     '    tcp/8888 to pvxs-lab-authority-status on net-it')
 
 lab_router_l = _router('lab', 'net-lab', '10.89.0.0/24',
                        'pvxs-lab-ml-gateway', ('tcp/5175', 'tcp/5176'))
@@ -149,10 +142,8 @@ pc_l = fields('Role: client','Image: internet',
  '    one address, one port per department')
 resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
  'eth0  net-it         10.89.3.0/24',
- 'An IT service: in this design both certificate managers reach it',
- '    through their own router',
- 'SIMULATED BY: no router - it gets a foot in every network that',
- '    names it, so each manager asks it without leaving its own',
+ 'An IT service: in this design the routers carry tcp/8888 to it',
+ 'SIMULATED: no router - it gets a foot in every network that names it',
  'Listens: tcp/8888 OCSP over HTTP',
  'Program: openssl ocsp, under supervisor with a watchdog',
  'Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt')
@@ -297,11 +288,14 @@ samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, N
            ('    to net-perimeter', None, 0, None),
            ('certificate relationship - signs / names', C['cert'], 2, '6 5'),
            ('a file the component loads', C['filedrop'], 1.6, '2 4')]
-notation = ['10.89.0.0/24 : the segment, in CIDR. Three podman bridges with',
-            '               no routing between them, so a host reaches only',
-            '               the segments it is attached to',
+notation = ['10.89.0.0/24 : the segment, in CIDR. Five of them; the routers',
+            '               carry what may pass between two, and nothing else',
+            '               does. A broadcast search never leaves the segment',
+            '               it was sent to, so PVAccess discovery stays inside',
+            '               a department; anything past it is reached by',
+            '               naming a server, which is unicast and routes.',
             'eth0, eth1   : the host\'s interface on each segment. A host on',
-            '               two segments is marked dual-homed',
+            '               more than one is marked dual-homed',
             'tcp/5075     : PVAccess, plaintext',
             'tcp/5076     : PVAccess over TLS',
             'udp/5076     : PVAccess search and beacons, sent to the',
