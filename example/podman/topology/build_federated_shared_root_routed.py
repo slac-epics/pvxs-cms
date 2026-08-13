@@ -19,15 +19,12 @@ lab_client_l = fields('Role: client','Image: lab',
  'Route: 10.89.2.0/24, 10.89.3.0/24 via pvxs-lab-router',
  'Listens: none (client only)','Logins: guest, operator',
  'EPICS_PVA_ADDR_LIST: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc',
- 'EPICS_PVA_NAME_SERVERS: pvxs-lab-ml-gateway:5175',
- '    the ML gateway in the DMZ, reached across net-perimeter')
+ 'EPICS_PVA_NAME_SERVERS: pvxs-lab-ml-gateway:5175   the ML gateway')
 lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-perimeter','Image: gateway',
  'eth0  net-lab        10.89.0.0/24   upstream side, to its department',
  'eth1  net-perimeter  10.89.2.0/24   server side, where it is asked',
  'Program: p4p pvagw, layer 7','Config: config/gateway-lab.conf',
- 'Serves on eth1 alone: "interface" pinned to its net-perimeter',
- '    address, so a lab workstation searching on net-lab is answered',
- '    by its own controller and by this gateway never',
+ 'Serves on eth1 alone: "interface" pinned to its net-perimeter address',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'Reached from outside at facility:5075 and facility:5076',
  'Presents: CN=gateway',
@@ -58,7 +55,6 @@ ml_gw_l = fields('Role: gateway (dual-homed), net-ml <-> net-perimeter','Image: 
  '    EPICS_PVAS_TLS_PORT 5176',
  'Listens: tcp/5175 PVA   tcp/5176 PVA over TLS   udp/5176 PVA search',
  'Reached from outside at facility:5175 and facility:5176',
- 'Its own ports, so a reply naming them sends a client back here',
  'Presents: CN=ml-gateway',
  'Upstream: pvxs-lab-ml, pvxs-lab-ml-ioc','ACF: gateway.acf','PVList: config/gateway-ml.pvlist')
 ml_client_l = fields('Role: client','Image: lab',
@@ -66,8 +62,7 @@ ml_client_l = fields('Role: client','Image: lab',
  'Route: 10.89.2.0/24, 10.89.3.0/24 via pvxs-ml-router',
  'Listens: none (client only)','Logins: guest, operator',
  'EPICS_PVA_ADDR_LIST: pvxs-lab-ml, pvxs-lab-ml-ioc',
- 'EPICS_PVA_NAME_SERVERS: pvxs-lab-gateway:5075',
- '    the Lab gateway in the DMZ, reached across net-perimeter')
+ 'EPICS_PVA_NAME_SERVERS: pvxs-lab-gateway:5075   the lab gateway')
 mlioc_l = fields('Role: IOC','Image: ml-ioc','eth0  net-ml         10.89.1.0/24',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: mlioc.db','ACF: mlioc.acf',
@@ -80,18 +75,6 @@ mlcms_l = fields('Role: PVACMS','Image: ml','eth0  net-ml         10.89.1.0/24',
  '    CERT:CREATE:ML_ISSUER, CERT:ISSUER:ML_ISSUER, CERT:ROOT:ML_ISSUER',
  '    CERT:LIST:ML_ISSUER:ALL, :EXPIRING, :PENDING_APPROVAL',
  '    CERT:STATUS:ML_ISSUER:<serial>')
-# A workstation has one network interface, as a real one does. What carries its traffic to the
-# perimeter is an appliance that forwards between segments, which is also the place a site
-# states which segments may reach each other at all.
-fw_l = fields('Role: routing firewall, layer 3','Image: router',
- 'eth0  net-lab        10.89.0.0/24',
- 'eth1  net-ml         10.89.1.0/24',
- 'eth2  net-perimeter  10.89.2.0/24',
- 'Permits: net-lab <-> net-perimeter, net-ml <-> net-perimeter',
- 'Departments meet at the perimeter, each through its own gateway',
- 'Broadcast stays on the segment it was sent to, so a PVAccess',
- '    search stays local. A workstation reaching the far side names',
- '    a gateway in EPICS_PVA_NAME_SERVERS, which is unicast and routes.')
 # One appliance owns the facility address. Mapping a port to a different port would break
 # PVAccess: a server names its own port in a search reply and the client dials that port on
 # the address the reply arrived from, so a translated port sends it to the other department.
@@ -103,16 +86,7 @@ lb_l = fields('Role: facility load balancer, layer 4 (dual-homed)','Image: lb',
  '    facility:5075 -> pvxs-lab-gateway:5075',
  '    facility:5076 -> pvxs-lab-gateway:5076      over TLS',
  '    facility:5175 -> pvxs-lab-ml-gateway:5175',
- '    facility:5176 -> pvxs-lab-ml-gateway:5176   over TLS',
- 'One address is published for the facility, and a department is',
- '    chosen by port. That is also what lets each department name',
- '    the other without naming itself.',
- 'This is the one device here where a port picks a destination. It',
- '    rewrites the destination and the packet is routed afterwards;',
- '    the routers themselves choose a path on the subnet alone.',
- 'It answers as itself to the gateway, so replies come back through',
- '    it. The gateway loses nothing by that: it authorises on the',
- '    certificate presented, not on the address it came from.')
+ '    facility:5176 -> pvxs-lab-ml-gateway:5176   over TLS')
 
 def _router(dept, seg, cidr, far_gw, far_ports):
     # Not an image. This is the one box in the picture that no container corresponds to, so
@@ -142,8 +116,7 @@ pc_l = fields('Role: client','Image: internet',
  '    one address, one port per department')
 resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
  'eth0  net-it         10.89.3.0/24',
- 'An IT service: in this design the routers carry tcp/8888 to it',
- 'SIMULATED: no router - it gets a foot in every network that names it',
+ 'An IT service: it belongs to neither department, as the root does not',
  'Listens: tcp/8888 OCSP over HTTP',
  'Program: openssl ocsp, under supervisor with a watchdog',
  'Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt')
