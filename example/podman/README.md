@@ -1592,6 +1592,16 @@ below still looks broken, for a reason that has nothing to do with the root any 
 early and the answer is `AUTHORITY_REVOKED` or `UNKNOWN` exactly as before: that is the wait,
 not a restore that did not work.
 
+**Both departments, not one.** The two certificate managers ask the responder on their own
+schedule, so one is back before the other. Restarting on the strength of the lab side alone
+leaves the machine learning gateway forwarding nothing, and the symptom is that `ml:aiExample`
+cannot be read from anywhere while `test:aiExample` can. Ask on both sides before restarting:
+
+```sh
+run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
+run_in ml  as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
+```
+
 **Do not skip the gateway restart either.** Everything inside a department comes back on its
 own: each certificate manager asks the responder again, and every holder is told over the
 status channel it already subscribes to. A gateway does not. Its connections to the department
@@ -1625,12 +1635,16 @@ status is answered rather than recorded against anything.
 
 ```sh
 run_in lab-manager as admin pvxcert -l --where "name:guest"
-#   89caabd6:08600578139628916102  CLIENT  CN=guest,O=epics.org,C=US  VALID    ...
-#   89caabd6:01835766370459787255  CLIENT  CN=guest,O=epics.org,C=US  REVOKED  ...
+#   89caabd6:07061629051058436136  CLIENT  CN=guest,O=epics.org,C=US  VALID    ...
+#   89caabd6:04418516530813363550  CLIENT  CN=guest,O=epics.org,C=US  REVOKED  ...
 ```
 
 Two of them, because section 9 revoked one and the guest asked again. The revoked one is still
 revoked, which is the point: the root coming back restores nothing that was decided beneath it.
+
+A listing asked for too early answers `Certificate not valid: UNKNOWN` and then times out. That
+is the administrator's own certificate, which is under the same root as everything else, and it
+is the same wait again rather than a fault.
 
 ### When the responder cannot be reached
 
