@@ -91,10 +91,10 @@
 <path d="M 1795 1407 a8 8 0 0 1 8 -8 h486 a8 8 0 0 1 8 8 v22 h-502 z" fill="#1E88E5"/>
 <circle cx="1810" cy="1412" r="4.2" fill="none" stroke="white" stroke-width="1.8"/><path d="M 1813 1415 l6 6 m-2.5 -1 l2 -2 m-4.5 0 l1.6 -1.6" stroke="white" stroke-width="1.8" fill="none"/>
 <text x="1827" y="1419" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-pvacms</text>
-<text x="1807" y="1448" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: PVACMS (dual-homed)</text>
+<text x="1807" y="1448" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: PVACMS</text>
 <text x="1807" y="1463" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm</text>
-<text x="1807" y="1478" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-lab        10.89.0.0/24</text>
-<text x="1807" y="1493" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth1  net-it         10.89.3.0/24   to ask about the facility root</text>
+<text x="1807" y="1478" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-lab        10.89.0.0/24   one interface, so nothing outside</text>
+<text x="1807" y="1493" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">                                        the department can address it</text>
 <text x="1807" y="1508" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search</text>
 <text x="1807" y="1523" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">CA keychain: certs/lab_intermediate.p12</text>
 <text x="1807" y="1538" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: /etc/pvacms/pvacms.acf</text>
@@ -282,10 +282,10 @@
 <path d="M 3518 1407 a8 8 0 0 1 8 -8 h466 a8 8 0 0 1 8 8 v22 h-482 z" fill="#1E88E5"/>
 <circle cx="3533" cy="1412" r="4.2" fill="none" stroke="white" stroke-width="1.8"/><path d="M 3536 1415 l6 6 m-2.5 -1 l2 -2 m-4.5 0 l1.6 -1.6" stroke="white" stroke-width="1.8" fill="none"/>
 <text x="3550" y="1419" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-ml</text>
-<text x="3530" y="1448" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: PVACMS (dual-homed)</text>
+<text x="3530" y="1448" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: PVACMS</text>
 <text x="3530" y="1463" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: ml</text>
-<text x="3530" y="1478" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-ml         10.89.1.0/24</text>
-<text x="3530" y="1493" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth1  net-it         10.89.3.0/24   to ask about the facility root</text>
+<text x="3530" y="1478" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-ml         10.89.1.0/24   one interface, so nothing outside</text>
+<text x="3530" y="1493" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">                                        the department can address it</text>
 <text x="3530" y="1508" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search</text>
 <text x="3530" y="1523" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">CA keychain: certs/ml_intermediate.p12</text>
 <text x="3530" y="1538" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: /etc/pvacms/pvacms.acf</text>
@@ -447,73 +447,75 @@
 <path d="M 1307.0 531 a10 10 0 0 1 10 -10 h2140.5 a10 10 0 0 1 10 10 v34 h-2160.5 z" fill="#6A1B9A" fill-opacity="0.92"/>
 <circle cx="1324.0" cy="548" r="2.6" fill="white"/><circle cx="1334.0" cy="548" r="2.6" fill="white"/><circle cx="1329.0" cy="538" r="2.6" fill="white"/><path d="M 1329.0 538 L 1324.0 548 M 1329.0 538 L 1334.0 548 M 1324.0 548 H 1334.0" stroke="white" stroke-width="1.4"/>
 <text x="1347.0" y="549" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">IT zone   -   the facility's own segments: net-perimeter, and net-it behind it</text>
-<g><rect x="1876.25" y="579" width="476" height="254" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 1876.25 587 a8 8 0 0 1 8 -8 h460 a8 8 0 0 1 8 8 v22 h-476 z" fill="#5D4037"/>
-<line x1="1887.25" y1="594" x2="1892.25" y2="594" stroke="white" stroke-width="1.8"/><path d="M 1892.25 594 L 1899.25 588" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1892.25 594 L 1899.25 594" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1892.25 594 L 1899.25 600" stroke="white" stroke-width="1.5" fill="none"/><circle cx="1892.25" cy="594" r="2" fill="white"/>
-<text x="1908.25" y="599" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-facility-lb</text>
-<text x="1888.25" y="628" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: facility load balancer, layer 4</text>
-<text x="1888.25" y="643" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: haproxy</text>
-<text x="1888.25" y="658" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-internet   10.89.4.0/24   the facility address</text>
-<text x="1888.25" y="673" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth1  net-perimeter  10.89.2.0/24   its foot in the DMZ</text>
-<text x="1888.25" y="688" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth2  net-lab        10.89.0.0/24   a foot in each network that</text>
-<text x="1888.25" y="703" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth3  net-ml         10.89.1.0/24       names it, aliased "facility"</text>
-<text x="1888.25" y="718" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Maps inward, port for port:</text>
-<text x="1888.25" y="733" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5075 -&gt; pvxs-lab-gateway:5075</text>
-<text x="1888.25" y="748" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5076 -&gt; pvxs-lab-gateway:5076      over TLS</text>
-<text x="1888.25" y="763" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5175 -&gt; pvxs-lab-ml-gateway:5175</text>
-<text x="1888.25" y="778" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5176 -&gt; pvxs-lab-ml-gateway:5176   over TLS</text>
-<text x="1888.25" y="793" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Same port each side: a search reply names the server's own port</text>
-<text x="1888.25" y="808" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Backends carry resolve-net 10.89.2.0/24 - a gateway has an address</text>
-<text x="1888.25" y="823" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    on two segments and serves only the DMZ one</text>
+<g><rect x="1836.25" y="579" width="476" height="254" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 1836.25 587 a8 8 0 0 1 8 -8 h460 a8 8 0 0 1 8 8 v22 h-476 z" fill="#5D4037"/>
+<line x1="1847.25" y1="594" x2="1852.25" y2="594" stroke="white" stroke-width="1.8"/><path d="M 1852.25 594 L 1859.25 588" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1852.25 594 L 1859.25 594" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1852.25 594 L 1859.25 600" stroke="white" stroke-width="1.5" fill="none"/><circle cx="1852.25" cy="594" r="2" fill="white"/>
+<text x="1868.25" y="599" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-facility-lb</text>
+<text x="1848.25" y="628" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: facility load balancer, layer 4</text>
+<text x="1848.25" y="643" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: haproxy</text>
+<text x="1848.25" y="658" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-internet   10.89.4.0/24   the facility address</text>
+<text x="1848.25" y="673" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth1  net-perimeter  10.89.2.0/24   its foot in the DMZ</text>
+<text x="1848.25" y="688" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth2  net-lab        10.89.0.0/24   a foot in each network that</text>
+<text x="1848.25" y="703" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth3  net-ml         10.89.1.0/24       names it, aliased "facility"</text>
+<text x="1848.25" y="718" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Maps inward, port for port:</text>
+<text x="1848.25" y="733" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5075 -&gt; pvxs-lab-gateway:5075</text>
+<text x="1848.25" y="748" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5076 -&gt; pvxs-lab-gateway:5076      over TLS</text>
+<text x="1848.25" y="763" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5175 -&gt; pvxs-lab-ml-gateway:5175</text>
+<text x="1848.25" y="778" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5176 -&gt; pvxs-lab-ml-gateway:5176   over TLS</text>
+<text x="1848.25" y="793" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Same port each side: a search reply names the server's own port</text>
+<text x="1848.25" y="808" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Backends carry resolve-net 10.89.2.0/24 - a gateway has an address</text>
+<text x="1848.25" y="823" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    on two segments and serves only the DMZ one</text>
 </g>
-<g><rect x="2422.25" y="654" width="476" height="179" rx="8" fill="#FFEBEE" stroke="#E53935" stroke-width="1.4"/>
-<path d="M 2422.25 662 a8 8 0 0 1 8 -8 h460 a8 8 0 0 1 8 8 v22 h-476 z" fill="#E53935"/>
-<circle cx="2439.25" cy="669" r="7" fill="none" stroke="white" stroke-width="1.8"/><path d="M 2433.75 669 h3 l1.6 -3.6 l2.4 7 l1.6 -3.4 h2.4" stroke="white" stroke-width="1.6" fill="none"/>
-<text x="2454.25" y="674" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-authority-status</text>
-<text x="2434.25" y="703" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: OCSP responder for the Facility Root CA</text>
-<text x="2434.25" y="718" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm</text>
-<text x="2434.25" y="733" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-it         10.89.3.0/24</text>
-<text x="2434.25" y="748" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">The facility's own segment: it belongs to neither department, as</text>
-<text x="2434.25" y="763" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    the root does not. Both certificate managers have a foot here to</text>
-<text x="2434.25" y="778" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ask it, and nothing else does, so nothing else reaches it</text>
-<text x="2434.25" y="793" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/8888 OCSP over HTTP</text>
-<text x="2434.25" y="808" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Program: openssl ocsp, under supervisor with a watchdog</text>
-<text x="2434.25" y="823" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt</text>
+<g><rect x="2382.25" y="624" width="556" height="209" rx="8" fill="#FFEBEE" stroke="#E53935" stroke-width="1.4"/>
+<path d="M 2382.25 632 a8 8 0 0 1 8 -8 h540 a8 8 0 0 1 8 8 v22 h-556 z" fill="#E53935"/>
+<circle cx="2399.25" cy="639" r="7" fill="none" stroke="white" stroke-width="1.8"/><path d="M 2393.75 639 h3 l1.6 -3.6 l2.4 7 l1.6 -3.4 h2.4" stroke="white" stroke-width="1.6" fill="none"/>
+<text x="2414.25" y="644" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-authority-status</text>
+<text x="2394.25" y="673" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: OCSP responder for the Facility Root CA</text>
+<text x="2394.25" y="688" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm</text>
+<text x="2394.25" y="703" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-it         10.89.3.0/24   its own segment: it belongs to</text>
+<text x="2394.25" y="718" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">                                        neither department, as the root does not</text>
+<text x="2394.25" y="733" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth1  net-lab        10.89.0.0/24   a foot in each network that</text>
+<text x="2394.25" y="748" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth2  net-ml         10.89.1.0/24       names it, as the balancer has</text>
+<text x="2394.25" y="763" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">The root names it by hostname, and each certificate manager asks it</text>
+<text x="2394.25" y="778" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    from its own department without leaving it</text>
+<text x="2394.25" y="793" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/8888 OCSP over HTTP</text>
+<text x="2394.25" y="808" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Program: openssl ocsp, under supervisor with a watchdog</text>
+<text x="2394.25" y="823" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt</text>
 </g>
 <path d="M 2333.0 248 L 2333.0 264 L 1965.5 264 L 1965.5 291" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 2333.0 248 L 2333.0 264 L 2276.5 264 L 2276.5 291" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 2333.0 248 L 2333.0 264 L 2644.0 264 L 2644.0 291" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
 <text x="2341.0" y="278" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">signs</text>
-<path d="M 2491.0 196.0 L 2918.0 196.0 L 2918.0 678 L 2901.25 678" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 2491.0 196.0 L 2918.0 196.0 L 2918.0 648 L 2941.25 648" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
 <text x="2924.0" y="288.5" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">names</text>
-<path d="M 2644.0 368 L 2644.0 459 L 2482.25 459 L 2482.25 651" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 2644.0 368 L 2644.0 459 L 2442.25 459 L 2442.25 621" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
 <text x="2652.0" y="455" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">signs its answers</text>
 <path d="M 1396.5 873 L 3269.5 873" fill="none" stroke="#FB8C00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 1436.5 873 L 1436.5 1047" fill="none" stroke="#FB8C00" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="1436.5" cy="873" r="4" fill="#FB8C00"/>
 <path d="M 3229.5 873 L 3229.5 1047" fill="none" stroke="#FB8C00" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="3229.5" cy="873" r="4" fill="#FB8C00"/>
-<path d="M 2114.25 833 L 2114.25 873" fill="none" stroke="#FB8C00" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="2114.25" cy="873" r="4" fill="#FB8C00"/>
-<path d="M 1447.5 477 L 2224.25 477" fill="none" stroke="#455A64" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 2074.25 833 L 2074.25 873" fill="none" stroke="#FB8C00" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="2074.25" cy="873" r="4" fill="#FB8C00"/>
+<path d="M 1447.5 477 L 2184.25 477" fill="none" stroke="#455A64" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 1517.5 310 L 1517.5 477" fill="none" stroke="#455A64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="1517.5" cy="477" r="4" fill="#455A64"/>
-<path d="M 2154.25 579 L 2154.25 477" fill="none" stroke="#455A64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="2154.25" cy="477" r="4" fill="#455A64"/>
-<g><rect x="1625.275" y="452" width="421.2" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="1835.875" y="464.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">net-internet  10.89.4.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176</text></g>
+<path d="M 2114.25 579 L 2114.25 477" fill="none" stroke="#455A64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="2114.25" cy="477" r="4" fill="#455A64"/>
+<g><rect x="1605.275" y="452" width="421.2" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="1815.875" y="464.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">net-internet  10.89.4.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176</text></g>
 <g><rect x="2119.3" y="848" width="427.40000000000003" height="18" rx="9" fill="white" stroke="#FB8C00" stroke-width="1.2"/><text x="2333.0" y="860.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#FB8C00">net-perimeter  10.89.2.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176</text></g>
-<path d="M 2016.0 913 L 3575.5 913" fill="none" stroke="#6A1B9A" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 2046.0 913 L 2046.0 1399" fill="none" stroke="#6A1B9A" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="2046.0" cy="913" r="4" fill="#6A1B9A"/>
-<path d="M 3545.5 913 L 3545.5 1399" fill="none" stroke="#6A1B9A" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="3545.5" cy="913" r="4" fill="#6A1B9A"/>
+<path d="M 2550.25 913 L 2770.25 913" fill="none" stroke="#6A1B9A" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 2660.25 913 L 2660.25 833" fill="none" stroke="#6A1B9A" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="2660.25" cy="913" r="4" fill="#6A1B9A"/>
-<g><rect x="2234.0" y="888" width="198.0" height="18" rx="9" fill="white" stroke="#6A1B9A" stroke-width="1.2"/><text x="2333.0" y="900.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#6A1B9A">net-it  10.89.3.0/24  tcp/8888</text></g>
-<path d="M 2094.25 833 L 2094.25 939 L 1997.75 939 L 1997.75 1365" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="1997.75" cy="1365" r="4" fill="#3949AB"/>
-<path d="M 2134.25 833 L 2134.25 939 L 2703.25 939 L 2703.25 1365" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="2703.25" cy="1365" r="4" fill="#00897B"/>
+<g><rect x="2561.25" y="888" width="198.0" height="18" rx="9" fill="white" stroke="#6A1B9A" stroke-width="1.2"/><text x="2660.25" y="900.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#6A1B9A">net-it  10.89.3.0/24  tcp/8888</text></g>
+<path d="M 2054.25 833 L 2054.25 939 L 1898.0 939 L 1898.0 1365" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1898.0" cy="1365" r="4" fill="#3949AB"/>
+<path d="M 2094.25 833 L 2094.25 939 L 2615.1666666666665 939 L 2615.1666666666665 1365" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="2615.1666666666665" cy="1365" r="4" fill="#00897B"/>
+<path d="M 2640.25 833 L 2640.25 971 L 2097.5 971 L 2097.5 1365" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="2097.5" cy="1365" r="4" fill="#3949AB"/>
+<path d="M 2680.25 833 L 2680.25 971 L 2791.3333333333335 971 L 2791.3333333333335 1365" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="2791.3333333333335" cy="1365" r="4" fill="#00897B"/>
 <path d="M 300.5 1593 L 300.5 1669" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 810.5 1563 L 810.5 1669" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 2046.0 1623 L 2046.0 1669" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
@@ -563,7 +565,7 @@
 <text x="558" y="170" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               with isolate=true: no network forwards to another,</text>
 <text x="558" y="185" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               a broadcast search does not leave one, and a name</text>
 <text x="558" y="200" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               is answered only within one. Crossing needs an</text>
-<text x="558" y="215" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               interface on both sides, which five containers</text>
+<text x="558" y="215" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               interface on both sides, which four containers</text>
 <text x="558" y="230" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               here have and every one is drawn.</text>
 <text x="558" y="245" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0, eth1   : the host's interface on each segment. A host on</text>
 <text x="558" y="260" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               more than one is marked dual-homed</text>

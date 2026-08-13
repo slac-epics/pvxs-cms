@@ -42,9 +42,9 @@ tstioc_l = fields('Role: IOC','Image: tstioc','eth0  net-lab        10.89.0.0/24
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: image.db, image.json','ACF: tstioc.acf',
  'Serves: tst:ArrayData, tst:ColorMode,','    and the rest of the image database')
-pvacms_l = fields('Role: PVACMS (dual-homed)','Image: idm',
- 'eth0  net-lab        10.89.0.0/24',
- 'eth1  net-it         10.89.3.0/24   to ask about the facility root',
+pvacms_l = fields('Role: PVACMS','Image: idm',
+ 'eth0  net-lab        10.89.0.0/24   one interface, so nothing outside',
+ '                                        the department can address it',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/lab_intermediate.p12',
  'ACF: /etc/pvacms/pvacms.acf','Serves:','    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER',
@@ -73,9 +73,9 @@ mlioc_l = fields('Role: IOC','Image: ml-ioc','eth0  net-ml         10.89.1.0/24'
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: mlioc.db','ACF: mlioc.acf',
  'Serves: ml:aiExample, ml:stringExample,','    ml:longExample, ml:open (OPEN)')
-mlcms_l = fields('Role: PVACMS (dual-homed)','Image: ml',
- 'eth0  net-ml         10.89.1.0/24',
- 'eth1  net-it         10.89.3.0/24   to ask about the facility root',
+mlcms_l = fields('Role: PVACMS','Image: ml',
+ 'eth0  net-ml         10.89.1.0/24   one interface, so nothing outside',
+ '                                        the department can address it',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/ml_intermediate.p12',
  'ACF: /etc/pvacms/pvacms.acf','Serves:','    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER',
@@ -106,10 +106,12 @@ pc_l = fields('Role: client','Image: internet',
  'EPICS_PVA_NAME_SERVERS: facility:5075, facility:5175',
  '    one address, one port per department')
 resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
- 'eth0  net-it         10.89.3.0/24',
- 'The facility\'s own segment: it belongs to neither department, as',
- '    the root does not. Both certificate managers have a foot here to',
- '    ask it, and nothing else does, so nothing else reaches it',
+ 'eth0  net-it         10.89.3.0/24   its own segment: it belongs to',
+ '                                        neither department, as the root does not',
+ 'eth1  net-lab        10.89.0.0/24   a foot in each network that',
+ 'eth2  net-ml         10.89.1.0/24       names it, as the balancer has',
+ 'The root names it by hostname, and each certificate manager asks it',
+ '    from its own department without leaving it',
  'Listens: tcp/8888 OCSP over HTTP',
  'Program: openssl ocsp, under supervisor with a watchdog',
  'Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt')
@@ -256,7 +258,7 @@ notation = ['10.89.0.0/24 : the segment, in CIDR. Five podman bridges, each',
             '               with isolate=true: no network forwards to another,',
             '               a broadcast search does not leave one, and a name',
             '               is answered only within one. Crossing needs an',
-            '               interface on both sides, which five containers',
+            '               interface on both sides, which four containers',
             '               here have and every one is drawn.',
             'eth0, eth1   : the host\'s interface on each segment. A host on',
             '               more than one is marked dual-homed',
@@ -464,15 +466,23 @@ def build(cv):
     # centred on the open span between the two zones, clear of the legend at the left end
     cv.pill(rx, perim_bus_y - 16, 'net-perimeter  10.89.2.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176', C['perim'])
 
-    # --- the IT segment: the responder is the service on it, and each department's
-    # --- certificate manager stands on it to ask.
+    # --- the IT segment: the responder's own, and nothing else stands on it. A certificate
+    # --- manager has one interface, on its own department, so neither can address the other.
+    it0, it1 = rc['cx'] - 110, rc['cx'] + 110
+    cv.hv([(it0, it_bus_y), (it1, it_bus_y)], C['bus_it'], 4)
+    cv.hv([(rc['cx'], it_bus_y), (rc['cx'], rc['bot'])], C['bus_it'], 2)
+    cv.dot(rc['cx'], it_bus_y, C['bus_it'])
+    cv.pill(rc['cx'], it_bus_y - 16, 'net-it  10.89.3.0/24  tcp/8888', C['bus_it'])
+
+    # --- the legs each appliance has into the departments, so the name it is addressed by
+    # --- can be answered where it is asked: the balancer for "facility", the responder for
+    # --- the hostname the root's own extension gives.
     #
-    # A manager sits in the second row of its zone and the line has to climb past the first,
-    # so the corridor is chosen rather than guessed: the widest gap in the first row that
-    # lies over the card the line starts from. Card widths follow the text on them, so a
-    # column that is clear today closes the moment a line is added to a card above it.
-    def corridor(card, row1_cards, span=None):
-        lo, hi = span or (card['x'] + 20, card['x'] + card['w'] - 20)
+    # Each line has to climb past the first row of its zone, so the column is chosen rather
+    # than guessed: the widest gap in that row, shared between the two appliances. Card
+    # widths follow the text on them, so a column clear today closes the moment a line is
+    # added to a card above it.
+    def columns(row1_cards, lo, hi, n):
         blocked = sorted((c['x'] - 24, c['x'] + c['w'] + 24) for c in row1_cards)
         free, cur = [], lo
         for b0, b1 in blocked:
@@ -484,34 +494,18 @@ def build(cv):
         if cur < hi:
             free.append((cur, hi))
         free = [(a, b) for a, b in free if b - a > 8]
-        assert free, f'no clear corridor above {card["x"]}..{card["x"]+card["w"]}'
+        assert free, f'no clear column between {lo} and {hi}'
         a, b = max(free, key=lambda p: p[1] - p[0])
-        return (a + b) / 2
+        return [a + (b - a) * (i + 1) / (n + 1) for i in range(n)]
 
-    lab_row1 = [cl, gw1]
-    ml_row1 = [gw2, mcl]
-    pv_up = corridor(pv, lab_row1)
-    mp_up = corridor(mp, ml_row1)
-    it_taps = [pv_up, mp_up, rc['cx']]
-    it0 = min(it_taps) - 30
-    it1 = max(it_taps) + 30
-    cv.hv([(it0, it_bus_y), (it1, it_bus_y)], C['bus_it'], 4)
-    for h, hx in ((pv, pv_up), (mp, mp_up)):
-        cv.hv([(hx, it_bus_y), (hx, h['top'])], C['bus_it'], 2)
-        cv.dot(hx, it_bus_y, C['bus_it'])
-    cv.hv([(rc['cx'], it_bus_y), (rc['cx'], rc['bot'])], C['bus_it'], 2)
-    cv.dot(rc['cx'], it_bus_y, C['bus_it'])
-    cv.pill(rx, it_bus_y - 16, 'net-it  10.89.3.0/24  tcp/8888', C['bus_it'])
-
-    # --- the balancer's other two legs, one into each department, so the name it is
-    # --- addressed by can be answered where it is asked.
-    lab_down = corridor(cl, lab_row1, span=(busL0, busL1))
-    ml_down = corridor(mcl, ml_row1, span=(busM0, busM1))
-    for colr, bx, down in (('bus_lab', lb['cx'] - 20, lab_down),
-                           ('bus_ml', lb['cx'] + 20, ml_down)):
-        cv.hv([(bx, lb['bot']), (bx, it_bus_y + 26), (down, it_bus_y + 26),
-               (down, bus_lab_y)], C[colr], 2)
-        cv.dot(down, bus_lab_y, C[colr])
+    lab_cols = columns([cl, gw1], busL0, busL1, 2)
+    ml_cols = columns([gw2, mcl], busM0, busM1, 2)
+    for appliance, off, y, cols in ((lb, -20, it_bus_y + 26, (lab_cols[0], ml_cols[0])),
+                                    (rc, -20, it_bus_y + 58, (lab_cols[1], ml_cols[1]))):
+        for colr, sign, down in (('bus_lab', off, cols[0]), ('bus_ml', -off, cols[1])):
+            cv.hv([(appliance['cx'] + sign, appliance['bot']), (appliance['cx'] + sign, y),
+                   (down, y), (down, bus_lab_y)], C[colr], 2)
+            cv.dot(down, bus_lab_y, C[colr])
 
     # --- file drops (dotted grey)
     def drop(comp, filecard, xoff=0):

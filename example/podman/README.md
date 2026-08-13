@@ -920,11 +920,10 @@ and the client lands in the other department. Its configuration is
 > no podman network forwards to another: nothing reaches another segment by addressing it,
 > and the gateway is the only way between departments in fact rather than by configuration.
 > A broadcast search does not leave its segment either, and a name is answered only within
-> one - which is why the balancer has a leg in each department and each certificate manager
-> one on `net-it`. Those legs are not there to carry traffic; they are there so the name each
-> is called by can be answered where it is asked. What none of this can express is a single
-> port across a boundary, because `isolate` is all or nothing: that is what the routing
-> firewall in the second picture is for, and rootless podman cannot run one.
+> one - which is why the balancer and the responder each have a leg in every network that
+> names them. Those legs are not there to carry traffic; they are there so the name each is
+> called by can be answered where it is asked. Everything else keeps one interface, including
+> both certificate managers, so neither department's can be addressed from outside it.
 
 ## First, what works with no certificates at all
 
@@ -1483,10 +1482,11 @@ openssl x509 -in topologies/federated-shared-root/certs/ocsp_ca.pem -noout -text
 #       OCSP - URI:http://pvxs-lab-authority-status:8888
 ```
 
-The responder stands on `net-it`, the facility's own segment, and both certificate managers
-have a leg there so they can ask it - the responder belongs to neither department, as the root
-does not. It signs with a certificate the root authorised for the purpose, so the root's own
-key is not on it.
+The responder's own segment is `net-it`, the facility's: it belongs to neither department, as
+the root does not. It also has a leg in each department, because the name the root gives it has
+to be answerable where it is asked, and that leaves each certificate manager asking it without
+leaving its own segment. It signs with a certificate the root authorised for the purpose, so
+the root's own key is not on it.
 
 Start from a working laboratory, with certificates issued and a write that succeeds:
 
@@ -1787,21 +1787,20 @@ and the facility address to it.
 
 | Service | Segment(s) | What it is |
 |---|---|---|
-| `pvxs-lab-pvacms` | lab + it | the lab department's certificate manager |
+| `pvxs-lab-pvacms` | lab | the lab department's certificate manager |
 | `pvxs-lab-testioc`, `pvxs-lab-tstioc` | lab | lab controllers, serving `test:` and `tst:` |
 | `pvxs-lab-gateway` | lab + perimeter | the lab boundary |
-| `pvxs-lab-ml` | ml + it | the machine learning certificate manager |
+| `pvxs-lab-ml` | ml | the machine learning certificate manager |
 | `pvxs-lab-ml-ioc` | ml | its controller, serving `ml:` |
 | `pvxs-lab-ml-gateway` | ml + perimeter | its boundary |
-| `pvxs-lab-authority-status` | it | the responder that answers for the facility root |
+| `pvxs-lab-authority-status` | it + lab + ml | the responder that answers for the facility root |
 | `pvxs-facility-lb` | internet + perimeter + lab + ml | the facility address, layer 4 |
 | `lab-client`, `ml-client` | lab, ml | a workstation in each department |
 | `perimeter-client` | internet | a workstation outside the facility |
 
-Each certificate manager is on `net-it` to reach the responder, and the balancer is on both
-departmental segments so that the name `facility` can be answered where it is asked. Neither
-carries traffic that would not cross anyway; both are there because podman answers a name only
-within a segment.
+The balancer and the responder are the only things with a leg outside their own segment that
+is not a boundary: each stands in every network that names it, because podman answers a name
+only within a segment. Everything else has one interface.
 
 Service names are the DNS names, and they match the names used in the shell profiles and
 gateway configuration inside the images, so nothing needs rewriting per environment.

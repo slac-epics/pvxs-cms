@@ -132,11 +132,9 @@ def _router(dept, seg, cidr, far_gw, far_ports):
      '§SIMULATED BY  -  there is no such container',
      'separation: isolate=true on every network - no network forwards',
      '    to another',
-     'routing:    pvxs-facility-lb and both certificate managers get an',
-     '    interface in each network that names them, so what would have',
-     '    been routed is reached by name directly',
-     'not covered: isolate is all or nothing - no single port can be',
-     '    permitted across a boundary, which is what this box is for')
+     'routing:    pvxs-facility-lb and pvxs-lab-authority-status each',
+     '    get an interface in every network that names them, so what',
+     '    would have been routed is reached by name directly')
 
 lab_router_l = _router('lab', 'net-lab', '10.89.0.0/24',
                        'pvxs-lab-ml-gateway', ('tcp/5175', 'tcp/5176'))
@@ -153,8 +151,8 @@ resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
  'eth0  net-it         10.89.3.0/24',
  'An IT service: in this design both certificate managers reach it',
  '    through their own router',
- 'SIMULATED BY: no router - each manager gets a foot on net-it, and',
- '    nothing else has one, so nothing else reaches this',
+ 'SIMULATED BY: no router - it gets a foot in every network that',
+ '    names it, so each manager asks it without leaving its own',
  'Listens: tcp/8888 OCSP over HTTP',
  'Program: openssl ocsp, under supervisor with a watchdog',
  'Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt')
