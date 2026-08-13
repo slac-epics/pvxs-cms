@@ -12,14 +12,9 @@ x-lab-env: &lab-env
 
 # One segment, pinned so what the picture says about it stays true. Host addresses within it
 # are assigned by podman when a container starts, and change between runs.
-# Every segment carries isolate=true, and that is what makes it a segment rather than a
-# label. Podman drops traffic between two of its own networks, so nothing on one reaches a
-# host on another by addressing it; what crosses does so through a container standing on
-# both sides, and each of those is drawn in this laboratory's picture.
-#
-# Without it the host, which forwards between the bridges and permits everything, carries
-# any packet from any segment to any other, and every boundary below becomes a matter of
-# policy rather than of the network.
+# Every segment carries isolate=true: no podman network forwards to another, so nothing
+# reaches another segment by addressing it. What crosses does so through a container standing
+# on both sides, and each of those is drawn in this laboratory's picture.
 networks:
   net-lab:
     driver_opts:

@@ -869,11 +869,9 @@ The picture is wide. Click it to open the raw file, which the browser renders fu
 zoomable: every access rule and process variable list is readable there.
 
 There is a second picture of this laboratory, [drawn the way a site would build it](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-shared-root-routed.svg): a routing
-firewall carrying what leaves each department. `compose.yaml` builds the one above, because
-rootless podman cannot run such a firewall, so **each router in that picture carries a
-`SIMULATED BY` note** naming the three things that do its job here - the isolation on every
-segment, the balancer's leg in each department, and each certificate manager's leg on the IT
-segment. Read the two together and nothing about this laboratory is left implied.
+firewall carrying what leaves each department. `compose.yaml` builds the one above, and each
+router in that picture carries a **`SIMULATED BY`** note saying which part of it does that
+router's job here.
 
 ## One address for the facility, and the port says which department
 
@@ -918,31 +916,15 @@ search reply and the client dials that port on the address the reply came from. 
 and the client lands in the other department. Its configuration is
 `topologies/federated-shared-root/config/haproxy.cfg`.
 
-> **These segments are separated, not merely labelled.** Each one carries `isolate: "true"`
-> in `compose.yaml`, so podman drops a packet sent from one segment to a host on another.
-> Nothing here reaches another segment by addressing it, and the gateway is the only way
-> between departments in fact rather than by configuration. Take the option out and the host,
-> which forwards between the bridges and permits everything, carries any packet anywhere -
-> every boundary below then holds only because an access rule says so.
->
-> Two other things a segment separates, and these need no option: a search is a broadcast and
-> does not leave the segment it was sent to, and podman answers a name only for a container
-> that shares a segment with the asker.
->
-> That last one is why `compose.yaml` looks the way it does. The balancer has a leg on each
-> departmental segment with the `facility` alias repeated there, and each certificate manager
-> has one on `net-it`. Neither is there to *carry* anything. Both are there so the name they
-> are called by can be answered where it is asked, and each is the shorter way round: the
-> balancer is named by workstations, which have one interface each, so it moves to them; the
-> responder is named by two appliances, so they move to it. The second is the tighter of the
-> two - nothing but those two managers is on `net-it`, so nothing else can reach the
-> responder at all.
->
-> What this cannot express is a *port* across a boundary: `isolate` is all or nothing. A site
-> would say "net-lab may reach net-perimeter on 5175 and 5176 only" on a routing firewall,
-> and rootless podman cannot run one - a forwarding container passes traffic one way and
-> never returns it. That is what the second picture is for, and each router in it says which
-> part of `compose.yaml` does its job instead.
+> **These segments are separated, not merely labelled.** Each carries `isolate: "true"`, so
+> no podman network forwards to another: nothing reaches another segment by addressing it,
+> and the gateway is the only way between departments in fact rather than by configuration.
+> A broadcast search does not leave its segment either, and a name is answered only within
+> one - which is why the balancer has a leg in each department and each certificate manager
+> one on `net-it`. Those legs are not there to carry traffic; they are there so the name each
+> is called by can be answered where it is asked. What none of this can express is a single
+> port across a boundary, because `isolate` is all or nothing: that is what the routing
+> firewall in the second picture is for, and rootless podman cannot run one.
 
 ## First, what works with no certificates at all
 

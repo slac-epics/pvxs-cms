@@ -29,19 +29,12 @@ x-lab-env: &lab-env
 # segment are still assigned by podman when a container starts: per-container addresses
 # cannot be set here, because podman-compose passes them as --ip, which podman refuses on a
 # container attached to more than one network.
-# Every segment carries isolate=true, and that is what makes it a segment rather than a
-# label. Podman drops traffic between two of its own networks, so nothing on one reaches a
-# host on another by addressing it; what crosses does so through a container standing on
-# both sides, and each of those is drawn in this laboratory's picture.
+# Every segment carries isolate=true: no podman network forwards to another, so nothing
+# reaches another segment by addressing it. What crosses does so through a container standing
+# on both sides, and each of those is drawn in this laboratory's picture.
 #
-# Without it the host, which forwards between the bridges and permits everything, carries
-# any packet from any segment to any other, and every boundary below becomes a matter of
-# policy rather than of the network.
-#
-# This is the separation a routing firewall would be installed to enforce, and it is why
-# this laboratory needs no such appliance. topology-federated-shared-root-routed.svg draws
-# the firewall a site would build, and its SIMULATED BY note says which parts of this file
-# stand in for it.
+# This is what a routing firewall would be installed to enforce; see the SIMULATED BY note
+# on the routers in topology-federated-shared-root-routed.svg.
 networks:
   net-lab:
     driver_opts:
