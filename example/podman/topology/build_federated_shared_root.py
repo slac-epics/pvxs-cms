@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-# The federated shared-root topology, as compose.yaml builds it: five segments, two
-# departments each with its own gateway and certificate manager, a facility load balancer
-# owning one address for the whole facility, and an OCSP responder on the facility's own IT
-# segment answering for the root both departments chain to.
+# The federated shared-root topology: five segments, two departments each with its own gateway
+# and certificate manager, a facility load balancer owning one address for the whole facility,
+# and an OCSP responder answering for the root both departments chain to.
 #
-# THIS PICTURE MATCHES THE RUNNING LABORATORY. Every segment carries isolate=true, so the
-# separation drawn here is enforced by podman rather than merely configured.
-# topology-federated-shared-root-routed.svg draws the same laboratory with the routing
-# firewall a site would install, and says on the firewall itself what stands in for it here.
+# The two routers are the only boxes here that no container corresponds to. Rootless podman
+# cannot run one - a forwarding container passes traffic one way and never returns it - so each
+# says SIMULATED where every other card names its image, and what does its work instead is
+# drawn: the extra interfaces on the balancer and the responder, and isolate=true on every
+# network. Everything else in this picture is what topologies/federated-shared-root/compose.yaml
+# builds.
 # Every coordinate is computed here. See topology_kit for the primitives.
 from topology_kit import (C, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields,
                           measure, output_path)
@@ -80,12 +81,33 @@ lb_l = fields('Role: facility load balancer, layer 4','Image: haproxy',
  'eth1  net-perimeter  10.89.2.0/24   its foot in the DMZ',
  'eth2  net-lab        10.89.0.0/24   aliased "facility" on each',
  'eth3  net-ml         10.89.1.0/24       network that names it',
+ 'The gateways stand only in the DMZ, so this is the one way in',
  'Maps inward, port for port:',
  '    facility:5075 -> pvxs-lab-gateway:5075',
  '    facility:5076 -> pvxs-lab-gateway:5076      over TLS',
  '    facility:5175 -> pvxs-lab-ml-gateway:5175',
  '    facility:5176 -> pvxs-lab-ml-gateway:5176   over TLS',
  'Backends: resolve-net 10.89.2.0/24, the DMZ address of each gateway')
+
+def _router(dept, seg, cidr, far_gw, far_ports):
+    # Not an image. This is the one box in the picture that no container corresponds to, so
+    # what stands in for it goes where every other card names its image.
+    return fields('Role: routing firewall, layers 3 and 4',
+     '§Image: SIMULATED - by isolate=true on every network, and by the',
+     '§    extra interfaces drawn on pvxs-facility-lb and',
+     '§    pvxs-lab-authority-status',
+     f'eth0  {seg:<14} {cidr}',
+     'eth1  net-perimeter  10.89.2.0/24',
+     'eth2  net-it         10.89.3.0/24',
+     f'Carries every packet leaving the {dept} department',
+     'Routes:',
+     f'    {far_ports[0]}, {far_ports[1]} to {far_gw} on net-perimeter',
+     '    tcp/8888 to pvxs-lab-authority-status on net-it')
+
+lab_router_l = _router('lab', 'net-lab', '10.89.0.0/24',
+                       'pvxs-lab-ml-gateway', ('tcp/5175', 'tcp/5176'))
+ml_router_l = _router('ML', 'net-ml', '10.89.1.0/24',
+                      'pvxs-lab-gateway', ('tcp/5075', 'tcp/5076'))
 
 pc_l = fields('Role: client','Image: internet',
  'eth0  net-internet   10.89.4.0/24',
@@ -231,6 +253,7 @@ chips = [('CA or certificate - a file, on no network', C['ca'][1]),
          ('    and the perimeter', None),
          ('load balancer - owns the facility address', C['lb'][1]),
          ('    and maps a port to a department', None),
+         ('router - SIMULATED: no such container', C['router'][1]),
          ('client - workstation', C['client'][1]),
          ('ACF or PVList - a file a component loads', C['file'][1])]
 samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, None),
@@ -240,12 +263,11 @@ samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, N
            ('    to net-perimeter', None, 0, None),
            ('certificate relationship - signs / names', C['cert'], 2, '6 5'),
            ('a file the component loads', C['filedrop'], 1.6, '2 4')]
-notation = ['10.89.0.0/24 : the segment, in CIDR. Five podman bridges, each',
-            '               with isolate=true: no network forwards to another,',
-            '               a broadcast search does not leave one, and a name',
-            '               is answered only within one. Crossing needs an',
-            '               interface on both sides, which four containers',
-            '               here have and every one is drawn.',
+notation = ['10.89.0.0/24 : the segment, in CIDR. Five of them, each with',
+            '               isolate=true: no network forwards to another, a',
+            '               broadcast search never leaves one, and a name is',
+            '               answered only within one. Crossing needs an',
+            '               interface on both sides.',
             'eth0, eth1   : the host\'s interface on each segment. A host on',
             '               more than one is marked dual-homed',
             'tcp/5075     : PVAccess, plaintext',
@@ -304,6 +326,7 @@ pz_x, pz_y = ca_x - pz_w - 60, ca_y
 # Every segment is one horizontal line, tapped by each host standing on it, labelled once.
 # The perimeter line runs under the left end of the legend to reach the lab side, and the
 # line-through-card assertion guards that, since the legend registers as a rectangle.
+router_w, router_h = measure('pvxs-lab-router', lab_router_l)
 lb_w, lb_h = measure('pvxs-facility-lb', lb_l)
 resp_w, resp_h = measure('pvxs-lab-authority-status', resp_l)
 
@@ -343,7 +366,8 @@ def build(cv):
     # measure row1/row2 heights
     h_gw = measure('pvxs-lab-gateway', lab_gw_l)[1]
     h_cl = measure('lab-client', lab_client_l)[1]
-    row1_h = max(h_gw, h_cl)
+    # the router shares this row, so the bus below it has to clear the tallest of the three
+    row1_h = max(h_gw, h_cl, router_h)
     bus_lab_y = row1_y + row1_h + 34
     row2_y = bus_lab_y + 34
     h_r2 = max(measure('pvxs-lab-pvacms', pvacms_l)[1], measure('pvxs-lab-testioc', testioc_l)[1])
@@ -427,16 +451,21 @@ def build(cv):
     cv.emit(f'<text x="{c3["cx"]+8}" y="{ca_y+ca_h+22}" font-family="Menlo,Consolas,monospace" font-size="10" fill="{C["cert"]}">signs its answers</text>')
 
     # --- the perimeter segment: one line, tapped by every host that stands on it. The two
-    # --- gateways reach it from below and the balancer from above; nothing else is on it,
-    # --- which is what makes a gateway the only way in.
-    perim_hosts = [gw1, gw2]
+    # --- gateways and both dual-homed workstations reach it from below, the outside
+    # --- workstation from above.
+    labr = cv.card((gw1['x'] + gw1['w'] + lab_x + W_lab - ZP - router_w)/2, row1_y,
+                   'pvxs-lab-router', lab_router_l, 'router', 'router')
+    mlr = cv.card((ml_x + ZP + gw2['x'] - router_w)/2, row1_y,
+                  'pvxs-ml-router', ml_router_l, 'router', 'router')
+    perim_hosts = [labr, mlr, gw1, gw2]
     pbus_x = [h['cx'] for h in perim_hosts] + [lb['cx']]
     pbus0 = min(pbus_x) - 40
     pbus1 = max(pbus_x) + 40
     cv.hv([(pbus0, perim_bus_y), (pbus1, perim_bus_y)], C['perim'], 4)
     for h in perim_hosts:
-        cv.hv([(h['cx'], perim_bus_y), (h['cx'], h['top'])], C['perim'], 2)
-        cv.dot(h['cx'], perim_bus_y, C['perim'])
+        hx = h['cx'] - 30 if h in (labr, mlr) else h['cx']
+        cv.hv([(hx, perim_bus_y), (hx, h['top'])], C['perim'], 2)
+        cv.dot(hx, perim_bus_y, C['perim'])
     cv.hv([(lb['cx'], lb['bot']), (lb['cx'], perim_bus_y)], C['perim'], 2)
     cv.dot(lb['cx'], perim_bus_y, C['perim'])
 
@@ -452,22 +481,25 @@ def build(cv):
     # centred on the open span between the two zones, clear of the legend at the left end
     cv.pill(rx, perim_bus_y - 16, 'net-perimeter  10.89.2.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176', C['perim'])
 
-    # --- the IT segment: the responder's own, and nothing else stands on it. A certificate
-    # --- manager has one interface, on its own department, so neither can address the other.
-    it0, it1 = rc['cx'] - 110, rc['cx'] + 110
+    # --- the IT segment: the two routers stand on it, and the responder is the service on it
+    # A router taps the perimeter line at cx-30 and this one at cx+30, so an overhang of 60
+    # would end the line exactly on that router's other connector and read as joining it.
+    # 30 ends it midway between the two, clear of both.
+    it_taps = [labr['cx'] + 30, mlr['cx'] + 30, rc['cx']]
+    it0 = min(it_taps) - 30
+    it1 = max(it_taps) + 30
     cv.hv([(it0, it_bus_y), (it1, it_bus_y)], C['bus_it'], 4)
+    for h in (labr, mlr):
+        cv.hv([(h['cx'] + 30, it_bus_y), (h['cx'] + 30, h['top'])], C['bus_it'], 2)
+        cv.dot(h['cx'] + 30, it_bus_y, C['bus_it'])
     cv.hv([(rc['cx'], it_bus_y), (rc['cx'], rc['bot'])], C['bus_it'], 2)
     cv.dot(rc['cx'], it_bus_y, C['bus_it'])
-    cv.pill(rc['cx'], it_bus_y - 16, 'net-it  10.89.3.0/24  tcp/8888', C['bus_it'])
+    cv.pill(rx, it_bus_y - 16, 'net-it  10.89.3.0/24  tcp/8888', C['bus_it'])
 
-    # --- the legs each appliance has into the departments, so the name it is addressed by
-    # --- can be answered where it is asked: the balancer for "facility", the responder for
-    # --- the hostname the root's own extension gives.
-    #
-    # Each line has to climb past the first row of its zone, so the column is chosen rather
-    # than guessed: the widest gap in that row, shared between the two appliances. Card
-    # widths follow the text on them, so a column clear today closes the moment a line is
-    # added to a card above it.
+    # --- the interfaces that do the routers' work: the balancer's into each department, so
+    # --- "facility" is answered there, and the responder's, so the hostname the root gives
+    # --- is answered there too. A column is chosen rather than guessed - the widest gap in
+    # --- the first row of the zone - because card widths follow the text on them.
     def columns(row1_cards, lo, hi, n):
         blocked = sorted((c['x'] - 24, c['x'] + c['w'] + 24) for c in row1_cards)
         free, cur = [], lo
@@ -484,14 +516,19 @@ def build(cv):
         a, b = max(free, key=lambda p: p[1] - p[0])
         return [a + (b - a) * (i + 1) / (n + 1) for i in range(n)]
 
-    lab_cols = columns([cl, gw1], busL0, busL1, 2)
-    ml_cols = columns([gw2, mcl], busM0, busM1, 2)
-    for appliance, off, y, cols in ((lb, -20, it_bus_y + 26, (lab_cols[0], ml_cols[0])),
-                                    (rc, -20, it_bus_y + 58, (lab_cols[1], ml_cols[1]))):
-        for colr, sign, down in (('bus_lab', off, cols[0]), ('bus_ml', -off, cols[1])):
+    lab_cols = columns([cl, gw1, labr], busL0, busL1, 2)
+    ml_cols = columns([gw2, mcl, mlr], busM0, busM1, 2)
+    for appliance, y, cols in ((lb, it_bus_y + 26, (lab_cols[0], ml_cols[0])),
+                               (rc, it_bus_y + 58, (lab_cols[1], ml_cols[1]))):
+        for colr, sign, down in (('bus_lab', -20, cols[0]), ('bus_ml', 20, cols[1])):
             cv.hv([(appliance['cx'] + sign, appliance['bot']), (appliance['cx'] + sign, y),
                    (down, y), (down, bus_lab_y)], C[colr], 2)
             cv.dot(down, bus_lab_y, C[colr])
+
+    # --- each router's third leg, down into its own department's segment
+    for r, colr in ((labr, 'bus_lab'), (mlr, 'bus_ml')):
+        cv.hv([(r['cx'], r['bot']), (r['cx'], bus_lab_y)], C[colr], 2)
+        cv.dot(r['cx'], bus_lab_y, C[colr])
 
     # --- file drops (dotted grey)
     def drop(comp, filecard, xoff=0):
@@ -550,7 +587,7 @@ def build(cv):
 
     # --- page title
     hdr.append(f'<text x="{M}" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="{C["ink"]}">Secure PVAccess demonstration laboratory</text>')
-    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates, so every certificate traces to it - the laboratory topologies/federated-shared-root/compose.yaml builds</text>')
+    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates, so every certificate traces to it - the laboratory topologies/federated-shared-root/compose.yaml builds, with the two routers a site would install marked SIMULATED</text>')
     return hdr
 
 
