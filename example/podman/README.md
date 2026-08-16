@@ -839,7 +839,20 @@ boundary times out with bytes visibly flowing:
 ```sh
 podman-compose -p podman -f topologies/simple-with-gateway/compose.yaml \
     restart pvxs-lab-testioc pvxs-lab-tstioc
-sleep 15
+```
+
+Wait for the controller to be serving securely rather than for a number of seconds. Its
+certificate reads `VALID` as soon as it is approved, which is before the controller has
+restarted and has anything to do with it; what says it is ready is that it answers over TLS:
+
+```sh
+run_in lab as operator pvxinfo -v test:aiExample | grep '^#'
+#   # TLS x509:...:EPICS Root Certificate Authority/testioc@10.89.0.95:5076
+```
+
+Until then the same line says `anonymous/@...:5075`. Then the gateway:
+
+```sh
 podman-compose -p podman -f topologies/simple-with-gateway/compose.yaml \
     restart pvxs-lab-gateway
 ```
@@ -1253,7 +1266,28 @@ Then restart the controllers, and the gateways after them, exactly as Part 2 did
 ```sh
 podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
     restart pvxs-lab-testioc pvxs-lab-tstioc pvxs-lab-ml-ioc
-sleep 15
+```
+
+**Then wait for the controllers to be serving securely, and only then restart the gateways.**
+Not for a number of seconds, and not for the certificate to read `VALID`: a controller's
+certificate is valid from the moment it is approved, which is before the controller has
+restarted and has anything to do with it. What says a controller is ready is that it answers
+over TLS, and `pvxinfo -v` names the peer it reached:
+
+```sh
+run_in lab as operator pvxinfo -v test:aiExample | grep '^#'
+#   # TLS x509:89caabd6:...:EPICS Root Certificate Authority -> EPICS Controls
+#     Intermediate CA/testioc@10.89.0.177:5076
+run_in ml  as guest    pvxinfo -v ml:aiExample   | grep '^#'
+#   # TLS x509:64ca66c8:... /mlioc@10.89.1.47:5076
+```
+
+`TLS` and port `5076` is a controller that has read its keychain. Until it restarts the same
+line says `anonymous/@...:5075` - serving plain traffic, and not yet worth relaying. Ask on
+both sides, because a gateway restarted against a department that is not ready forwards
+nothing until it is restarted again:
+
+```sh
 podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
     restart pvxs-lab-gateway pvxs-lab-ml-gateway
 ```
@@ -1787,6 +1821,16 @@ connection it never made or has lost: one that started before the controllers we
 never made it, and one whose department was cut off by a revoked authority (section 10) lost
 it. Neither comes back on its own, and the gateway goes on answering searches meanwhile, so
 the symptom is a request that times out rather than one that is refused.
+
+Check the department is ready before restarting them, or you will be doing it twice. A
+controller is ready when it answers over TLS, which is later than its certificate reading
+`VALID`:
+
+```sh
+run_in lab as operator pvxinfo -v test:aiExample | grep '^#'
+#   # TLS ... /testioc@...:5076        ready
+#   # anonymous/@...:5075              not yet
+```
 
 ```sh
 podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
