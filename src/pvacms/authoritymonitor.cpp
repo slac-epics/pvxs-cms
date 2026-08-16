@@ -312,10 +312,19 @@ time_t AuthorityMonitor::pollOnce() {
                             : reported == cert_authority_standing_t::STANDING ? "stands"
                                                                              : "cannot be established");
         }
-        // The same rule the status factory applies: not knowing is worth nothing for any
-        // length of time. A responder that answers and says it cannot say has told us to ask
-        // again, not to wait until it says so - so this is asked again on the failure footing,
-        // in fifteen seconds, rather than at whatever next update the answer carried.
+        // A responder that answers and says it cannot say has told us to ask again, not to
+        // wait until it says so. Taking its next-update at face value here would leave the
+        // service reporting an authority it cannot establish for as long as that lasts -
+        // up to the hour this loop will wait - when the thing to do is ask again shortly.
+        // Returning nothing puts it on the same fifteen-second footing as a responder that
+        // could not be reached at all, which is the same situation from this end.
+        //
+        // This is the one place that needed it. Everything else is either told - a change in
+        // standing is pushed to every certificate being watched, so a subscriber learns of it
+        // at once - or is asking afresh anyway. An UNKNOWN status handed to a holder keeps its
+        // full validity for that reason: it is a true answer for as long as it says, and
+        // shortening it would only have every holder ask again at once, which is the last
+        // thing a service that has just lost its responder needs.
         if (reported == cert_authority_standing_t::UNKNOWN) return 0;
         return parsed.status_valid_until_date.t;
     } catch (const std::exception &e) {
