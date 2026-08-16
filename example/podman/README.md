@@ -879,11 +879,11 @@ Five segments:
 
 | Segment | | Who is on it |
 |---|---|---|
-| `net-lab` | `10.89.0.0/24` | the lab department: its certificate manager, its two controllers, its gateway, its workstation |
+| `net-lab` | `10.89.0.0/24` | the lab department: its certificate manager, its two controllers, its gateway, its workstation - and the balancer and the responder, which stand here only to be named |
 | `net-ml` | `10.89.1.0/24` | the machine learning department: the same again |
-| `net-perimeter` | `10.89.2.0/24` | the DMZ: the two gateways, and nothing that holds a key |
-| `net-it` | `10.89.3.0/24` | the facility's own: the responder both certificate managers ask about the root |
-| `net-internet` | `10.89.4.0/24` | outside the facility: one workstation, and the facility address |
+| `net-perimeter` | `10.89.2.0/24` | the DMZ: the two gateways and the balancer. Each gateway holds its own identity; no key that can issue a certificate is here |
+| `net-it` | `10.89.3.0/24` | the facility's own, and the responder is the only thing on it |
+| `net-internet` | `10.89.4.0/24` | outside the facility: one workstation, and the balancer answering as `facility` |
 
 **A workstation has one network interface, as a real one does.** It is on its own department
 and nowhere else, and everything it reaches beyond that it reaches at the facility address:
@@ -1486,7 +1486,8 @@ The responder's own segment is `net-it`, the facility's: it belongs to neither d
 the root does not. It also has a leg in each department, because the name the root gives it has
 to be answerable where it is asked, and that leaves each certificate manager asking it without
 leaving its own segment. It signs with a certificate the root authorised for the purpose, so
-the root's own key is not on it.
+the root's own key is not on it - and the root's keychain has no key in it at all, only the
+certificate, which is why nothing in the laboratory can sign as the root.
 
 Start from a working laboratory, with certificates issued and a write that succeeds:
 
