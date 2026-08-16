@@ -20,10 +20,10 @@
 **[Part 3 - federated, one facility root](#part-3---federated-one-facility-root)**
 - [One address for the facility, and the port says which department](#one-address-for-the-facility-and-the-port-says-which-department)
 - [First, what works with no certificates at all](#first-what-works-with-no-certificates-at-all)
-- [Issue the certificates](#issue-the-certificates)
 - [7. Two certificate managers, one per department](#7-two-certificate-managers-one-per-department)
+- [Issue the certificates](#issue-the-certificates)
 - [8. One facility root, so each department trusts the other's certificates](#8-one-facility-root-so-each-department-trusts-the-others-certificates)
-- [9. Denying and revoking](#9-denying-and-revoking)
+- [9. A certificate is revoked where it was issued](#9-a-certificate-is-revoked-where-it-was-issued)
 - [10. Revoking the authority itself](#10-revoking-the-authority-itself)
 
 **[Part 4 - federated, two independent roots](#part-4---federated-two-independent-roots)**
@@ -485,7 +485,7 @@ run_in lab-manager as admin pvxcert --review-pending < /dev/null
 ```
 
 `< /dev/null` is what makes it show and stop. Given a terminal it would ask about each in turn,
-which section 9 covers in the laboratory that has enough requests for that to be worth doing.
+which section 4 comes back to once there are enough requests for that to be worth doing.
 
 The subject says `CN=operator` because that is what was asked for, and asking is free: anyone
 may ask for any subject, including one that belongs to somebody else. Nothing in the request
@@ -658,8 +658,111 @@ the name it asked for:
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 ```
 
-Decisions are made at the certificate
-manager, by somebody the certificate manager's own access file names.
+Decisions are made at the certificate manager, by somebody the certificate manager's own access
+file names.
+
+### What a decision can be, and how much of it you are asked
+
+**A denial is not a separate state.** The certificate manager writes `REVOKED`, and the review
+shows that before you confirm. Make a request to spend on it:
+
+```sh
+run_in lab as operator authnstd -u client -n spare --force
+
+run_in lab-manager as admin pvxcert --review-pending --all deny --yes
+#   About to change 1 certificate:
+#     <identifier>  CN=spare,O=epics.org,C=US
+#         PENDING_APPROVAL -> REVOKED  (DENY)
+```
+
+**Revocation works over the issued certificates**, and unlike a pending review it *can* be
+narrowed by a filter. Three levels of control, and a fourth form that takes one identifier:
+
+```sh
+run_in lab-manager as admin pvxcert --review-issued --where "state:VALID"               # one at a time  - answer skip, then stop
+run_in lab-manager as admin pvxcert --review-issued --where "name:guest" --all          # asks once      - answer n
+run_in lab-manager as admin pvxcert --review-issued --where "name:tstioc" --all --yes   # no questions   - this one goes through
+run_in lab-manager as admin pvxcert -R "${ROOT}:0123456789"                             # one certificate - that serial does not exist
+```
+
+**Only the third is meant to be carried through.** The first walks every valid certificate,
+the administrator's own among them, so answer `skip` to move past each and `stop` when you have
+seen enough. The second is answered `n`, and shows exactly what was chosen before anything is
+written:
+
+```
+About to change 1 certificate:
+  <identifier>  CN=guest,O=epics.org,C=US
+      VALID -> REVOKED  (REVOKE)
+
+Revoke these 1 certificates? [y/N] n
+Cancelled. Nothing was written.
+```
+
+The wording and the answers change with the job: revoking offers `revoke / skip / stop /
+cancel`, with no `approve` or `deny` to pick the wrong one of. The fourth names a serial that
+does not exist and says so, writing nothing.
+
+That third one stopped a controller, so put it back, which is what a site would do having
+revoked one in error:
+
+```sh
+run_in tstioc as tstioc authnstd -u ioc --force
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+podman-compose -p podman -f topologies/simple/compose.yaml restart pvxs-lab-tstioc
+```
+
+**Only what can be revoked is offered.** The rest is listed with the reason and never asked
+about - anything outside `PENDING_APPROVAL`, `PENDING` and `VALID`, which the denied request
+above now is:
+
+```sh
+run_in lab-manager as admin pvxcert --review-issued < /dev/null
+#     Subject        : CN=spare,O=epics.org,C=US
+#     Status         : REVOKED
+#     Not offered    : status REVOKED cannot be revoked
+```
+
+### An ordinary user may revoke their own, and no other
+
+That is the point of it for them: a key has leaked and they want it stopped now, without
+finding an administrator first.
+
+```sh
+run_in lab-manager as admin pvxcert -l --where "name:guest and state:VALID"   # its identifier
+run_in lab as guest pvxcert -R "${ROOT}:<the serial that listing shows>"
+#   Revoke ==> CERT:STATUS:<that identifier> ==> Completed Successfully
+```
+
+That leaves them without one, so they ask again, which is what anyone would do having stopped a
+key they no longer trust:
+
+```sh
+run_in lab as guest authnstd -u client --force
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+```
+
+Someone else's is refused, and the message names the identity the certificate manager saw
+rather than the certificate it was asked about:
+
+```sh
+run_in lab as guest pvxcert -R "${ROOT}:<a controller's serial>"
+#   ERR ... REVOKED operation not authorized on <that identifier> by
+#   TLS x509:<issuer>:<serial>:EPICS Root Certificate Authority/guest@...
+```
+
+The one identity this runs the other way for is the administrator's own certificate. A
+certificate manager refuses that, because it is the identity it needs in order to keep answering
+at all. The tool cannot tell an administrator's keychain from anyone else's, so it offers the
+certificate like any other and reports what the manager says:
+
+```sh
+run_in lab-manager as admin pvxcert -R "${ROOT}:<the admin's own serial>"
+#   ERR ... REVOKED Admin Self-Revoke not permitted on <that identifier> by ...
+```
+
+A failed write does not stop the ones after it, the manager's own message is shown against the
+certificate it belongs to, and a partly successful batch exits 5.
 
 # Part 2 - simple, with a gateway
 
@@ -927,195 +1030,64 @@ and the client lands in the other department. Its configuration is
 
 ## First, what works with no certificates at all
 
-Before any certificate exists the laboratory is already running and readable, and this is the
-baseline to come back to when something later looks broken.
+Parts 1 and 2 showed what a laboratory does before anything is issued: reading is open to
+anyone, writing is refused, and a request from outside is stopped at the gateway rather than at
+the controller. All of that still holds. What is new here is the department next door.
 
-**Reading works from everywhere, over plain TCP, with no certificate.** Each department reads
-its own directly, and the other one at the facility address:
+**Reading crosses with no certificate**, in both directions, each department reaching the other
+at the facility address:
 
 ```sh
-run_in lab as guest without a certificate pvxget test:aiExample
-run_in ml  as guest without a certificate pvxget ml:aiExample
-
 run_in lab as guest without a certificate pvxget ml:aiExample
+#   value double = 1.23
 run_in ml  as guest without a certificate pvxget test:aiExample
 ```
 
-And from outside both departments, through a gateway either way:
+**Writing across is refused**, and refused at the far department's own boundary:
 
 ```sh
-run_in perimeter as guest without a certificate pvxget test:aiExample
-run_in perimeter as guest without a certificate pvxget ml:aiExample
-```
-
-All six are what `./reset.sh federated-shared-root` checked before it handed the laboratory
-back. Read is deliberately open, to anyone, on any segment: certificates are not about hiding
-readings.
-
-**Writing is refused, whatever you write to.** Every write rule in the laboratory names
-`PROTOCOL(TLS)` and `METHOD(X509)`, so with no certificate nothing is writable anywhere:
-
-```sh
-# from inside the department: the request reaches the controller, which refuses it
-run_in lab as guest without a certificate pvxput test:stringExample hello
-#   ERROR ... Put not permitted
-
-# from the peer department: stopped at the lab's boundary, before reaching the controller
-run_in ml as guest without a certificate pvxput test:stringExample hello
+run_in lab as guest without a certificate pvxput ml:stringExample hello
 #   ERROR ... Put permission denied by gateway
-
-# from outside both departments: stopped at that same boundary
-run_in perimeter as guest without a certificate pvxput test:stringExample hello
+run_in ml  as guest without a certificate pvxput test:stringExample hello
 #   ERROR ... Put permission denied by gateway
 ```
 
-The two messages come from two different places, and which one you get says how far the
-request travelled. The first reached the controller, which applied its own access file. The
-other two never left the boundary: the gateway refused them there, whether the request came
-from the peer department or from outside both.
-
-## Issue the certificates
-
-Nothing holds one yet. Each service asks its **own** department, and that department's
-administrator approves - so every step here is done twice, once on each side.
-
-```sh
-# controllers ask
-run_in testioc as testioc authnstd -u ioc
-run_in tstioc  as tstioc  authnstd -u ioc
-run_in ml-ioc  as mlioc   authnstd -u ioc
-#   email this Certificate Request ID: ER32-RS19-V788-WXRN, to your SPVA administrator
-#   Certificate identifier  : 89caabd6:14282982519142432057
-
-# each department approves its own
-run_in lab-manager as admin pvxcert --review-pending --all approve --yes
-#   About to change 2 certificates:
-#     89caabd6:10264461877017631250  CN=tstioc,O=pvxs-lab-tstioc,C=US
-#         PENDING_APPROVAL -> VALID  (APPROVE)
-#     89caabd6:14282982519142432057  CN=testioc,O=pvxs-lab-testioc,C=US
-#         PENDING_APPROVAL -> VALID  (APPROVE)
-run_in ml-manager  as admin pvxcert --review-pending --all approve --yes
-#   About to change 1 certificate:
-#     64ca66c8:00427000540556083337  CN=mlioc,O=pvxs-lab-ml-ioc,C=US
-```
-
-Neither administrator was offered the other department's requests, and neither could have
-approved one. The issuer half of each identifier says which: `89caabd6` for the lab,
-`64ca66c8` for the machine learning department.
-
-**The gateways ask too, and they ask for an `ioc` certificate rather than a `server` one.** A
-gateway is a server to whoever is outside and a client to the controllers behind it, and only
-an `ioc` certificate is both. A `server` certificate leaves its upstream side anonymous, and
-every write it forwards is refused for want of an identity:
-
-```sh
-run_in gateway    as gateway authnstd -u ioc
-run_in ml-gateway as gateway authnstd -u ioc -n ml-gateway
-
-run_in lab-manager as admin pvxcert --review-pending --all approve --yes
-run_in ml-manager  as admin pvxcert --review-pending --all approve --yes
-```
-
-Both containers run the same image, as the same account, so the second asks under a name of
-its own. That name is not cosmetic: `testioc.acf` has `UAG(GATEWAYS) { gateway, ml-gateway }`,
-and a rule can only name a gateway that is called something.
-
-**Then the people.** Each asks the department it belongs to, and two of them carry the unit
-their department knows them by, which section 8 turns on:
-
-```sh
-run_in lab       as operator    authnstd -u client --ou lab --issuer ${LAB_SKID}
-run_in ml        as guest       authnstd -u client
-run_in perimeter as operator    authnstd -u client --issuer ${ML_SKID}
-run_in lab       as ml/operator authnstd -u client --ou ml  --issuer ${ML_SKID}
-
-run_in lab-manager as admin pvxcert --review-pending --all approve --yes
-run_in ml-manager  as admin pvxcert --review-pending --all approve --yes
-```
-
-Four things worth noticing in those four lines.
-
-The machine learning guest names no authority, because its container was given one and every
-service in this laboratory was: `/etc/epics/issuer` holds its own department's, written when
-the container started. The other three name one because they are asking a department other
-than the one whose identifier they were given, or - for the perimeter workstation - because
-they were given none at all, being outside the facility.
-
-The perimeter operator's request is the first proof the path works. It asked the **machine
-learning** department, which it cannot address, and the request crossed the balancer and that
-department's gateway to get there. What comes back is issued by `64ca66c8`.
-
-`ml/operator` is the machine learning operator sitting at a lab workstation - the same person,
-holding a certificate from the other department, kept in a keychain of its own. Section 8 uses
-it to separate what the shared root buys from what a unit buys.
-
-And the lab guest is deliberately left without one until section 7, where a keychain that
-already held a certificate would answer before the point about naming an authority could be
-made.
-
-Check they all arrived. Each department lists only what it issued:
-
-```sh
-run_in lab-manager as admin pvxcert -l --where "state:VALID"
-run_in ml-manager  as admin pvxcert -l --where "state:VALID"
-```
-
-Besides what it was asked for, each listing holds four the department did not issue to anyone:
-its own intermediate authority, its certificate manager's service certificate, its
-administrator's identity, and the facility root:
-
-```
-89caabd6:00000000009876543212  CERT_AUTH  CN=EPICS Controls Intermediate CA ...  VALID
-58aec41b:00000000009876543210  ROOT_AUTH  CN=EPICS Root Certificate Authority ...  VALID  ... EXTERN OCSP
-```
-
-The root's row is the same row in both listings, under the same identifier, and it is the only
-one whose last column says `EXTERN OCSP`: neither department issued it and neither answers for
-it. Something outside does, and section 10 is about what happens when that answer changes.
-
-Note that the administrator is `run_in lab-manager`, not `run_in lab`. That identity lives
-beside the certificate manager and is presented to it over the secure port on the same machine;
-a workstation in the lab department is a different place, with different accounts. Run the same
-listing as `admin` and as `guest` to see what the identity is worth.
-
-**Then restart the controllers, and after them the gateways.** Order matters, and both steps
-are needed:
-
-```sh
-podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
-    restart pvxs-lab-testioc pvxs-lab-tstioc pvxs-lab-ml-ioc
-sleep 15
-podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
-    restart pvxs-lab-gateway pvxs-lab-ml-gateway
-```
-
-A controller reads its keychain at start, and it was already running when the certificate
-arrived, so until it restarts it serves plain traffic only - it listens on 5075 and not on the
-secure port:
-
-```sh
-run_in testioc as testioc ss -lnt | grep 507
-#   before: *:5075          after: *:5075 and *:5076
-```
-
-The gateways go second because a gateway makes its upstream connections when it starts and
-does not retry the ones it could not make, and restarting the controllers is exactly such a
-moment. Restart them in the other order and nothing crosses a boundary.
+Neither request reached a controller. Each was stopped by the gateway of the department it was
+addressed to, which is the same answer the outside workstation got in Part 2 and for the same
+reason: a peer department is outside, as far as a gateway is concerned.
 
 ## 7. Two certificate managers, one per department
 
 They are independent. Each holds only what it issued, and neither knows about the other's
-certificates.
+certificates. Nothing has been issued to anyone yet, which is the clearest moment to look:
 
 ```sh
 run_in lab-manager as admin pvxcert -l
+#   89caabd6:03977854352940719173  IOC        CN=PVACMS Service ...
+#   89caabd6:16553058513422122773  CLIENT     CN=admin,C=US
+#   89caabd6:00000000009876543212  CERT_AUTH  CN=EPICS Controls Intermediate CA ...
+#   58aec41b:00000000009876543210  ROOT_AUTH  CN=EPICS Root Certificate Authority ...
+
 run_in ml-manager  as admin pvxcert -l
+#   64ca66c8:16283814643480803887  IOC        CN=PVACMS Service ...
+#   64ca66c8:08301308272239585373  CLIENT     CN=admin,C=US
+#   64ca66c8:00000000009876543213  CERT_AUTH  CN=EPICS ML Intermediate CA ...
+#   58aec41b:00000000009876543210  ROOT_AUTH  CN=EPICS Root Certificate Authority ...
 ```
 
-The certificate identifiers make it plain: everything the first lists begins with `$LAB`,
-everything the second with `$ML`, and the one row that appears in both is the facility root,
-which neither of them issued. The issuer half of an `<issuer>:<serial>` identifier says which
-department to ask about a certificate.
+Four rows each, and three of them differ. Each department made itself a service certificate and
+an administrator, and holds the intermediate authority it signs with - `89caabd6` on one side,
+`64ca66c8` on the other. **The fourth row is the same row in both**, down to its identifier
+`58aec41b`: the facility root, which neither department issued and neither answers for. That is
+the whole shape of the arrangement in eight lines.
+
+The issuer half of an `<issuer>:<serial>` identifier says which department to ask about a
+certificate, and a department has nothing to say about one it did not issue:
+
+```sh
+run_in lab-manager as admin pvxcert -l --where "issuer:${ML}"
+#   (the column headings, and no rows)
+```
 
 Which department a service asks is decided by where it runs, not by which manager answers
 first. Each container is given the whole identifier of the authority its department trusts,
@@ -1128,6 +1100,9 @@ run_in testioc as testioc printenv EPICS_PVA_AUTH_ISSUER   # lab
 run_in ml-ioc  as mlioc   printenv EPICS_PVA_AUTH_ISSUER   # machine learning
 #   64ca66c8b25b13e1f2afec7fc1858dd55a7103f3
 ```
+
+Neither was told about the other, and neither needs to be. Both chain to the same root, so a
+certificate from either is trusted everywhere - which is what section 8 is about.
 
 ### Naming an authority
 
@@ -1151,7 +1126,7 @@ run_in lab-manager as idm bash -c \
 
 All of these are the same authority written four ways, and all four are understood wherever an
 authority is named. Separators are dropped and capitals folded, so all four select the same
-eight rows:
+four rows:
 
 ```sh
 run_in lab-manager as admin pvxcert -l --where "issuer:${LAB}"
@@ -1194,8 +1169,9 @@ run_in lab as guest authnstd -u client --issuer ${LAB_SKID}      # accepted
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 ```
 
-That last one is a request like any other, and it waits for a decision, so it is approved
-here: from now on the lab guest is someone who holds a certificate.
+That last one is a request like any other, and it waits for a decision, so it is approved here:
+from now on the lab guest is someone who holds a certificate, and it is the first thing this
+laboratory has issued to anybody.
 
 Once a keychain holds an authority, that pinned authority is what a delivered one is compared
 against, and the short form is accepted again for naming. Certificate identifiers keep the
@@ -1207,6 +1183,56 @@ the whole one. The certificate manager prints both when it starts:
 ```
 | Issuer ID                             : 89caabd6
 | Issuer SKID                           : 89caabd63805aa70a2ffea2832f05f5b1246b963
+```
+
+## Issue the certificates
+
+Nothing new in how: it is Part 1's `authnstd` and `pvxcert --review-pending` throughout. What
+is different is that every request goes to one department of two, and only that department's
+administrator can approve it.
+
+```sh
+# the services, each asking its own department
+run_in testioc as testioc authnstd -u ioc
+run_in tstioc  as tstioc  authnstd -u ioc
+run_in ml-ioc  as mlioc   authnstd -u ioc
+run_in gateway    as gateway authnstd -u ioc
+run_in ml-gateway as gateway authnstd -u ioc -n ml-gateway
+
+# the people
+run_in lab       as operator    authnstd -u client --ou lab --issuer ${LAB_SKID}
+run_in ml        as guest       authnstd -u client
+run_in perimeter as operator    authnstd -u client --issuer ${ML_SKID}
+run_in lab       as ml/operator authnstd -u client --ou ml  --issuer ${ML_SKID}
+
+# each department approves its own, and is offered nothing else
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes   # 4
+run_in ml-manager  as admin pvxcert --review-pending --all approve --yes   # 5
+```
+
+Four and five, out of nine requests. Neither administrator was shown the other's, and neither
+could have approved one.
+
+Three of those lines carry something the single-department parts had no way to show:
+
+- **`ml-gateway` asks under a name of its own.** Both gateways run the same image as the same
+  account, and `testioc.acf` has `UAG(GATEWAYS) { gateway, ml-gateway }` - a rule can only name
+  a gateway that is called something.
+- **The machine learning guest names no authority.** Its container was given one, as every
+  service here was. The other three name one because they are asking a department other than
+  the one whose identifier they hold, or - for the workstation outside - because they were
+  given none at all.
+- **`--ou lab` and `--ou ml`** put each operator in its own department's unit, which section 8
+  turns on.
+
+Then restart the controllers, and the gateways after them, exactly as Part 2 did:
+
+```sh
+podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
+    restart pvxs-lab-testioc pvxs-lab-tstioc pvxs-lab-ml-ioc
+sleep 15
+podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
+    restart pvxs-lab-gateway pvxs-lab-ml-gateway
 ```
 
 ## 8. One facility root, so each department trusts the other's certificates
@@ -1316,153 +1342,49 @@ vouched for, so a machine learning certificate asking for `--ou lab` would be ad
 rule that must not be crossed under any circumstances should name the authority as well; naming
 only the unit trusts every department sharing the root to issue that unit honestly.
 
-## 9. Denying and revoking
+## 9. A certificate is revoked where it was issued
 
-A denial is not a separate state: the certificate manager writes `REVOKED`, and the review
-shows that before you confirm. Something has to be waiting for a decision, so ask for one from
-outside - which also crosses the lab gateway to get there, and is refused by a person rather
-than by a rule:
+Revoking is Part 1's command and Part 1's rule about who may run it. What two departments add is
+that there are now two places to run it, and only one of them will answer about any given
+certificate.
 
-```sh
-run_in perimeter as guest authnstd -u client -n remote --issuer ${LAB_SKID}
-#   email this Certificate Request ID: NCY8-D5ZR-DJF1-V0YM, to your SPVA administrator
-#   Certificate identifier  : 89caabd6:16670266214665536961
-
-run_in lab-manager as admin pvxcert --review-pending --all deny --yes
-#   About to change 1 certificate:
-#     89caabd6:16670266214665536961  CN=remote,O=epics.org,C=US
-#         PENDING_APPROVAL -> REVOKED  (DENY)
-```
-
-It asks under a name of its own because the lab department has already issued a `guest`, and a
-certificate manager refuses a second certificate for a subject it has issued.
-
-Revocation works over the issued certificates, and unlike a pending review it *can* be narrowed
-by the filter from section 7. The same three levels of control apply, and a fourth form revokes
-one certificate you already know the identifier of:
+Take one the machine learning department issued:
 
 ```sh
-run_in lab-manager as admin pvxcert --review-issued --where "state:VALID"                 # one at a time  - answer skip, then stop
-run_in lab-manager as admin pvxcert --review-issued --where "name:guest" --all            # asks once      - answer n
-run_in lab-manager as admin pvxcert --review-issued --where "name:testioc" --all --yes    # no questions   - this one goes through
-run_in lab-manager as admin pvxcert -R "${LAB}:0123456789"                                # one certificate - that serial does not exist
+run_in ml-manager as admin pvxcert -l --where "name:guest and state:VALID"
+#   64ca66c8:10879973745800329899  CLIENT  CN=guest,O=epics.org,C=US  VALID ...
 ```
 
-**Only the third is meant to be carried through.** The first two are for reading rather than
-deciding: the first walks every valid certificate this department has issued, the
-administrator's own among them, so answer `skip` to move past each and `stop` when you have
-seen enough - revoking that one would end the demonstration. The second is answered `n` at the
-confirmation, as the transcript below shows. The fourth names a serial that does not exist:
-
-```
-Revoke ==> CERT:STATUS:89caabd6:0123456789
-ERR ... Error revoking certificate: Invalid state transition or invalid serial number
-```
-
-Nothing was written, and the message covers both ways of naming one that cannot be revoked.
-Put a real identifier in its place to see it work.
-
-The second is the useful shape for a revocation: the filter chooses, and the confirmation shows
-exactly what was chosen before anything is written.
-
-```
-About to change 1 certificate:
-  89caabd6:01835766370459787255  CN=guest,O=epics.org,C=US
-      VALID -> REVOKED  (REVOKE)
-
-Revoke these 1 certificates? [y/N] n
-Cancelled. Nothing was written.
-```
-
-Note the wording and the answers change with the job: revoking offers
-`revoke / skip / stop / cancel`, with no `approve` or `deny` to pick the wrong one of. A
-certificate awaiting a decision can be revoked outright, without being approved first.
-
-Only certificates that can actually be revoked are offered. The rest are listed with the reason
-and never asked about - a status outside `PENDING_APPROVAL`, `PENDING` and `VALID`, which is
-what the denied request above now is:
+The lab administrator cannot find it, and cannot act on it even when handed its identifier:
 
 ```sh
-run_in lab-manager as admin pvxcert --review-issued < /dev/null
-#   [1/10] 89caabd6:16670266214665536961
-#     Subject        : CN=remote,O=epics.org,C=US
-#     Status         : REVOKED
-#     Not offered    : status REVOKED cannot be revoked
-#
-#   Nothing to read answers from, and no --all given. Nothing was written.
-```
+run_in lab-manager as admin pvxcert -l --where "issuer:${ML}"
+#   (the column headings, and no rows)
 
-Without a filter, because one that selects only what can be revoked has nothing to leave out.
-It ends by saying it wrote nothing, because it was given no terminal to ask a question of and
-no `--all` to stand in for the answers.
-
-**That third form stops the controller.** A service whose certificate is revoked cannot present
-it, and what a client sees is not a refusal but silence, because there is no secure connection
-left to be refused over:
-
-```sh
-run_in lab as operator pvxput test:spec 33
+run_in lab-manager as admin pvxcert -R "${ML}:<the serial that listing shows>"
 #   Timeout
 ```
 
-Put it back before going on, which is what a site would do having revoked one in error:
+That timeout is not a refusal, and the difference matters. A certificate's status channel
+carries its issuer in the name, so what was asked for is a channel the lab department does not
+serve. There is nothing there to refuse it. The department that issued it answers in one
+command:
 
 ```sh
-run_in testioc as testioc authnstd -u ioc --force
-run_in lab-manager as admin pvxcert --review-pending --all approve --yes
-podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
-    restart pvxs-lab-testioc
-
-run_in lab as operator pvxput test:spec 33               # written
+run_in ml-manager as admin pvxcert -R "${ML}:<that serial>"
+#   Revoke ==> CERT:STATUS:${ML}:<that serial> ==> Completed Successfully
 ```
 
-`--force` is needed because the keychain still holds the revoked certificate, and what is on
-disk looks valid: a certificate carries its own dates, not its standing.
+So trust is shared and administration is not, which is the same division section 8 showed from
+the other side: a certificate from either department is accepted everywhere, and yet only one
+administrator in the facility can withdraw it.
 
-**An ordinary user may revoke their own certificate, and that is the point of it for them.** A
-key has leaked and they want it stopped now, without finding an administrator first:
+Put it back, because section 10 wants the laboratory whole:
 
 ```sh
-run_in lab-manager as admin pvxcert -l --where "name:guest and state:VALID"   # its identifier
-run_in lab as guest pvxcert -R "${LAB}:<the serial that listing shows>"
-#   Revoke ==> CERT:STATUS:<that identifier> ==> Completed Successfully
+run_in ml as guest authnstd -u client --force
+run_in ml-manager as admin pvxcert --review-pending --all approve --yes
 ```
-
-That leaves them without one, so they ask again, which is what anyone would do having stopped a
-key they no longer trust:
-
-```sh
-run_in lab as guest authnstd -u client --issuer ${LAB_SKID} --force
-run_in lab-manager as admin pvxcert --review-pending --all approve --yes
-```
-
-They may revoke that one and no other. Someone else's is refused, and the message names the
-identity the certificate manager saw rather than the certificate it was asked about:
-
-```sh
-run_in lab as guest pvxcert -R "${LAB}:<a controller's serial>"
-#   ERR ... REVOKED operation not authorized on 89caabd6:4744007836997231940 by
-#   TLS x509:89caabd6:8600578139628916102:EPICS Root Certificate Authority ->
-#   EPICS Controls Intermediate CA/guest@...
-```
-
-That line reads the chain outwards: the facility root, then the department's intermediate, then
-the holder. It is the same shape whichever department issued the certificate, and it is how you
-tell which one did.
-
-The one identity this runs the other way for is the administrator's own certificate. A
-certificate manager refuses that, because it is the identity it needs in order to keep answering
-at all. The tool cannot tell an administrator's keychain from anyone else's - the listing looks
-the same for both - so it offers the certificate like any other and reports what the manager
-says:
-
-```sh
-run_in lab-manager as admin pvxcert -R "${LAB}:<the admin's own serial>"
-#   ERR ... REVOKED Admin Self-Revoke not permitted on 89caabd6:12756774587330042965 by ...
-```
-
-A failed write does not stop the ones after it, the certificate manager's own message is shown
-against the certificate it belongs to, and a partly successful batch exits 5.
 
 ## 10. Revoking the authority itself
 
@@ -1635,12 +1557,12 @@ certificate was ever changed: what changed was above them, and it is read afresh
 status is answered rather than recorded against anything.
 
 ```sh
-run_in lab-manager as admin pvxcert -l --where "name:guest"
-#   89caabd6:07061629051058436136  CLIENT  CN=guest,O=epics.org,C=US  VALID    ...
-#   89caabd6:04418516530813363550  CLIENT  CN=guest,O=epics.org,C=US  REVOKED  ...
+run_in ml-manager as admin pvxcert -l --where "name:guest"
+#   64ca66c8:<serial>  CLIENT  CN=guest,O=epics.org,C=US  VALID    ...
+#   64ca66c8:<serial>  CLIENT  CN=guest,O=epics.org,C=US  REVOKED  ...
 ```
 
-Two of them, because section 9 revoked one and the guest asked again. The revoked one is still
+Two of them, because section 9 revoked one and it was asked for again. The revoked one is still
 revoked, which is the point: the root coming back restores nothing that was decided beneath it.
 
 A listing asked for too early answers `Certificate not valid: UNKNOWN` and then times out. That
