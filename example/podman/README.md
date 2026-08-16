@@ -1032,19 +1032,48 @@ configured, and it is why a segment mattering to discovery mattered so much earl
 broadcast search does not leave the segment it was sent to, so a department's own names
 resolve inside it and nowhere else.
 
-`pvxinfo -v` says which of the two answered:
+**`pvxlist` shows what a broadcast reaches**, which is the segment and nothing else:
+
+```sh
+run_in lab       as guest without a certificate pvxlist
+#   10.89.0.192:5075      pvxs-lab-testioc
+#   10.89.0.191:5075      pvxs-lab-tstioc
+#   10.89.0.185:5075      pvxs-lab-pvacms
+
+run_in ml        as guest without a certificate pvxlist
+#   10.89.1.59:5075       pvxs-lab-ml-ioc
+#   10.89.1.54:5075       pvxs-lab-ml
+
+run_in perimeter as guest without a certificate pvxlist
+#   (nothing answers)
+```
+
+Three answers in the lab department, two in the machine learning one, none outside. Read the
+three lists together and they say the whole addressing arrangement.
+
+**What is missing from the first list is the point.** The lab gateway stands on `net-lab` too,
+at `10.89.0.199`, and it is not there. It serves on its perimeter address alone, so it never
+answers a search on the department behind it - which is what lets discovery be left on without
+a name ever being answered twice, once by the controller and once by the gateway in front of
+it. The machine learning gateway is absent from the second list for the same reason.
+
+**The third list is empty**, and that is why the workstation outside has name servers and
+nothing else. There is no controller on `net-internet` to find; the only thing there is the
+balancer, which forwards streams and answers no search. Everything that workstation does, it
+does by naming the facility address.
+
+The certificate managers *are* in their department's list, because they are servers. They do
+not appear as askers anywhere: they search for nothing at all, which is why `compose.yaml`
+gives them `EPICS_PVA_AUTO_ADDR_LIST: "NO"` and no address list.
+
+`pvxinfo -v` then says which of the two routes a particular name took:
 
 ```sh
 run_in lab as guest without a certificate pvxinfo -v test:aiExample | grep '^#'
-#   # anonymous/@10.89.0.100:5075          the controller itself, found by broadcast
+#   # anonymous/@10.89.0.192:5075          the controller itself, found by broadcast
 run_in lab as guest without a certificate pvxinfo -v ml:aiExample   | grep '^#'
-#   # anonymous/@10.89.0.103:5175          the facility address, on the ML port
+#   # anonymous/@10.89.0.189:5175          the facility address, on the ML port
 ```
-
-Two things keep that from being ambiguous. A gateway serves on its perimeter address alone, so
-it never answers a search on the department behind it and no name is ever answered twice. And
-the two certificate managers search for nothing at all - they are servers - which is why
-`compose.yaml` gives them `EPICS_PVA_AUTO_ADDR_LIST: "NO"` and no address list.
 
 The perimeter workstation names both ports and no department directly, because it is outside
 both. Everything it does crosses a gateway.
