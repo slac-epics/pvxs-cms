@@ -12,6 +12,14 @@
 
 #include <osiSock.h>
 
+// select() and the descriptor sets it works on. osiSock.h reaches these on this platform by
+// way of <sys/types.h>, but only because the feature macros this build happens to set make
+// glibc declare them there; POSIX puts them here, and elsewhere they are not reached at all.
+// Windows gets them from winsock, which osiSock.h already brings in.
+#ifndef _WIN32
+#  include <sys/select.h>
+#endif
+
 #include <openssl/ocsp.h>
 #include <openssl/x509v3.h>
 
