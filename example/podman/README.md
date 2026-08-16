@@ -1002,13 +1002,36 @@ run_in perimeter as guest sh -c 'echo ${EPICS_PVA_NAME_SERVERS}'
 
 One address, and the port chooses the department: `5075` and `5076` are the lab, `5175` and
 `5176` the machine learning department, the second of each pair being the secure one. So the
-lab workstation, naming `facility:5175`, is addressing the *other* department - its own it
-finds directly, on the segment it is standing on:
+lab workstation, naming `facility:5175`, is addressing the *other* department.
+
+**Its own department it does not address at all.** Nothing here names a controller or a
+certificate manager by address. Discovery is left on, as it is out of the box, and a search
+is a broadcast that reaches everything on the segment the workstation is standing on:
 
 ```sh
-run_in lab as guest sh -c 'echo ${EPICS_PVA_ADDR_LIST}'
-#   pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc
+run_in lab as guest sh -c 'echo "[${EPICS_PVA_ADDR_LIST-unset}] [${EPICS_PVA_AUTO_ADDR_LIST-unset}]"'
+#   [unset] [YES]
 ```
+
+So the rule for the whole laboratory is one line: **find your own department by broadcast,
+and name the facility address for anything beyond it.** That is how a site is usually
+configured, and it is why a segment mattering to discovery mattered so much earlier - a
+broadcast search does not leave the segment it was sent to, so a department's own names
+resolve inside it and nowhere else.
+
+`pvxinfo -v` says which of the two answered:
+
+```sh
+run_in lab as guest without a certificate pvxinfo -v test:aiExample | grep '^#'
+#   # anonymous/@10.89.0.100:5075          the controller itself, found by broadcast
+run_in lab as guest without a certificate pvxinfo -v ml:aiExample   | grep '^#'
+#   # anonymous/@10.89.0.103:5175          the facility address, on the ML port
+```
+
+Two things keep that from being ambiguous. A gateway serves on its perimeter address alone, so
+it never answers a search on the department behind it and no name is ever answered twice. And
+the two certificate managers search for nothing at all - they are servers - which is why
+`compose.yaml` gives them `EPICS_PVA_AUTO_ADDR_LIST: "NO"` and no address list.
 
 The perimeter workstation names both ports and no department directly, because it is outside
 both. Everything it does crosses a gateway.
@@ -1583,6 +1606,14 @@ A certificate manager that cannot check its own authority does not assume the an
 notices when the answer it holds lapses, which here is up to the minute the responder asked
 for, and from then on it retries every fifteen seconds. Until one succeeds it reports what it
 actually knows, which is nothing:
+
+> **One unanswered call is not an unreachable responder.** A poll asks up to five times before
+> it concludes that, because this responder is `openssl ocsp`, which serves one caller at a
+> time - and with two departments polling it, the second is dropped often enough to see. The
+> attempts share the one deadline the poll already had, so a responder that takes the call and
+> then says nothing is still asked once and given up on, and stopping the service waits no
+> longer than it did. Without this, one dropped call reports the authority unknown and stops
+> every connection the facility underwrites, for the fifteen seconds until the next poll.
 
 ```sh
 run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12

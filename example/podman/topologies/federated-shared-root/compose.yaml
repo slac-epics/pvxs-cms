@@ -20,6 +20,10 @@
 #
 # Run ./bootstrap.sh first: it builds the images and mints the authorities.
 
+# Carried by the things that never look for a process variable: a certificate manager serves
+# and is served, and a gateway is told its upstream in its own configuration file. Everything
+# else here leaves discovery on, finds its own department by broadcast, and names the facility
+# address for the other one.
 x-lab-env: &lab-env
   EPICS_PVA_AUTO_ADDR_LIST: "NO"
 
@@ -116,7 +120,6 @@ services:
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
       EPICS_PVACMS_DB: /home/idm/.local/share/pva/1.5/certs.db
       EPICS_PVA_TLS_KEYCHAIN: /home/idm/.config/pva/1.5/server.p12
     volumes:
@@ -137,8 +140,7 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms"
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - testioc-config:/home/testioc/.config/pva/1.5
@@ -153,8 +155,7 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms"
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - tstioc-config:/home/tstioc/.config/pva/1.5
@@ -192,7 +193,6 @@ services:
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
       EPICS_PVACMS_DB: /home/idm/.local/share/pva/1.5/certs.db
       EPICS_PVA_TLS_KEYCHAIN: /home/idm/.config/pva/1.5/server.p12
     volumes:
@@ -210,8 +210,7 @@ services:
     networks: [net-ml]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml"
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
     volumes:
       - ml-ioc-config:/home/mlioc/.config/pva/1.5
@@ -249,8 +248,7 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_NAME_SERVERS: "facility:5175"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -268,8 +266,7 @@ services:
     networks: [net-ml]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_NAME_SERVERS: "facility:5075"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -287,7 +284,7 @@ services:
     networks: [net-internet]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_NAME_SERVERS: "facility:5075 facility:5175"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
