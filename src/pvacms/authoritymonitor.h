@@ -88,7 +88,8 @@ class AuthorityMonitor {
     std::thread worker_;
     std::mutex mutex_;
     std::condition_variable wakeup_;
-    bool stopping_{false};
+    /** Atomic because a poll in flight reads it between attempts, with the lock released. */
+    std::atomic<bool> stopping_{false};
 };
 
 }  // namespace cert

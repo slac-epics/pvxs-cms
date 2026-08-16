@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <memory>
+#include <thread>
 
 #include <osiSock.h>
 
@@ -50,6 +51,27 @@ constexpr time_t shortest_wait_secs = 10;
  * answer, which is a case already handled.
  */
 constexpr auto responder_patience = std::chrono::seconds(10);
+
+/**
+ * How many times one poll asks before concluding that the responder could not be reached.
+ *
+ * A responder is often a single-threaded program - openssl's own is - so a service that is
+ * already answering somebody else refuses or drops the next caller. That is a busy responder,
+ * not an unreachable one, and the two are worth telling apart: reporting the standing as
+ * unknown stops every connection the service underwrites, which is far too much to conclude
+ * from one refused connection. A facility with two certificate managers polling the same
+ * responder makes this collision routinely.
+ *
+ * The attempts share the one deadline above, so a poll still takes no longer than it did and
+ * shutting down still waits no longer. That also settles what to retry and what not to: a
+ * refusal costs almost nothing and leaves room for several more, while a responder that
+ * accepts the call and then says nothing consumes the deadline on its own and is asked once,
+ * which is right - it was reached, and it said nothing.
+ */
+constexpr int attempts_per_poll = 5;
+
+/** A pause between attempts, so a busy responder is given a moment rather than hammered. */
+constexpr auto pause_between_attempts = std::chrono::milliseconds(250);
 
 using request_ctx_ptr = std::unique_ptr<OCSP_REQ_CTX, decltype(&OCSP_REQ_CTX_free)>;
 
@@ -115,6 +137,45 @@ std::string responderUriOf(X509 *cert) {
     return {};
 }
 
+/**
+ * @brief Asks the responder once, and hands back what it said.
+ *
+ * Everything that can go wrong between here and an answer in hand is thrown, so that the
+ * caller can decide whether to ask again. A reply that arrives and cannot be believed is not
+ * thrown from here: that is an answer, and asking again would only be told the same thing.
+ *
+ * @param host_port where the responder is
+ * @param request_path the path it answers on
+ * @param request what to ask
+ * @param deadline when to give up, shared by every attempt in one poll
+ * @return the responder's reply, still to be verified
+ */
+pvxs::ossl_ptr<OCSP_RESPONSE> askOnce(const std::string &host_port, const std::string &request_path,
+                                      OCSP_REQUEST *request, const std::chrono::steady_clock::time_point deadline) {
+    const pvxs::ossl_ptr<BIO> connection(BIO_new_connect(host_port.c_str()));
+    if (!connection) throw std::runtime_error("cannot make a connection");
+    BIO_set_nbio(connection.get(), 1);
+    while (BIO_do_connect(connection.get()) <= 0) {
+        if (!BIO_should_retry(connection.get()) || !waitForProgress(connection.get(), deadline)) {
+            throw std::runtime_error(pvxs::SB() << "cannot reach the responder at " << host_port);
+        }
+    }
+
+    OCSP_RESPONSE *answer = nullptr;
+    const request_ctx_ptr exchange(OCSP_sendreq_new(connection.get(), request_path.c_str(), request, -1),
+                                   &OCSP_REQ_CTX_free);
+    if (!exchange) throw std::runtime_error("cannot begin asking");
+    while (OCSP_sendreq_nbio(&answer, exchange.get()) == -1) {
+        if (!waitForProgress(connection.get(), deadline)) {
+            throw std::runtime_error(pvxs::SB() << "the responder at " << host_port << " did not answer in time");
+        }
+    }
+
+    pvxs::ossl_ptr<OCSP_RESPONSE> response(answer, false);
+    if (!response) throw std::runtime_error("the responder gave no answer");
+    return response;
+}
+
 }  // namespace
 
 AuthorityMonitor::AuthorityMonitor(X509 *trust_anchor, const bool hold_last_known)
@@ -154,7 +215,7 @@ void AuthorityMonitor::stop() {
     if (!worker_.joinable()) return;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        stopping_ = true;
+        stopping_.store(true, std::memory_order_release);
     }
     wakeup_.notify_all();
     worker_.join();
@@ -162,7 +223,7 @@ void AuthorityMonitor::stop() {
 
 void AuthorityMonitor::run() {
     std::unique_lock<std::mutex> lock(mutex_);
-    while (!stopping_) {
+    while (!stopping_.load(std::memory_order_acquire)) {
         time_t next_update;
         {
             // The question is asked without the lock held: it is network input and output with a
@@ -171,7 +232,7 @@ void AuthorityMonitor::run() {
             next_update = pollOnce();
             lock.lock();
         }
-        if (stopping_) break;
+        if (stopping_.load(std::memory_order_acquire)) break;
 
         time_t wait_secs = retry_after_failure_secs;
         if (next_update > 0) {
@@ -181,7 +242,7 @@ void AuthorityMonitor::run() {
         if (wait_secs < shortest_wait_secs) wait_secs = shortest_wait_secs;
         if (wait_secs > longest_wait_secs) wait_secs = longest_wait_secs;
 
-        wakeup_.wait_for(lock, std::chrono::seconds(wait_secs), [this] { return stopping_; });
+        wakeup_.wait_for(lock, std::chrono::seconds(wait_secs), [this] { return stopping_.load(std::memory_order_acquire); });
     }
 }
 
@@ -216,26 +277,25 @@ time_t AuthorityMonitor::pollOnce() {
 
         const auto deadline = std::chrono::steady_clock::now() + responder_patience;
 
-        const pvxs::ossl_ptr<BIO> connection(BIO_new_connect(host_port.c_str()));
-        BIO_set_nbio(connection.get(), 1);
-        while (BIO_do_connect(connection.get()) <= 0) {
-            if (!BIO_should_retry(connection.get()) || !waitForProgress(connection.get(), deadline)) {
-                throw std::runtime_error(pvxs::SB() << "cannot reach the responder at " << host_port);
+        pvxs::ossl_ptr<OCSP_RESPONSE> response;
+        for (int attempt = 1;; ++attempt) {
+            try {
+                response = askOnce(host_port, request_path, request.get(), deadline);
+                if (attempt > 1) {
+                    log_debug_printf(authmonitor, "Authority status: answered on attempt %d\n", attempt);
+                }
+                break;
+            } catch (const std::exception &e) {
+                // Out of attempts, out of time, or on the way down: the caller reports it.
+                if (attempt >= attempts_per_poll || stopping_.load(std::memory_order_acquire) ||
+                    std::chrono::steady_clock::now() >= deadline) {
+                    throw;
+                }
+                log_debug_printf(authmonitor, "Authority status: %s; asking again (%d of %d)\n", e.what(), attempt + 1,
+                                 attempts_per_poll);
+                std::this_thread::sleep_for(pause_between_attempts);
             }
         }
-
-        OCSP_RESPONSE *answer = nullptr;
-        const request_ctx_ptr exchange(OCSP_sendreq_new(connection.get(), request_path.c_str(), request.get(), -1),
-                                       &OCSP_REQ_CTX_free);
-        if (!exchange) throw std::runtime_error("cannot begin asking");
-        while (OCSP_sendreq_nbio(&answer, exchange.get()) == -1) {
-            if (!waitForProgress(connection.get(), deadline)) {
-                throw std::runtime_error(pvxs::SB() << "the responder at " << host_port << " did not answer in time");
-            }
-        }
-
-        const pvxs::ossl_ptr<OCSP_RESPONSE> response(answer, false);
-        if (!response) throw std::runtime_error("the responder gave no answer");
 
         // The same decode, signature check and freshness check the service already applies to
         // every status it receives.

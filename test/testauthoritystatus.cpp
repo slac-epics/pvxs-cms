@@ -175,6 +175,14 @@ class Responder {
     /** V_OCSP_CERTSTATUS_GOOD, _REVOKED or _UNKNOWN. */
     void answer(const int status) { answer_.store(status); }
 
+    /**
+     * @brief Drops the next `n` callers without answering, then answers as usual.
+     *
+     * What a single-threaded responder does to a second caller while it is busy with the
+     * first, which is routine where more than one service polls the same responder.
+     */
+    void dropFirst(const int n) { drop_remaining_.store(n); }
+
     void start() {
         running_.store(true);
         worker_ = std::thread([this] { serve(); });
@@ -215,6 +223,11 @@ class Responder {
 
             const SOCKET caller = accept(socket_, nullptr, nullptr);
             if (caller == INVALID_SOCKET) continue;
+            if (drop_remaining_.load() > 0) {
+                drop_remaining_--;
+                epicsSocketDestroy(caller);
+                continue;
+            }
             try {
                 answerOne(caller);
             } catch (...) {
@@ -291,6 +304,7 @@ class Responder {
     X509* signer_{nullptr};
     EVP_PKEY* signer_key_{nullptr};
     std::atomic<int> answer_{V_OCSP_CERTSTATUS_GOOD};
+    std::atomic<int> drop_remaining_{0};
     std::atomic<bool> running_{false};
     std::thread worker_;
 };
@@ -298,6 +312,17 @@ class Responder {
 /** Waits for the monitor to reach a standing, so a test states what it wants rather than a delay. */
 bool reaches(const AuthorityMonitor& monitor, const cert_authority_standing_t wanted) {
     const auto give_up_at = std::chrono::steady_clock::now() + answer_timeout;
+    while (std::chrono::steady_clock::now() < give_up_at) {
+        if (monitor.standing() == wanted) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return false;
+}
+
+/** As above, but within a stated time, for a test that is about how long something takes. */
+bool reachesWithin(const AuthorityMonitor& monitor, const cert_authority_standing_t wanted,
+                   const std::chrono::seconds patience) {
+    const auto give_up_at = std::chrono::steady_clock::now() + patience;
     while (std::chrono::steady_clock::now() < give_up_at) {
         if (monitor.standing() == wanted) return true;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -379,6 +404,24 @@ void testResponderUnreachable() {
            "an unreachable responder leaves the standing unknown, which denies connections");
 }
 
+void testBusyResponderAskedAgain() {
+    testDiag("== a responder busy with somebody else when it is first called");
+    Laboratory lab;
+    lab.responder.answer(V_OCSP_CERTSTATUS_GOOD);
+    // Fewer drops than one poll has attempts, so the answer must come from that same poll.
+    lab.responder.dropFirst(4);
+    lab.responder.start();
+
+    AuthorityMonitor monitor(lab.root.cert.get(), false);
+    monitor.start();
+
+    // Well inside the wait before a failed poll would be tried again, so only asking again
+    // within the one poll can satisfy this. A single dropped call must not be allowed to
+    // report the authority unknown and stop every connection the service underwrites.
+    testOk(reachesWithin(monitor, cert_authority_standing_t::STANDING, std::chrono::seconds(5)),
+           "a responder that drops the first calls is asked again, and the standing is established");
+}
+
 void testResponderAcceptsAndSaysNothing() {
     testDiag("== a responder that takes the call and then says nothing");
     Laboratory lab;
@@ -442,7 +485,7 @@ void testAnchorNotSelfSigned() {
 }  // namespace
 
 MAIN(testauthoritystatus) {
-    testPlan(10);
+    testPlan(11);
     logger_config_env();
 
     try {
@@ -450,6 +493,7 @@ MAIN(testauthoritystatus) {
         testAnchorRevoked();
         testResponderSaysUnknown();
         testResponderUnreachable();
+        testBusyResponderAskedAgain();
         testResponderAcceptsAndSaysNothing();
         testLastAnswerHeld();
         testAnchorNamesNoResponder();
