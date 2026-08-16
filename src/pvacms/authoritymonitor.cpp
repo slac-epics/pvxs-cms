@@ -312,6 +312,11 @@ time_t AuthorityMonitor::pollOnce() {
                             : reported == cert_authority_standing_t::STANDING ? "stands"
                                                                              : "cannot be established");
         }
+        // The same rule the status factory applies: not knowing is worth nothing for any
+        // length of time. A responder that answers and says it cannot say has told us to ask
+        // again, not to wait until it says so - so this is asked again on the failure footing,
+        // in fifteen seconds, rather than at whatever next update the answer carried.
+        if (reported == cert_authority_standing_t::UNKNOWN) return 0;
         return parsed.status_valid_until_date.t;
     } catch (const std::exception &e) {
         if (hold_last_known_) {

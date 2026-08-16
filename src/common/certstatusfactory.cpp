@@ -57,10 +57,6 @@ PVACertificateStatus CertStatusFactory::createPVACertificateStatus(const serial_
     // Create OCSP response
     const ossl_ptr<OCSP_BASICRESP> basic_resp(OCSP_BASICRESP_new());
 
-    // Set ASN1_TIME objects
-    const auto status_valid_until_time = CertDate(status_date.t + cert_status_validity_mins_ * 60 + cert_status_validity_secs_);
-    const auto this_update = status_date.toAsn1_Time();
-    const auto next_update = status_valid_until_time.toAsn1_Time();
     CertDate revocation_time_to_use = static_cast<time_t>(0);  // Default to 0
 
     // The authority above this certificate has its say first, before anything is signed, so
@@ -75,6 +71,21 @@ PVACertificateStatus CertStatusFactory::createPVACertificateStatus(const serial_
             reported_status = UNKNOWN;
         }
     }
+
+    // Set ASN1_TIME objects.
+    //
+    // Not knowing is worth nothing for any length of time. Every other state is a fact this
+    // service established and may hand out until it lapses; UNKNOWN is the absence of one, so
+    // giving it a lifetime tells every holder to stop asking for as long as it lasts. A moment
+    // of not knowing - a responder busy with somebody else - would then keep a facility down
+    // long after the reason had passed, and no amount of recovering here would reach a holder
+    // that has been told not to ask again. So it expires as it is written, and a holder that
+    // needs to know asks afresh.
+    const time_t validity_secs =
+        reported_status == UNKNOWN ? 0 : cert_status_validity_mins_ * 60 + cert_status_validity_secs_;
+    const auto status_valid_until_time = CertDate(status_date.t + validity_secs);
+    const auto this_update = status_date.toAsn1_Time();
+    const auto next_update = status_valid_until_time.toAsn1_Time();
 
     // Determine the OCSP status and revocation time
     ocspcertstatus_t ocsp_status;
