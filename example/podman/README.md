@@ -1591,8 +1591,9 @@ run_in lab as guest pvxinfo -v test:aiExample
 #     Intermediate CA/testioc@10.89.0.214:5076
 ```
 
-Four seconds after the responder came back, and **nothing was restarted** to get that: it is
-the same controller process, on the same address, secure again on `5076`.
+The controller comes back within seconds of the responder returning, on the certificate
+manager's next retry, and **nothing is restarted** to get that: it is the same controller
+process, on the same address, secure again on `5076`.
 
 **The gateways may come back with it, and may not.** Everything inside a department does, as
 above: each certificate manager asks the responder again, and every holder is told over the
@@ -1616,12 +1617,11 @@ run_in perimeter as guest without a certificate pvxget ml:aiExample
 #   value double = 1.23
 ```
 
-That is one run, with nothing restarted, after a responder that had been away for nearly two
-minutes. Another run, after about thirty seconds away, came back on its own as well. A third, in
-a laboratory that had also been through a facility root revocation and restore, answered
-`Timeout with 1 outstanding` to all four instead, and needed the restart below. Which of the two
-you get is not predictable, and the length of the outage is not what decides it, so ask rather
-than guess: the four reads take seconds.
+The gateways often come back on their own, with nothing restarted, and the four reads then
+answer as they do above. Sometimes they do not, and all four answer `Timeout with 1 outstanding`
+instead, which is what the restart below is for. Which of the two you get is not predictable,
+and the length of the outage is not what decides it, so run the four and look, rather than
+guessing or restarting blindly: they take seconds.
 
 If they do time out, restarting the two gateways is the whole repair, and running those same
 four afterwards is how you know it worked:
@@ -1667,7 +1667,7 @@ department issued.
 
 **Everything there that depended on a certificate stops.**
 
-A holder is told on the status channel its certificate already names, and within five seconds:
+A holder is told at once, on the status channel its certificate already names:
 
 ```sh
 run_in ml as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
@@ -1704,15 +1704,15 @@ That is the administrator who ran the revocation, unable to run anything else af
 
 ### The department next door
 
-Nothing at all. The lab holder's certificate was read every five seconds for two hundred
-seconds and never changed:
+Nothing at all, and nothing that arrives later. The lab holder's certificate goes on reading
+`VALID`, however long you watch it:
 
 ```sh
 run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 #   Status        : VALID
 ```
 
-Its controller went on serving securely, through the lab's own intermediate:
+Its controller goes on serving securely, through the lab's own intermediate:
 
 ```sh
 run_in lab as guest pvxinfo -v test:aiExample
@@ -1720,8 +1720,8 @@ run_in lab as guest pvxinfo -v test:aiExample
 #     Intermediate CA/testioc@10.89.0.214:5076
 ```
 
-And its administrator went on working: `run_in lab-manager as admin pvxcert -l` still lists its
-rows, the whole listing, exactly as it did before.
+And its administrator goes on working: `run_in lab-manager as admin pvxcert -l` still lists its
+rows, the whole listing, unchanged.
 
 **Reading still crosses in both directions**, which looks surprising until you remember what
 reading needs:
