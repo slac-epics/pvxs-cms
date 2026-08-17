@@ -626,8 +626,6 @@ class Parser {
 // Negation normal form, the query condition, and matching
 /////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<FilterNode> clone(const FilterNode &node);
-
 /**
  * @brief Push every negation down onto the tests.
  *
@@ -669,17 +667,6 @@ std::unique_ptr<FilterNode> toNegationNormalForm(const FilterNode &node, const b
             return out;
         }
     }
-    return out;
-}
-
-std::unique_ptr<FilterNode> clone(const FilterNode &node) {
-    auto out = std::unique_ptr<FilterNode>(new FilterNode);
-    out->kind = node.kind;
-    out->field = node.field;
-    out->field_text = node.field_text;
-    out->values = node.values;
-    out->position = node.position;
-    for (const auto &child : node.children) out->children.push_back(clone(*child));
     return out;
 }
 
