@@ -10,6 +10,7 @@
 #include <memory>
 #include <thread>
 
+#include <epicsThread.h>
 #include <osiSock.h>
 
 // select() and the descriptor sets it works on. osiSock.h reaches these on this platform by
@@ -35,53 +36,43 @@ namespace cert {
 namespace {
 
 /**
- * How long to wait before asking again when the responder could not be reached.
+ * How soon to ask again when a poll came back with nothing.
  *
- * Short, because a responder that did not answer has said nothing about when it will have
- * something to say, and because the alternative to asking again is to keep denying
- * connections. It is also what covers a responder that starts a moment after this service.
+ * Short, because nothing was learned and the answer already held is running down. It is also
+ * what covers a responder that starts a moment after this service.
  */
 constexpr time_t retry_after_failure_secs = 15;
 
 /** Bound on the wait, so that a responder promising a distant next update is still re-checked. */
 constexpr time_t longest_wait_secs = 60 * 60;
 
-/** Shortest wait, so that a responder promising an immediate next update is not asked in a spin. */
-constexpr time_t shortest_wait_secs = 10;
+/**
+ * Shortest wait, so that a responder promising an immediate next update is not asked in a spin.
+ *
+ * A second rather than anything longer, because this is a floor and not a policy: how often to
+ * ask follows from how long an answer lasts, and a floor set above that would leave the answer
+ * expired for the gap - the service reporting an authority it cannot establish while a perfectly
+ * good responder waits to be asked.
+ */
+constexpr time_t shortest_wait_secs = 1;
+
+/**
+ * What fraction of an answer's life to wait before asking for the next one.
+ *
+ * Asking at the moment one runs out leaves a single attempt standing between a busy responder
+ * and a facility that stops. Asking at a third of the way leaves two spare attempts, and each
+ * one that comes back with nothing costs nothing at all, because the answer already held is
+ * still good. That is what replaces retrying: not asking harder, but asking sooner.
+ */
+constexpr int ask_again_after_fraction = 3;
 
 /**
  * How long one exchange with the responder may take, from connecting to a complete answer.
  *
- * A responder that accepts a connection and then says nothing would otherwise hold this thread
- * for as long as it cared to, which would freeze the authority's standing at whatever was last
- * established and leave the service unable to shut down, since stopping waits for the poll in
- * flight. The transfer is bounded so that a silent responder is simply a responder that did not
- * answer, which is a case already handled.
+ * A responder that accepts a connection and then says nothing would otherwise hold the polling
+ * loop for as long as it cared to, and stopping the service waits for a poll in flight.
  */
 constexpr auto responder_patience = std::chrono::seconds(10);
-
-/**
- * How many times one poll asks before concluding that the responder could not be reached.
- *
- * A responder is often a single-threaded program - openssl's own is - so a service that is
- * already answering somebody else refuses or drops the next caller. That is a busy responder,
- * not an unreachable one, and the two are worth telling apart: reporting the standing as
- * unknown stops every connection the service underwrites, which is far too much to conclude
- * from one refused connection. A facility with two certificate managers polling the same
- * responder makes this collision routinely.
- *
- * The attempts share the one deadline above, so a poll still takes no longer than it did and
- * shutting down still waits no longer. That also settles what to retry and what not to: a
- * refusal costs almost nothing and leaves room for several more, while a responder that
- * accepts the call and then says nothing consumes the deadline on its own and is asked once,
- * which is right - it was reached, and it said nothing.
- */
-constexpr int attempts_per_poll = 5;
-
-/** A pause between attempts, so a busy responder is given a moment rather than hammered. */
-constexpr auto pause_between_attempts = std::chrono::milliseconds(250);
-
-using request_ctx_ptr = std::unique_ptr<OCSP_REQ_CTX, decltype(&OCSP_REQ_CTX_free)>;
 
 using pvxs::certs::cert_authority_standing_t;
 
@@ -170,8 +161,7 @@ pvxs::ossl_ptr<OCSP_RESPONSE> askOnce(const std::string &host_port, const std::s
     }
 
     OCSP_RESPONSE *answer = nullptr;
-    const request_ctx_ptr exchange(OCSP_sendreq_new(connection.get(), request_path.c_str(), request, -1),
-                                   &OCSP_REQ_CTX_free);
+    const pvxs::ossl_ptr<OCSP_REQ_CTX> exchange(OCSP_sendreq_new(connection.get(), request_path.c_str(), request, -1));
     if (!exchange) throw std::runtime_error("cannot begin asking");
     while (OCSP_sendreq_nbio(&answer, exchange.get()) == -1) {
         if (!waitForProgress(connection.get(), deadline)) {
@@ -209,144 +199,108 @@ AuthorityMonitor::AuthorityMonitor(X509 *trust_anchor, const bool hold_last_know
     // The anchor is the only certificate that can have signed a trustworthy answer about itself.
     trusted_store_ = pvxs::ossl_ptr<X509_STORE>(X509_STORE_new());
     X509_STORE_add_cert(trusted_store_.get(), cert_.get());
+
+    // Its own loop, on a named EPICS thread, and made only for an anchor worth watching so an
+    // inactive monitor costs no thread at all. Asking is network input and output and must not
+    // run on the server's loop, which is answering process variables.
+    poll_loop_ = pvxs::impl::evbase("PVACMSAUTH", epicsThreadPriorityCAServerLow - 2);
+    poll_timer_ = pvxs::impl::evevent(__FILE__, __LINE__,
+                                      event_new(poll_loop_.base, -1, EV_TIMEOUT, &AuthorityMonitor::pollTimer, this));
 }
 
 AuthorityMonitor::~AuthorityMonitor() { stop(); }
 
 void AuthorityMonitor::start() {
-    if (!isActive() || worker_.joinable()) return;
+    if (!isActive() || !poll_timer_) return;
     log_info_printf(authmonitor, "Authority status: watching %s\n", responder_uri_.c_str());
-    worker_ = std::thread([this] { run(); });
+    // Ask at once, then on whatever schedule each answer sets.
+    static constexpr timeval immediately{0, 0};
+    if (event_add(poll_timer_.get(), &immediately)) {
+        log_err_printf(authmonitor, "Authority status: cannot start watching %s\n", responder_uri_.c_str());
+    }
 }
 
 void AuthorityMonitor::stop() {
-    if (!worker_.joinable()) return;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        stopping_.store(true, std::memory_order_release);
-    }
-    wakeup_.notify_all();
-    worker_.join();
+    if (!poll_timer_) return;
+    // On the loop's own thread, so it cannot race a poll that is being armed.
+    poll_loop_.call([this]() { event_del(poll_timer_.get()); });
 }
 
-void AuthorityMonitor::run() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    while (!stopping_.load(std::memory_order_acquire)) {
-        time_t next_update;
-        {
-            // The question is asked without the lock held: it is network input and output with a
-            // service that may be slow, and stop() must not wait on it to be answered.
-            lock.unlock();
-            next_update = pollOnce();
-            lock.lock();
-        }
-        if (stopping_.load(std::memory_order_acquire)) break;
-
-        time_t wait_secs = retry_after_failure_secs;
-        if (next_update > 0) {
-            const time_t now = time(nullptr);
-            wait_secs = next_update > now ? next_update - now : shortest_wait_secs;
-        }
-        if (wait_secs < shortest_wait_secs) wait_secs = shortest_wait_secs;
-        if (wait_secs > longest_wait_secs) wait_secs = longest_wait_secs;
-
-        wakeup_.wait_for(lock, std::chrono::seconds(wait_secs), [this] { return stopping_.load(std::memory_order_acquire); });
-    }
-}
-
-time_t AuthorityMonitor::pollOnce() {
-    char *host = nullptr, *port = nullptr, *path = nullptr;
-    int use_ssl = 0;
-    if (!OCSP_parse_url(responder_uri_.c_str(), &host, &port, &path, &use_ssl)) {
-        log_err_printf(authmonitor, "Authority status: cannot read responder address %s\n", responder_uri_.c_str());
-        if (!hold_last_known_) standing_.store(cert_authority_standing_t::UNKNOWN, std::memory_order_release);
-        return 0;
-    }
-    // OCSP_parse_url hands back three separately allocated strings; free them however we leave.
-    const std::string host_port = std::string(host) + ":" + port;
-    const std::string request_path = path;
-    OPENSSL_free(host);
-    OPENSSL_free(port);
-    OPENSSL_free(path);
-
-    const cert_authority_standing_t previous = standing();
+void AuthorityMonitor::pollTimer(evutil_socket_t, short, void *raw) {
+    auto self = static_cast<AuthorityMonitor *>(raw);
+    time_t wait_secs = retry_after_failure_secs;
     try {
-        if (use_ssl) throw std::runtime_error("responder address names a protocol we do not speak");
-
-        // Ask about the anchor. A self-signed anchor is its own issuer, which is what names it
-        // to the responder.
-        const pvxs::ossl_ptr<OCSP_REQUEST> request(OCSP_REQUEST_new());
-        OCSP_CERTID *cert_id = OCSP_cert_to_id(nullptr, cert_.get(), cert_.get());
-        if (!cert_id) throw std::runtime_error("cannot name the trust anchor to the responder");
-        if (!OCSP_request_add0_id(request.get(), cert_id)) {
-            OCSP_CERTID_free(cert_id);
-            throw std::runtime_error("cannot assemble the request");
-        }
-
-        const auto deadline = std::chrono::steady_clock::now() + responder_patience;
-
-        pvxs::ossl_ptr<OCSP_RESPONSE> response;
-        for (int attempt = 1;; ++attempt) {
-            try {
-                response = askOnce(host_port, request_path, request.get(), deadline);
-                if (attempt > 1) {
-                    log_debug_printf(authmonitor, "Authority status: answered on attempt %d\n", attempt);
-                }
-                break;
-            } catch (const std::exception &e) {
-                // Out of attempts, out of time, or on the way down: the caller reports it.
-                if (attempt >= attempts_per_poll || stopping_.load(std::memory_order_acquire) ||
-                    std::chrono::steady_clock::now() >= deadline) {
-                    throw;
-                }
-                log_debug_printf(authmonitor, "Authority status: %s; asking again (%d of %d)\n", e.what(), attempt + 1,
-                                 attempts_per_poll);
-                std::this_thread::sleep_for(pause_between_attempts);
-            }
-        }
-
-        // The same decode, signature check and freshness check the service already applies to
-        // every status it receives.
-        const auto parsed = pvxs::certs::CmsStatusManager::parse(response, trusted_store_.get());
-
-        const auto reported = parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_REVOKED ? cert_authority_standing_t::REVOKED
-                              : parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_GOOD  ? cert_authority_standing_t::STANDING
-                                                                                         : cert_authority_standing_t::UNKNOWN;
-        standing_.store(reported, std::memory_order_release);
-
-        if (reported != previous) {
-            log_warn_printf(authmonitor, "Authority status: the facility root %s\n",
-                            reported == cert_authority_standing_t::REVOKED ? "has been revoked"
-                            : reported == cert_authority_standing_t::STANDING ? "stands"
-                                                                             : "cannot be established");
-        }
-        // A responder that answers and says it cannot say has told us to ask again, not to
-        // wait until it says so. Taking its next-update at face value here would leave the
-        // service reporting an authority it cannot establish for as long as that lasts -
-        // up to the hour this loop will wait - when the thing to do is ask again shortly.
-        // Returning nothing puts it on the same fifteen-second footing as a responder that
-        // could not be reached at all, which is the same situation from this end.
-        //
-        // This is the one place that needed it. Everything else is either told - a change in
-        // standing is pushed to every certificate being watched, so a subscriber learns of it
-        // at once - or is asking afresh anyway. An UNKNOWN status handed to a holder keeps its
-        // full validity for that reason: it is a true answer for as long as it says, and
-        // shortening it would only have every holder ask again at once, which is the last
-        // thing a service that has just lost its responder needs.
-        if (reported == cert_authority_standing_t::UNKNOWN) return 0;
-        return parsed.status_valid_until_date.t;
+        self->poll();
+        wait_secs = self->askAgainIn();
     } catch (const std::exception &e) {
-        if (hold_last_known_) {
-            log_warn_printf(authmonitor, "Authority status: %s; holding the last answer\n", e.what());
-        } else {
-            standing_.store(cert_authority_standing_t::UNKNOWN, std::memory_order_release);
-            if (previous != cert_authority_standing_t::UNKNOWN) {
-                log_warn_printf(authmonitor, "Authority status: %s; now UNKNOWN\n", e.what());
-            } else {
-                log_debug_printf(authmonitor, "Authority status: %s\n", e.what());
-            }
-        }
-        return 0;
+        // Sooner than the usual retry when the answer in hand is close to running out, so the
+        // attempts that remain are spent before it does rather than after.
+        const time_t before_it_lapses = self->askAgainIn();
+        if (before_it_lapses < wait_secs) wait_secs = before_it_lapses;
+        // Nothing is recorded: the answer already held goes on being the answer until it runs
+        // out, and this is simply one of the attempts there were before that happens.
+        log_debug_printf(authmonitor, "Authority status: %s\n", e.what());
+    }
+    if (wait_secs < shortest_wait_secs) wait_secs = shortest_wait_secs;
+    if (wait_secs > longest_wait_secs) wait_secs = longest_wait_secs;
+
+    const timeval next{static_cast<decltype(timeval::tv_sec)>(wait_secs), 0};
+    if (event_add(self->poll_timer_.get(), &next)) {
+        log_err_printf(authmonitor, "Authority status: cannot arrange to ask again%s\n", "");
+    }
+}
+
+time_t AuthorityMonitor::askAgainIn() const {
+    const time_t valid_until = answer_valid_until_.load(std::memory_order_acquire);
+    const time_t now = time(nullptr);
+    // A share of what is left, so there are attempts in hand before it runs out.
+    return valid_until > now ? (valid_until - now) / ask_again_after_fraction : 0;
+}
+
+void AuthorityMonitor::poll() {
+    // OCSP_parse_url hands back three separately allocated strings; owning them means they go
+    // back however this leaves, including by the throw below.
+    pvxs::ossl_ptr<char> host, port, path;
+    int use_ssl = 0;
+    if (!OCSP_parse_url(responder_uri_.c_str(), host.acquire(), port.acquire(), path.acquire(), &use_ssl)) {
+        throw std::runtime_error(pvxs::SB() << "cannot read responder address " << responder_uri_);
+    }
+    const std::string host_port = std::string(host.get()) + ":" + port.get();
+    const std::string request_path = path.get();
+
+    if (use_ssl) throw std::runtime_error("responder address names a protocol we do not speak");
+
+    // Ask about the anchor. A self-signed anchor is its own issuer, which is what names it
+    // to the responder.
+    const pvxs::ossl_ptr<OCSP_REQUEST> request(OCSP_REQUEST_new());
+    pvxs::ossl_ptr<OCSP_CERTID> cert_id(OCSP_cert_to_id(nullptr, cert_.get(), cert_.get()));
+    if (!cert_id) throw std::runtime_error("cannot name the trust anchor to the responder");
+    // add0 takes it on success and leaves it ours on failure, so it is released only once the
+    // request has actually taken it.
+    if (!OCSP_request_add0_id(request.get(), cert_id.get())) {
+        throw std::runtime_error("cannot assemble the request");
+    }
+    cert_id.release();
+
+    const auto deadline = std::chrono::steady_clock::now() + responder_patience;
+    const auto response = askOnce(host_port, request_path, request.get(), deadline);
+
+    // The same decode, signature check and freshness check the service already applies to
+    // every status it receives.
+    const auto parsed = pvxs::certs::CmsStatusManager::parse(response, trusted_store_.get());
+
+    const auto reported = parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_REVOKED ? cert_authority_standing_t::REVOKED
+                          : parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_GOOD  ? cert_authority_standing_t::STANDING
+                                                                                     : cert_authority_standing_t::UNKNOWN;
+    const auto previous = standing();
+    answer_valid_until_.store(parsed.status_valid_until_date.t, std::memory_order_release);
+    answer_.store(reported, std::memory_order_release);
+
+    if (reported != previous) {
+        log_warn_printf(authmonitor, "Authority status: the facility root %s\n",
+                        reported == cert_authority_standing_t::REVOKED    ? "has been revoked"
+                        : reported == cert_authority_standing_t::STANDING ? "stands"
+                                                                          : "cannot be established");
     }
 }
 

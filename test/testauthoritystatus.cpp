@@ -50,6 +50,7 @@ constexpr auto answer_timeout = std::chrono::seconds(20);
 
 /** What the responder tells a caller its answer is good for. Short, so a re-poll is not a wait. */
 constexpr int seconds_answer_is_good_for = 2;
+constexpr int seconds_a_long_answer_is_good_for = 15;
 
 struct KeyAndCert {
     ossl_ptr<EVP_PKEY> key;
@@ -175,6 +176,9 @@ class Responder {
     /** V_OCSP_CERTSTATUS_GOOD, _REVOKED or _UNKNOWN. */
     void answer(const int status) { answer_.store(status); }
 
+    /** How long each answer says it is good for. */
+    void answerGoodFor(const int seconds) { good_for_.store(seconds); }
+
     /**
      * @brief Drops the next `n` callers without answering, then answers as usual.
      *
@@ -269,7 +273,7 @@ class Responder {
 
         const time_t now = time(nullptr);
         const ossl_ptr<ASN1_TIME> this_update(ASN1_TIME_adj(nullptr, now, 0, 0));
-        const ossl_ptr<ASN1_TIME> next_update(ASN1_TIME_adj(nullptr, now + seconds_answer_is_good_for, 0, 0));
+        const ossl_ptr<ASN1_TIME> next_update(ASN1_TIME_adj(nullptr, now + good_for_.load(), 0, 0));
         const ossl_ptr<ASN1_TIME> revoked_at(ASN1_TIME_adj(nullptr, now - 60, 0, 0));
 
         const int status = answer_.load();
@@ -280,14 +284,14 @@ class Responder {
         OCSP_basic_sign(basic.get(), signer_, signer_key_, EVP_sha256(), nullptr, 0);
 
         const ossl_ptr<OCSP_RESPONSE> response(OCSP_response_create(OCSP_RESPONSE_STATUS_SUCCESSFUL, basic.get()));
-        unsigned char* encoded = nullptr;
-        const int encoded_length = i2d_OCSP_RESPONSE(response.get(), &encoded);
+        // Owned, so it goes back on every path out of here rather than only this one.
+        ossl_ptr<unsigned char> encoded;
+        const int encoded_length = i2d_OCSP_RESPONSE(response.get(), encoded.acquire());
         if (encoded_length <= 0) return;
 
         std::string reply = "HTTP/1.0 200 OK\r\nContent-Type: application/ocsp-response\r\nContent-Length: " +
                             std::to_string(encoded_length) + "\r\n\r\n";
-        reply.append(reinterpret_cast<const char*>(encoded), static_cast<size_t>(encoded_length));
-        OPENSSL_free(encoded);
+        reply.append(reinterpret_cast<const char*>(encoded.get()), static_cast<size_t>(encoded_length));
 
         size_t sent = 0;
         while (sent < reply.size()) {
@@ -305,6 +309,7 @@ class Responder {
     EVP_PKEY* signer_key_{nullptr};
     std::atomic<int> answer_{V_OCSP_CERTSTATUS_GOOD};
     std::atomic<int> drop_remaining_{0};
+    std::atomic<int> good_for_{seconds_answer_is_good_for};
     std::atomic<bool> running_{false};
     std::thread worker_;
 };
@@ -319,15 +324,15 @@ bool reaches(const AuthorityMonitor& monitor, const cert_authority_standing_t wa
     return false;
 }
 
-/** As above, but within a stated time, for a test that is about how long something takes. */
-bool reachesWithin(const AuthorityMonitor& monitor, const cert_authority_standing_t wanted,
-                   const std::chrono::seconds patience) {
-    const auto give_up_at = std::chrono::steady_clock::now() + patience;
-    while (std::chrono::steady_clock::now() < give_up_at) {
-        if (monitor.standing() == wanted) return true;
+/** Whether a standing stays what it is for the whole of a stated time. */
+bool holds(const AuthorityMonitor& monitor, const cert_authority_standing_t wanted,
+           const std::chrono::seconds duration) {
+    const auto until = std::chrono::steady_clock::now() + duration;
+    while (std::chrono::steady_clock::now() < until) {
+        if (monitor.standing() != wanted) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    return false;
+    return true;
 }
 
 /** Waits for a standing to be established at all, whatever it turns out to be. */
@@ -404,22 +409,27 @@ void testResponderUnreachable() {
            "an unreachable responder leaves the standing unknown, which denies connections");
 }
 
-void testBusyResponderAskedAgain() {
-    testDiag("== a responder busy with somebody else when it is first called");
+void testBusyResponderIsNotNews() {
+    testDiag("== a responder busy with somebody else when it is asked");
     Laboratory lab;
     lab.responder.answer(V_OCSP_CERTSTATUS_GOOD);
-    // Fewer drops than one poll has attempts, so the answer must come from that same poll.
-    lab.responder.dropFirst(4);
+    lab.responder.answerGoodFor(seconds_a_long_answer_is_good_for);
     lab.responder.start();
 
     AuthorityMonitor monitor(lab.root.cert.get(), false);
     monitor.start();
+    if (!settles(monitor)) {
+        testFail("the anchor was never established as standing, so there is nothing to disturb");
+        return;
+    }
 
-    // Well inside the wait before a failed poll would be tried again, so only asking again
-    // within the one poll can satisfy this. A single dropped call must not be allowed to
-    // report the authority unknown and stop every connection the service underwrites.
-    testOk(reachesWithin(monitor, cert_authority_standing_t::STANDING, std::chrono::seconds(5)),
-           "a responder that drops the first calls is asked again, and the standing is established");
+    // The next few calls are dropped, as a responder already answering somebody else drops
+    // them. The answer in hand is good for much longer than that, so nothing has been learned
+    // and nothing should change: a service that reported the authority unknown here would stop
+    // every connection it underwrites on the strength of one missed call.
+    lab.responder.dropFirst(3);
+    testOk(holds(monitor, cert_authority_standing_t::STANDING, std::chrono::seconds(10)),
+           "a dropped call does not disturb a standing that is still good");
 }
 
 void testResponderAcceptsAndSaysNothing() {
@@ -493,7 +503,7 @@ MAIN(testauthoritystatus) {
         testAnchorRevoked();
         testResponderSaysUnknown();
         testResponderUnreachable();
-        testBusyResponderAskedAgain();
+        testBusyResponderIsNotNews();
         testResponderAcceptsAndSaysNothing();
         testLastAnswerHeld();
         testAnchorNamesNoResponder();

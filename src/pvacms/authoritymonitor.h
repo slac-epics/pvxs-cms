@@ -8,12 +8,11 @@
 #define PVXS_AUTHORITYMONITOR_H
 
 #include <atomic>
-#include <condition_variable>
-#include <mutex>
 #include <string>
-#include <thread>
 
 #include <openssl/x509.h>
+
+#include "evhelper.h"
 
 #include "certstatus.h"
 #include "ownedptr.h"
@@ -58,38 +57,58 @@ class AuthorityMonitor {
     const std::string &responderUri() const noexcept { return responder_uri_; }
 
     /**
-     * @brief The authority's standing as most recently established.
+     * @brief The authority's standing, worked out from the last answer and the moment it runs
+     * out rather than recorded when a poll happens.
      *
-     * `UNKNOWN` is what a responder that could not be reached, a reply that could not be
-     * verified and a malformed reply all come to: the standing is not known.
+     * `UNKNOWN` is what an answer that has run out with nothing to replace it comes to, along
+     * with a reply that could not be verified and one that said as much. A site that would
+     * rather keep the last verified answer than stop sets `hold_last_known`, and then only
+     * a responder that says so changes it.
      */
-    pvxs::certs::cert_authority_standing_t standing() const noexcept { return standing_.load(std::memory_order_acquire); }
+    pvxs::certs::cert_authority_standing_t standing() const noexcept {
+        const auto answer = answer_.load(std::memory_order_acquire);
+        if (answer == pvxs::certs::cert_authority_standing_t::UNKNOWN || hold_last_known_) return answer;
+        return time(nullptr) < answer_valid_until_.load(std::memory_order_acquire)
+                   ? answer
+                   : pvxs::certs::cert_authority_standing_t::UNKNOWN;
+    }
 
     /** @brief Begins polling. Does nothing when the anchor named no responder. */
     void start();
 
-    /** @brief Stops polling and waits for the poll in flight to finish. */
+    /** @brief Stops polling, and waits for a poll in flight to finish. */
     void stop();
 
    private:
-    /** @brief Polls, then waits until the responder says it will have something new to say. */
-    void run();
+    /** @brief The timer callback: asks once, records what came back, and arms itself again. */
+    static void pollTimer(evutil_socket_t fd, short evt, void *raw);
 
-    /** @brief One question and answer. Returns the responder's own next-update time, or 0. */
-    time_t pollOnce();
+    /** @brief One question and answer, on the polling loop's own thread. */
+    void poll();
+
+    /** @brief How long to leave it, so several attempts fall inside the answer's own life. */
+    time_t askAgainIn() const;
 
     std::string responder_uri_;
     const bool hold_last_known_;
     pvxs::ossl_ptr<X509> cert_;
     pvxs::ossl_ptr<X509_STORE> trusted_store_;
 
-    std::atomic<pvxs::certs::cert_authority_standing_t> standing_{pvxs::certs::cert_authority_standing_t::UNKNOWN};
+    /**
+     * The last answer this service verified, and the moment it stops being one.
+     *
+     * The standing is derived from these rather than stored, which is what makes a poll that
+     * came back with nothing a non-event: it records nothing, and the answer already held goes
+     * on being the answer until it runs out. A responder busy with somebody else costs one of
+     * the several attempts there are before that happens, instead of costing the facility every
+     * connection it underwrites.
+     */
+    std::atomic<pvxs::certs::cert_authority_standing_t> answer_{pvxs::certs::cert_authority_standing_t::UNKNOWN};
+    std::atomic<time_t> answer_valid_until_{0};
 
-    std::thread worker_;
-    std::mutex mutex_;
-    std::condition_variable wakeup_;
-    /** Atomic because a poll in flight reads it between attempts, with the lock released. */
-    std::atomic<bool> stopping_{false};
+    /** Its own event loop, on a named EPICS thread, so nothing here runs on the server's. */
+    pvxs::impl::evbase poll_loop_;
+    pvxs::impl::evevent poll_timer_;
 };
 
 }  // namespace cert

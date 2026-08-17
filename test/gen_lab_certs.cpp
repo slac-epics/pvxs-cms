@@ -213,12 +213,12 @@ void add_extension(X509* cert, int nid, const char *expr,
 void add_skid_extension(X509* cert, EVP_PKEY* pkey) {
     auto skid = computeSkidFromKey(pkey);
 
-    ASN1_OCTET_STRING* skid_asn1 = ASN1_OCTET_STRING_new();
-    ASN1_OCTET_STRING_set(skid_asn1, skid.data(), skid.size());
+    const pvxs::ossl_ptr<ASN1_OCTET_STRING> skid_asn1(ASN1_OCTET_STRING_new());
+    ASN1_OCTET_STRING_set(skid_asn1.get(), skid.data(), skid.size());
 
-    X509_EXTENSION* ext = X509V3_EXT_i2d(NID_subject_key_identifier, 0, skid_asn1);
-    MUST(1, X509_add_ext(cert, ext, -1));
-    X509_EXTENSION_free(ext);
+    // Owned: MUST throws on failure, and neither of these went back when it did.
+    const pvxs::ossl_ptr<X509_EXTENSION> ext(X509V3_EXT_i2d(NID_subject_key_identifier, 0, skid_asn1.get()));
+    MUST(1, X509_add_ext(cert, ext.get(), -1));
 }
 
 /**
