@@ -1589,23 +1589,35 @@ run_in lab as guest pvxinfo -v test:aiExample
 Four seconds after the responder came back, and **nothing was restarted** to get that: it is
 the same controller process, on the same address, secure again on `5076`.
 
-**The gateways do not come back with it.** Everything inside a department does, as above: each
-certificate manager asks the responder again, and every holder is told over the status channel
-it already subscribes to. A gateway does not. Its connections to the department were torn down
-while the standing was unknown, and it does not rebuild them once the standing is good again,
-so it goes on answering searches while no request through it ever completes. With nothing
-restarted, all four of the reads that cross a department time out:
+**The gateways may come back with it, and may not.** Everything inside a department does, as
+above: each certificate manager asks the responder again, and every holder is told over the
+status channel it already subscribes to. A gateway sometimes does the same and sometimes does
+not. When it does not, its connections to the department were torn down while the standing was
+unknown and it does not rebuild them once the standing is good again, so it goes on answering
+searches while no request through it ever completes: a read that crosses a department returns
+`Timeout with 1 outstanding` while everything inside each department is healthy.
+
+The four reads that cross a department say which of the two you have, so run them before
+restarting anything:
 
 ```sh
 run_in lab       as guest without a certificate pvxget ml:aiExample
+#   value double = 1.23
 run_in ml        as guest without a certificate pvxget test:aiExample
+#   value double = 0
 run_in perimeter as guest without a certificate pvxget test:aiExample
+#   value double = 0
 run_in perimeter as guest without a certificate pvxget ml:aiExample
-#   Timeout with 1 outstanding
+#   value double = 1.23
 ```
 
-Restarting the two gateways is the whole repair, and running those same four afterwards is how
-you know it worked:
+That is one run, with nothing restarted, after a responder that had been away for nearly two
+minutes. Another run answered `Timeout with 1 outstanding` to all four instead, and needed the
+restart below. Which of the two you get is not predictable, and the length of the outage is not
+what decides it, so ask rather than guess: the four reads take seconds.
+
+If they do time out, restarting the two gateways is the whole repair, and running those same
+four afterwards is how you know it worked:
 
 ```sh
 podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
@@ -1621,7 +1633,7 @@ run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 run_in ml  as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 ```
 
-That restart leaves the laboratory as section 8 left it, which is where to come back to if a
+Either way, the laboratory is left as section 8 left it, which is where to come back to if a
 later reading disagrees with what is written here.
 
 ## Revoking one department's authority
@@ -1697,7 +1709,7 @@ run_in lab as guest pvxinfo -v test:aiExample
 ```
 
 And its administrator went on working: `run_in lab-manager as admin pvxcert -l` still lists its
-eight rows.
+rows, the whole listing, exactly as it did before.
 
 **Reading still crosses in both directions**, which looks surprising until you remember what
 reading needs:
@@ -1761,7 +1773,7 @@ run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 #   Status        : AUTHORITY_REVOKED
 ```
 
-Ten seconds here, and that is neither the shortest it can be nor the longest. The minute runs
+Ten seconds on the run this was written from, and four on the two after it. The minute runs
 from when the responder gave the answer the manager is holding, not from when you revoked, so
 what is left to wait is whatever is left of that minute: anywhere from a moment to a whole one.
 Ask before it is up and you will see one of two answers, both correct for the moment they are
