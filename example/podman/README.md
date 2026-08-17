@@ -24,6 +24,8 @@
 - [Issue the certificates](#issue-the-certificates)
 - [8. One facility root, so each department trusts the other's certificates](#8-one-facility-root-so-each-department-trusts-the-others-certificates)
 - [9. A certificate is revoked where it was issued](#9-a-certificate-is-revoked-where-it-was-issued)
+- [The responder that answers for the facility root](#the-responder-that-answers-for-the-facility-root)
+- [When the responder cannot be reached](#when-the-responder-cannot-be-reached)
 - [10. Revoking the authority itself](#10-revoking-the-authority-itself)
 
 **[Part 4 - federated, two independent roots](#part-4---federated-two-independent-roots)**
@@ -1472,7 +1474,7 @@ run_in ml as guest authnstd -u client --force
 run_in ml-manager as admin pvxcert --review-pending --all approve --yes
 ```
 
-## 10. Revoking the authority itself
+## The responder that answers for the facility root
 
 Everything so far revokes a certificate the laboratory issued, and the holder learns of it on
 the status channel that certificate names. The facility root has no such channel. It is the
@@ -1497,165 +1499,19 @@ leaving its own segment. It signs with a certificate the root authorised for the
 the root's own key is not on it - and the root's keychain has no key in it at all, only the
 certificate, which is why nothing in the laboratory can sign as the root.
 
-Start from a working laboratory, with certificates issued and a write that succeeds:
+**Two things can happen to that arrangement, and they are not the same thing at all.** The
+responder can fail to answer, which leaves the root's standing unknown, or it can answer that
+the root is revoked. The laboratory comes back from the first on its own, which is the next
+section. Nothing comes back from the second, which is where Part 3 ends.
+
+Both start from a working laboratory, with certificates issued and a write that succeeds:
 
 ```sh
 authority_says
 #   the facility root stands
 ```
 
-Now revoke the root, as its own authority would:
-
-```sh
-authority_revoke
-#   the facility root is REVOKED
-```
-
-### Waiting for the answer to reach the departments
-
-**Nothing changes in the laboratory at the moment the root is revoked, and this step is not
-optional.** Each certificate manager holds the responder's last answer until it lapses, and the
-laboratory's responder asks to be believed for one minute. The revocation reaches the
-departments when that minute is up, not before - so ask, and keep asking, until it changes:
-
-```sh
-run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
-#   Status        : AUTHORITY_REVOKED
-```
-
-A minute is the shortest it can be and not the longest: the manager re-asks after its held
-answer lapses, so a revocation arriving just after one of those goes almost two minutes before
-it is seen. Ask before then and you will see one of two answers, both correct for the moment
-they are given:
-
-- `VALID`, when the manager's held answer has not lapsed yet. Nothing above the certificate has
-  reached that manager, so it says what it last established.
-- `UNKNOWN`, when the answer lapsed while the responder was restarting. `authority_revoke`
-  rewrites the responder's file and restarts it, because the responder reads its answer once at
-  start; for the second or two that takes, a manager that asks gets nothing back. It does not
-  assume an answer it could not get, which is the behaviour described under *When the responder
-  cannot be reached* below, arriving a step earlier than you were expecting it.
-
-Neither is the certificate manager being unclear about the revocation. It is the ordinary
-sequence: last answer, then no answer, then the new one.
-
-### What every certificate says once it has propagated
-
-`-f` names a keychain instead of an identifier, and the status address is read from the
-certificate inside it, so nothing has to be copied from the listing and the line stays right
-however the serial numbers fall. The path is written out in full because it is a path inside
-the container, where the guest's home is `/home/guest`. Writing `~` there would be expanded by
-your own shell first, to your home directory on this machine, and the file it named would not
-exist.
-
-That state is not `REVOKED`, and the difference is the point of it. The holder's own
-certificate is untouched: it has not been revoked, it has not expired, and asking for a
-replacement would achieve nothing, because a replacement would be issued by the same authority.
-The certificate cannot be used, and the reason lies above it.
-
-A certificate that cannot be used is not presented, and the write does not go through:
-
-```sh
-run_in lab as guest pvxput test:aiExample 42
-#   Timeout
-```
-
-What it says depends on how far the client gets. If it can still be told about its own
-certificate it is refused for want of an identity, and if it cannot be told anything at all -
-which is the usual case here, since the certificate manager's own certificate is under the same
-root - nothing answers and it times out. Either way nothing is written, and reading the
-variable back shows the value it had.
-
-Administration stops with it, and that is worth seeing rather than working around. An
-administrator's certificate was issued under the same root, so it is no more usable than anyone
-else's, and the listing does not answer at all:
-
-```sh
-run_in lab-manager as admin pvxcert -l
-#   ERR ... Timed out listing certificates from CERT:LIST
-```
-
-Revoking a facility root is not a way to withdraw one department or one holder. It stops
-everyone who chains to it, including the people who would undo it, which is why it is the last
-thing a facility does and why what it takes to undo it is a file and a restart rather than a
-certificate operation.
-
-Putting the root back takes the same wait to be believed, for the same reason, and the gateways
-need one thing more:
-
-```sh
-authority_restore
-#   the facility root stands
-
-run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
-#   Status        : VALID
-
-podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
-    restart pvxs-lab-gateway pvxs-lab-ml-gateway
-```
-
-**Wait for `VALID` before restarting the gateways, rather than restarting them after a fixed
-time.** They have to make their upstream connections to a department that is already answering,
-and a department whose root has not yet come back is not. Restart them too early and everything
-below still looks broken, for a reason that has nothing to do with the root any more. Ask too
-early and the answer is `AUTHORITY_REVOKED` or `UNKNOWN` exactly as before: that is the wait,
-not a restore that did not work.
-
-**Both departments, not one.** The two certificate managers ask the responder on their own
-schedule, so one is back before the other. Restarting on the strength of the lab side alone
-leaves the machine learning gateway forwarding nothing, and the symptom is that `ml:aiExample`
-cannot be read from anywhere while `test:aiExample` can. Ask on both sides before restarting:
-
-```sh
-run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
-run_in ml  as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
-```
-
-**Do not skip the gateway restart either.** Everything inside a department comes back on its
-own: each certificate manager asks the responder again, and every holder is told over the
-status channel it already subscribes to. A gateway does not. Its connections to the department
-were torn down when the root was revoked, and it does not rebuild them once the root stands
-again, so it goes on answering searches while no request through it ever completes. Everything
-the perimeter workstation can see is reached through a gateway, so the symptom is a workstation
-that cannot read a variable or ask for a certificate:
-
-```
-No certificate manager answered CERT:CREATE:<issuer> within 5 seconds. Nothing serves that
-name, so either no certificate manager for this authority is running, or it cannot be
-reached from here.
-```
-
-The certificate manager is running and perfectly healthy when that appears. The department can
-read its own variables, the administrator can list every certificate, and the gateway's own
-certificate is `VALID`: the only thing wrong is the gateway's side of a connection that was cut
-a section ago. Restarting the two gateways is the whole repair, and these four are how you know
-it worked:
-
-```sh
-run_in lab       as guest without a certificate pvxget ml:aiExample
-run_in ml        as guest without a certificate pvxget test:aiExample
-run_in perimeter as guest without a certificate pvxget test:aiExample
-run_in perimeter as guest without a certificate pvxget ml:aiExample
-```
-
-Nothing was repaired to achieve that. The listing shows what it showed before, because no
-certificate was ever changed: what changed was above them, and it is read afresh each time a
-status is answered rather than recorded against anything.
-
-```sh
-run_in ml-manager as admin pvxcert -l --where "name:guest"
-#   64ca66c8:<serial>  CLIENT  CN=guest,O=epics.org,C=US  VALID    ...
-#   64ca66c8:<serial>  CLIENT  CN=guest,O=epics.org,C=US  REVOKED  ...
-```
-
-Two of them, because section 9 revoked one and it was asked for again. The revoked one is still
-revoked, which is the point: the root coming back restores nothing that was decided beneath it.
-
-A listing asked for too early answers `Certificate not valid: UNKNOWN` and then times out. That
-is the administrator's own certificate, which is under the same root as everything else, and it
-is the same wait again rather than a fault.
-
-### When the responder cannot be reached
+## When the responder cannot be reached
 
 A responder is a web service, and a web service can be down. That is a different fact from a
 revoked authority: the root may be perfectly good and simply not answering for itself.
@@ -1683,37 +1539,203 @@ run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 #   Status        : UNKNOWN
 ```
 
-That is the same wait as before, so ask until it changes rather than reading anything into the
-first answer.
+Twenty-one seconds, in the run this was written from. **The wait is not a fixed one.** A
+manager believes the responder's answer for one minute from the moment that answer was given,
+not from the moment the responder went away, so what is left to wait is whatever is left of
+that minute: anywhere from no time at all to a whole one. Ask, and keep asking, until it
+changes, rather than reading anything into the first answer.
 
-Connections refuse, exactly as they do for any status a client cannot establish. This is the
-laboratory failing closed, and it is a choice rather than a consequence: a facility that cannot
-check its authority stops, rather than continuing on an assumption.
+`-f` names a keychain instead of an identifier, and the status address is read from the
+certificate inside it, so nothing has to be copied from the listing and the line stays right
+however the serial numbers fall. The path is written out in full because it is a path inside
+the container, where the guest's home is `/home/guest`. Writing `~` there would be expanded by
+your own shell first, to your home directory on this machine, and the file it named would not
+exist.
+
+**A controller that cannot establish its own standing stops offering the secure port.** It does
+not carry on as though it had checked, and it does not fall silent either: it serves plain
+traffic on `5075`, and `pvxinfo -v` names the peer the way it did before any certificate was
+issued:
+
+```sh
+run_in lab as guest pvxinfo -v test:aiExample
+#   # anonymous/@10.89.0.214:5075
+```
+
+That is the laboratory failing closed, and it is a choice rather than a consequence: a facility
+that cannot check its authority stops speaking for it, rather than continuing on an assumption.
 
 A site that would rather stay up sets `EPICS_PVACMS_AUTHORITY_HOLD_LAST_KNOWN=YES` on its
 certificate managers, and an unreachable responder then leaves them serving the last answer
 they verified. The trade is stated plainly: an outage of one web service no longer takes the
 facility with it, and a revocation issued during that outage is not seen until it ends.
 
-Put the responder back and the managers pick it up on one of those retries, within fifteen
-seconds - quicker than the restore above, because nothing had to lapse first. The gateways need
-the same restart, for the same reason: they were cut off while the standing was unknown, and
-they do not reconnect by themselves:
+**This one comes back by itself, and that is the whole difference from a revocation.** The
+root's standing was never denied, only unknown, and an unknown standing is a question the
+manager will ask again. Put the responder back and the next of those fifteen-second retries
+answers it:
 
 ```sh
 authority_reachable
 #   the responder is running again
 #   the facility root stands
 
-run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
-#   Status        : VALID
+run_in lab as guest pvxinfo -v test:aiExample
+#   # TLS x509:89caabd6:...:EPICS Root Certificate Authority -> EPICS Controls
+#     Intermediate CA/testioc@10.89.0.214:5076
+```
 
+Four seconds after the responder came back, and **nothing was restarted** to get that: it is
+the same controller process, on the same address, secure again on `5076`.
+
+**The gateways do not come back with it.** Everything inside a department does, as above: each
+certificate manager asks the responder again, and every holder is told over the status channel
+it already subscribes to. A gateway does not. Its connections to the department were torn down
+while the standing was unknown, and it does not rebuild them once the standing is good again,
+so it goes on answering searches while no request through it ever completes. With nothing
+restarted, all four of the reads that cross a department time out:
+
+```sh
+run_in lab       as guest without a certificate pvxget ml:aiExample
+run_in ml        as guest without a certificate pvxget test:aiExample
+run_in perimeter as guest without a certificate pvxget test:aiExample
+run_in perimeter as guest without a certificate pvxget ml:aiExample
+#   Timeout with 1 outstanding
+```
+
+Restarting the two gateways is the whole repair, and running those same four afterwards is how
+you know it worked:
+
+```sh
 podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
     restart pvxs-lab-gateway pvxs-lab-ml-gateway
 ```
 
+**Both departments, not one.** The two certificate managers ask the responder on their own
+schedule, so one is back before the other, and a gateway restarted against a department that is
+not answering yet forwards nothing until it is restarted again. Ask on both sides first:
+
+```sh
+run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
+run_in ml  as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
+```
+
 That restart leaves the laboratory as section 8 left it, which is where to come back to if a
 later reading disagrees with what is written here.
+
+## 10. Revoking the authority itself
+
+The other thing the responder can say is that the root is revoked, and it is not the same kind
+of event at all. **An unknown standing is recoverable and a revoked one is not.** The section
+above ends with a laboratory that is whole again. This one does not, and cannot: everything it
+shows is permanent, and the only way out of it is to build the facility's trust again from a
+new root.
+
+```sh
+authority_revoke
+#   the facility root is REVOKED
+```
+
+### Waiting for the answer to reach the departments
+
+**Nothing changes in the laboratory at the moment the root is revoked, and this step is not
+optional.** Each certificate manager holds the responder's last answer until it lapses, and the
+laboratory's responder asks to be believed for one minute. The revocation reaches a department
+when the answer that department is holding lapses, not before - so ask, and keep asking, until
+it changes:
+
+```sh
+run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
+#   Status        : AUTHORITY_REVOKED
+```
+
+Four seconds here, and that is neither the shortest it can be nor the longest. The minute runs
+from when the responder gave the answer the manager is holding, not from when you revoked, so
+what is left to wait is whatever is left of that minute: anywhere from a moment to a whole one.
+Ask before it is up and you will see one of two answers, both correct for the moment they are
+given:
+
+- `VALID`, when the manager's held answer has not lapsed yet. Nothing above the certificate has
+  reached that manager, so it says what it last established.
+- `UNKNOWN`, when the answer lapsed while the responder was restarting. `authority_revoke`
+  rewrites the responder's file and restarts it, because the responder reads its answer once at
+  start; for the second or two that takes, a manager that asks gets nothing back. It does not
+  assume an answer it could not get, which is the section above happening in miniature.
+
+Neither is the certificate manager being unclear about the revocation. It is the ordinary
+sequence: last answer, then no answer, then the new one.
+
+### What every certificate says once it has propagated
+
+`AUTHORITY_REVOKED` is not `REVOKED`, and the difference is the point of it. The holder's own
+certificate is untouched: it has not been revoked, it has not expired, and asking for a
+replacement would achieve nothing, because a replacement would be issued by the same authority.
+The certificate cannot be used, and the reason lies above it.
+
+A certificate that cannot be used is not presented, and the write does not go through:
+
+```sh
+run_in lab as guest pvxput test:aiExample 42
+#   Timeout
+```
+
+What it says depends on how far the client gets. If it can still be told about its own
+certificate it is refused for want of an identity, and if it cannot be told anything at all -
+which is the usual case here, since the certificate manager's own certificate is under the same
+root - nothing answers and it times out. Either way nothing is written, and reading the
+variable back shows the value it had.
+
+Administration stops with it, and that is worth seeing rather than working around. An
+administrator's certificate was issued under the same root, so it is no more usable than anyone
+else's, and the listing does not answer at all:
+
+```sh
+run_in lab-manager as admin pvxcert -l
+#   ERR ... Timed out listing certificates from CERT:LIST
+```
+
+### There is no way back from this
+
+Look again at that last command, because it is what makes this final. The administrator is the
+person who would undo a revocation, and the administrator's certificate is under the root that
+was revoked. There is nobody left in the facility who could act, and nothing to act with.
+
+**Every certificate beneath the root is permanently unusable.** Not expired, and not revoked
+itself: the reason lies above it, and asking its own department for a replacement achieves
+nothing, because the replacement comes from the same authority and is worth exactly as much.
+Revoking a facility root is not a way to withdraw one department or one holder. It stops
+everyone who chains to it.
+
+**No server resumes when the answer changes back.** A holder that saw the revocation stays
+degraded for the life of its process, and a later answer saying the root stands again is not
+acted on. That is deliberate rather than a shortcoming. An unknown standing is a question the
+manager will ask again; a revocation is an answer it already has, and an authority that has
+once been declared revoked is not something a facility should quietly start trusting again
+because a web service changed its mind.
+
+**The only recovery is a new root.** A new facility root has to be minted, and every holder in
+the facility - every controller, every gateway, every certificate manager and every person -
+has to be issued a certificate under it and restarted. That is why revoking a facility root is
+the last thing a site does, and why this is the last thing Part 3 shows.
+
+### Getting a working laboratory back
+
+The laboratory's stand-in for minting a new root and issuing to everyone again is one command,
+and it is the only thing here that works:
+
+```sh
+./reset.sh --authorities federated-shared-root
+```
+
+It mints new authorities as well as new certificates, so the issuer identifiers change: any you
+copied out of a listing while reading this part are stale afterwards.
+
+> **`authority_restore` is a laboratory convenience, not a recovery.** `helpers.sh` has it, and
+> it rewrites the responder's answer so the root stands again, which is there so this
+> demonstration can be set up and run a second time without minting anything. It is not what
+> recovery looks like in a real facility, and it does not undo what the revocation did: every
+> holder that already saw `AUTHORITY_REVOKED` stays degraded until it is restarted, and in a
+> real facility it would need a certificate from a new root before restarting it would help.
 
 # Part 4 - federated, two independent roots
 
