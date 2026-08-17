@@ -2107,7 +2107,7 @@ and the facility address to it.
 | `pvxs-lab-authority-status` | it + lab + ml | the responder that answers for the facility root |
 | `pvxs-facility-lb` | internet + perimeter + lab + ml | the facility address, layer 4 |
 | `lab-client`, `ml-client` | lab, ml | a workstation in each department |
-| `perimeter-client` | internet | a workstation outside the facility |
+| `internet-client` | internet | a workstation outside the facility |
 
 The balancer and the responder are the only things with a leg outside their own segment that
 is not a boundary: each stands in every network that names it, because podman answers a name

@@ -49,7 +49,7 @@ volumes:
   tstioc-config:
   lab-client-config:
   gateway-config:
-  perimeter-client-config:
+  internet-client-config:
 
 services:
 
@@ -153,10 +153,10 @@ services:
 
   # ---------------------------------------------------------------- outside
   # It knows one address for the whole facility and nothing about what is behind it.
-  perimeter-client:
+  internet-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/internet:latest
-    hostname: perimeter-client
+    hostname: internet-client
     networks: [net-internet]
     environment:
       <<: *lab-env
@@ -164,7 +164,7 @@ services:
       EPICS_PVA_NAME_SERVERS: "facility:5075"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
-      - perimeter-client-config:/home/guest/.config/pva/1.5
+      - internet-client-config:/home/guest/.config/pva/1.5
       - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
     depends_on: [pvxs-facility-lb]

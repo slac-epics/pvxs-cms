@@ -88,7 +88,7 @@ volumes:
   ml-ioc-config:
   lab-client-config:
   ml-client-config:
-  perimeter-client-config:
+  internet-client-config:
 
 services:
 
@@ -277,10 +277,10 @@ services:
 
   # A shell outside both departments. Reaches the two gateways and nothing else, so
   # every certificate status lookup and every process variable crosses a gateway.
-  perimeter-client:
+  internet-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/internet:latest
-    hostname: perimeter-client
+    hostname: internet-client
     networks: [net-internet]
     env_file: [./issuer_ids.env]
     environment:
@@ -288,7 +288,7 @@ services:
       EPICS_PVA_NAME_SERVERS: "facility:5075 facility:5175"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
-      - perimeter-client-config:/home/guest/.config/pva/1.5
+      - internet-client-config:/home/guest/.config/pva/1.5
       - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
 
