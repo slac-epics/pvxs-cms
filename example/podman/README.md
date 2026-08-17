@@ -26,6 +26,7 @@
 - [9. A certificate is revoked where it was issued](#9-a-certificate-is-revoked-where-it-was-issued)
 - [The responder that answers for the facility root](#the-responder-that-answers-for-the-facility-root)
 - [When the responder cannot be reached](#when-the-responder-cannot-be-reached)
+- [Revoking one department's authority](#revoking-one-departments-authority)
 - [10. Revoking the authority itself](#10-revoking-the-authority-itself)
 
 **[Part 4 - federated, two independent roots](#part-4---federated-two-independent-roots)**
@@ -1467,7 +1468,7 @@ So trust is shared and administration is not, which is the same division section
 the other side: a certificate from either department is accepted everywhere, and yet only one
 administrator in the facility can withdraw it.
 
-Put it back, because section 10 wants the laboratory whole:
+Put it back, because what follows wants the laboratory whole:
 
 ```sh
 run_in ml as guest authnstd -u client --force
@@ -1623,13 +1624,124 @@ run_in ml  as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 That restart leaves the laboratory as section 8 left it, which is where to come back to if a
 later reading disagrees with what is written here.
 
+## Revoking one department's authority
+
+Section 9 revoked a certificate, and only the department that issued it could. The same
+division holds one level up. An authority belongs to a department, and revoking it withdraws
+that department and reaches no further: everything signed with it stops, and the department
+next door carries on without noticing.
+
+The authority is the one section 7 already showed - the third row of the machine learning
+department's own listing, the intermediate it signs with:
+
+```sh
+run_in ml-manager as admin pvxcert -R "${ML}:00000000009876543213"
+#   Revoke ==> CERT:STATUS:64ca66c8:00000000009876543213 ==> Completed Successfully
+```
+
+Where that is run is not a detail. The issuer half of the identifier is `64ca66c8`, so it is
+the machine learning department that answers about this certificate, exactly as section 9 said.
+The lab administrator has no more to say about the authority than about anything else that
+department issued.
+
+### The department it belongs to
+
+**Everything there that depended on a certificate stops.**
+
+A holder is told on the status channel its certificate already names, and within five seconds:
+
+```sh
+run_in ml as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
+#   Status        : REVOKED
+```
+
+The word is `REVOKED`, the same one section 9's holder was given, and not the
+`AUTHORITY_REVOKED` that section 10's revoked root produces. Read it as it stands: that
+certificate cannot be used, and asking that department for another one achieves nothing.
+
+Its controller stops offering the secure port and serves plain traffic instead, which is the
+same fallback an unreachable responder produced above, and for the same reason: a controller
+that cannot stand behind its certificate does not go on presenting it.
+
+```sh
+run_in ml as guest pvxinfo -v ml:aiExample
+#   # anonymous/@10.89.1.45:5075
+```
+
+And the department can no longer administer itself. Its certificate manager's own certificate
+was issued by the authority that was just revoked, so the listing does not answer:
+
+```sh
+run_in ml-manager as admin pvxcert -l
+#   ERR ... Timed out listing certificates from CERT:LIST
+```
+
+That is the administrator who ran the revocation, unable to run anything else afterwards.
+
+### The department next door
+
+Nothing at all. The lab holder's certificate was read every five seconds for two hundred
+seconds and never changed:
+
+```sh
+run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
+#   Status        : VALID
+```
+
+Its controller went on serving securely, through the lab's own intermediate:
+
+```sh
+run_in lab as guest pvxinfo -v test:aiExample
+#   # TLS x509:89caabd6:...:EPICS Root Certificate Authority -> EPICS Controls
+#     Intermediate CA/testioc@10.89.0.214:5076
+```
+
+And its administrator went on working: `run_in lab-manager as admin pvxcert -l` still lists its
+eight rows.
+
+**Reading still crosses in both directions**, which looks surprising until you remember what
+reading needs:
+
+```sh
+run_in lab as guest without a certificate pvxget ml:aiExample
+#   value double = 1.23
+run_in ml  as guest without a certificate pvxget test:aiExample
+#   value double = 10
+```
+
+Reading never required a certificate in the first place, and the gateways go on relaying plain
+traffic. What the machine learning department lost is everything a certificate was needed for:
+serving securely, writing, and administering itself.
+
+### There is no way back for that department
+
+**A revoked certificate is a revoked certificate**, and an authority is a certificate. The
+machine learning department does not come back when something is put right, because nothing
+here is a fault to put right. It needs a new intermediate authority, and a new certificate for
+every holder under it, before any of that department works again.
+
+Terminal, then, and confined to one department. **A department can be taken out of the facility
+in one command, by the people who run it, and everybody else carries on** - which is the reason
+to build a federation at all. A department that has been compromised, or is simply being
+decommissioned, is withdrawn by its own administrator, without anyone else being asked and
+without anyone else stopping.
+
+The facility root is the exception, and section 10 is this same rule applied to the one thing
+every department chains to.
+
 ## 10. Revoking the authority itself
 
 The other thing the responder can say is that the root is revoked, and it is not the same kind
 of event at all. **An unknown standing is recoverable and a revoked one is not.** The section
-above ends with a laboratory that is whole again. This one does not, and cannot: everything it
-shows is permanent, and the only way out of it is to build the facility's trust again from a
-new root.
+on an unreachable responder ends with a laboratory that is whole again. This one does not, and
+cannot: everything it shows is permanent, and the only way out of it is to build the facility's
+trust again from a new root.
+
+The machine learning department is already gone, so everything below is run in the lab, which
+is what is left of the facility. That is also the one difference from the section above, and it
+is the point of this one: **there is no other department to be spared here.** An authority
+belongs to a department, and revoking it withdraws that department. The root belongs to
+neither, and revoking it stops both.
 
 ```sh
 authority_revoke
@@ -1649,7 +1761,7 @@ run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 #   Status        : AUTHORITY_REVOKED
 ```
 
-Four seconds here, and that is neither the shortest it can be nor the longest. The minute runs
+Ten seconds here, and that is neither the shortest it can be nor the longest. The minute runs
 from when the responder gave the answer the manager is holding, not from when you revoked, so
 what is left to wait is whatever is left of that minute: anywhere from a moment to a whole one.
 Ask before it is up and you will see one of two answers, both correct for the moment they are
@@ -1660,7 +1772,7 @@ given:
 - `UNKNOWN`, when the answer lapsed while the responder was restarting. `authority_revoke`
   rewrites the responder's file and restarts it, because the responder reads its answer once at
   start; for the second or two that takes, a manager that asks gets nothing back. It does not
-  assume an answer it could not get, which is the section above happening in miniature.
+  assume an answer it could not get, which is an unreachable responder in miniature.
 
 Neither is the certificate manager being unclear about the revocation. It is the ordinary
 sequence: last answer, then no answer, then the new one.
