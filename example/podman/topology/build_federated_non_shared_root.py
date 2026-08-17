@@ -75,9 +75,7 @@ pc_l = fields('Role: client','Image: internet',
  'eth0  net-internet   10.89.4.0/24',
  'Listens: none (client only)','Logins: guest, operator',
  'EPICS_PVA_ADDR_LIST: none',
- 'EPICS_PVA_NAME_SERVERS: pvxs-lab-gateway:5075, pvxs-lab-ml-gateway:5075',
- '    each gateway is named directly, because there is no one',
- '    address for the facility here')
+ 'EPICS_PVA_NAME_SERVERS: pvxs-lab-gateway:5075, pvxs-lab-ml-gateway:5075')
 lab_root_l = fields('Subject: CN=EPICS Lab Root Certificate Authority',
  'File: certs/lab_root.p12',
  'Signs the Lab intermediate, which signs the Lab certificates',
@@ -101,13 +99,9 @@ keychain_l = fields('File: one PKCS#12 keychain',
  '    Entity certificate: CN=guest',
  '    Private key',
  '',
- 'TRUST ANCHORS - one or more, additive',
+ 'TRUST ANCHORS - one or more',
  '    EPICS Lab Root Certificate Authority',
- '    EPICS ML Root Certificate Authority',
- '',
- '--trust-anchor adds to this list, it does not replace it.',
- 'Certificates minted by either department are trusted, and a',
- 'certificate status reply signed under either root verifies.')
+ '    EPICS ML Root Certificate Authority')
 
 testacf_l = ['§Authorities',
  '    AUTHORITY(LAB_CA, "EPICS Lab Root Certificate Authority") {',
@@ -298,7 +292,7 @@ gx2_local = (gw2_span[0] + gw2_span[1]) / 2
 gx1 = lab_x + ZP + gx1_local
 gx2 = ml_x + ZP + gx2_local
 
-pc_w, pc_h = measure('perimeter-client', pc_l)
+pc_w, pc_h = measure('internet-client', pc_l)
 
 # Two authority groups, not one. The gap between them is the whole point of this picture and
 # is drawn wide enough that no one reads them as branches of a single tree: nothing spans it.
@@ -462,7 +456,7 @@ def build(cv):
     # --- and the two routers reach up to it out of their departments; the workstation
     # --- stands outside the facility, in its own box above the line, and taps it downwards.
     cv.zone(outside_x, outside_y, outside_w, outside_h, OUTSIDE_TITLE, 'zone_perim')
-    pcc = cv.card(outside_x + (outside_w - pc_w)/2, svc_y, 'perimeter-client', pc_l, 'client', 'client')
+    pcc = cv.card(outside_x + (outside_w - pc_w)/2, svc_y, 'internet-client', pc_l, 'client', 'client')
     labr = cv.card((gw1['x'] + gw1['w'] + lab_x + W_lab - ZP - router_w)/2, row1_y,
                    'pvxs-lab-router', lab_router_l, 'router', 'router')
     mlr = cv.card((ml_x + ZP + gw2['x'] - router_w)/2, row1_y,
