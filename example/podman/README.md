@@ -1527,13 +1527,12 @@ notices when the answer it holds lapses, which here is up to the minute the resp
 for, and from then on it retries every fifteen seconds. Until one succeeds it reports what it
 actually knows, which is nothing:
 
-> **One unanswered call is not an unreachable responder.** A poll asks up to five times before
-> it concludes that, because this responder is `openssl ocsp`, which serves one caller at a
-> time - and with two departments polling it, the second is dropped often enough to see. The
-> attempts share the one deadline the poll already had, so a responder that takes the call and
-> then says nothing is still asked once and given up on, and stopping the service waits no
-> longer than it did. Without this, one dropped call reports the authority unknown and stops
-> every connection the facility underwrites, for the fifteen seconds until the next poll.
+> **One unanswered call is not an unreachable responder.** A poll that comes back with nothing
+> records nothing: the manager goes on reporting the answer it last verified, for as long as
+> that answer is still inside its own validity. It does not ask harder, it asks sooner. While
+> an answer is held the next poll falls after a fraction of its life has run, so there are
+> spare attempts in hand before the answer being held lapses. Unknown is what an answer that
+> has run out with nothing to replace it comes to, and never what one dropped call produces.
 
 ```sh
 run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
@@ -1668,8 +1667,13 @@ run_in ml as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
 ```
 
 The word is `REVOKED`, the same one section 9's holder was given, and not the
-`AUTHORITY_REVOKED` that section 10's revoked root produces. Read it as it stands: that
-certificate cannot be used, and asking that department for another one achieves nothing.
+`AUTHORITY_REVOKED` that section 10's revoked root produces. What a holder is given is the
+worst standing found anywhere in its chain, and this holder's own certificate was never
+touched: it is the intermediate that signed it that was revoked, and revoked is the worse of
+the two, so revoked is what comes back. `AUTHORITY_REVOKED` is kept for the facility root,
+whose standing the department asks a responder about rather than reading it out of its own
+records. Either way, read it as it stands: that certificate cannot be used, and asking that
+department for another one achieves nothing.
 
 Its controller stops offering the secure port and serves plain traffic instead, which is the
 same fallback an unreachable responder produced above, and for the same reason: a controller
