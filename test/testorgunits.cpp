@@ -10,6 +10,9 @@
  * command line, through the request and its signature, into the issued subject and back out.
  */
 
+#include <limits.h>
+#include <unistd.h>
+
 #include <string>
 #include <vector>
 
@@ -439,9 +442,26 @@ void testAGeneratedKeychainCarriesBothUnits() {
            show({"epics.org Certificate Authority"}));
 }
 
+// Those two fixtures are generated into the architecture build directory and opened by name, so
+// they are only found when that is the working directory. Started elsewhere the reader returns
+// nothing and a single assertion fails, which reads as a fault in the code under test rather
+// than a fault in how the test was started.
+void requireFixture(const char *name) {
+    if (access(name, R_OK) == 0) return;
+    char directory[PATH_MAX];
+    if (!getcwd(directory, sizeof(directory))) directory[0] = '\0';
+    testAbort(
+        "the generated test keychain \"%s\" was not found in the working directory \"%s\". Run this test from the "
+        "test/O.<architecture> build directory, where the test keychain files are generated.",
+        name, directory);
+}
+
 }  // namespace
 
 MAIN(testorgunits) {
+    requireFixture("ioc1.p12");
+    requireFixture("client1.p12");
+
     testPlan(59);
     const auto key_pair = IdFileFactory::createKeyPair();
 
