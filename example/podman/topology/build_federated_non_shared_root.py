@@ -23,7 +23,7 @@ lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-perimeter','Image
  'eth1  net-perimeter  10.89.2.0/24   server side, where it is asked',
  'Program: p4p pvagw, layer 7','Config: config/gateway-lab.conf',
  'Serves on eth1 alone: "interface" pinned to its net-perimeter address',
- 'Reached from outside at facility:5075 and facility:5076',
+ 'Reached directly at its own net-perimeter address, on 5075 and 5076',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'Presents: CN=gateway',
  'Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc','ACF: gateway.acf','PVList: config/gateway-lab.pvlist')
@@ -50,7 +50,7 @@ ml_gw_l = fields('Role: gateway (dual-homed), net-ml <-> net-perimeter','Image: 
  'Program: p4p pvagw, layer 7','Config: config/gateway-ml.conf',
  'Serves on eth1 alone, and on its own ports: serverport 5175,',
  '    EPICS_PVAS_TLS_PORT 5176',
- 'Reached from outside at facility:5175 and facility:5176',
+ 'Reached directly at its own net-perimeter address, on 5175 and 5176',
  'Listens: tcp/5175 PVA   tcp/5176 PVA over TLS   udp/5176 PVA search',
  'Presents: CN=ml-gateway',
  'Upstream: pvxs-lab-ml, pvxs-lab-ml-ioc','ACF: gateway.acf','PVList: config/gateway-ml.pvlist')
@@ -73,11 +73,12 @@ mlcms_l = fields('Role: PVACMS','Image: ml','eth0  net-ml         10.89.1.0/24',
  '    CERT:LIST:ML_ISSUER:ALL, :EXPIRING, :PENDING_APPROVAL',
  '    CERT:STATUS:ML_ISSUER:<serial>')
 pc_l = fields('Role: client','Image: internet',
- 'eth0  net-internet   10.89.4.0/24',
+ 'eth0  net-perimeter  10.89.2.0/24',
  'Listens: none (client only)','Logins: guest, operator',
  'EPICS_PVA_ADDR_LIST: none',
- 'EPICS_PVA_NAME_SERVERS: facility:5075, facility:5175',
- '    one address, one port per department')
+ 'EPICS_PVA_NAME_SERVERS: pvxs-lab-gateway:5075, pvxs-lab-ml-gateway:5175',
+ '    each gateway is named directly, because there is no one',
+ '    address for the facility here')
 lab_root_l = fields('Subject: CN=EPICS Lab Root Certificate Authority',
  'File: certs/lab_root.p12',
  'Signs the Lab intermediate, which signs the Lab certificates',
@@ -193,28 +194,6 @@ mlcmsacf_l = ['at /etc/pvacms/pvacms.acf','',
  '§ASGs','    ASG(DEFAULT) {','        RULE(0,READ)',
  '        RULE(1,WRITE) { UAG(CMS_ADMIN) AUTHORITY(CMS_AUTH)','            PROTOCOL(TLS) METHOD("x509") }','    }']
 
-# One appliance owns the facility address. Mapping a port to a different port would break
-# PVAccess: a server names its own port in a search reply and the client dials that port on
-# the address the reply arrived from, so a translated port sends it to the other department.
-lb_l = fields('Role: facility load balancer, layer 4 (dual-homed)','Image: lb',
- 'eth0  net-internet   10.89.4.0/24   (the facility address)',
- 'eth1  net-perimeter  10.89.2.0/24   (its foot in the DMZ)',
- 'The gateways stand only in the DMZ, so this is the one way in',
- 'Maps inward, port for port:',
- '    facility:5075 -> pvxs-lab-gateway:5075',
- '    facility:5076 -> pvxs-lab-gateway:5076      over TLS',
- '    facility:5175 -> pvxs-lab-ml-gateway:5175',
- '    facility:5176 -> pvxs-lab-ml-gateway:5176   over TLS',
- 'One address is published for the facility, and a department is',
- '    chosen by port. That is also what lets each department name',
- '    the other without naming itself.',
- 'This is the one device here where a port picks a destination. It',
- '    rewrites the destination and the packet is routed afterwards;',
- '    the routers themselves choose a path on the subnet alone.',
- 'It answers as itself to the gateway, so replies come back through',
- '    it. The gateway loses nothing by that: it authorises on the',
- '    certificate presented, not on the address it came from.')
-
 def _router(dept, seg, cidr, far_gw, far_ports):
     return fields('Role: routing firewall, layers 3 and 4','Image: router',
      f'eth0  {seg:<14} {cidr}',
@@ -267,8 +246,6 @@ chips = [('CA or certificate - a file, on no network', C['ca'][1]),
          ('IOC - controller', C['ioc'][1]),
          ('gateway - proxies PVAccess between a zone', C['gateway'][1]),
          ('    and the perimeter', None),
-         ('load balancer - owns the facility address', C['lb'][1]),
-         ('    and maps a port to a department', None),
          ('router - forwards between segments, and', C['router'][1]),
          ('    states which may reach which', None),
          ('client - workstation', C['client'][1]),
@@ -277,12 +254,11 @@ samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, N
            ('net-ml bus - the same for net-ml', C['bus_ml'], 4, None),
            ('net-perimeter bus - tapping it = attached', C['perim'], 4, None),
            ('    to net-perimeter', None, 0, None),
-           ('net-internet bus - outside the facility', C['bus_inet'], 4, None),
            ('certificate relationship - signs', C['cert'], 2, '6 5'),
            ('a file the component loads', C['filedrop'], 1.6, '2 4')]
-notation = ['10.89.0.0/24 : the segment, in CIDR. Four of them: the two',
-            '               departments, the DMZ between them, and the',
-            '               internet outside. A host reaches another segment',
+notation = ['10.89.0.0/24 : the segment, in CIDR. Three of them: the two',
+            '               departments, and the DMZ between them, where the',
+            '               gateways are asked. A host reaches another segment',
             '               through an appliance standing on both',
             'eth0, eth1   : the host\'s interface on each segment. A host on',
             '               two segments is marked dual-homed',
@@ -322,10 +298,8 @@ gw2_span = (mx[1], mx[2] + mw[2])
 gx2_local = (gw2_span[0] + gw2_span[1]) / 2
 gx1 = lab_x + ZP + gx1_local
 gx2 = ml_x + ZP + gx2_local
-rx = (gx1 + gx2) / 2
 
-pz_w = measure('perimeter-client', pc_l)[0] + 2*ZP
-pz_h = ZTITLE + 12 + measure('perimeter-client', pc_l)[1] + 20
+pc_w, pc_h = measure('perimeter-client', pc_l)
 
 # Two authority groups, not one. The gap between them is the whole point of this picture and
 # is drawn wide enough that no one reads them as branches of a single tree: nothing spans it.
@@ -345,13 +319,11 @@ ca_h = ZTITLE + 10 + root_h + 46 + child_h + 20
 ca_y = title_h + 26
 ca_span = lab_ca_w + CA_GAP + ml_ca_w
 
-# The top band reads left to right: legend, perimeter, then the two authority groups. Two
-# groups are wider than one, so they are anchored to the right of the perimeter rather than
-# centred, which is what leaves the perimeter its room. The legend's width is fixed by the
-# two 470px columns build() lays it out in.
+# The top band reads left to right: legend, then the two authority groups, which start
+# immediately to its right. The legend's width is fixed by the two 470px columns build()
+# lays it out in.
 LEG_W = 14 + 470 + 34 + 470 + 14
-pz_x, pz_y = M + LEG_W + 40, ca_y
-lab_ca_x = pz_x + pz_w + 60
+lab_ca_x = M + LEG_W + 40
 ml_ca_x = lab_ca_x + lab_ca_w + CA_GAP
 
 ca_x, ca_w = lab_ca_x, ca_span
@@ -363,23 +335,19 @@ kc_x = (lab_ca_x + ml_ca_x + ml_ca_w)/2 - kc_w/2      # centred under the two gr
 kc_y = ca_y + ca_h + 52
 
 # The perimeter segment is drawn the way every other segment is: one horizontal line, tapped
-# by each host that stands on it, labelled once. It has to clear the legend, whose left end
-# it runs under to reach the lab workstation, and the line-through-card assertion guards that.
-lb_w, lb_h = measure('pvxs-facility-lb', lb_l)
+# by each host that stands on it, labelled once. With no balancer to carry it across, the
+# outside workstation stands on this segment itself, in the DMZ box with the line below it.
 router_w, router_h = measure('pvxs-lab-router', lab_router_l)
 gw2_w = measure('pvxs-lab-ml-gateway', ml_gw_l)[0]
 
-# net-internet belongs to nobody in the facility, so its line is drawn above the DMZ box
-# rather than inside it, and the balancer reaches up out of the box to stand on it.
-inet_bus_y = max(ca_y + ca_h, pz_y + pz_h, kc_y + kc_h) + 44
-
-# The DMZ reaches from under the outside workstation to over the far gateway, which is the
-# span the facility's own segment actually covers.
-dmz_x = pz_x
-dmz_w = (gx2 + gw2_w/2) - pz_x
-dmz_y = inet_bus_y + 44
+# The DMZ starts right of the legend and reaches over the far gateway, which is the span
+# the facility's own segment actually covers. It hangs below the authority groups and the
+# keychain, so nothing in the top band is crossed.
+dmz_x = M + LEG_W + 40
+dmz_w = (gx2 + gw2_w/2) - dmz_x
+dmz_y = max(ca_y + ca_h, kc_y + kc_h) + 44
 svc_y = dmz_y + ZTITLE + 14
-perim_bus_y = svc_y + lb_h + 40
+perim_bus_y = svc_y + pc_h + 40
 dmz_h = (perim_bus_y - dmz_y) + 30
 
 # The departments span under the legend, so they are the ones that have to clear it.
@@ -408,7 +376,6 @@ def build(cv):
 
     cv.zone(lab_x, zone_y, W_lab, zone_h, 'net-lab   10.89.0.0/24   bridge, isolated   -   Lab zone (accelerator)', 'zone_lab')
     cv.zone(ml_x, zone_y, W_ml, zone_h, 'net-ml   10.89.1.0/24   bridge, isolated   -   ML zone', 'zone_ml')
-    cv.zone(pz_x, pz_y, pz_w, pz_h, 'net-internet   10.89.4.0/24   -   outside the facility', 'zone_perim')
     cv.zone(lab_ca_x, ca_y, lab_ca_w, ca_h, 'Lab Certificate Authority   -   independent', 'zone_ca')
     cv.zone(ml_ca_x, ca_y, ml_ca_w, ca_h, 'ML Certificate Authority   -   independent', 'zone_ca')
 
@@ -452,9 +419,7 @@ def build(cv):
     for t, colr in ((t1, 'bus_lab'), (t2, 'bus_lab'), (pv, 'bus_lab'), (mi, 'bus_ml'), (mp, 'bus_ml')):
         cv.hv([(t['cx'], bus_lab_y), (t['cx'], t['top'])], C[colr], 2); cv.dot(t['cx'], bus_lab_y, C[colr])
 
-    # --- perimeter client and the two authority groups
-    pcc = cv.card(pz_x + (pz_w - measure('perimeter-client', pc_l)[0])/2, pz_y + ZTITLE + 12, 'perimeter-client', pc_l, 'client', 'client')
-
+    # --- the two authority groups
     # Each group is drawn the same way and entirely within its own zone: a root on top, its own
     # intermediate beneath it. No line leaves a group, which is what makes the two independent.
     ca_cards = {}
@@ -483,7 +448,7 @@ def build(cv):
         rootc = ca_cards[tag][0]
         side = kc['x'] - 3 if tag == 'lab' else kc['x'] + kc['w'] + 3
         # Hugging the root card keeps the lane inside the authority group, clear of the
-        # perimeter box that stands immediately left of the Lab group.
+        # legend that stands immediately left of the Lab group.
         lane = (rootc['x'] - 20) if tag == 'lab' else (rootc['x'] + rootc['w'] + 20)
         cv.hv([(side, kc['top']+26), (lane, kc['top']+26), (lane, rootc['top']+rootc['h']/2),
                (rootc['x'] - 3 if tag == 'lab' else rootc['x'] + rootc['w'] + 3, rootc['top']+rootc['h']/2)],
@@ -491,36 +456,28 @@ def build(cv):
     cv.emit(f'<text x="{kc["cx"]}" y="{kc["top"]-10}" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11" fill="{C["cert"]}">stores both roots as trust anchors, so certificates and status replies from either department verify</text>')
 
     # --- the perimeter segment: one line, tapped by every host that stands on it. The two
-    # --- gateways and both dual-homed workstations reach it from below, the outside
-    # --- workstation from above.
+    # --- gateways and the two routers reach it from below; the outside workstation stands
+    # --- in the DMZ itself and reaches it from above.
     cv.zone(dmz_x, dmz_y, dmz_w, dmz_h,
-            'DMZ   -   net-perimeter, where the gateways stand', 'zone_it')
-    lb = cv.card(dmz_x + (dmz_w - lb_w)/2, svc_y, 'pvxs-facility-lb', lb_l, 'lb', 'lb')
+            'DMZ   -   net-perimeter, where the gateways stand and are named directly', 'zone_it')
+    pcc = cv.card(dmz_x + (dmz_w - pc_w)/2, svc_y, 'perimeter-client', pc_l, 'client', 'client')
     labr = cv.card((gw1['x'] + gw1['w'] + lab_x + W_lab - ZP - router_w)/2, row1_y,
                    'pvxs-lab-router', lab_router_l, 'router', 'router')
     mlr = cv.card((ml_x + ZP + gw2['x'] - router_w)/2, row1_y,
                   'pvxs-ml-router', ml_router_l, 'router', 'router')
 
     perim_hosts = [labr, mlr, gw1, gw2]
-    pbus_x = [h['cx'] for h in perim_hosts] + [lb['cx']]
+    pbus_x = [h['cx'] for h in perim_hosts] + [pcc['cx']]
     cv.hv([(min(pbus_x) - 40, perim_bus_y), (max(pbus_x) + 40, perim_bus_y)], C['perim'], 4)
     for h in perim_hosts:
         cv.hv([(h['cx'], perim_bus_y), (h['cx'], h['top'])], C['perim'], 2)
         cv.dot(h['cx'], perim_bus_y, C['perim'])
-    cv.hv([(lb['cx'], lb['bot']), (lb['cx'], perim_bus_y)], C['perim'], 2)
-    cv.dot(lb['cx'], perim_bus_y, C['perim'])
-    cv.pill(rx, perim_bus_y - 16,
+    cv.hv([(pcc['cx'], pcc['bot']), (pcc['cx'], perim_bus_y)], C['perim'], 2)
+    cv.dot(pcc['cx'], perim_bus_y, C['perim'])
+    # On the widest open stretch of the line, between the lab gateway's tap and the lab
+    # router's, so the label sits clear of every tap and of the workstation above it.
+    cv.pill((gw1['cx'] + labr['cx'])/2, perim_bus_y - 16,
             'net-perimeter  10.89.2.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176', C['perim'])
-
-    # the segment outside the facility: the workstation on it, and the balancer's other foot
-    inet_x = [pcc['cx'], lb['cx'] + 40]
-    cv.hv([(min(inet_x) - 70, inet_bus_y), (max(inet_x) + 70, inet_bus_y)], C['bus_inet'], 4)
-    cv.hv([(pcc['cx'], pcc['bot']), (pcc['cx'], inet_bus_y)], C['bus_inet'], 2)
-    cv.dot(pcc['cx'], inet_bus_y, C['bus_inet'])
-    cv.hv([(lb['cx'] + 40, lb['top']), (lb['cx'] + 40, inet_bus_y)], C['bus_inet'], 2)
-    cv.dot(lb['cx'] + 40, inet_bus_y, C['bus_inet'])
-    cv.pill((min(inet_x) + max(inet_x))/2, inet_bus_y - 16,
-            'net-internet  10.89.4.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176', C['bus_inet'])
 
     # each router stands on its own department's segment as well
     for r, colr in ((labr, 'bus_lab'), (mlr, 'bus_ml')):
