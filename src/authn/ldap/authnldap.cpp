@@ -29,7 +29,7 @@
 #include "auth.h"
 #include "authregistry.h"
 
-DEFINE_LOGGER(auth, "pvxs.auth.ldap");
+DEFINE_LOGGER(auth_ldap, "pvxs.auth.ldap");
 
 namespace pvxs {
 namespace certs {
@@ -77,7 +77,7 @@ struct AuthNLdapRegistrar {
 std::shared_ptr<AuthnCredentials> AuthNLdap::getCredentials(const client::Config &config, const bool for_client) const {
     const auto ldap_config = dynamic_cast<const ConfigLdap &>(config);
 
-    log_debug_printf(auth,
+    log_debug_printf(auth_ldap,
                      "\n******************************************\n"
                      "LDAP Authenticator: %s\n",
                      "Begin acquisition");
@@ -112,7 +112,7 @@ std::shared_ptr<CertCreationRequest> AuthNLdap::createCertCreationRequest(
 
     // First, set up the common CCR fields using the base class.
     auto cert_creation_request = Auth::createCertCreationRequest(credentials, key_pair, usage, config);
-    log_debug_printf(auth, "LDAP CCR: created%s", "\n");
+    log_debug_printf(auth_ldap, "LDAP CCR: created%s", "\n");
 
     std::string user_dn = getDn(credentials->name, credentials->organization);
 
@@ -196,7 +196,7 @@ std::shared_ptr<CertCreationRequest> AuthNLdap::createCertCreationRequest(
             ldap_unbind_ext_s(ld, nullptr, nullptr);
             throw std::runtime_error(SB() << "LDAP add epicsPublicKey failed: " << ldap_err2string(rc));
         }
-        log_debug_printf(auth, "LDAP: Added epicsPublicKey for %s", user_dn.c_str());
+        log_debug_printf(auth_ldap, "LDAP: Added epicsPublicKey for %s", user_dn.c_str());
     } else if (currentPublicKey != newPublicKey) {
         // Modify the attribute.
         LDAPMod mod;
@@ -213,9 +213,9 @@ std::shared_ptr<CertCreationRequest> AuthNLdap::createCertCreationRequest(
             ldap_unbind_ext_s(ld, nullptr, nullptr);
             throw std::runtime_error(SB() << "LDAP modify epicsPublicKey failed: " << ldap_err2string(rc));
         }
-        log_debug_printf(auth, "LDAP: Updated epicsPublicKey for %s", user_dn.c_str());
+        log_debug_printf(auth_ldap, "LDAP: Updated epicsPublicKey for %s", user_dn.c_str());
     } else {
-        log_debug_printf(auth, "LDAP: epicsPublicKey for %s is up-to-date", user_dn.c_str());
+        log_debug_printf(auth_ldap, "LDAP: epicsPublicKey for %s is up-to-date", user_dn.c_str());
     }
     ldap_unbind_ext_s(ld, nullptr, nullptr);
 
