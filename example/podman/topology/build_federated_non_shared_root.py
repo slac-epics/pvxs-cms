@@ -13,17 +13,17 @@ from topology_kit import (C, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields
 # ---------------------------------------------------------------- content
 lab_client_l = fields('Role: client','Image: lab',
  'eth0  net-lab        10.89.0.0/24',
- 'Route: 10.89.2.0/24 via pvxs-lab-router',
+ 'Route: 10.89.4.0/24 via pvxs-lab-router',
  'Listens: none (client only)','Logins: guest, operator',
  'EPICS_PVA_ADDR_LIST: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc',
- 'EPICS_PVA_NAME_SERVERS: pvxs-lab-ml-gateway:5175',
- '    the ML gateway in the DMZ, reached across net-perimeter')
-lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-perimeter','Image: gateway',
+ 'EPICS_PVA_NAME_SERVERS: pvxs-lab-ml-gateway:5075',
+ '    the ML gateway, reached across net-internet')
+lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-internet','Image: gateway',
  'eth0  net-lab        10.89.0.0/24   upstream side, to its department',
- 'eth1  net-perimeter  10.89.2.0/24   server side, where it is asked',
+ 'eth1  net-internet   10.89.4.0/24   server side, where it is asked',
  'Program: p4p pvagw, layer 7','Config: config/gateway-lab.conf',
- 'Serves on eth1 alone: "interface" pinned to its net-perimeter address',
- 'Reached directly at its own net-perimeter address, on 5075 and 5076',
+ 'Serves on eth1 alone: "interface" pinned to its net-internet address',
+ 'Reached directly at its own net-internet address, on 5075 and 5076',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'Presents: CN=gateway',
  'Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc','ACF: gateway.acf','PVList: config/gateway-lab.pvlist')
@@ -44,23 +44,22 @@ pvacms_l = fields('Role: PVACMS','Image: idm','eth0  net-lab        10.89.0.0/24
  '    CERT:CREATE:LAB_ISSUER, CERT:ISSUER:LAB_ISSUER, CERT:ROOT:LAB_ISSUER',
  '    CERT:LIST:LAB_ISSUER:ALL, :EXPIRING, :PENDING_APPROVAL',
  '    CERT:STATUS:LAB_ISSUER:<serial>')
-ml_gw_l = fields('Role: gateway (dual-homed), net-ml <-> net-perimeter','Image: gateway',
+ml_gw_l = fields('Role: gateway (dual-homed), net-ml <-> net-internet','Image: gateway',
  'eth0  net-ml         10.89.1.0/24   upstream side, to its department',
- 'eth1  net-perimeter  10.89.2.0/24   server side, where it is asked',
+ 'eth1  net-internet   10.89.4.0/24   server side, where it is asked',
  'Program: p4p pvagw, layer 7','Config: config/gateway-ml.conf',
- 'Serves on eth1 alone, and on its own ports: serverport 5175,',
- '    EPICS_PVAS_TLS_PORT 5176',
- 'Reached directly at its own net-perimeter address, on 5175 and 5176',
- 'Listens: tcp/5175 PVA   tcp/5176 PVA over TLS   udp/5176 PVA search',
+ 'Serves on eth1 alone: "interface" pinned to its net-internet address',
+ 'Reached directly at its own net-internet address, on 5075 and 5076',
+ 'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'Presents: CN=ml-gateway',
  'Upstream: pvxs-lab-ml, pvxs-lab-ml-ioc','ACF: gateway.acf','PVList: config/gateway-ml.pvlist')
 ml_client_l = fields('Role: client','Image: lab',
  'eth0  net-ml         10.89.1.0/24',
- 'Route: 10.89.2.0/24 via pvxs-ml-router',
+ 'Route: 10.89.4.0/24 via pvxs-ml-router',
  'Listens: none (client only)','Logins: guest, operator',
  'EPICS_PVA_ADDR_LIST: pvxs-lab-ml, pvxs-lab-ml-ioc',
  'EPICS_PVA_NAME_SERVERS: pvxs-lab-gateway:5075',
- '    the Lab gateway in the DMZ, reached across net-perimeter')
+ '    the Lab gateway, reached across net-internet')
 mlioc_l = fields('Role: IOC','Image: ml-ioc','eth0  net-ml         10.89.1.0/24',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: mlioc.db','ACF: mlioc.acf',
@@ -73,10 +72,10 @@ mlcms_l = fields('Role: PVACMS','Image: ml','eth0  net-ml         10.89.1.0/24',
  '    CERT:LIST:ML_ISSUER:ALL, :EXPIRING, :PENDING_APPROVAL',
  '    CERT:STATUS:ML_ISSUER:<serial>')
 pc_l = fields('Role: client','Image: internet',
- 'eth0  net-perimeter  10.89.2.0/24',
+ 'eth0  net-internet   10.89.4.0/24',
  'Listens: none (client only)','Logins: guest, operator',
  'EPICS_PVA_ADDR_LIST: none',
- 'EPICS_PVA_NAME_SERVERS: pvxs-lab-gateway:5075, pvxs-lab-ml-gateway:5175',
+ 'EPICS_PVA_NAME_SERVERS: pvxs-lab-gateway:5075, pvxs-lab-ml-gateway:5075',
  '    each gateway is named directly, because there is no one',
  '    address for the facility here')
 lab_root_l = fields('Subject: CN=EPICS Lab Root Certificate Authority',
@@ -197,17 +196,19 @@ mlcmsacf_l = ['at /etc/pvacms/pvacms.acf','',
 def _router(dept, seg, cidr, far_gw, far_ports):
     return fields('Role: routing firewall, layers 3 and 4','Image: router',
      f'eth0  {seg:<14} {cidr}',
-     'eth1  net-perimeter  10.89.2.0/24',
-     f'Carries every packet leaving the {dept} department',
+     'eth1  net-internet   10.89.4.0/24',
+     f'Carries every packet leaving the {dept} department, and the only',
+     '    place it carries one to is net-internet, where the other',
+     '    department presents the outward face of its gateway',
      'Routes on the destination subnet alone, layer 3: the port has no',
      '    part in choosing where a packet goes. The port decides only',
      '    whether it is permitted at all, layer 4:',
-     f'    {far_ports[0]}, {far_ports[1]} to {far_gw} on net-perimeter',
+     f'    {far_ports[0]}, {far_ports[1]} to {far_gw} on net-internet',
      'Broadcast stays on the segment it was sent to, so a PVAccess',
      '    search stays inside the department. Anything past it is',
      '    reached by naming a server, which is unicast and routes.')
 lab_router_l = _router('lab', 'net-lab', '10.89.0.0/24',
-                       'pvxs-lab-ml-gateway', ('tcp/5175', 'tcp/5176'))
+                       'pvxs-lab-ml-gateway', ('tcp/5075', 'tcp/5076'))
 ml_router_l = _router('ML', 'net-ml', '10.89.1.0/24',
                       'pvxs-lab-gateway', ('tcp/5075', 'tcp/5076'))
 
@@ -245,27 +246,25 @@ chips = [('CA or certificate - a file, on no network', C['ca'][1]),
          ('PVACMS - certificate manager', C['pvacms'][1]),
          ('IOC - controller', C['ioc'][1]),
          ('gateway - proxies PVAccess between a zone', C['gateway'][1]),
-         ('    and the perimeter', None),
+         ('    and the network outside the facility', None),
          ('router - forwards between segments, and', C['router'][1]),
          ('    states which may reach which', None),
          ('client - workstation', C['client'][1]),
          ('ACF or PVList - a file a component loads', C['file'][1])]
 samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, None),
            ('net-ml bus - the same for net-ml', C['bus_ml'], 4, None),
-           ('net-perimeter bus - tapping it = attached', C['perim'], 4, None),
-           ('    to net-perimeter', None, 0, None),
+           ('net-internet bus - tapping it = attached', C['bus_inet'], 4, None),
+           ('    to net-internet, outside the facility', None, 0, None),
            ('certificate relationship - signs', C['cert'], 2, '6 5'),
            ('a file the component loads', C['filedrop'], 1.6, '2 4')]
 notation = ['10.89.0.0/24 : the segment, in CIDR. Three of them: the two',
-            '               departments, and the DMZ between them, where the',
-            '               gateways are asked. A host reaches another segment',
-            '               through an appliance standing on both',
+            '               departments, and the network outside the facility,',
+            '               where both gateways are asked. A host reaches',
+            '               another segment through an appliance standing on both',
             'eth0, eth1   : the host\'s interface on each segment. A host on',
             '               two segments is marked dual-homed',
-            'tcp/5075     : PVAccess, plaintext, the Lab gateway',
-            'tcp/5076     : PVAccess over TLS, the Lab gateway',
-            'tcp/5175     : PVAccess, plaintext, the ML gateway',
-            'tcp/5176     : PVAccess over TLS, the ML gateway',
+            'tcp/5075     : PVAccess, plaintext, either gateway',
+            'tcp/5076     : PVAccess over TLS, either gateway',
             'udp/5076     : PVAccess search and beacons, sent to the',
             '               segment broadcast address, and staying there',
             '',
@@ -334,24 +333,28 @@ kc_w, kc_h = measure('Keychain: one identity, many trust anchors', keychain_l)
 kc_x = (lab_ca_x + ml_ca_x + ml_ca_w)/2 - kc_w/2      # centred under the two groups it reaches
 kc_y = ca_y + ca_h + 52
 
-# The perimeter segment is drawn the way every other segment is: one horizontal line, tapped
-# by each host that stands on it, labelled once. With no balancer to carry it across, the
-# outside workstation stands on this segment itself, in the DMZ box with the line below it.
+# net-internet is drawn the way every other segment is: one horizontal line, tapped by each
+# host that stands on it, labelled once. It belongs to nobody in the facility, so the line is
+# drawn below the box that holds the outside workstation rather than inside it, as it is on
+# the simple gateway and shared-root pictures: the workstation taps it from above, and the
+# two gateways and the two routers reach up to it out of their departments.
 router_w, router_h = measure('pvxs-lab-router', lab_router_l)
-gw2_w = measure('pvxs-lab-ml-gateway', ml_gw_l)[0]
 
-# The DMZ starts right of the legend and reaches over the far gateway, which is the span
-# the facility's own segment actually covers. It hangs below the authority groups and the
-# keychain, so nothing in the top band is crossed.
-dmz_x = M + LEG_W + 40
-dmz_w = (gx2 + gw2_w/2) - dmz_x
-dmz_y = max(ca_y + ca_h, kc_y + kc_h) + 44
-svc_y = dmz_y + ZTITLE + 14
-perim_bus_y = svc_y + pc_h + 40
-dmz_h = (perim_bus_y - dmz_y) + 30
+# The box outside the facility holds the one host that stands there and nothing else. It is
+# wide enough for its own title strip as well as the card: the title is set in 15px bold from
+# 40px in, so a box sized by the card alone would let the title run past the corner. It is
+# centred between the two gateways, which is where the facility's outward face is, and hangs
+# below the authority groups and the keychain, so nothing in the top band is crossed.
+OUTSIDE_TITLE = 'net-internet   10.89.4.0/24   -   outside the facility'
+outside_w = max(pc_w + 2*ZP, 40 + len(OUTSIDE_TITLE)*8.3 + 16)
+outside_x = (gx1 + gx2)/2 - outside_w/2
+outside_y = max(ca_y + ca_h, kc_y + kc_h) + 44
+outside_h = ZTITLE + 12 + pc_h + 20
+svc_y = outside_y + ZTITLE + 12
+inet_bus_y = outside_y + outside_h + 44
 
 # The departments span under the legend, so they are the ones that have to clear it.
-zone_y = max(dmz_y + dmz_h + 46, legend_y + lg_h + 44)
+zone_y = max(inet_bus_y + 76, legend_y + lg_h + 44)
 CANVAS_H = 0  # set after zones
 
 # ---------------------------------------------------------------- emit
@@ -455,29 +458,28 @@ def build(cv):
               C['cert'], 2, dash='2 4', marker=True)
     cv.emit(f'<text x="{kc["cx"]}" y="{kc["top"]-10}" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11" fill="{C["cert"]}">stores both roots as trust anchors, so certificates and status replies from either department verify</text>')
 
-    # --- the perimeter segment: one line, tapped by every host that stands on it. The two
-    # --- gateways and the two routers reach it from below; the outside workstation stands
-    # --- in the DMZ itself and reaches it from above.
-    cv.zone(dmz_x, dmz_y, dmz_w, dmz_h,
-            'DMZ   -   net-perimeter, where the gateways stand and are named directly', 'zone_it')
-    pcc = cv.card(dmz_x + (dmz_w - pc_w)/2, svc_y, 'perimeter-client', pc_l, 'client', 'client')
+    # --- net-internet: one line, tapped by every host that stands on it. The two gateways
+    # --- and the two routers reach up to it out of their departments; the workstation
+    # --- stands outside the facility, in its own box above the line, and taps it downwards.
+    cv.zone(outside_x, outside_y, outside_w, outside_h, OUTSIDE_TITLE, 'zone_perim')
+    pcc = cv.card(outside_x + (outside_w - pc_w)/2, svc_y, 'perimeter-client', pc_l, 'client', 'client')
     labr = cv.card((gw1['x'] + gw1['w'] + lab_x + W_lab - ZP - router_w)/2, row1_y,
                    'pvxs-lab-router', lab_router_l, 'router', 'router')
     mlr = cv.card((ml_x + ZP + gw2['x'] - router_w)/2, row1_y,
                   'pvxs-ml-router', ml_router_l, 'router', 'router')
 
-    perim_hosts = [labr, mlr, gw1, gw2]
-    pbus_x = [h['cx'] for h in perim_hosts] + [pcc['cx']]
-    cv.hv([(min(pbus_x) - 40, perim_bus_y), (max(pbus_x) + 40, perim_bus_y)], C['perim'], 4)
-    for h in perim_hosts:
-        cv.hv([(h['cx'], perim_bus_y), (h['cx'], h['top'])], C['perim'], 2)
-        cv.dot(h['cx'], perim_bus_y, C['perim'])
-    cv.hv([(pcc['cx'], pcc['bot']), (pcc['cx'], perim_bus_y)], C['perim'], 2)
-    cv.dot(pcc['cx'], perim_bus_y, C['perim'])
+    inet_hosts = [labr, mlr, gw1, gw2]
+    inet_x = [h['cx'] for h in inet_hosts] + [pcc['cx']]
+    cv.hv([(min(inet_x) - 40, inet_bus_y), (max(inet_x) + 40, inet_bus_y)], C['bus_inet'], 4)
+    for h in inet_hosts:
+        cv.hv([(h['cx'], inet_bus_y), (h['cx'], h['top'])], C['bus_inet'], 2)
+        cv.dot(h['cx'], inet_bus_y, C['bus_inet'])
+    cv.hv([(pcc['cx'], pcc['bot']), (pcc['cx'], inet_bus_y)], C['bus_inet'], 2)
+    cv.dot(pcc['cx'], inet_bus_y, C['bus_inet'])
     # On the widest open stretch of the line, between the lab gateway's tap and the lab
     # router's, so the label sits clear of every tap and of the workstation above it.
-    cv.pill((gw1['cx'] + labr['cx'])/2, perim_bus_y - 16,
-            'net-perimeter  10.89.2.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176', C['perim'])
+    cv.pill((gw1['cx'] + labr['cx'])/2, inet_bus_y - 16,
+            'net-internet  10.89.4.0/24  tcp/5075, tcp/5076', C['bus_inet'])
 
     # each router stands on its own department's segment as well
     for r, colr in ((labr, 'bus_lab'), (mlr, 'bus_ml')):
