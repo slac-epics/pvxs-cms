@@ -2819,6 +2819,14 @@ void setValue(Value &target, const std::string &field, const T &new_value) {
  * @param cert_status The status of the certificate (UNKNOWN, VALID, EXPIRED, REVOKED, PENDING_APPROVAL, PENDING).
  */
 
+// Neither of the two below is ever freed, on purpose. OpenSSL registers its own cleanup with
+// the exit handlers the first time it is initialised, which happens once main is under way,
+// and exit handlers run in the reverse of the order they were registered. Anything owned at
+// this scope is registered before main starts, so by the time its destructor would run OpenSSL
+// has already released the structures underneath it, and releasing them a second time aborts
+// the process on every exit. A plain pointer has no destructor, so the one root certificate
+// and the one monitor simply stay alive until the process image goes away.
+
 /**
  * @brief The one trust anchor this service issues beneath, and its standing.
  *
@@ -2826,7 +2834,10 @@ void setValue(Value &target, const std::string &field, const T &new_value) {
  * composes is answered through it. It is reached this way rather than passed down, so that a
  * status cannot be composed anywhere in this service without it.
  */
-std::unique_ptr<cms::cert::AuthorityMonitor> the_authority_monitor;
+cms::cert::AuthorityMonitor *the_authority_monitor = nullptr;
+
+/** The facility root this service issues beneath, kept so the listing can name it. */
+X509 *the_root_certificate = nullptr;
 
 cert_authority_standing_t authorityStanding() {
     // Nothing is known about an authority nobody is watching, and nothing should be: a trust
@@ -2835,9 +2846,6 @@ cert_authority_standing_t authorityStanding() {
     if (!the_authority_monitor || !the_authority_monitor->isActive()) return cert_authority_standing_t::STANDING;
     return the_authority_monitor->standing();
 }
-
-/** The facility root this service issues beneath, kept so the listing can name it. */
-ossl_ptr<X509> the_root_certificate;
 
 /**
  * @brief The facility root as the listing needs it, assembled fresh each time it is asked for.
@@ -2849,7 +2857,7 @@ ossl_ptr<X509> the_root_certificate;
  */
 std::unique_ptr<RootAuthority> currentRootAuthority() {
     if (!the_root_certificate) return {};
-    X509 *const cert = the_root_certificate.get();
+    X509 *const cert = the_root_certificate;
 
     std::unique_ptr<RootAuthority> root(new RootAuthority());
 
@@ -3825,9 +3833,9 @@ int main(int argc, char *argv[]) {
 
         // The root states where its own revocation can be learned. Ask, so that a revoked
         // authority reaches the certificates issued beneath it.
-        the_root_certificate.reset(X509_dup(cert_auth_root_cert.get()));
-        the_authority_monitor.reset(
-            new cms::cert::AuthorityMonitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status));
+        the_root_certificate = X509_dup(cert_auth_root_cert.get());
+        the_authority_monitor =
+            new cms::cert::AuthorityMonitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status);
         the_authority_monitor->start();
 
         if (!admin_name.empty()) {
