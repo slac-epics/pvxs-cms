@@ -2234,7 +2234,7 @@ two certificate chain, whose root is the one whose subject hash equals its issue
 ```sh
 run_in ml-manager as admin bash -c '
     openssl pkcs12 -in /certs/ml_root.p12 -nokeys -passin pass: -out /tmp/ml_root.pem
-    openssl x509 -in /tmp/ml_root.pem -noout -subject -issuer'
+    openssl x509 -in /tmp/ml_root.pem -noout -subject'
 run_in lab-manager as admin bash -c '
     cd /tmp
     openssl pkcs12 -in /certs/lab_intermediate.p12 -nokeys -passin pass: -out chain.pem
@@ -2245,7 +2245,7 @@ run_in lab-manager as admin bash -c '
         i=$(openssl x509 -in $f -noout -issuer_hash)
         [ "$s" = "$i" ] && cp $f lab_root.pem
     done
-    openssl x509 -in lab_root.pem -noout -subject -issuer'
+    openssl x509 -in lab_root.pem -noout -subject'
 ```
 
 The two roots are now on two different containers, so bring the ML one across. Ask
