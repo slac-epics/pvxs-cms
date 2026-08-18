@@ -57,6 +57,25 @@ constexpr size_t kIssuerIdFullLength = 40;
 inline bool issuerIdIsComplete(const std::string &issuer_id) { return issuer_id.size() >= kIssuerIdFullLength; }
 
 /**
+ * @brief Whether an authority's identifier is the one committed to.
+ *
+ * The comparison runs over as much of the identifier as was committed to in advance. Someone who
+ * pinned a certificate authority in a keychain has the whole thing and gets the whole thing
+ * compared. Someone who typed the published short form gets that many digits compared, which is
+ * all the form they used can carry; supplying more of it makes the check stronger.
+ *
+ * Compared without regard to case, since the identifier is written as hexadecimal either way.
+ */
+inline bool issuerIdIsExpected(const std::string &expected, const std::string &actual_full) {
+    if (expected.empty() || expected.size() > actual_full.size()) return false;
+    for (size_t i = 0; i < expected.size(); i++) {
+        if (std::tolower(static_cast<unsigned char>(expected[i]))
+            != std::tolower(static_cast<unsigned char>(actual_full[i]))) return false;
+    }
+    return true;
+}
+
+/**
  * @brief Read an issuer identifier the way somebody wrote it down.
  *
  * The identifier is the subject key identifier of a certificate authority, written as
