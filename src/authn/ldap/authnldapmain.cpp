@@ -112,7 +112,7 @@ void showHelp(const char * const program_name) {
         << "        --add-config-uri                     Add a config uri to the generated certificate\n"
         << "        --force                              Force overwrite if certificate exists\n"
         << "  (-s | --no-status)                         Request that status checking not be required for this certificate\n"
-        << "  (-i | --issuer) <issuer_id>                Specify the issuer ID of the Certificate Management Service to use\n"
+        << "  (-i | --issuer) <issuer_id>                The issuer ID of the PVACMS service to contact.  If not specified (default) broadcast to any that are listening\n"
         << "  (-v | --verbose)                           Verbose mode\n"
         << "  (-d | --debug)                             Debug mode\n"
         << std::endl;

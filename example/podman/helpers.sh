@@ -30,7 +30,7 @@
 # lives beside PVACMS, so "lab-manager" is a different place from "lab".
 #
 #   lab, ml                   a workstation inside a department
-#   perimeter                 a workstation outside both, reaching only the two gateways
+#   perimeter                 a workstation outside, reaching in only across a boundary
 #   lab-manager, ml-manager   a department's PVACMS
 #   testioc, tstioc, ml-ioc   an IOC
 #   gateway, ml-gateway       a department's boundary
@@ -319,8 +319,8 @@ ${script}"
 
 # ------------------------------------------------------------------------------- conveniences
 
-# The two departments' issuer identifiers, as bootstrap.sh recorded them, so an example can
-# say CERT:LIST:${LAB}:ALL rather than a forty-character string.
+# This laboratory's issuer identifiers, as bootstrap.sh recorded them, so an example can say
+# CERT:LIST:${LAB}:ALL rather than a forty-character string.
 lab_ids() {
     local env_file="${LAB_HELPERS_DIR:-.}/.env"
     if [ ! -r "${env_file}" ]; then
@@ -344,7 +344,7 @@ lab_ids() {
 # Shows the authorities under the names a shell uses for them.
 #
 # The file holds LAB_ISSUER and the rest, which is what compose substitutes and what the
-# containers are given. A shell uses shorter names for the same four values. Printing the file
+# containers are given. A shell uses shorter names for the same values. Printing the file
 # as it stands would name variables that lab_ids does not set, so it is printed the way it will
 # be typed.
 lab_ids_show() {
@@ -382,8 +382,8 @@ _lab_authority_index() {
     [ "${t}" = unknown ] && { echo "no laboratory is up - run ./reset.sh <topology> first" >&2; return 1; }
     local index="${LAB_HELPERS_DIR:-.}/topologies/${t}/ocsp/index.txt"
     if [ ! -r "${index}" ]; then
-        echo "the ${t} laboratory has no facility root to answer for: it has one authority," >&2
-        echo "which PVACMS made itself and can be asked about directly." >&2
+        echo "the ${t} laboratory has no facility root, so there is no responder to ask." >&2
+        echo "The federated-shared-root laboratory has one: ./reset.sh federated-shared-root" >&2
         return 1
     fi
     printf '%s' "${index}"

@@ -39,13 +39,13 @@ namespace certs {
 extern ::pvxs::logger auth;
 
 /**
- * @brief What the certificate management service can hand an authenticator filling in a reply.
+ * @brief What PVACMS can hand an authenticator filling in a reply.
  *
  * Everything else an authenticator needs is already in the request or in the reply being built:
  * the state, the serial number and the certificate identifier are all set before the hook runs.
- * This carries only what is not, and only the service can construct one. The certificate
- * database is deliberately absent: deciding what to record is the service's, so an authenticator
- * built into a client tool never has to link it.
+ * This carries only what is not, and only PVACMS can construct one. The certificate database is
+ * deliberately absent: deciding what to record is PVACMS's, so an authenticator built into a
+ * client tool never has to link it.
  */
 struct CreateResponseContext {
     /**
@@ -118,8 +118,7 @@ class Auth {
     /**
      * @brief Fill in the members declared by responseFields() on a reply.
      *
-     * Called on the certificate management service after the fixed reply fields are set
-     * and before the reply is sent.
+     * Called on PVACMS after the fixed reply fields are set and before the reply is sent.
      *
      * @param ccr the certificate creation request being answered
      * @param reply the reply being built
@@ -521,17 +520,27 @@ inline CertData readKeychainOrNothing(const std::string &keychain_file, const st
 /**
  * @brief Refuse an issuer identifier that is too short to decide what to trust.
  *
+ * Which of the two reasons holds depends on what the keychain already has, so it is passed in:
+ * telling a holder of two anchors that nothing is trusted yet sends the reader looking for a
+ * fault that is not there.
+ *
+ * @param issuer_id the identifier that was named
+ * @param held_ids every identifier the keychain already commits to, empty when it holds none
  * @throws std::runtime_error naming the value and what is needed.
  */
-inline void requireCompleteIssuerId(const std::string &issuer_id) {
+inline void requireCompleteIssuerId(const std::string &issuer_id, const std::vector<std::string> &held_ids) {
     if (issuerIdIsComplete(issuer_id)) return;
+    const char *const why =
+        held_ids.empty() ? "Nothing is trusted yet, so this identifier is the only thing deciding it."
+                         : "This authority is not among the ones already trusted, so its whole identifier is "
+                           "the only thing that could decide it.";
     throw std::runtime_error(
         SB() << "The issuer '" << issuer_id << "' is only " << issuer_id.size()
              << " of the " << kIssuerIdFullLength
              << " digits of a subject key identifier, which is not enough to decide which certificate "
-                "authority to trust. Nothing is trusted yet, so this identifier is the only thing "
-                "deciding it. Give the whole subject key identifier, as the certificate manager prints "
-                "it at startup, or pre-provision a keychain holding the authority to trust.");
+                "authority to trust. " << why
+             << " Give the whole subject key identifier, as PVACMS prints it at startup, or "
+                "pre-provision a keychain holding the authority to trust.");
 }
 
 /**
@@ -578,7 +587,8 @@ inline std::vector<std::string> heldAuthorityIds(const CertData &held) {
  */
 inline std::string resolveExpectedIssuerId(const std::string &minting_issuer_id, const CertData &held) {
     if (!minting_issuer_id.empty()) {
-        for (const auto &held_id : heldAuthorityIds(held))
+        const std::vector<std::string> held_ids = heldAuthorityIds(held);
+        for (const auto &held_id : held_ids)
             if (issuerIdIsExpected(minting_issuer_id, held_id)) return held_id;
 
         // Nothing in the file names this authority, so this identifier is the only thing
@@ -586,7 +596,7 @@ inline std::string resolveExpectedIssuerId(const std::string &minting_issuer_id,
         // an authority in a channel name and constrains 32 bits, which is few enough that an
         // authority whose identifier begins with any wanted 32 bits can be generated in hours;
         // trusting on that basis would accept one so generated.
-        requireCompleteIssuerId(minting_issuer_id);
+        requireCompleteIssuerId(minting_issuer_id, held_ids);
         return minting_issuer_id;
     }
 
@@ -624,12 +634,14 @@ inline void verifyDeliveredIssuerId(const CertData &delivered, const std::string
  * file holds is what the comparison runs against. One that is not held is decided by the name
  * alone, so the name has to be the whole subject key identifier.
  *
+ * @param issuer_id the identifier that was named
+ * @param held_ids every identifier the keychain already commits to, empty when it holds none
  * @throws std::runtime_error naming the value and what is needed.
  */
 inline void requireCompleteUnlessHeld(const std::string &issuer_id, const std::vector<std::string> &held_ids) {
     for (const auto &held : held_ids)
         if (issuerIdIsExpected(issuer_id, held)) return;
-    requireCompleteIssuerId(issuer_id);
+    requireCompleteIssuerId(issuer_id, held_ids);
 }
 
 /**
@@ -658,7 +670,7 @@ inline void verifyDeliveredAuthority(const CertData &delivered, const std::strin
 }
 
 /**
- * @brief Ask one certificate manager for the certificate authority it signs with.
+ * @brief Ask one PVACMS for the certificate authority it signs with.
  *
  * The reply is checked against the identifier that was named before it is handed back, because
  * this is the moment trust is decided and there is nothing pinned to decide it against.

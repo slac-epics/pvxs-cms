@@ -2012,14 +2012,14 @@ Then ask the lab department for the identity. Name it by the eight-digit form fi
 ```sh
 run_in lab as guest authnstd -u client --issuer ${LAB}
 #   The issuer 'b5f3fd43' is only 8 of the 40 digits of a subject key identifier, which is
-#   not enough to decide which certificate authority to trust. Nothing is trusted yet, so
-#   this identifier is the only thing deciding it. ...
+#   not enough to decide which certificate authority to trust. This authority is not among
+#   the ones already trusted, so its whole identifier is the only thing that could decide
+#   it. ...
 ```
 
-A short form is accepted for an authority the keychain already holds, but in this case the file holds only
-the two **roots** not the lab's intermediate certificate that it signs with, which is
-a different certificate with its own identifier.  So `${LAB}` names something the file
-does not hold and the whole identifier is required. 
+The file holds the two **roots**, and the lab PVACMS signs with an intermediate beneath its
+root, which is a different certificate with an identifier of its own. So `${LAB}` is not one
+of the two, and the whole identifier is required.
 
 ```sh
 run_in lab as guest authnstd -u client --issuer ${LAB_SKID}
