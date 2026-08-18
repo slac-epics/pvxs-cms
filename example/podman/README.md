@@ -1228,7 +1228,8 @@ run_in lab as guest authnstd -u client --issuer 89ca0
 How much of it is needed depends on what it is for. Naming takes as little as the eight
 digits; deciding what to trust takes all of it.
 
-**The whole identifier is required when nothing is trusted yet, and refused otherwise.** Eight
+**The short form is accepted only for an authority the keychain already holds.  It cannot be 
+used to establish trust**.  Eight
 digits is thirty-two bits, and a key whose identifier begins with any wanted thirty-two bits
 takes hours to generate on one processor core, so the short form names an authority
 conveniently but cannot establish that it is the right one:
