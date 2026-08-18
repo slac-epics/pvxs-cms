@@ -515,7 +515,7 @@ int main(int argc, char *argv[]) {
             }
             Indented I(std::cout);
             if (result) {
-                std::cerr << "Certificate Status: " << std::endl << "============================================" << std::endl;
+                std::cerr << std::endl << "Certificate Status: " << std::endl << "============================================" << std::endl;
                 std::cout << "Certificate ID: " << cert_id.substr(cert_id.rfind(':') - 8) << std::endl
                           << "Status        : " << result["state"].as<std::string>() << std::endl
                           << "Status Issued : " << result["ocsp_status_date"].as<std::string>() << std::endl

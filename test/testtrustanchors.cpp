@@ -606,7 +606,7 @@ void testTheKeychainReportCoversEveryKeychainShape() {
         testTrue(out.str() == expected.str());
         testEq(err.str(), std::string("Certificate Details: \n"
                                       "============================================\n"
-                                      "--------------------------------------------\n\n"));
+                                      "--------------------------------------------\n"));
     }
 
     // Neither identity nor anchors: refused with the exact message the tool already reports

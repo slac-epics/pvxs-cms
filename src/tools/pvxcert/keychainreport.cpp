@@ -37,7 +37,7 @@ std::string printKeychainReport(const pvxs::certs::CertData &cert_data, std::ost
     err << "Certificate Details: " << std::endl << "============================================" << std::endl;
     out << pvxs::ossl::ShowX509{cert_data.cert.get()} << std::endl
         << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n");
-    err << "--------------------------------------------\n" << std::endl;
+    err << "--------------------------------------------" << std::endl;
     printAnchorListing(cert_data, out);
     return pvxs::certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
 }
