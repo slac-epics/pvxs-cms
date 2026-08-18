@@ -1668,19 +1668,35 @@ path inside the container, where the guest's home directory is `/home/guest`. Wr
 `~` there would be expanded by your own shell first, to your home directory on this
 machine, and the file it named would not exist.
 
-**An IOC that cannot establish its own status stops offering the secure port.** It does
-not carry on as though it had checked, and it does not fall silent either: it serves
-plain traffic on `5075`, and `pvxinfo -v` names the peer the way it did before any
-certificate was issued:
+**A read of an ordinary process variable, such as `test:aiExample`, does not complete
+while the root's status is unknown.** Reading a certificate's status, as above, is not
+such a read, and it answers as it did there. An unknown status met while a connection is
+being established is not treated as a failure: the question is still open, and the
+answer may yet come back valid. The client waits for that answer rather than settling
+for a plain, unsecured connection, and the attempt ends at the connection timeout:
 
 ```sh
 run_in lab as guest pvxinfo -v test:aiExample
-#   # anonymous/@10.89.0.214:5075
+#   WARN pvxs.certs.mon Certificate not valid: UNKNOWN
+#   WARN pvxs.certs.mon Peer certificate not VALID: UNKNOWN
+#   Timeout
 ```
+
+Two certificates are named, the client's own and the peer's, because the root that
+cannot be checked sits above them both. Before those lines, `pvxinfo -v` prints the
+effective configuration, which names the connection timeout as `EPICS_PVA_CONN_TMO`.
+The command gives up at that timeout rather than waiting forever, so a read that has
+not answered yet is waiting rather than hung.
 
 That is the laboratory failing closed, and it is a deliberate choice: a facility that
 cannot check its authority stops speaking for it rather than continuing on an
-assumption.
+assumption. Failing closed here means the read does not complete at all, not that it
+completes over a plain connection instead.
+
+**A connection already established over TLS is the other case, and it is not this one.**
+Its status is monitored for as long as the connection lasts, and a change to unknown
+after the connection is live degrades something that was working. Here nothing is
+established yet, so there is nothing to degrade, only a question waiting for an answer.
 
 A site that would rather stay up sets `EPICS_PVACMS_AUTHORITY_HOLD_LAST_KNOWN=YES` on
 each PVACMS, and an unreachable responder then leaves them serving the last answer they
@@ -1704,7 +1720,8 @@ run_in lab as guest pvxinfo -v test:aiExample
 
 The IOC recovers within seconds of the responder returning, on the next PVACMS retry,
 and **nothing is restarted** to get that: it is the same IOC process, on the same
-address, secure again on `5076`.
+address, answering on `5076` again. It was the reads that were failing, not the IOC
+that was serving insecurely.
 
 **The gateways may recover with it, and may not.** Everything inside a department does,
 as shown: each PVACMS asks the responder again, and every holder is told over the status
@@ -1794,9 +1811,11 @@ status the department asks a responder about rather than reading it out of its o
 records. Either way, that certificate cannot be used, and asking that department for
 another one achieves nothing.
 
-Its IOC stops offering the secure port and serves plain traffic instead, which is the
-same fallback an unreachable responder produced, and for the same reason: an IOC that
-cannot stand behind its certificate does not keep presenting it.
+Its IOC stops offering the secure port and serves plain traffic instead: an IOC that
+cannot stand behind its certificate does not keep presenting it. Revoked is a settled
+answer, so there is nothing left to wait for. That is what separates this from an
+unreachable responder, where the status is unknown, the question is still open, and a
+read waits rather than dropping to plain traffic.
 
 ```sh
 run_in ml as guest pvxinfo -v ml:aiExample
