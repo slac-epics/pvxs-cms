@@ -294,15 +294,18 @@ struct ListDb {
 
     void add(const uint64_t serial, const char *cn, const certstatus_t status, const time_t created,
              const time_t not_before, const time_t not_after, const char *request_id = nullptr,
-             const std::vector<std::string> &organizational_units = {}) {
+             const std::vector<std::string> &organizational_units = {},
+             const char *key_usage = "Digital Signature",
+             const char *extended_key_usage = "TLS Web Client Authentication") {
         char sql[1024];
         snprintf(sql, sizeof(sql),
                  "INSERT INTO certs (serial, CN, O, OU, C, status, status_date, not_before, not_after, renew_by,"
                  " created_date, key_usage, extended_key_usage) VALUES (%lld, '%s', 'epics.org', '', 'US', %d,"
-                 " %lld, %lld, %lld, %lld, %lld, 'Digital Signature', 'TLS Web Client Authentication');",
+                 " %lld, %lld, %lld, %lld, %lld, '%s', '%s');",
                  static_cast<long long>(serial), cn, static_cast<int>(status), static_cast<long long>(created),
                  static_cast<long long>(not_before), static_cast<long long>(not_after),
-                 static_cast<long long>(not_after), static_cast<long long>(created));
+                 static_cast<long long>(not_after), static_cast<long long>(created), key_usage,
+                 extended_key_usage);
         sqlite3_exec(db, sql, nullptr, nullptr, nullptr);
         if (request_id) {
             snprintf(sql, sizeof(sql),
@@ -496,6 +499,74 @@ void testAFilterDecidesOnTheRootToo() {
     testEq(queryCertList(store.db, CertListView::All, "a76e613b", false, 0, &unwanted, &root).size(), size_t(0));
 }
 
+// A root nothing here issued has no row of its own, so the only status anyone can offer is
+// what the responder named in the certificate last said, and no date here belongs to it.
+void testARootThisManagerDoesNotHoldReportsItsResponder() {
+    testDiag("== %s", __func__);
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(4, "no database"); return; }
+
+    const auto root = aRoot(time(nullptr) + 365 * 86400);  // responder, VALID, absent from certs
+    const auto rows = queryCertList(store.db, CertListView::All, "a76e613b", true, 0, nullptr, &root);
+    testEq(rows.size(), size_t(1));
+    if (rows.empty()) { testSkip(3, "no root row"); return; }
+    testEq(rows[0].status, std::string("VALID"));
+    testEq(rows[0].request_id, std::string("EXTERN OCSP"));
+    // Nothing here changed its standing and nothing here will renew it.
+    testOk(rows[0].status_changed.empty() && rows[0].renew_by.empty(),
+           "No date that belongs to this manager is claimed (status changed '%s', renew by '%s')",
+           rows[0].status_changed.c_str(), rows[0].renew_by.c_str());
+}
+
+// A manager that signs with its own self-signed root lists that one certificate twice: once as
+// the authority it signs with, once as the anchor everything terminates at. The same
+// certificate saying two different things about itself is what this stops.
+void testARootThisManagerIssuedAgreesWithItsOwnRow() {
+    testDiag("== %s", __func__);
+    ListDb store;
+    if (!store.db) { testFail("no database"); testSkip(4, "no database"); return; }
+
+    const time_t now = time(nullptr);
+    const uint64_t serial = 4134050803232140903ULL;
+    const char *const common_name = "EPICS ML Root Certificate Authority";
+    store.add(serial, common_name, VALID, now - 3000, now - 3000, now + 365 * 86400, nullptr, {},
+              "Digital Signature, Certificate Sign, CRL Sign", "TLS Web Server Authentication");
+
+    RootAuthority root;
+    // What currentRootAuthority() builds for a self-signed root that names no responder: it
+    // knows nothing about its own standing, because nothing outside is publishing one.
+    root.names_responder = false;
+    root.standing = UNKNOWN;
+    root.cert_id = getCertId("a76e613b", serial);
+    root.common_name = common_name;
+    root.organization = "epics.org";
+    root.country = "US";
+    root.serial = serial;
+    root.not_before = now - 3000;
+    root.not_after = now + 365 * 86400;
+
+    const auto rows = queryCertList(store.db, CertListView::All, "a76e613b", true, 0, nullptr, &root);
+    testEq(rows.size(), size_t(2));
+    if (rows.size() != 2) { testSkip(3, "wrong row count"); return; }
+
+    testEq(rows[1].type, std::string("ROOT_AUTH"));
+    // Not EXTERN: this manager issued it, and the column must not say it came from outside.
+    testEq(rows[1].request_id, std::string("SELF"));
+
+    const auto &authority = rows[0];
+    const auto &anchor = rows[1];
+    const bool agree = anchor.cert_id == authority.cert_id && anchor.subject == authority.subject &&
+                       anchor.status == authority.status && anchor.expires == authority.expires &&
+                       anchor.issued == authority.issued &&
+                       anchor.status_changed == authority.status_changed &&
+                       anchor.renew_by == authority.renew_by;
+    testOk(agree,
+           "Every column but Type and Request matches (%s/%s, status %s/%s, changed '%s'/'%s', renew '%s'/'%s')",
+           authority.type.c_str(), anchor.type.c_str(), authority.status.c_str(), anchor.status.c_str(),
+           authority.status_changed.c_str(), anchor.status_changed.c_str(), authority.renew_by.c_str(),
+           anchor.renew_by.c_str());
+}
+
 // The identifier is a search key an administrator uses to find a row and read it. Handing it
 // to everyone would let it be treated as proof that a request is genuine.
 void testRequestIdIsWithheldFromNonAdministrators() {
@@ -630,7 +701,7 @@ void testFilteringPreservesTheOrder() {
 }  // namespace
 
 MAIN(testcertlist) {
-    testPlan(73);
+    testPlan(81);
     testSubjectIsCanonical();
     testCertTypeNamesWhatItIsFor();
     testTableIsNormative();
@@ -656,5 +727,7 @@ MAIN(testcertlist) {
     testTheRootIsNeverAwaitingADecision();
     testTheRootFollowsTheExpiryWindowLikeAnyRow();
     testAFilterDecidesOnTheRootToo();
+    testARootThisManagerDoesNotHoldReportsItsResponder();
+    testARootThisManagerIssuedAgreesWithItsOwnRow();
     return testDone();
 }

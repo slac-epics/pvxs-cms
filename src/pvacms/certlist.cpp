@@ -46,6 +46,37 @@ std::string columnText(sqlite3_stmt *statement, const int column) {
 /** Renders a stored time as the fixed-width year-first string every date column carries. */
 std::string renderDate(const time_t when) { return when ? CertDate(when).s : std::string{}; }
 
+/** What the certificates table records about one certificate, where it holds one at all. */
+struct RecordedStanding {
+    bool recorded{false};
+    certstatus_t status{UNKNOWN};
+    time_t status_date{0};
+    time_t renew_by{0};
+};
+
+/**
+ * Read back what this manager recorded about the certificate with this serial.
+ *
+ * Asked by serial and outside the listing query, because the caller needs the answer for the
+ * trust anchor whether or not the view and the filter let the anchor's own row through.
+ */
+RecordedStanding recordedStanding(sqlite3 *const certs_db, const uint64_t serial) {
+    RecordedStanding standing;
+    SqliteStmt statement;
+    if (sqlite3_prepare_v2(certs_db, SQL_GET_CERT_STANDING, -1, statement.acquire(), nullptr) != SQLITE_OK) {
+        throw std::runtime_error(SB() << "Failed to prepare the trust anchor read: " << sqlite3_errmsg(certs_db));
+    }
+    sqlite3_bind_int64(statement, sqlite3_bind_parameter_index(statement, ":serial"),
+                       static_cast<sqlite3_int64>(serial));
+    if (sqlite3_step(statement) == SQLITE_ROW) {
+        standing.recorded = true;
+        standing.status = static_cast<certstatus_t>(sqlite3_column_int(statement, 0));
+        standing.status_date = static_cast<time_t>(sqlite3_column_int64(statement, 1));
+        standing.renew_by = static_cast<time_t>(sqlite3_column_int64(statement, 2));
+    }
+    return standing;
+}
+
 }  // namespace
 
 std::string renderSubject(const std::string &common_name, const std::vector<std::string> &organizational_units,
@@ -97,6 +128,15 @@ std::string renderCertType(const std::string &key_usage, const std::string &exte
 
 /** What the Type column says for the facility root: an authority that issued itself. */
 const char *const kRootAuthorityType = "ROOT_AUTH";
+
+/**
+ * What the request column says for a trust anchor this manager holds and issued.
+ *
+ * The opposite of EXTERN in the same one-word vocabulary, and the whole of what the column has
+ * left to say: the certificate signed itself, so no request was ever made for it, and its
+ * standing is this manager's own record rather than anybody else's answer.
+ */
+const char *const kRootIssuedHere = "SELF";
 
 std::vector<std::string> certListColumns(const bool with_request_id) {
     std::vector<std::string> names;
@@ -226,11 +266,19 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
         rows.push_back(std::move(row));
     }
 
-    // The facility root, which no query can reach because it is in no table. It is offered to
-    // the same two tests every other row passed: the view, and then the whole filter
-    // expression. Nothing that was never requested can be awaiting a decision, so the view of
-    // requests awaiting one is the only place it can never appear.
+    // The trust anchor, which the query above reaches only when this manager issued it, and
+    // then only under its other heading. It is offered to the same two tests every other row
+    // passed: the view, and then the whole filter expression. Nothing that was never requested
+    // can be awaiting a decision, so the view of requests awaiting one is the only place it can
+    // never appear.
     if (root && view != CertListView::PendingApproval) {
+        // A manager that signs with its own self-signed root holds that root in its own
+        // certificates table, and there is exactly one truth about a certificate's standing:
+        // what this manager recorded. Taking it from anywhere else makes the anchor's row
+        // contradict the row for the same certificate a few lines above it.
+        const auto recorded = recordedStanding(certs_db, root->serial);
+        const auto standing = recorded.recorded ? recorded.status : root->standing;
+
         const auto now = time(nullptr);
         const bool within_view = view != CertListView::Expiring ||
                                  (root->not_after >= now && root->not_after <= now + expiry_window_secs);
@@ -244,11 +292,11 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
             candidate.organizational_units = root->organizational_units;
             candidate.country = root->country;
             candidate.type = kRootAuthorityType;
-            candidate.status = static_cast<int>(root->standing);
-            candidate.status_date = 0;
+            candidate.status = static_cast<int>(standing);
+            candidate.status_date = recorded.status_date;
             candidate.not_before = root->not_before;
             candidate.not_after = root->not_after;
-            candidate.renew_by = 0;
+            candidate.renew_by = recorded.renew_by;
             wanted = filter->matches(candidate);
         }
         if (wanted) {
@@ -257,14 +305,19 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
             row.type = kRootAuthorityType;
             row.subject = renderSubject(root->common_name, root->organizational_units, root->organization,
                                         root->country);
-            row.status = CERT_STATE(static_cast<int>(root->standing));
+            row.status = CERT_STATE(static_cast<int>(standing));
             row.issued = renderDate(root->not_before);
             row.expires = renderDate(root->not_after);
-            // Nothing here changed its standing and nothing here will renew it: both are the
-            // authority's own business, which is what the request column says.
-            row.status_changed = renderDate(0);
-            row.renew_by = renderDate(0);
-            if (with_request_id) row.request_id = root->names_responder ? "EXTERN OCSP" : "EXTERN";
+            // Empty for a root nobody here issued: nothing changed its standing and nothing
+            // here will renew it, both being the authority's own business.
+            row.status_changed = renderDate(recorded.status_date);
+            row.renew_by = renderDate(recorded.renew_by);
+            // The column that carries a request identifier everywhere else says instead where
+            // this row's standing comes from, because the anchor was never requested.
+            if (with_request_id) {
+                row.request_id = recorded.recorded ? kRootIssuedHere
+                                                   : (root->names_responder ? "EXTERN OCSP" : "EXTERN");
+            }
             rows.push_back(std::move(row));
         }
     }

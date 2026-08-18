@@ -79,6 +79,18 @@ namespace certs {
     "WHERE c.not_after >= :now AND c.not_after <= :window_end " \
     SQL_LIST_CERTS_ORDER
 
+/**
+ * What this manager records about one certificate, asked for by serial.
+ *
+ * Read for the trust anchor alone, and outside the listing query rather than out of its
+ * result: the view and the filter both narrow what that query returns, so a root the
+ * database does hold could be absent from the rows and the anchor would be reported as
+ * unknown to a manager that issued it.
+ */
+#define SQL_GET_CERT_STANDING         \
+    "SELECT c.status, c.status_date, c.renew_by " \
+    "FROM certs c WHERE c.serial = :serial"
+
 
 /**
  * @brief Which certificates a listing covers.
@@ -101,13 +113,16 @@ enum class CertListView {
  * puts in the column is exactly what a viewer shows.
  */
 /**
- * @brief The facility root, for the listing.
+ * @brief The trust anchor this manager issues beneath, for the listing.
  *
- * No certificate manager issued it, and none can be asked about it: a status answer about the
- * trust anchor would be carried over a connection that anchor underwrites. It is therefore not
- * in the certificates database and cannot be selected by a query, so it is assembled from the
- * certificate the manager loaded and offered to the same view and filter tests as every other
- * row.
+ * Assembled from the certificate the manager loaded rather than selected by the listing query,
+ * because the anchor is not always in the certificates table. A manager that signs with an
+ * intermediate stands beneath somebody else's root: nothing here issued it, nothing here can be
+ * asked about it, and this is the only way it appears in a listing at all.
+ *
+ * A manager that signs with its own self-signed root is the other case. There the same
+ * certificate is also a row of the certificates table, and the listing reads its standing back
+ * out of the table (`SQL_GET_CERT_STANDING`) so that the two rows agree.
  *
  * It is listed because of when it expires. Every certificate beneath it stops working the day
  * it does, and an authority that appears in no listing is one nobody is watching the calendar

@@ -248,11 +248,6 @@ int runReview(std::vector<ReviewRow> &rows, const ReviewOptions &options, const 
             << "      " << row->status << " -> " << resultingStatus(*row, row->decision, options.now) << "  (" << decisionName(row->decision)
             << ")\n";
     }
-    if (options.mode == ReviewMode::Approval) {
-        out << "  The certificate manager decides the final value for an approval, from the "
-               "certificate's own dates.\n";
-    }
-
     // ---- confirm ----
     if (!options.assume_yes) {
         out << (options.mode == ReviewMode::Approval ? "\nApply these " : "\nRevoke these ") << to_write.size()
