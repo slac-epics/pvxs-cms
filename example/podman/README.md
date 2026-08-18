@@ -1952,15 +1952,36 @@ roots. `./reset.sh` provisions that at start, as it distributed one identifier i
 laboratories. Doing it by hand is Part 1's task with the one difference that is the point of
 this part: there are two to give, and giving the second must not take away the first.
 
+Both authorities are named to one command, because `--trust-anchor` replaces the whole anchor
+set with the list it is given. Run as two commands the second would reset the set to the machine
+learning root alone, and the laboratory root given first would be gone.
+
 ```sh
-run_in lab as guest authnstd --trust-anchor --issuer ${LAB_SKID}
+run_in lab as guest authnstd --trust-anchor --issuer "${LAB_SKID} ${ML_SKID}"
 #   Trust Anchor retrieved
-run_in lab as guest authnstd --trust-anchor --issuer ${ML_SKID}
-#   Trust Anchor retrieved
+#   Primary Root CA         : CN=EPICS Lab Root Certificate Authority, O=epics.org, C=US
+#   Trusted Root CA         : CN=EPICS ML Root Certificate Authority, O=epics.org, C=US
 ```
 
-`--trust-anchor` adds to the anchor list, it does not replace it: anchors are additive, unlike
-the identity, of which a keychain holds exactly one. Both are in the file now:
+`--issuer` is given once and carries a list, separated by whitespace or by a comma, so these two
+name the same pair:
+
+```sh
+authnstd --trust-anchor --issuer "${LAB_SKID} ${ML_SKID}"
+authnstd --trust-anchor --issuer ${LAB_SKID},${ML_SKID}
+```
+
+The two options do different things, and the difference is the whole of this section.
+`--issuer` adds an authority to the anchors a keychain holds and never removes one, so asking a
+department for a certificate cannot take away a root the file already trusted. `--trust-anchor`
+replaces the set with the list named, which is how an explicit new set is written. Neither can
+leave the keychain trusting nothing, and neither touches the identity, of which a keychain holds
+exactly one.
+
+The anchors are listed, primary first, whenever the set or the primary ends up different from
+what it was. Nothing in the file marks which anchor is the primary one, so those lines are the
+only place it is visible; primary is the root the identity chains to, and in a file that holds
+no identity it is the first anchor named. Both roots are in the file now:
 
 ```sh
 run_in lab as guest bash -c \
@@ -1982,6 +2003,47 @@ One file now carries one identity and two anchors. A certificate minted by eithe
 is trusted by this holder - and, just as load bearing, a certificate status reply signed under
 either root verifies against the same list, which is what lets one department check the
 standing of a certificate the other one issued.
+
+### Asking the other department does not take away what is already trusted
+
+This is the case a reader is most likely to get wrong, so it is worth doing once deliberately.
+Ask the machine learning department for a certificate against the keychain that already trusts
+both roots:
+
+```sh
+run_in lab as guest authnstd -u client --force --issuer ${ML_SKID}
+run_in ml-manager as admin pvxcert --review-pending --all approve --yes
+#   Keychain file created   : /home/guest/.config/pva/1.5/client.p12
+#   Certificate identifier  : <ml issuer>:<serial>
+#   Primary Root CA         : CN=EPICS ML Root Certificate Authority, O=epics.org, C=US
+#   Trusted Root CA         : CN=EPICS Lab Root Certificate Authority, O=epics.org, C=US
+```
+
+Nothing was dropped. The anchor set is the same two roots it was, and the listing appears
+because the primary moved: the new identity was minted by the machine learning department, so
+that department's root is the one it chains to. Reading the file back shows both still there:
+
+```sh
+run_in lab as guest bash -c \
+  'openssl pkcs12 -in /home/guest/.config/pva/1.5/client.p12 -passin pass: -nokeys \
+   | grep subject'
+#   ...CN=EPICS ML Root Certificate Authority
+#   ...CN=EPICS Lab Root Certificate Authority
+```
+
+Naming a second issuer on a request like that one means nothing and says so: only the first is
+asked to mint, and a second that the keychain does not already trust is named in a warning
+rather than added. Adding an anchor is an act of establishing trust, so it takes
+`--trust-anchor`, or a keychain that holds no anchor yet.
+
+### A limit worth knowing before you meet it
+
+A keychain holding several anchors does not survive an export through Network Security Services:
+`pk12util` drops the extra anchors outright when it exports the file, leaving one. Java's
+`keytool` does keep them, though it lists the entries alphabetically when it rewrites the file.
+This is a limit of the feature rather than a defect - the dropped anchors do not come back, and
+no layout of the file changes that - so keep the multi-anchor keychain out of any workflow that
+passes it through `pk12util`.
 
 ## Issue the rest
 
