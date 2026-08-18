@@ -34,8 +34,11 @@
 #include "certfilefactory.h"
 #include "certrequestid.h"
 #include "certstatus.h"
+#include "certstatusmanager.h"
 #include "configauthn.h"
 #include "issuerlist.h"
+#include "keychainreport.h"
+#include "openssl.h"
 #include "ownedptr.h"
 #include "trustanchors.h"
 
@@ -529,6 +532,94 @@ void testTheAnchorsAreListedWhenTrustChanges() {
     testFalse(ta::trustChanged(held_two, unchanged));
 }
 
+// pvxcert -f prints its whole file report through this one helper, so the decision it takes on
+// each shape a keychain can arrive in is pinned here rather than behind the command line.
+void testTheKeychainReportCoversEveryKeychainShape() {
+    testDiag("printKeychainReport: identity with anchors, anchors only, no anchors, and neither");
+
+    // An identity plus two anchors: the details, then the anchor block, then the status PV name
+    {
+        writeKeychain("testtrustanchors_written.p12", material.client_b.key_pair, material.client_b.cert.get(),
+                      asStack({material.B, material.A}));
+        const auto held = IdFileFactory::createReader("testtrustanchors_written.p12")->getCertDataFromFile();
+
+        std::ostringstream out, err;
+        const std::string status_pv = ta::printKeychainReport(held, out, err);
+
+        testEq(status_pv, CmsStatusManager::getStatusPvFromCert(held.cert));
+        testTrue(contains(err.str(), "Certificate Details: "));
+
+        std::ostringstream listing;
+        ta::printAnchorListing(held, listing);
+        testTrue(!listing.str().empty());
+        // The anchor block is the last thing printed, which is what puts it after the details
+        testTrue(out.str().size() >= listing.str().size() &&
+                 out.str().compare(out.str().size() - listing.str().size(), listing.str().size(), listing.str()) == 0);
+        testTrue(contains(out.str(), "Primary Root CA         : "));
+        testTrue(contains(out.str(), "Trusted Root CA         : "));
+    }
+
+    // Anchors and no identity: the notice, the anchor block alone, and no status PV to query
+    {
+        const auto chain = ta::layOutChain(nullptr, {}, {material.B, material.A});
+        writeKeychain("testtrustanchors_written.p12", nullptr, nullptr, chain);
+        const auto anchors_only = IdFileFactory::createReader("testtrustanchors_written.p12")->getCertDataFromFile();
+
+        std::ostringstream out, err;
+        const std::string status_pv = ta::printKeychainReport(anchors_only, out, err);
+
+        testEq(status_pv, std::string(""));
+        testEq(err.str(), std::string("No identity certificate; trust anchors only:\n"));
+
+        std::ostringstream listing;
+        ta::printAnchorListing(anchors_only, listing);
+        // The anchor lines and nothing else. Compared as a boolean because printing two whole
+        // listings on a failure would bury the difference.
+        testTrue(out.str() == listing.str());
+        testTrue(contains(out.str(), "Primary Root CA         : "));
+        testTrue(contains(out.str(), "Trusted Root CA         : "));
+    }
+
+    // An identity whose chain holds no anchor: no anchor lines, the details exactly as they
+    // were. A self-signed identity cannot serve here because it is its own anchor; an identity
+    // under an intermediate, with only that intermediate in the chain, holds no anchor at all.
+    {
+        writeKeychain("testtrustanchors_written.p12", material.client_intermediate.key_pair,
+                      material.client_intermediate.cert.get(), asStack({material.I}));
+        const auto no_anchors = IdFileFactory::createReader("testtrustanchors_written.p12")->getCertDataFromFile();
+
+        std::ostringstream out, err;
+        const std::string status_pv = ta::printKeychainReport(no_anchors, out, err);
+
+        testEq(status_pv, CmsStatusManager::getStatusPvFromCert(no_anchors.cert));
+        testFalse(contains(out.str(), "Primary Root CA"));
+        testFalse(contains(out.str(), "Trusted Root CA"));
+
+        std::string config_id;
+        try {
+            config_id = CmsStatusManager::getConfigPvFromCert(no_anchors.cert);
+        } catch (...) {
+        }
+        std::ostringstream expected;
+        expected << ossl::ShowX509{no_anchors.cert.get()} << std::endl
+                 << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n");
+        testTrue(out.str() == expected.str());
+        testEq(err.str(), std::string("Certificate Details: \n"
+                                      "============================================\n"
+                                      "--------------------------------------------\n\n"));
+    }
+
+    // Neither identity nor anchors: refused with the exact message the tool already reports
+    {
+        const CertData holds_nothing;
+        testEq(refusalFor([&] {
+                   std::ostringstream out, err;
+                   ta::printKeychainReport(holds_nothing, out, err);
+               }),
+               std::string("Failed to read certificate from file"));
+    }
+}
+
 // The reply a certificate manager sends when it is asked for its trust anchor: the certificate
 // it signs with, followed by the chain above it. Built exactly as `onCreateCertificate` builds
 // it and read exactly as the retrieval path reads it, so what follows is fed the shape the real
@@ -640,7 +731,7 @@ MAIN(testtrustanchors) {
                              "ta_intermediate_two.p12", "ta_client_selfsigned.p12"})
         requireFixture(name);
 
-    testPlan(115);
+    testPlan(132);
     removeScratchFiles();
     material.load();
 
@@ -654,6 +745,7 @@ MAIN(testtrustanchors) {
     testTheConfigurationReadsTheListFromTheEnvironment();
     testTheIssuerOptionGivenTwiceIsRefused();
     testTheAnchorsAreListedWhenTrustChanges();
+    testTheKeychainReportCoversEveryKeychainShape();
 
     removeScratchFiles();
     return testDone();

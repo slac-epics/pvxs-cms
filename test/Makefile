@@ -164,6 +164,7 @@ testtrustanchors_SRCS += certfactory.cpp
 testtrustanchors_SRCS += certfilefactory.cpp
 testtrustanchors_SRCS += p12filefactory.cpp
 testtrustanchors_SRCS += certrequestid.cpp
+testtrustanchors_SRCS += keychainreport.cpp
 testtrustanchors_SRCS += openssl.cpp
 testtrustanchors_LIBS += pvxsIoc dbRecStd dbCore ca
 testtrustanchors_SYS_LIBS += sqlite3
