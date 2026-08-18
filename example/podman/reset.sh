@@ -4,10 +4,7 @@
 #
 # The route is deliberately the blunt one: every container, every volume and every network
 # the laboratory owns is destroyed and made again from the compose file. Nothing here knows
-# which service keeps what where, so nothing here goes stale when a service changes. The
-# certificates are then issued, and the whole laboratory is made again a second time so that
-# every service starts already holding what it was issued - which is why no service is
-# restarted individually anywhere in this script.
+# which service keeps what where, so nothing here goes stale when a service changes.
 #
 # It ends by trying the things a demonstration depends on. If any of them fails, this exits
 # non-zero and says where to look, rather than handing back a laboratory that looks up.
@@ -64,11 +61,11 @@ _compose() { podman-compose -p "${project}" -f "${compose_file}" "$@"; }
 # What is up, for helpers.sh to read: it decides from this which places run_in will accept.
 printf '%s\n' "${topology}" > .topology
 
-# A laboratory with more than one certificate manager has to be told which authority each one
-# signs with, and the issuer ids have to exist before anything starts, so those topologies
-# mint beside their own compose file. A laboratory with one certificate manager needs none of
-# that: pvacms creates its own self-signed authority the first time it starts, and with only
-# one of them the unqualified CERT:CREATE is unambiguous.
+# A laboratory with more than one PVACMS has to be told which authority each one signs with,
+# and the issuer ids have to exist before anything starts, so those topologies mint beside
+# their own compose file. A laboratory with one PVACMS needs none of that: pvacms creates its
+# own self-signed authority the first time it starts, and with only one of them the
+# unqualified CERT:CREATE is unambiguous.
 topology_dir="topologies/${topology}"
 if [ -x "${topology_dir}/mint.sh" ]; then
     if [ "${new_authorities}" = yes ] || [ ! -s "${topology_dir}/issuer_ids.env" ]; then
@@ -79,11 +76,11 @@ if [ -x "${topology_dir}/mint.sh" ]; then
     # compose substitutes ${LAB_ISSUER} and the rest in the file itself, and reads .env from
     # the directory the compose file is in - not the one it is run from, whatever the run
     # command says. Without the second copy every substitution comes out empty, and a
-    # controller starts with no issuer to trust and can ask for nothing.
+    # IOC starts with no issuer to trust and can ask for nothing.
     cp "${topology_dir}/issuer_ids.env" .env
     cp "${topology_dir}/issuer_ids.env" "${topology_dir}/.env"
 else
-    echo "==> the certificate manager will create its own authority when it starts"
+    echo "==> PVACMS will create its own authority when it starts"
     : > .env
 fi
 
@@ -103,7 +100,7 @@ _destroy_containers() {
     #   depends_on makes a podman dependency, and 'podman rm -f' refuses a container another
     #   still depends on - so a single pass leaves behind exactly the services the others
     #   depend on, which for a laboratory being switched away from are its certificate
-    #   manager and its responder. Those then answer the next laboratory's searches, which
+    #   PVACMS and its responder. Those then answer the next laboratory's searches, which
     #   looks like the new one misbehaving. --depend takes the dependents with it.
     #
     #   Removing one that way removes others named later in the same command, and podman
@@ -174,9 +171,7 @@ _has_responder() { _compose config --services 2>/dev/null | grep -q -- '-authori
 
 _check_responder() {
     # The authority has to be establishable before anything can be issued. A laboratory that
-    # looks up but cannot establish it is the worst state to hand back: every certificate is
-    # reported unusable, administration stops with them, and the tools that would show you
-    # why have stopped too.
+    # looks up but cannot establish it is the worst state to hand back.
     local c; c=$(podman ps --format '{{.Names}}' | grep -- '-authority-status' | head -1)
     [ -n "${c}" ] || { echo "    no responder container is running" >&2; return 1; }
     for _ in $(seq 1 12); do
@@ -195,7 +190,7 @@ _check_responder() {
 }
 
 _check_managers() {
-    # Each manager answering its own administrator is the first thing a demonstration needs,
+    # Each PVACMS answering its own administrator is the first thing a demonstration needs,
     # and the thing that fails when the facility root cannot be established.
     local ok=no
     for _ in $(seq 1 18); do
@@ -206,7 +201,7 @@ _check_managers() {
         sleep 5
     done
     [ "${ok}" = yes ] && return 0
-    echo "    a certificate manager will not answer its administrator." >&2
+    echo "    a PVACMS will not answer its administrator." >&2
     echo "    That is what a facility root nobody can establish looks like. Look at:" >&2
     echo "        podman logs \$(podman ps --format '{{.Names}}' | grep pvacms)" >&2
     return 1
@@ -216,8 +211,8 @@ _check_reads() {
     local ok=no
     for _ in $(seq 1 18); do
         # Each line is guarded by what it needs, which is a place to ask from AND a
-        # controller to answer. ml:aiExample needs the machine learning controller however
-        # many other places a laboratory has. The two that cross departments are here
+        # an IOC to answer. ml:aiExample needs the ML department's IOC however many other
+        # places a laboratory has. The two that cross departments are here
         # because they are the ones nothing else covers: a workstation reaches the peer
         # department by the facility address, and that name has to be answerable where it
         # is asked as well as reachable, which are two different things to get wrong.
@@ -255,11 +250,11 @@ _says() { # _says <expected text> <command...>   - true when the output contains
 
 _check_refusals() {
     # Nothing holds a certificate at this point, so what can be checked is that the laboratory
-    # refuses a write, and refuses it in the right place: by the controller in its own
-    # department, and at the boundary from outside it.
+    # refuses a write, and refuses it in the right place: by the IOC in its own department,
+    # and at the boundary from outside it.
     if ! _says 'Put not permitted' \
          run_in lab as guest without a certificate pvxput test:stringExample hello; then
-        echo "    a request with no certificate was not refused by the controller." >&2
+        echo "    a request with no certificate was not refused by the IOC." >&2
         return 1
     fi
     if _has perimeter && ! _says 'denied by gateway' \
@@ -286,12 +281,12 @@ fi
 echo "==> building the laboratory"
 _bring_up
 
-# A laboratory whose certificate manager mints its own authority does not know its issuer id
+# A laboratory whose PVACMS mints its own authority does not know its issuer id
 # until that has happened. Nothing may trust an authority it was told about over the channel
 # it is trying to establish, so a client refuses to ask until it has been given the id out of
 # band - which is what this does, once the authority exists.
 if [ ! -x "${topology_dir}/mint.sh" ]; then
-    echo "==> reading the issuer id from the authority the certificate manager made"
+    echo "==> reading the issuer id from the authority PVACMS made"
     _mgr=$(podman ps --filter "label=com.docker.compose.service=pvxs-lab-pvacms" --format '{{.Names}}' | head -1)
     _skid=
     for _ in $(seq 1 18); do
@@ -302,7 +297,7 @@ if [ ! -x "${topology_dir}/mint.sh" ]; then
         [ -n "${_skid}" ] && break
         sleep 5
     done
-    [ -n "${_skid}" ] || { echo "    the certificate manager has not written an authority yet." >&2
+    [ -n "${_skid}" ] || { echo "    PVACMS has not written an authority yet." >&2
                            echo "    Look at: podman logs ${_mgr}" >&2; exit 1; }
     { printf 'ROOT_ISSUER=%s\n' "${_skid:0:8}"
       printf 'ROOT_ISSUER_SKID=%s\n' "${_skid}"; } > "${topology_dir}/issuer_ids.env"
@@ -328,11 +323,11 @@ fi
 lab_ids >/dev/null 2>&1 || true
 
 # A gateway makes its upstream connections when it starts and does not retry the ones it
-# could not make, so one that came up before the controllers were serving forwards nothing
+# could not make, so one that came up before the IOCs were serving forwards nothing
 # until it is restarted. Everything is up by now, so this is where that is put right.
 _gateways=$(podman ps --format '{{.Names}}' | grep -- '-gateway' || true)
 if [ -n "${_gateways}" ]; then
-    echo "==> restarting the gateways, now that the controllers are serving"
+    echo "==> restarting the gateways, now that the IOCs are serving"
     # shellcheck disable=SC2086
     podman restart ${_gateways} >/dev/null 2>&1 || true
     sleep 8
@@ -343,7 +338,7 @@ if _has_responder; then
     _check_responder
 fi
 
-echo "==> checking each certificate manager answers its administrator"
+echo "==> checking each PVACMS answers its administrator"
 _check_managers
 
 echo "==> checking reading works from everywhere"
@@ -365,18 +360,17 @@ fi
 echo "The ${topology} laboratory is up with no certificates issued, and this much was just"
 echo "checked:"
 _has_responder && echo "    the responder answers for the facility root"
-echo "    each certificate manager answers its administrator"
+echo "    each PVACMS answers its administrator"
 if _has perimeter; then
     echo "    reading works, from every department and from outside"
-    echo "    a write with no certificate is refused, by the controller and at the boundary"
+    echo "    a write with no certificate is refused, by the IOC and at the boundary"
 else
     echo "    reading works"
-    echo "    a write with no certificate is refused by the controller"
+    echo "    a write with no certificate is refused by the IOC"
 fi
 echo
 # Each laboratory has one part of the README to itself, and the walkthrough in another part
-# names places this one may not have. Say which, rather than leaving the reader to find out
-# by running a command that cannot work here.
+# names places this one may not have.
 case "${topology}" in
     simple)                    _part="Part 1 - simple" ;;
     simple-with-gateway)       _part="Part 2 - simple, with a gateway" ;;

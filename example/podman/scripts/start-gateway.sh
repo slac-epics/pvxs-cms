@@ -2,19 +2,18 @@
 # Start a gateway, with its own department's issuer id substituted into the process
 # variable list.
 #
-# The list names certificate process variables by issuer, so each gateway claims only
-# what its own certificate manager can answer. With two certificate managers on one
-# network an unqualified name would be claimed by both, and neither gateway could tell
-# which department a request meant.
+# The pvlist names certificate process variables by issuer, so each gateway claims only
+# what its own PVACMS can answer. With two of them on one network an unqualified name
+# would be claimed by both, and neither gateway could tell which department a request
+# meant.
 set -euo pipefail
 var="${1:?usage: start-gateway <LAB_ISSUER|ML_ISSUER|none>}"
 
-# 'none' is a laboratory with one certificate manager, where the certificate process
-# variables have no issuer in their names because there is nothing to be ambiguous about, and
-# where the authority is minted by that manager at its first start rather than beforehand. Its
-# issuer id therefore does not exist yet when this runs: reset.sh writes it into
-# /etc/epics/issuer once the manager has made it, and the gateway is restarted after that,
-# along with the controllers, when the certificates are issued.
+# 'none' is a laboratory with one PVACMS, where the certificate process variables have no
+# issuer in their names and the authority is minted at that first start rather than
+# beforehand. Its issuer id therefore does not exist yet when this runs: reset.sh writes it
+# into /etc/epics/issuer once PVACMS has made it, and the gateway is restarted after that,
+# along with the IOCs, when the certificates are issued.
 if [ "${var}" = none ]; then
     issuer=
 else
@@ -40,9 +39,9 @@ fi
 mkdir -p /home/gateway/.config/pva/1.5 && chown -R gateway /home/gateway/.config
 
 # The trust anchors, where a laboratory hands them over rather than leaving them to be
-# fetched. A gateway with no path to the other department's certificate manager cannot ask it
-# for its root, and in a laboratory whose departments share no root it has to hold that root
-# to verify anything signed under it. So the file is placed here before the gateway asks for
+# fetched. A gateway with no path to the peer department's PVACMS cannot ask it for its root,
+# and in a laboratory whose departments share no root it has to hold that root to verify
+# anything signed under it. So the file is placed here before the gateway asks for
 # an identity: what it then receives is added to a keychain that already holds both anchors,
 # and asking for an identity never removes one.
 keychain=/home/gateway/.config/pva/1.5/gateway.p12
@@ -60,7 +59,7 @@ fi
 #
 # Left to itself it binds every interface it has, which includes the department's own
 # segment. A workstation there searching by broadcast is then answered twice for the same
-# name, once by the controller and once by the gateway forwarding to that controller, and
+# name, once by the IOC and once by the gateway forwarding to that IOC, and
 # every command it runs stops with 'Duplicate PV name'.
 #
 # The address cannot be written into the configuration because podman assigns it at start, so
@@ -75,7 +74,7 @@ if [ -n "${GATEWAY_SERVE_SUBNET:-}" ]; then
 else
     cp /home/gateway/gateway.conf.in /home/gateway/gateway.conf
 fi
-echo "gateway process variable list, with the issuer substituted:"
+echo "gateway pvlist, with the issuer substituted:"
 sed 's/^/    /' /home/gateway/gateway.pvlist
 
 exec /opt/epics/p4p/bin/"$(/opt/epics/epics-base/startup/EpicsHostArch)"/pvagw /home/gateway/gateway.conf

@@ -11,8 +11,7 @@
 #     run_in perimeter   as guest without a certificate  pvxget test:aiExample
 #     run_in testioc     as testioc  authnstd -u ioc
 #
-# Every shorthand can show the command it stands for instead of running it, so nothing here
-# is a black box and anything can be copied into a real deployment:
+# Every shorthand can show the command it stands for instead of running it:
 #
 #     run_in lab-manager as admin --show pvxcert -l
 #
@@ -28,13 +27,12 @@
 # ---------------------------------------------------------------------------- where things are
 #
 # A place is a machine, and it is named for what stands there. An administrator's identity
-# lives beside the certificate manager, so "lab-manager" is a different place from "lab" -
-# calling both of them "lab" would hide the very thing these examples are about.
+# lives beside PVACMS, so "lab-manager" is a different place from "lab".
 #
 #   lab, ml                   a workstation inside a department
 #   perimeter                 a workstation outside both, reaching only the two gateways
-#   lab-manager, ml-manager   a department's certificate manager
-#   testioc, tstioc, ml-ioc   a controller
+#   lab-manager, ml-manager   a department's PVACMS
+#   testioc, tstioc, ml-ioc   an IOC
 #   gateway, ml-gateway       a department's boundary
 #
 # A person is a real account on that machine:
@@ -125,8 +123,8 @@ _lab_quote() {
 # Minting new authorities rewrites .env, but an exported variable in a shell that is already
 # open cannot be reached from outside it. Anything typed with ${LAB} or ${LAB_SKID} then names
 # an authority that no longer exists, and what comes back says nothing about why: a request
-# times out, because there is nothing to answer it, and a certificate manager that never saw
-# the authority has nothing to say about it either.
+# times out, because there is nothing to answer it, and a PVACMS that never saw the authority
+# has nothing to say about it either.
 _lab_ids_are_current() {
     local env_file="${LAB_HELPERS_DIR:-.}/.env"
     [ -r "${env_file}" ] || return 0
@@ -163,7 +161,7 @@ run_in() {
 
     # A person may be written <department>/<user>, which is the same user holding a
     # certificate from that department rather than from the one they are sitting in. It reads
-    # as what it is - "ml/operator in lab" is the machine learning operator, at a lab
+    # as what it is - "ml/operator in lab" is the ML operator, at a lab
     # workstation - and it needs a keychain of its own, since the two certificates cannot
     # share one file. Anything without a slash is unchanged.
     local from_dept= keychain_name=client
@@ -177,9 +175,8 @@ run_in() {
 
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            # "without a certificate" reads as English and says exactly what is being shown:
-            # the same person, presenting nothing. A made-up name like "anyone" would leave
-            # the reader wondering whose credentials were used.
+            # "without a certificate" reads as English and says exactly what is being
+            # shown: the same person, presenting nothing.
             without) [ "$2" = a ] && [ "$3" = certificate ] || {
                          echo "run_in: did you mean 'without a certificate'?" >&2; return 2; }
                      plain=yes; shift 3 ;;
@@ -210,7 +207,7 @@ run_in() {
     # The administrator is not a user of a workstation. Say why rather than quietly running
     # the command somewhere the reader was not told about.
     if [ "${who}" = admin ] && [ "${place}" != lab-manager ] && [ "${place}" != ml-manager ]; then
-        echo "run_in: the administrator's identity lives on the certificate manager, not at ${place}." >&2
+        echo "run_in: the administrator's identity lives on the PVACMS, not at ${place}." >&2
         case "${place}" in
             lab|ml) echo "        Write: run_in ${place}-manager as admin ..." >&2 ;;
             *)      echo "        Write: run_in lab-manager as admin ...  (or ml-manager)" >&2 ;;
@@ -224,9 +221,9 @@ run_in() {
     # --where "state:VALID and type:IOC" is one argument, and flattening it into a string
     # would hand pvxcert three.
     #
-    # A terminal is handed through only when there is one on both sides. That is what lets a
-    # command which asks a question - pvxcert --review-pending - be answered, and it is the
-    # only case that needs it: the tools ask nothing unless they are talking to a terminal.
+    # A terminal is handed through only when there is one on both sides, which is what lets
+    # a command that asks a question - pvxcert --review-pending - be answered. The tools ask
+    # nothing unless they are talking to a terminal.
     #
     # Connecting standard input at any other time would do harm. A container given the
     # surrounding script's input reads it: a run_in inside a loop over a list of commands
@@ -235,9 +232,8 @@ run_in() {
     if [ -t 0 ] && [ -t 1 ]; then attach="podman exec -it"; fi
 
     # No command at a terminal opens a shell there, as that person, with everything set up
-    # that a command would have had. It is how to answer something that asks a question -
-    # pvxcert --review-pending puts its prompts to a terminal and reads the answers back from
-    # one - and how to try things without writing run_in in front of each.
+    # that a command would have had. It is how to answer something that asks a question, and
+    # how to try things without writing run_in in front of each.
     local script interactive=no
     if [ "$#" -gt 0 ]; then
         script=$(_lab_quote "$@")
@@ -257,14 +253,13 @@ exec bash --norc -i"
 '
     case "${who}" in
         admin)
-            # The identity the certificate manager issued to itself, presented over the
-            # secure port. Without both of these the manager sees no administrator and
-            # refuses the decision - which is the access rule working, not a broken tool.
+            # The identity PVACMS issued to itself, presented over the secure port. Without
+            # both of these it sees no administrator and refuses the decision - which is the
+            # access rule working, not a broken tool.
             #
-            # The address is this machine: an administrator's tools run beside the manager
-            # and have no reason to look anywhere else. Naming it here rather than in
-            # compose.yaml keeps the certificate manager itself free of any address list,
-            # which is right - it is a server and never searches for anything.
+            # The address is this machine: an administrator's tools run beside PVACMS and
+            # have no reason to look anywhere else. Naming it here rather than in
+            # compose.yaml keeps PVACMS itself free of any address list.
             prelude="export EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12
 export EPICS_PVA_ADDR_LIST=127.0.0.1
 export EPICS_PVA_AUTO_ADDR_LIST=NO
@@ -274,7 +269,7 @@ export EPICS_PVA_NAME_SERVERS=
             # The login profile supplies the tool paths and the organisation, but it was
             # written for the federated laboratory and names its hosts. The container knows
             # which laboratory it is actually in, so put its own addressing back afterwards -
-            # otherwise a command run on the machine learning workstation, or on the
+            # otherwise a command run on the ML workstation, or on the
             # perimeter, quietly talks to the lab instead.
             #
             # All three of these, not just the two lists: a laboratory that finds everything
@@ -351,7 +346,7 @@ lab_ids() {
 # The file holds LAB_ISSUER and the rest, which is what compose substitutes and what the
 # containers are given. A shell uses shorter names for the same four values. Printing the file
 # as it stands would name variables that lab_ids does not set, so it is printed the way it will
-# be typed, and this is the only place that knows both spellings.
+# be typed.
 lab_ids_show() {
     local env_file="${LAB_HELPERS_DIR:-.}/.env"
     [ -r "${env_file}" ] || return 0
@@ -374,22 +369,21 @@ lab_ids_show() {
 # What the facility root's responder says about the root, and how to change it.
 #
 # The root is the one certificate the laboratory cannot ask about over Secure PVAccess: it has
-# no status channel, and an answer carried over a connection it underwrites would be worth
-# nothing. It names a responder instead, and each certificate manager asks that responder
-# whether the root still stands.
+# no status PV, and an answer carried over a connection it underwrites would be worth
+# nothing. It names a responder instead, and each PVACMS asks that responder for the root's
+# status.
 #
 # The responder reads its answer at start, so each of these rewrites the file and restarts it.
 
 # The answer belongs to the laboratory that is up, so it is read from that laboratory's own
-# directory. An earlier layout kept one set beside this file, and reading that one would report
-# on a laboratory nothing is running.
+# directory.
 _lab_authority_index() {
     local t; t=$(_lab_topology)
     [ "${t}" = unknown ] && { echo "no laboratory is up - run ./reset.sh <topology> first" >&2; return 1; }
     local index="${LAB_HELPERS_DIR:-.}/topologies/${t}/ocsp/index.txt"
     if [ ! -r "${index}" ]; then
         echo "the ${t} laboratory has no facility root to answer for: it has one authority," >&2
-        echo "which the certificate manager made itself and can be asked about directly." >&2
+        echo "which PVACMS made itself and can be asked about directly." >&2
         return 1
     fi
     printf '%s' "${index}"
@@ -409,7 +403,7 @@ authority_says() {
     local index; index=$(_lab_authority_index) || return 1
     case "$(cut -f1 "${index}")" in
         R) echo "the facility root is REVOKED" ;;
-        V) echo "the facility root stands" ;;
+        V) echo "the facility root is VALID" ;;
         *) echo "the responder's index says something this does not understand" ;;
     esac
 }

@@ -3,7 +3,7 @@
 <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8E24AA"/></marker></defs>
 <rect x="0" y="0" width="4066" height="2274" fill="#FAFAFA"/>
 <text x="40" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="#263238">Secure PVAccess demonstration laboratory</text>
-<text x="40" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates, so every certificate traces to it - the laboratory topologies/federated-shared-root/compose.yaml builds, with the two routers a site would install marked SIMULATED</text>
+<text x="40" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates - the laboratory topologies/federated-shared-root/compose.yaml builds, with the two routers a site would install marked SIMULATED</text>
 <rect x="40" y="974" width="2283" height="1260" rx="10" fill="#E8EAF6" stroke="#3949AB" stroke-width="1.6"/>
 <path d="M 40 984 a10 10 0 0 1 10 -10 h2263 a10 10 0 0 1 10 10 v34 h-2283 z" fill="#3949AB" fill-opacity="0.92"/>
 <circle cx="57" cy="1001" r="2.6" fill="white"/><circle cx="67" cy="1001" r="2.6" fill="white"/><circle cx="62" cy="991" r="2.6" fill="white"/><path d="M 62 991 L 57 1001 M 62 991 L 67 1001 M 57 1001 H 67" stroke="white" stroke-width="1.4"/>
@@ -53,7 +53,7 @@
 <text x="1207.5" y="1216" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Presents: CN=gateway</text>
 <text x="1207.5" y="1231" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc</text>
 <text x="1207.5" y="1246" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: gateway.acf</text>
-<text x="1207.5" y="1261" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVList: config/gateway-lab.pvlist</text>
+<text x="1207.5" y="1261" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">pvlist: config/gateway-lab.pvlist</text>
 </g>
 <g><rect x="66" y="1339" width="469" height="209" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
 <path d="M 66 1347 a8 8 0 0 1 8 -8 h453 a8 8 0 0 1 8 8 v22 h-469 z" fill="#43A047"/>
@@ -62,7 +62,7 @@
 <text x="78" y="1388" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: IOC</text>
 <text x="78" y="1403" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: testioc</text>
 <text x="78" y="1418" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-lab        10.89.0.0/24</text>
-<text x="78" y="1433" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Finds its certificate manager by broadcast, as everything here does</text>
+<text x="78" y="1433" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Finds its PVACMS by broadcast</text>
 <text x="78" y="1448" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search</text>
 <text x="78" y="1463" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">DB: testioc.db, testiocg.db, testioc-lab.db</text>
 <text x="78" y="1478" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: testioc.acf</text>
@@ -78,7 +78,7 @@
 <text x="588" y="1388" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: IOC</text>
 <text x="588" y="1403" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: tstioc</text>
 <text x="588" y="1418" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-lab        10.89.0.0/24</text>
-<text x="588" y="1433" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Finds its certificate manager by broadcast, as everything here does</text>
+<text x="588" y="1433" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Finds its PVACMS by broadcast</text>
 <text x="588" y="1448" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search</text>
 <text x="588" y="1463" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">DB: image.db, image.json</text>
 <text x="588" y="1478" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: tstioc.acf</text>
@@ -247,7 +247,7 @@
 <text x="3003.5" y="1231" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Presents: CN=ml-gateway</text>
 <text x="3003.5" y="1246" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Upstream: pvxs-lab-ml, pvxs-lab-ml-ioc</text>
 <text x="3003.5" y="1261" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: gateway.acf</text>
-<text x="3003.5" y="1276" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVList: config/gateway-ml.pvlist</text>
+<text x="3003.5" y="1276" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">pvlist: config/gateway-ml.pvlist</text>
 </g>
 <g><rect x="3504" y="1032" width="496" height="164" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.4"/>
 <path d="M 3504 1040 a8 8 0 0 1 8 -8 h480 a8 8 0 0 1 8 8 v22 h-496 z" fill="#546E7A"/>
@@ -269,7 +269,7 @@
 <text x="2451" y="1388" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: IOC</text>
 <text x="2451" y="1403" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: ml-ioc</text>
 <text x="2451" y="1418" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-ml         10.89.1.0/24</text>
-<text x="2451" y="1433" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Finds its certificate manager by broadcast, as everything here does</text>
+<text x="2451" y="1433" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Finds its PVACMS by broadcast</text>
 <text x="2451" y="1448" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search</text>
 <text x="2451" y="1463" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">DB: mlioc.db</text>
 <text x="2451" y="1478" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: mlioc.acf</text>
@@ -476,7 +476,7 @@
 <text x="2391.25" y="748" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">An IT service: it belongs to neither department, as the root does not</text>
 <text x="2391.25" y="763" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/8888 OCSP over HTTP</text>
 <text x="2391.25" y="778" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Program: openssl ocsp, under supervisor with a watchdog - one call at</text>
-<text x="2391.25" y="793" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    a time, so a manager asks up to five times before giving up</text>
+<text x="2391.25" y="793" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    a time, so a PVACMS asks up to five times before giving up</text>
 <text x="2391.25" y="808" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt</text>
 </g>
 <path d="M 2333.0 248 L 2333.0 264 L 1965.5 264 L 1965.5 291" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
@@ -575,9 +575,9 @@
 <rect x="54" y="154" width="14" height="14" rx="3" fill="#E53935"/>
 <text x="78" y="165" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP responder</text>
 <rect x="54" y="178" width="14" height="14" rx="3" fill="#1E88E5"/>
-<text x="78" y="189" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS - certificate manager</text>
+<text x="78" y="189" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS</text>
 <rect x="54" y="202" width="14" height="14" rx="3" fill="#43A047"/>
-<text x="78" y="213" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC - controller</text>
+<text x="78" y="213" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC</text>
 <rect x="54" y="226" width="14" height="14" rx="3" fill="#FB8C00"/>
 <text x="78" y="237" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway - proxies PVAccess between a zone</text>
 <text x="78" y="261" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    and the perimeter</text>
@@ -589,7 +589,7 @@
 <rect x="54" y="346" width="14" height="14" rx="3" fill="#546E7A"/>
 <text x="78" y="357" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">client - workstation</text>
 <rect x="54" y="370" width="14" height="14" rx="3" fill="#9E9D24"/>
-<text x="78" y="381" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF or PVList - a file a component loads</text>
+<text x="78" y="381" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF or pvlist - a file a component loads</text>
 <line x1="54" y1="410" x2="94" y2="410" stroke="#3949AB" stroke-width="4"/>
 <text x="104" y="414" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">net-lab bus - tapping it = attached to net-lab</text>
 <line x1="54" y1="434" x2="94" y2="434" stroke="#00897B" stroke-width="4"/>
@@ -629,7 +629,7 @@
 <text x="558" y="495" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS : certificate manager</text>
 <text x="558" y="510" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC    : input output controller</text>
 <text x="558" y="525" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF    : access security file</text>
-<text x="558" y="540" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVList : gateway process variable list</text>
+<text x="558" y="540" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">pvlist : what a gateway forwards</text>
 <text x="558" y="555" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP   : online certificate status protocol</text>
 <text x="558" y="570" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">AIA    : authority information access extension</text>
 <text x="558" y="585" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ML     : machine learning</text>

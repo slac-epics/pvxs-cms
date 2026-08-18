@@ -3,27 +3,27 @@
 # Three networks stand in for three sites. A container reaches only the networks it is
 # attached to, so the isolation is enforced by podman rather than by a policy engine:
 #
-#   net-lab        the accelerator side: its certificate manager, its controllers, its gateway
-#   net-ml         the second department: its own certificate manager, controller and gateway
+#   net-lab        the accelerator side: its PVACMS, its IOCs, its gateway
+#   net-ml         the second department: its own PVACMS, IOC and gateway
 #   net-perimeter  outside both: reaches the two gateways and nothing else
 #
 # Each gateway sits on its own department's network and on the perimeter, which is the only
-# path between them. Nothing on the perimeter can address a certificate manager directly.
+# path between them. Nothing on the perimeter can address a PVACMS directly.
 #
 # Two departments, two intermediate certificate authorities, one facility root that every
 # node trusts. A certificate issued by either department is trusted everywhere; who may
-# administer which department is decided separately, by each certificate manager's own
-# access security file.
+# administer which department is decided separately, by each PVACMS's own access security
+# file.
 #
 # Service names match the DNS names used inside the images, so the shell profiles and the
 # gateway configuration work unchanged.
 #
 # Run ./bootstrap.sh first: it builds the images and mints the authorities.
 
-# Carried by the things that never look for a process variable: a certificate manager serves
-# and is served, and a gateway is told its upstream in its own configuration file. Everything
-# else here leaves discovery on, finds its own department by broadcast, and names the facility
-# address for the other one.
+# Carried by the things that never look for a process variable: PVACMS serves and is served,
+# and a gateway is told its upstream in its own configuration file. Everything else here
+# leaves discovery on, finds its own department by broadcast, and names the facility address
+# for the other one.
 x-lab-env: &lab-env
   EPICS_PVA_AUTO_ADDR_LIST: "NO"
 
@@ -97,8 +97,8 @@ services:
   # says is in ./ocsp/index.txt, read when it starts.
   #
   # net-it is its own segment; the other two are legs into the networks that name it, the same
-  # accommodation pvxs-facility-lb needs. The certificate managers stay on one interface each
-  # so that neither can address the other's.
+  # accommodation pvxs-facility-lb needs. Each PVACMS stays on one interface, so that neither
+  # can address the other.
   pvxs-lab-authority-status:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
@@ -183,7 +183,7 @@ services:
     command: ["/usr/local/bin/start-gateway", "LAB_ISSUER"]
     depends_on: [pvxs-lab-pvacms]
 
-  # ------------------------------------------------- machine learning department
+  # ------------------------------------------------- ML department
   pvxs-lab-ml:
     init: true
     depends_on: [pvxs-lab-authority-status]
@@ -238,7 +238,7 @@ services:
     depends_on: [pvxs-lab-ml]
 
   # ------------------------------------------------------------------- clients
-  # A shell inside the lab department. Reaches its own certificate manager directly.
+  # A shell inside the lab department. Reaches its own PVACMS directly.
   lab-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
@@ -257,8 +257,8 @@ services:
       - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
 
-  # A shell inside the machine learning department, the mirror of lab-client: its own
-  # department directly, and the perimeter so it can reach the other department's gateway.
+  # A shell inside the ML department, the mirror of lab-client: its own department directly,
+  # and the perimeter so it can reach the other department's gateway.
   ml-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
@@ -298,9 +298,9 @@ services:
   #
   # A leg on every segment that names it, and the alias repeated on each. Podman answers a
   # name only for containers that share a segment with the asker, and each department's
-  # workstation reaches the other department by that name - the same accommodation the
-  # certificate managers need to reach the responder. At a real site one address in DNS and a
-  # route would do it; here the name has to be answerable where it is asked.
+  # workstation reaches the other department by that name - the same accommodation each
+  # PVACMS needs to reach the responder. At a real site one address in DNS and a route would
+  # do it; here the name has to be answerable where it is asked.
   pvxs-facility-lb:
     init: true
     image: docker.io/library/haproxy:lts-alpine
