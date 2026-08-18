@@ -44,7 +44,9 @@ build_image() {
     if [ -n "${JOBS:-}" ] && grep -q '^ARG JOBS' "${dir}/Dockerfile"; then
         args=(--build-arg "JOBS=${JOBS}")
     fi
-    ( cd "${dir}" && ./build_docker.sh "${args[@]}" "$@" )
+    # The guarded expansion keeps bash 3.2 (macOS /bin/bash) happy: under set -u it
+    # treats an empty array expanded with "${args[@]}" as an unbound variable.
+    ( cd "${dir}" && ./build_docker.sh ${args[@]+"${args[@]}"} "$@" )
 }
 
 # --keep-certs is accepted and ignored: building mints nothing.
