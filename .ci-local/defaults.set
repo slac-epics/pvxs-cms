@@ -12,6 +12,8 @@ MODULES=pvxs
 PVXS_DIRNAME=pvxs
 PVXS_REPONAME=pvxs-tls
 PVXS_REPOOWNER=slac-epics
-PVXS=main
+# Temporary pin for the integration branch. Set this back to main before you
+# merge this branch into a default branch.
+PVXS=scratch/fy26-integration-testing
 PVXS_VARNAME=PVXS
 PVXS_RECURSIVE=yes
