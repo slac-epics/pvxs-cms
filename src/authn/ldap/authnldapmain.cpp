@@ -52,7 +52,7 @@ std::string promptPassword(const std::string &prompt) {
  */
 
 void defineOptions(CLI::App &app, ConfigLdap &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
-                   std::string &usage, std::string &name, std::string &organization, std::string &cert_validity_mins, std::string &cert_pv_prefix) {
+                   std::string &usage, std::string &name, std::string &organization, std::string &cert_validity_mins, std::string &cert_pv_prefix, std::string &issuer_option) {
     app.set_help_flag("", "");  // deactivate built-in help
 
     app.add_flag("-h,--help", help);
@@ -68,7 +68,9 @@ void defineOptions(CLI::App &app, ConfigLdap &config, bool &verbose, bool &debug
     // Read the same way as EPICS_PVA_AUTH_ISSUER, so all the forms a certificate prints its
     // authority in are accepted, and a value that is not one is refused here with the value in
     // the message rather than becoming a channel name that nothing answers.
-    app.add_option("-i,--issuer", config.issuer_id, "The issuer ID of the PVACMS service to contact.  If not specified (default) broadcast to any that are listening")
+    // One authority, because this authenticator gains nothing from several. The list the
+    // configuration holds is that one authority, or none.
+    app.add_option("-i,--issuer", issuer_option, "The issuer ID of the PVACMS service to contact.  If not specified (default) broadcast to any that are listening")
         ->transform([](std::string value) { return certs::readIssuerId(value); });
 
     app.add_option("-u,--cert-usage", usage, "Certificate usage.  `server`, `client`, `ioc`");
@@ -119,13 +121,15 @@ void showHelp(const char * const program_name) {
 int readParameters(int argc, char *argv[], ConfigLdap &config, bool &verbose, bool &debug, uint16_t &cert_usage, bool &daemon_mode, bool &force) {
     const auto program_name = argv[0];
     bool show_version{false}, help{false}, add_config_uri{false};
-    std::string usage{"client"}, name, organization, cert_validity_mins, cert_pv_prefix;
+    std::string usage{"client"}, name, organization, cert_validity_mins, cert_pv_prefix, issuer_option;
 
     CLI::App app{"authnldap - Secure PVAccess LDAP Authenticator"};
 
-    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, add_config_uri, usage, name, organization, cert_validity_mins, cert_pv_prefix);
+    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, add_config_uri, usage, name, organization, cert_validity_mins, cert_pv_prefix, issuer_option);
 
     CLI11_PARSE(app, argc, argv);
+
+    if (!issuer_option.empty()) config.issuer_ids = {issuer_option};
 
     if (help) {
         showHelp(program_name);

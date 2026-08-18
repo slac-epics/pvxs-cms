@@ -17,6 +17,7 @@
 #include "configstd.h"
 #include "openssl.h"
 #include "p12filefactory.h"
+#include "trustanchors.h"
 
 #include <CLI/CLI.hpp>
 
@@ -314,12 +315,29 @@ void AuthNStd::handleCreateResponse(const Value &reply,
     // and that is only sound because the reply's authority has already been matched against an
     // issuer the operator supplied out of band; a signature checked with a key taken from the
     // same reply proves nothing, so those two steps must not be separated.
+    //
+    // A keychain may hold several authorities, so which of them is asked is decided by the
+    // identifier committed to before the request went out, not by a position in the file. A
+    // position would give the authority the previous identity was issued under, and a request
+    // made to another department the keychain also trusts would then be refused.
     ossl_ptr<EVP_PKEY> authority_key;
-    if (held_before_request.cert_auth_chain && sk_X509_num(held_before_request.cert_auth_chain.get()) > 0) {
-        authority_key.reset(X509_get_pubkey(CertStatus::getIssuerCa(held_before_request.cert_auth_chain)));
-    } else if (held_before_request.cert) {
-        authority_key.reset(X509_get_pubkey(held_before_request.cert.get()));
-    } else {
+    {
+        auto candidates = cms::cert::certsInChain(held_before_request.cert_auth_chain);
+        if (held_before_request.cert) candidates.push_back(held_before_request.cert.get());
+        for (X509 *const candidate : candidates) {
+            std::string full;
+            try {
+                full = CertStatus::getFullSkId(candidate);
+            } catch (const std::exception &) {
+                continue;  // an authority with no subject key identifier cannot be named at all
+            }
+            if (issuerIdIsExpected(expected_issuer_id, full)) {
+                authority_key.reset(X509_get_pubkey(candidate));
+                break;
+            }
+        }
+    }
+    if (!authority_key) {
         const auto delivered = reply["cert"];
         if (!delivered) {
             throw std::runtime_error(

@@ -10,8 +10,10 @@
 #include "authregistry.h"
 #include "cmsversion.h"
 #include "configstd.h"
+#include "issuerlist.h"
 #include "openssl.h"
 #include "p12filefactory.h"
+#include "trustanchors.h"
 
 namespace pvxs {
 namespace certs {
@@ -38,7 +40,8 @@ namespace certs {
  * @param cert_pv_prefix the certificate status PV prefix
  */
  void defineOptions(CLI::App &app, ConfigStd &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
-                    std::string &usage, std::string &name, std::string &organization, std::vector<std::string> &organizational_unit, std::string &country, std::string &cert_validity_mins, std::string &cert_pv_prefix) {
+                    std::string &usage, std::string &name, std::string &organization, std::vector<std::string> &organizational_unit, std::string &country, std::string &cert_validity_mins, std::string &cert_pv_prefix,
+                    std::vector<std::string> &issuer_option) {
     app.set_help_flag("", "");  // deactivate built-in help
 
     app.add_flag("-h,--help", help);
@@ -52,11 +55,13 @@ namespace certs {
     app.add_flag("-D,--daemon", daemon_mode, "Daemon mode");
     app.add_flag("--add-config-uri", add_config_uri, "Add a config uri to the generated certificate");
     app.add_option("--cert-pv-prefix", cert_pv_prefix, "Specifies the pv prefix to use to contact PVACMS.  Default `CERT`");
-    // Read the same way as EPICS_PVA_AUTH_ISSUER, so all the forms a certificate prints its
-    // authority in are accepted, and a value that is not one is refused here with the value in
-    // the message rather than becoming a channel name that nothing answers.
-    app.add_option("-i,--issuer", config.issuer_id, "The issuer ID of the PVACMS service to contact.  If not specified (default) broadcast to any that are listening")
-        ->transform([](std::string value) { return certs::readIssuerId(value); });
+    // One option carrying a list, in the same shape as EPICS_PVA_AUTH_ISSUER, so there is one
+    // syntax to learn. One value each, the treatment --ou gets below, so an unquoted list is an
+    // error rather than a silently truncated one. Bound to a list of its own rather than to the
+    // configuration so that giving the option twice reaches a message worth reading here rather
+    // than the option library's, which says only that at most one argument was expected.
+    app.add_option("-i,--issuer", issuer_option, "The issuer IDs of the PVACMS services to contact, whitespace or comma separated.  If not specified (default) broadcast to any that are listening")
+        ->allow_extra_args(false);
 
     app.add_option("-u,--cert-usage", usage, "Certificate usage.  `server`, `client`, `ioc`");
 
@@ -102,9 +107,19 @@ void showHelp(const char *program_name) {
               << "        --cert-pv-prefix <cert_pv_prefix>    Specifies the pv prefix to use to contact PVACMS.  Default `CERT`\n"
               << "        --add-config-uri                     Add a config uri to the generated certificate\n"
               << "        --force                              Force overwrite if certificate exists\n"
-              << "  (-a | --trust-anchor)                      Download Trust Anchor into keychain file.  Do not create a certificate\n"
+              << "  (-a | --trust-anchor)                      Download Trust Anchors into keychain file.  Do not create a certificate\n"
+              << "                                             Replaces the trust anchors the keychain holds with the issuers named\n"
               << "  (-s | --no-status)                         Request that status checking not be required for this certificate\n"
-              << "  (-i | --issuer) <issuer_id>                The issuer ID of the PVACMS service to contact.  If not specified (default) broadcast to any that are listening\n"
+              << "  (-i | --issuer) <issuer_ids>               The issuer IDs of the PVACMS services to contact, given once as one list\n"
+              << "                                             separated by whitespace or by a comma.  All four of these name the same two:\n"
+              << "                                               --issuer \"aaaa bbbb\"      --issuer aaaa,bbbb\n"
+              << "                                               EPICS_PVA_AUTH_ISSUER=\"aaaa bbbb\"    EPICS_PVA_AUTH_ISSUER=aaaa,bbbb\n"
+              << "                                             The first issuer named is asked to mint.  --issuer adds an authority to the\n"
+              << "                                             keychain's trust anchors and never removes one; --trust-anchor replaces the\n"
+              << "                                             whole set with the list named.  Naming more than one issuer only means\n"
+              << "                                             something when trust is being established, which is --trust-anchor or a\n"
+              << "                                             keychain that holds no trust anchor yet\n"
+              << "                                             If not specified (default) broadcast to any that are listening\n"
               << "  (-v | --verbose)                           Verbose mode\n"
               << "  (-d | --debug)                             Debug mode\n"
               << std::endl;
@@ -125,13 +140,33 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
     auto program_name = argv[0];
     bool show_version{false}, help{false}, add_config_uri{false};
     std::string usage{"client"}, name, organization, country, cert_validity_mins, cert_pv_prefix;
-    std::vector<std::string> organizational_unit;
+    std::vector<std::string> organizational_unit, issuer_option;
 
     CLI::App app{"authnstd - Secure PVAccess Standard Authenticator"};
 
-    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, add_config_uri, usage, name, organization, organizational_unit, country, cert_validity_mins, cert_pv_prefix);
+    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, add_config_uri, usage, name, organization, organizational_unit, country, cert_validity_mins, cert_pv_prefix, issuer_option);
 
     CLI11_PARSE(app, argc, argv);
+
+    // Taking the last value quietly is the exact failure this option exists to prevent: it would
+    // drop an authority without saying so. Refused here rather than by the option library, which
+    // says only that at most one argument was expected and leaves an operator no wiser.
+    if (issuer_option.size() > 1) {
+        std::cerr << "--issuer is given once, with a list: --issuer \"aaaa bbbb\" or --issuer aaaa,bbbb. "
+                     "It was given " << issuer_option.size() << " times." << std::endl;
+        return 16;
+    }
+
+    // An option given at all replaces the environment entirely, for membership and for ordering.
+    // Absent, whatever EPICS_PVA_AUTH_ISSUER put there is left alone.
+    if (!issuer_option.empty()) {
+        try {
+            config.issuer_ids = cms::cert::parseIssuerList(issuer_option.front());
+        } catch (const std::exception &e) {
+            std::cerr << e.what() << std::endl;
+            return 16;
+        }
+    }
 
     // The built-in help from CLI11 is pretty lame, so we'll do our own
     // Make sure we update this help text when options change
@@ -222,46 +257,65 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
         const std::string tls_keychain_file = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_file : config.tls_keychain_file;
         const std::string tls_keychain_pwd = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_pwd : config.getKeychainPassword();
 
-        // Downloading a trust anchor bootstraps trust, so the operator must identify the expected
-        // issuer out-of-band. Require --issuer (or EPICS_PVA_AUTH_ISSUER) and verify the delivered
-        // authority matches it before storing, so a substituted authority is never trusted (#18).
-        if (config.issuer_id.empty()) {
-            std::cerr << "Refusing to download a trust anchor without --issuer (or EPICS_PVA_AUTH_ISSUER): "
-                         "the expected certificate authority must be identified to avoid trusting a substituted authority." << std::endl;
+        // What the keychain holds now. The reset replaces the anchors and keeps everything else,
+        // so this has to be read before anything is retrieved.
+        const auto held = certs::readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
+
+        cms::cert::AnchorPlanInput plan_input;
+        plan_input.named_issuers = config.issuer_ids;
+        plan_input.held_anchor_ids = cms::cert::heldAnchorIds(held);
+        plan_input.trust_anchor_option = true;
+        const auto plan = cms::cert::planAnchors(plan_input);
+
+        // Downloading trust anchors bootstraps trust, so the operator must identify the expected
+        // authorities out of band. Require --issuer (or EPICS_PVA_AUTH_ISSUER) and verify each
+        // delivered authority matches before storing, so a substituted one is never trusted (#18).
+        if (!plan.refusal.empty()) {
+            std::cerr << plan.refusal << std::endl;
             return 14;
         }
 
-        // Retrieving a trust anchor is the moment trust is decided, and there is nothing pinned
-        // to decide it against, so the identifier given has to be the whole one.
+        AuthNStd authenticator{};
+        std::vector<CertData> retrieved;
         try {
-            certs::requireCompleteIssuerId(config.issuer_id);
+            for (const auto &issuer_id : config.issuer_ids) {
+                // Retrieving a trust anchor is the moment trust is decided. An authority the
+                // keychain already holds is decided against the held value, so a short form
+                // names it; one it does not hold is decided by the name alone.
+                certs::requireCompleteUnlessHeld(issuer_id, plan_input.held_anchor_ids);
+                // Nothing is written until every named authority has answered, so a keychain is
+                // never left holding whichever subset did.
+                retrieved.push_back(certs::retrieveTrustAnchor(authenticator, config, cert_usage, issuer_id));
+            }
         } catch (const std::exception &e) {
             std::cerr << e.what() << std::endl;
             return 14;
         }
 
-        // Create a keychain file from a trust anchor
-        AuthNStd authenticator{};
-        auto credentials = authenticator.getCredentials(config, !IS_FOR_A_SERVER_(cert_usage));
-        auto cert_creation_request = authenticator.createCertCreationRequest(credentials, nullptr, cert_usage, config);
-        time_t renew_by;
-        std::string p12_pem_string;
-        std::tie(renew_by, p12_pem_string) = authenticator.processCertificateCreationRequest(cert_creation_request, config.getCertPvPrefix(), config.issuer_id, config.getRequestTimeout());
+        try {
+            std::vector<X509 *> anchors_to_hold;
+            for (const auto &delivered : retrieved) {
+                if (X509 *const anchor = certs::anchorFromReply(delivered)) anchors_to_hold.push_back(anchor);
+            }
 
-        // If the certificate was created successfully, write it to the keychain file
-        if (!p12_pem_string.empty()) {
-            auto file_factory = IdFileFactory::create(tls_keychain_file, tls_keychain_pwd, nullptr, nullptr, nullptr, p12_pem_string);
+            // The identity already in the file is kept, so the chain is laid out around it and
+            // the reset is refused outright when it would leave that identity unverifiable.
+            const auto chain = cms::cert::chainForAnchorReset(held, anchors_to_hold);
 
-            // Verify the delivered authority is the one the operator specified, before writing.
-            verifyDeliveredIssuerId(file_factory->getCertData(nullptr), config.issuer_id);
-
-            // Attempt to write the certificate and private key to a cert file protected by the configured password
-            file_factory->writeIdentityFile();
-            std::cout << "Trust Anchor retrieved"<< std::endl;
-            return -1;
+            IdFileFactory::create(tls_keychain_file, tls_keychain_pwd, held.key_pair, held.cert.get(), chain.get(), "")
+                ->writeIdentityFile();
+        } catch (const std::exception &e) {
+            std::cerr << e.what() << std::endl;
+            return 14;
         }
-        std::cerr << "Failed to retrieve Trust Anchor" << std::endl;
-        return 14;
+
+        std::cout << "Trust Anchor retrieved"<< std::endl;
+
+        // The anchors are listed whenever the set or the primary ends up different from what it
+        // was, because nothing in the file marks which anchor is primary.
+        const auto written = certs::readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
+        if (cms::cert::trustChanged(held, written)) cms::cert::printAnchorListing(written, std::cout);
+        return -1;
     }
 
     return 0;
