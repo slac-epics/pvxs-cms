@@ -2238,30 +2238,61 @@ run_in ml-manager as admin bash -c '
 run_in lab-manager as admin bash -c '
     cd /tmp
     openssl pkcs12 -in /certs/lab_intermediate.p12 -nokeys -passin pass: -out chain.pem
+    rm -f part-*.pem
     awk "/BEGIN CERTIFICATE/{n++} n{print > (\"part-\" n \".pem\")}" chain.pem
     for f in part-*.pem; do
         s=$(openssl x509 -in $f -noout -subject_hash)
         i=$(openssl x509 -in $f -noout -issuer_hash)
         [ "$s" = "$i" ] && cp $f lab_root.pem
-    done'
+    done
+    openssl x509 -in lab_root.pem -noout -subject -issuer'
 ```
 
-Bring both roots onto one machine with `podman cp`, then join them and export the pair.
-The one written first becomes the primary anchor, as the first issuer named to the tool
-does. `-jdktrust anyExtendedKeyUsage` adds the Oracle trusted key usage attribute the
-tool puts on both anchors, and with it the two files are structurally identical. Without
-it the file still works here, because an anchor is recognized by being self-signed, but
-a Java consumer reads that attribute, and Java is where the next subsection picks up.
+The two roots are now on two different containers, so bring the ML one across. Ask
+podman which container is running a service rather than assuming its name, because
+compose names containers after the project directory:
 
 ```sh
-cat lab_root.pem ml_root.pem > roots.pem
-openssl pkcs12 -export -nokeys -jdktrust anyExtendedKeyUsage \
-    -in roots.pem -out trust_anchors.p12 -passout pass:
+ML=$(podman ps --filter label=com.docker.compose.service=pvxs-lab-ml --format '{{.Names}}')
+CMS=$(podman ps --filter label=com.docker.compose.service=pvxs-lab-pvacms --format '{{.Names}}')
+podman cp "${ML}:/tmp/ml_root.pem" ml_root.pem
+podman cp ml_root.pem "${CMS}:/tmp/ml_root.pem"
+```
+
+Then join the pair and export it, on the machine that now holds both. The one written
+first becomes the primary anchor, as the first issuer named to the tool does.
+`-jdktrust anyExtendedKeyUsage` adds the Oracle trusted key usage attribute the tool
+puts on both anchors, and with it the two files are structurally identical. Without it
+the file still works here, because an anchor is recognized by being self-signed, but a
+Java consumer reads that attribute, and Java is where the next subsection picks up.
+
+```sh
+run_in lab-manager as admin bash -c '
+    cd /tmp
+    cat lab_root.pem ml_root.pem > roots.pem
+    openssl pkcs12 -export -nokeys -jdktrust anyExtendedKeyUsage \
+        -in roots.pem -out trust_anchors.p12 -passout pass:'
 ```
 
 Put that file where the holder's `EPICS_PVA_TLS_KEYCHAIN` points, which for the lab
-workstation is `/home/guest/.config/pva/1.5/client.p12`, owned by `guest`, then read it
-back with `pvxcert -f`, which prints the anchors primary first and changes nothing.
+workstation is `/home/guest/.config/pva/1.5/client.p12`, and give it to the holder:
+
+```sh
+LAB=$(podman ps --filter label=com.docker.compose.service=lab-client --format '{{.Names}}')
+podman cp "${CMS}:/tmp/trust_anchors.p12" trust_anchors.p12
+podman cp trust_anchors.p12 "${LAB}:/home/guest/.config/pva/1.5/client.p12"
+podman exec "${LAB}" chown guest:guest /home/guest/.config/pva/1.5/client.p12
+```
+
+Reading it back changes nothing, and names the anchors primary first:
+
+```sh
+run_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
+#   No identity certificate; trust anchors only:
+#   Primary Root CA         : CN=EPICS Lab Root Certificate Authority, C=US, O=certs.epics.org, OU=epics.org Certificate Authority
+#   Trusted Root CA         : CN=EPICS ML Root Certificate Authority, OU=epics.org Certificate Authority, O=certs.epics.org, C=US
+```
+
 Every wrong build fails quietly, so that reading is the only real check:
 
 - **A password other than the empty one.** The file is not read as a keychain at all:
