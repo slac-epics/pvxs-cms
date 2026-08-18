@@ -25,4 +25,15 @@ dir="/home/${user}/.config/pva/1.5"
 mkdir -p "${dir}"
 chown -R "${user}" "${dir}"
 
+# The trust anchors, where a laboratory hands them over rather than leaving them to be
+# fetched. A controller stands on its own department's segment and can reach nothing beyond
+# it, so it cannot ask the department next door for its root; in a laboratory whose
+# departments share no root it has to hold that root to verify a certificate signed under it.
+# So the file is placed here before the controller asks for an identity: what it then receives
+# is added to a keychain that already holds both anchors, and asking for an identity never
+# removes one.
+if [ -r /certs/trust_anchors.p12 ] && [ ! -s "${dir}/server.p12" ]; then
+    install -m 600 -o "${user}" /certs/trust_anchors.p12 "${dir}/server.p12"
+fi
+
 exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf

@@ -1,0 +1,64 @@
+# Machine learning department controller access control for the ml: variables.
+#
+# The mirror of the lab's testioc.acf, with the departments the other way round. This
+# department signs with its root directly, so ML_CA is both the root and the issuing
+# authority; the lab's intermediate is named where a rule wants that department alone.
+#   READ  open to everyone, from either department.
+#   WRITE guests and operators under this department's root; under the lab intermediate,
+#         operators alone.
+#   ml:open  any certificate holder from either department.
+
+AUTHORITY(LAB_CA, "EPICS Lab Root Certificate Authority") {
+    AUTHORITY(AUTH_LAB, "EPICS Controls Intermediate CA")
+}
+AUTHORITY(ML_CA, "EPICS ML Root Certificate Authority")
+
+UAG(OPERATORS) {
+    "gateway",
+    "operator",
+    "mloperator"
+}
+
+UAG(GUESTS) {
+    "guest",
+    "mlsystem"
+}
+
+# The two gateways, by the common name each presents when it forwards a request upstream.
+UAG(GATEWAYS) {
+    "gateway",
+    "ml-gateway"
+}
+
+# A variable any certificate holder may write, from either department. See testioc.acf's
+# ASG(OPEN) for why the gateway is named as well as the holder.
+ASG(OPEN) {
+    RULE(1,READ)
+    RULE(1,WRITE,TRAPWRITE) {
+        AUTHORITY(LAB_CA, ML_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(GATEWAYS)
+        AUTHORITY(LAB_CA, ML_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
+
+ASG(DEFAULT) {
+    RULE(1,READ)
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(OPERATORS,GUESTS)
+        AUTHORITY(ML_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(OPERATORS)
+        AUTHORITY(AUTH_LAB)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}

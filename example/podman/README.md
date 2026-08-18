@@ -77,10 +77,6 @@ on a relative link with ?raw=true, showing an error page instead of following th
 Absolute means the branch is hardcoded - update it here when this work moves off
 scratch/fy26-four-topologies. -->
 
-**Three of the four are built today**, all but `federated-non-shared-root`. That one is drawn,
-and `./reset.sh` says so and stops when you name it. What building it needs is written at the
-top of `topologies/federated-non-shared-root/compose.yaml`.
-
 ## Installation
 
 **1. Install podman.** The image build scripts call `docker`, so the shim is needed too.
@@ -1890,41 +1886,41 @@ that exercises the capability the other three do without.
 The picture is wide. Click it to open the raw file, which the browser renders full size and
 zoomable: every access rule and process variable list is readable there.
 
-**This laboratory is drawn but not built yet**, and `./reset.sh federated-non-shared-root` says
-so and stops. What building it needs is written at the top of
-`topologies/federated-non-shared-root/compose.yaml`. The walkthrough below is written from the
-drawing, and has not been run against a laboratory because there is not one yet: expect to
-correct details here when the laboratory is first built.
-
 ## The shape, and the paths through it
 
-What the drawing commits to, and where the pieces will live:
-
-- **Four segments, not five.** `net-lab` (10.89.0.0/24), `net-ml` (10.89.1.0/24), the DMZ
-  `net-perimeter` (10.89.2.0/24), and `net-internet` (10.89.4.0/24) outside. There is no
-  `net-it` and no responder: neither root names one, and revoking a root is Part 3's
-  demonstration, shown once where the shared root gives it the most to stop.
+- **Three segments.** `net-lab` (10.89.0.0/24), `net-ml` (10.89.1.0/24), and `net-internet`
+  (10.89.4.0/24) outside the facility. There is no perimeter network and no responder: neither
+  root names one, and revoking a root is Part 3's demonstration, shown once where the shared
+  root gives it the most to stop. Withdrawing a department here is rotating its root away, on
+  that department's own schedule.
 - **Two authority groups, and nothing above them.** The lab root, `certs/lab_root.p12`, signs
   the lab intermediate, `certs/lab_intermediate.p12`, and the lab certificate manager signs
   with the intermediate. The machine learning root, `certs/ml_root.p12`, is held by that
   department's certificate manager and signs every certificate itself. The two departments are
   free to differ in depth precisely because neither root constrains the other.
-- **Each department names the other's gateway directly.** A workstation finds its own
-  department by address list and names the far department's gateway as its name server -
-  `pvxs-lab-ml-gateway:5175` from the lab, `pvxs-lab-gateway:5075` from the machine learning
-  side - reached across the DMZ through its department's router. The facility address serves
-  only the workstation outside: `facility:5075` and `:5076` map to the lab gateway,
-  `facility:5175` and `:5176` to the machine learning gateway, port for port as in Parts 2
-  and 3.
+- **No facility address: each gateway is reached by its own name.** Both stand on
+  `net-internet` with an address each and serve on the usual two ports, 5075 and 5076. A
+  workstation finds its own department by address list and names the far department's gateway
+  as its name server - `pvxs-lab-ml-gateway:5075` from the lab, `pvxs-lab-gateway:5075` from
+  the machine learning side. The workstation outside the facility names both.
 - **Certificate traffic crosses keyed by issuer id.** Each gateway's process variable list
   forwards the `CERT:CREATE`, `CERT:STATUS` and `CERT:LIST` names that carry its own
   department's issuer id and no other, so a request about a certificate reaches the department
   that issued it, wherever the request is made.
-- **The configuration to write**, beside `topologies/federated-non-shared-root/compose.yaml`,
-  with its full text already in the picture: `config/pvacms-lab.acf` and `config/pvacms-ml.acf`
-  for the two certificate managers, and a configuration and process variable list per gateway -
-  `config/gateway-lab.conf`, `config/gateway-lab.pvlist`, `config/gateway-ml.conf`,
-  `config/gateway-ml.pvlist`.
+- **A controller is handed both roots rather than fetching them.** A controller stands on its
+  own department's segment and reaches nothing beyond it, so it can never ask the department
+  next door for that department's root. `./reset.sh` writes both roots into
+  `certs/trust_anchors.p12`, and each controller and gateway starts with that file as its
+  keychain; the identity it is then issued is added to the anchors already there. A
+  workstation is left out of that on purpose, because establishing trust by hand is what
+  section 12 below is for.
+
+The configuration is beside `topologies/federated-non-shared-root/compose.yaml`, with its full
+text also in the picture: `config/pvacms-lab.acf` and `config/pvacms-ml.acf` for the two
+certificate managers, `config/testioc.acf`, `config/tstioc.acf` and `config/mlioc.acf` for the
+controllers, `config/gateway.acf` for both gateways, and a configuration and process variable
+list per gateway - `config/gateway-lab.conf`, `config/gateway-lab.pvlist`,
+`config/gateway-ml.conf`, `config/gateway-ml.pvlist`.
 
 ## 11. Two roots, and nothing above them
 
@@ -1935,32 +1931,50 @@ run_in lab-manager as admin pvxcert -l --where "type:ROOT_AUTH or type:CERT_AUTH
 run_in ml-manager  as admin pvxcert -l --where "type:ROOT_AUTH or type:CERT_AUTH"
 ```
 
+```
+#   the lab department
+#   b5f3fd43:00000000009876543211  CERT_AUTH  CN=EPICS Controls Intermediate CA ...       VALID    ...
+#   2f334a82:00000000009876543210  ROOT_AUTH  CN=EPICS Lab Root Certificate Authority ... UNKNOWN  ... EXTERN
+#
+#   the machine learning department
+#   163220e9:00002379821171927025  CERT_AUTH  CN=EPICS ML Root Certificate Authority ...  VALID    ...
+#   163220e9:00002379821171927025  ROOT_AUTH  CN=EPICS ML Root Certificate Authority ...  UNKNOWN  ... EXTERN
+```
+
 In Part 3 those two listings shared their `ROOT_AUTH` row down to its identifier, and that one
-shared row was the whole arrangement. Here no row appears in both. The lab lists its own root
-and the intermediate beneath it; the machine learning department lists one authority only, its
-root, because that root signs directly. And both root rows read `EXTERN` rather than
-`EXTERN OCSP`: neither root names a responder, so there is nothing here for section 10's
-revocation to reach. Withdrawing a department here is rotating its root away, on that
-department's own schedule.
+shared row was the whole arrangement. Here no row appears in both. The lab lists two
+certificates, its root and the intermediate beneath it. The machine learning department lists
+one certificate under both headings: its root is the authority it signs with as well as the
+authority everything terminates at, so the same row answers to `CERT_AUTH` and to `ROOT_AUTH`,
+identifier and all.
+
+Two columns say the rest of it. Both root rows read `EXTERN` in the request column, where Part
+3 reads `EXTERN OCSP`: neither root names a responder, so there is nothing here for section
+10's revocation to reach. And both roots read `UNKNOWN` rather than `VALID`, which is not a
+fault. A root has no status channel of its own, and an answer carried over a connection it
+underwrites would be worth nothing; Part 3's root can be asked about only because it names a
+responder, and these two name none.
 
 ## 12. One identity, many trust anchors
 
 With no root above the two, nothing a certificate carries can prove the other department's
 authority is worth trusting. What does that work instead is the keychain: it holds exactly one
 identity, and one or more trust anchors, and in this laboratory every keychain holds both
-roots. `./reset.sh` provisions that at start, as it distributed one identifier in the other
-laboratories. Doing it by hand is Part 1's task with the one difference that is the point of
-this part: there are two to give, and giving the second must not take away the first.
+roots. The controllers and the gateways were handed both when the laboratory was built, out of
+band, because a controller can reach nothing outside its own department and could not fetch
+the second one if it wanted to. A workstation was not, so doing it by hand is what follows. It
+is Part 1's task with the one difference that is the point of this part: there are two to
+give, and giving the second must not take away the first.
 
 Both authorities are named to one command, because `--trust-anchor` replaces the whole anchor
 set with the list it is given. Run as two commands the second would reset the set to the machine
-learning root alone, and the laboratory root given first would be gone.
+learning root alone, and the lab root given first would be gone.
 
 ```sh
 run_in lab as guest authnstd --trust-anchor --issuer "${LAB_SKID} ${ML_SKID}"
 #   Trust Anchor retrieved
-#   Primary Root CA         : CN=EPICS Lab Root Certificate Authority, O=epics.org, C=US
-#   Trusted Root CA         : CN=EPICS ML Root Certificate Authority, O=epics.org, C=US
+#   Primary Root CA         : CN=EPICS Lab Root Certificate Authority, C=US, O=certs.epics.org, OU=epics.org Certificate Authority
+#   Trusted Root CA         : CN=EPICS ML Root Certificate Authority, OU=epics.org Certificate Authority, O=certs.epics.org, C=US
 ```
 
 `--issuer` is given once and carries a list, separated by whitespace or by a comma, so these two
@@ -1987,15 +2001,30 @@ no identity it is the first anchor named. Both roots are in the file now:
 run_in lab as guest bash -c \
   'openssl pkcs12 -in /home/guest/.config/pva/1.5/client.p12 -passin pass: -nokeys \
    | grep subject'
-#   ...CN=EPICS Lab Root Certificate Authority
-#   ...CN=EPICS ML Root Certificate Authority
+#   subject=CN=EPICS Lab Root Certificate Authority, C=US, O=certs.epics.org, OU=epics.org Certificate Authority
+#   subject=CN=EPICS ML Root Certificate Authority, OU=epics.org Certificate Authority, O=certs.epics.org, C=US
 ```
 
-Then ask for the identity. With both anchors already held, trust is established and the
-eight-digit form is enough - it now only names which department to ask:
+Then ask the lab department for the identity. Name it by the eight-digit form first, because
+that is what a reader coming from Part 3 will reach for, and it is refused:
 
 ```sh
 run_in lab as guest authnstd -u client --issuer ${LAB}
+#   The issuer 'b5f3fd43' is only 8 of the 40 digits of a subject key identifier, which is
+#   not enough to decide which certificate authority to trust. Nothing is trusted yet, so
+#   this identifier is the only thing deciding it. ...
+```
+
+A short form is accepted for an authority the keychain already holds, because the whole
+identifier in the file is then what the comparison runs against. What the file holds is the
+two **roots**. The lab certificate manager signs with an intermediate, and an intermediate is
+a different certificate with an identifier of its own, so `${LAB}` names something the file
+does not hold and the whole identifier is required. The machine learning department is the
+other way round: it signs with its root, that root is one of the anchors, and its short form
+is accepted - which is exactly what the next section does.
+
+```sh
+run_in lab as guest authnstd -u client --issuer ${LAB_SKID}
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 ```
 
@@ -2007,34 +2036,53 @@ standing of a certificate the other one issued.
 ### Asking the other department does not take away what is already trusted
 
 This is the case a reader is most likely to get wrong, so it is worth doing once deliberately.
-Ask the machine learning department for a certificate against the keychain that already trusts
-both roots:
+The guest at the lab workstation keeps a second keychain for the certificate the machine
+learning department issues them, which `run_in lab as ml/guest` selects. Give that file the
+same two anchors, then ask the machine learning department for the identity:
 
 ```sh
-run_in lab as guest authnstd -u client --force --issuer ${ML_SKID}
+run_in lab as ml/guest authnstd --trust-anchor --issuer "${LAB_SKID} ${ML_SKID}"
+#   Trust Anchor retrieved
+#   Primary Root CA         : CN=EPICS Lab Root Certificate Authority, C=US, O=certs.epics.org, OU=epics.org Certificate Authority
+#   Trusted Root CA         : CN=EPICS ML Root Certificate Authority, OU=epics.org Certificate Authority, O=certs.epics.org, C=US
+
+run_in lab as ml/guest authnstd -u client --issuer ${ML}
 run_in ml-manager as admin pvxcert --review-pending --all approve --yes
-#   Keychain file created   : /home/guest/.config/pva/1.5/client.p12
+#   Keychain file created   : /home/guest/.config/pva/1.5/ml.p12
 #   Certificate identifier  : <ml issuer>:<serial>
-#   Primary Root CA         : CN=EPICS ML Root Certificate Authority, O=epics.org, C=US
-#   Trusted Root CA         : CN=EPICS Lab Root Certificate Authority, O=epics.org, C=US
+#   Primary Root CA         : CN=EPICS ML Root Certificate Authority, OU=epics.org Certificate Authority, O=certs.epics.org, C=US
+#   Trusted Root CA         : CN=EPICS Lab Root Certificate Authority, C=US, O=certs.epics.org, OU=epics.org Certificate Authority
 ```
 
-Nothing was dropped. The anchor set is the same two roots it was, and the listing appears
-because the primary moved: the new identity was minted by the machine learning department, so
-that department's root is the one it chains to. Reading the file back shows both still there:
+Two things happened there. The eight-digit `${ML}` was accepted, because the machine learning
+department signs with its root and that root is an anchor the file already holds. And nothing
+was dropped: the anchor set is the same two roots it was. The listing appears because the
+primary moved - the new identity was minted by the machine learning department, so that
+department's root is the one it chains to, where before the file held no identity and the
+primary was simply the first anchor named. Reading the file back shows both still there:
 
 ```sh
-run_in lab as guest bash -c \
-  'openssl pkcs12 -in /home/guest/.config/pva/1.5/client.p12 -passin pass: -nokeys \
+run_in lab as ml/guest bash -c \
+  'openssl pkcs12 -in /home/guest/.config/pva/1.5/ml.p12 -passin pass: -nokeys \
    | grep subject'
-#   ...CN=EPICS ML Root Certificate Authority
-#   ...CN=EPICS Lab Root Certificate Authority
+#   subject=CN=guest, O=epics.org, C=US
+#   subject=CN=EPICS ML Root Certificate Authority, OU=epics.org Certificate Authority, O=certs.epics.org, C=US
+#   subject=CN=EPICS Lab Root Certificate Authority, C=US, O=certs.epics.org, OU=epics.org Certificate Authority
 ```
 
 Naming a second issuer on a request like that one means nothing and says so: only the first is
 asked to mint, and a second that the keychain does not already trust is named in a warning
 rather than added. Adding an anchor is an act of establishing trust, so it takes
-`--trust-anchor`, or a keychain that holds no anchor yet.
+`--trust-anchor`, or a keychain that holds no anchor yet. The warning reads:
+
+```
+Ignoring issuer '<the one passed over>': a certificate request is made against the first
+issuer named, and adding a trust anchor needs --trust-anchor.
+```
+
+An authority the keychain already trusts is passed over without a word, rather than warned
+about, because a site is expected to leave `EPICS_PVA_AUTH_ISSUER` set to its whole trusted
+list and a warning on every ordinary request would teach people to ignore this one.
 
 ### A limit worth knowing before you meet it
 
@@ -2059,20 +2107,30 @@ run_in ml-ioc  as mlioc   authnstd -u ioc
 run_in gateway    as gateway authnstd -u ioc
 run_in ml-gateway as gateway authnstd -u ioc -n ml-gateway
 
-# the people: three keychains at the lab workstation, two of them issued next door
+# the operator's two keychains at the lab workstation, one of them issued next door.
+# The guest's two were made in section 12.
 run_in lab as operator    authnstd -u client
-run_in lab as ml/operator authnstd -u client --issuer ${ML_SKID}
-run_in lab as ml/guest    authnstd -u client --issuer ${ML_SKID}
+run_in lab as ml/operator authnstd -u client --issuer "${ML_SKID} ${LAB_SKID}"
 
 # each department approves its own, and is offered nothing else
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
 run_in ml-manager  as admin pvxcert --review-pending --all approve --yes
 ```
 
-The two `ml/` requests are themselves the first crossing. Each is a `CERT:CREATE` carrying the
-machine learning issuer id, resolved through the lab workstation's name server - the machine
-learning gateway - and forwarded because that gateway's process variable list names that
-issuer, which is what "keyed by issuer id" means in practice.
+Each certificate manager will issue one certificate per subject, so `CN=guest` exists once in
+each department. That is why section 12's two requests are the guest's whole allowance, and
+why only the operator asks again here.
+
+The `ml/operator` request is a crossing. It is a `CERT:CREATE` carrying the machine learning
+issuer id, resolved through the lab workstation's name server - the machine learning gateway -
+and forwarded because that gateway's process variable list names that issuer, which is what
+"keyed by issuer id" means in practice. It names both authorities because the file is new and
+holds neither: the first is asked to mint, and the second joins the anchors, which is the one
+moment on an ordinary request when naming two means anything.
+
+The controllers and the gateways name only their own department, because both roots were put
+into their keychains when the laboratory was built. Each prints the anchor listing when it is
+issued, and both roots are in it.
 
 Then restart the controllers, wait for them to answer over TLS, and restart the gateways after
 them, exactly the discipline Parts 2 and 3 established:
@@ -2082,11 +2140,16 @@ podman-compose -p podman -f topologies/federated-non-shared-root/compose.yaml \
     restart pvxs-lab-testioc pvxs-lab-tstioc pvxs-lab-ml-ioc
 
 run_in lab as operator pvxinfo -v test:aiExample | grep '^#'
-#   TLS and port 5076 is ready; anonymous on 5075 is not yet
+#   # TLS x509:b5f3fd43:...:EPICS Lab Root Certificate Authority -> EPICS Controls
+#     Intermediate CA/testioc@10.89.0.109:5076
 
 podman-compose -p podman -f topologies/federated-non-shared-root/compose.yaml \
     restart pvxs-lab-gateway pvxs-lab-ml-gateway
 ```
+
+The controller is ready when that line says TLS. It is later than its certificate reading
+`VALID`, so wait for the line rather than for a fixed count of seconds; restarting the
+gateways before the controllers are serving is what leaves a gateway forwarding nothing.
 
 ## 13. A certificate from next door still verifies
 
@@ -2129,7 +2192,8 @@ authority:
 ASG(DEFAULT) {
     RULE(1,READ)
     RULE(1,WRITE,TRAPWRITE) { UAG(OPERATORS,GUESTS) AUTHORITY(AUTH_LAB) PROTOCOL(TLS) METHOD(X509) }
-    RULE(1,WRITE,TRAPWRITE) { UAG(OPERATORS)        AUTHORITY(ML_CA)   PROTOCOL(TLS) METHOD(X509) }
+    RULE(1,WRITE,TRAPWRITE) { UAG(OPERATORS)        AUTHORITY(ML_CA)    PROTOCOL(TLS) METHOD(X509) }
+    ...                                    a third rule admits the beamline unit; not this section
 }
 ```
 

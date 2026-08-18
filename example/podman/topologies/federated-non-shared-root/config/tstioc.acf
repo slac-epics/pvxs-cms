@@ -1,0 +1,37 @@
+# Lab controller access control for the tst: variables.
+#
+# The same per-department authorisation as testioc.acf beside it, without the special
+# variables. See that file for the full explanation of the two authority groups.
+#   READ  open to everyone, from either department.
+#   WRITE guests and operators under the lab's own intermediate; under the machine learning
+#         root, operators alone.
+
+AUTHORITY(LAB_CA, "EPICS Lab Root Certificate Authority") {
+    AUTHORITY(AUTH_LAB, "EPICS Controls Intermediate CA")
+}
+AUTHORITY(ML_CA, "EPICS ML Root Certificate Authority")
+
+UAG(OPERATORS) {
+    "gateway",
+    "operator"
+}
+
+UAG(GUESTS) {
+    "guest"
+}
+
+ASG(DEFAULT) {
+    RULE(1,READ)
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(OPERATORS,GUESTS)
+        AUTHORITY(AUTH_LAB)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(OPERATORS)
+        AUTHORITY(ML_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}

@@ -32,7 +32,6 @@ _usage() {
     for t in ${TOPOLOGY_NAMES}; do
         var="TOPOLOGY_${t//-/_}_TITLE"
         printf '    %-28s %s\n' "${t}" "${!var}" >&2
-        [ -e "topologies/${t}/.stub" ] && printf '    %-28s %s\n' "" "(not built yet)" >&2
     done
     exit 2
 }
@@ -54,20 +53,6 @@ case " ${TOPOLOGY_NAMES} " in
     *" ${topology} "*) ;;
     *) echo "./reset.sh: no topology called '${topology}'" >&2; _usage ;;
 esac
-
-if [ -e "topologies/${topology}/.stub" ]; then
-    echo "'${topology}' is drawn but not built yet." >&2
-    echo >&2
-    echo "Its picture is topology/topology-${topology}.svg, and what building it needs is" >&2
-    echo "written at the top of topologies/${topology}/compose.yaml." >&2
-    echo >&2
-    _built=
-    for t in ${TOPOLOGY_NAMES}; do
-        [ -e "topologies/${t}/.stub" ] || _built="${_built} ${t}"
-    done
-    echo "Built today:${_built}." >&2
-    exit 2
-fi
 
 # podman-compose names everything it makes after the directory this file sits in. The name is
 # pinned rather than taken from the compose file's own directory, so every topology makes and
@@ -178,6 +163,11 @@ _bring_up() {
 # where there is none.
 _places=$(eval "printf '%s' \"\${TOPOLOGY_${topology//-/_}_PLACES}\"")
 _has() { case " ${_places} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
+# A responder answers for a root that names one, and only a laboratory with a facility root
+# has one to answer for. Asked of the compose file rather than of a list kept in step by hand,
+# because the compose file is what decides whether the container exists.
+_has_responder() { _compose config --services 2>/dev/null | grep -q -- '-authority-status'; }
 
 # Each returns non-zero and says where to look. They ask the laboratory the same questions a
 # person would, rather than inspecting anything's insides.
@@ -348,7 +338,7 @@ if [ -n "${_gateways}" ]; then
     sleep 8
 fi
 
-if _has ml-manager; then
+if _has_responder; then
     echo "==> checking the facility root can be established"
     _check_responder
 fi
@@ -374,7 +364,7 @@ if [ "${new_authorities}" = yes ]; then
 fi
 echo "The ${topology} laboratory is up with no certificates issued, and this much was just"
 echo "checked:"
-_has ml-manager && echo "    the responder answers for the facility root"
+_has_responder && echo "    the responder answers for the facility root"
 echo "    each certificate manager answers its administrator"
 if _has perimeter; then
     echo "    reading works, from every department and from outside"
