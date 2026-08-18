@@ -2218,6 +2218,62 @@ An authority the keychain already trusts is passed over silently rather than war
 about, because a site is expected to leave `EPICS_PVA_AUTH_ISSUER` set to its whole
 trusted list.
 
+### Reference: build the two anchor keychain by hand
+
+> **Nothing in this subsection is part of the walkthrough either. Do not run it here.**
+> It overwrites the guest keychain that the rest of Part 4 depends on.
+
+Part 1's [reference on handing over the authority
+certificate](#reference-hand-over-the-authority-certificate) gives the reasons, which
+hold here with two anchors rather than one. The trap: `${LAB_SKID}` names the lab
+**intermediate**, so the certificate it names is not the one to export. The tool
+resolves that identifier up to the root and stores the root, because a keychain holds
+roots. The ML department's authority keychain holds its root directly; the lab's holds a
+two certificate chain, whose root is the one whose subject hash equals its issuer hash.
+
+```sh
+run_in ml-manager as admin bash -c '
+    openssl pkcs12 -in /certs/ml_root.p12 -nokeys -passin pass: -out /tmp/ml_root.pem
+    openssl x509 -in /tmp/ml_root.pem -noout -subject -issuer'
+run_in lab-manager as admin bash -c '
+    cd /tmp
+    openssl pkcs12 -in /certs/lab_intermediate.p12 -nokeys -passin pass: -out chain.pem
+    awk "/BEGIN CERTIFICATE/{n++} n{print > (\"part-\" n \".pem\")}" chain.pem
+    for f in part-*.pem; do
+        s=$(openssl x509 -in $f -noout -subject_hash)
+        i=$(openssl x509 -in $f -noout -issuer_hash)
+        [ "$s" = "$i" ] && cp $f lab_root.pem
+    done'
+```
+
+Bring both roots onto one machine with `podman cp`, then join them and export the pair.
+The one written first becomes the primary anchor, as the first issuer named to the tool
+does. `-jdktrust anyExtendedKeyUsage` adds the Oracle trusted key usage attribute the
+tool puts on both anchors, and with it the two files are structurally identical. Without
+it the file still works here, because an anchor is recognized by being self-signed, but
+a Java consumer reads that attribute, and Java is where the next subsection picks up.
+
+```sh
+cat lab_root.pem ml_root.pem > roots.pem
+openssl pkcs12 -export -nokeys -jdktrust anyExtendedKeyUsage \
+    -in roots.pem -out trust_anchors.p12 -passout pass:
+```
+
+Put that file where the holder's `EPICS_PVA_TLS_KEYCHAIN` points, which for the lab
+workstation is `/home/guest/.config/pva/1.5/client.p12`, owned by `guest`, then read it
+back with `pvxcert -f`, which prints the anchors primary first and changes nothing.
+Every wrong build fails quietly, so that reading is the only real check:
+
+- **A password other than the empty one.** The file is not read as a keychain at all:
+  `authnstd` renames it aside and fetches the authority over the network, which is what
+  handing a file over exists to avoid.
+- **The private key left in.** That hands out the power to issue certificates rather
+  than the ability to trust them.
+- **An intermediate taken for a root.** The file then holds two certificates and one
+  anchor, and nothing complains. Reading it back is the only check that catches it.
+- **A directory that is not writable.** What has to be writable is the directory, not
+  the file: the tool renames the old keychain aside and writes a new one.
+
 ### pk12util strips extra anchors
 
 A keychain holding several anchors does not survive an export through Network Security
