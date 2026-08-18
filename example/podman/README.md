@@ -47,12 +47,14 @@
 
 | | |
 |---|---|
-| **Two departments** | Each runs its own PVACMS, signing with its own intermediate certificate authority, holding only the certificates it issued |
-| **One facility root** | Both intermediates are signed by it, so a certificate from either department is trusted laboratory-wide, while authorisation stays per department |
-| **Real network separation** | Up to five podman networks, each isolated from the others, so a department's PVACMS cannot be reached from outside it even by address, and discovery and name resolution stop at a segment too |
-| **Gateways on the boundary** | The only route between departments, enforced rather than configured. Each forwards its own department's IOC process variables, and its certificate traffic keyed by issuer id |
-| **Administration** | Listing, filtering, request identifiers, approval in batches or one at a time, denial and revocation, all restricted to administrators |
-| **Revoking the authority** | The root names a responder that publishes its own revocation, and every certificate beneath a revoked root reports a state that says so rather than claiming its own revocation |
+| **What a certificate is worth** | The difference between reading and writing, the group it puts you in deciding which writes, and the moment PVACMS revokes it. Part 1 shows it on one segment, where nothing else can be the cause |
+| **Establishing trust out of band** | An authority's whole identifier, or the authority itself, has to reach a holder by a path the laboratory does not underwrite. Part 1 hands over one; Part 4 puts two in the same keychain, and an ordinary request adds to that set rather than replacing it |
+| **Administration** | Listing and filtering are open to anyone. Request identifiers, approval in batches or one at a time, denial and revocation are for administrators, with the one exception that a holder may revoke their own |
+| **Real network separation** | One to five podman networks, each isolated from the others, so a PVACMS cannot be reached from outside its own segment even by address, and discovery and name resolution stop at a segment too |
+| **Gateways on the boundary** | The only way in, enforced rather than configured. A request that crosses is judged twice, at the gateway against your certificate and at the IOC against the gateway's. Parts 2, 3 and 4 |
+| **Two ways to federate** | Part 3 puts two departments under one facility root, so a certificate from either is trusted everywhere and only the issuing department can withdraw it. Part 4 gives each department a root of its own and puts both in every keychain, so trust comes from the anchor list rather than from a shared chain, and each gateway is named directly |
+| **A rule that names a department** | Under one root, by the organizational unit the issuing department vouched for (Part 3). Under two, by the authority itself, a root being a department (Part 4) |
+| **Withdrawing an authority** | A department's own intermediate, revoked by its own administrator, stops that department and no other. The facility root has no status channel of its own, so it names a responder, and every certificate beneath a revoked root reports a state saying so rather than claiming its own revocation. Part 3 |
 
 ## The four laboratories
 
@@ -146,7 +148,8 @@ source the shorthands once:
 source ./helpers.sh
 ```
 
-That defines `run_in`, and reads the two issuer ids into `$LAB` and `$ML`:
+That defines `run_in`, and reads this laboratory's issuer ids into the shell: `$ROOT` where
+one authority issues everything, `$LAB` and `$ML` where each department has its own.
 
 ```
 run_in <place> as <person> [without a certificate] [--show] <command...>
@@ -155,7 +158,7 @@ run_in <place> as <person> [without a certificate] [--show] <command...>
 | Place | Is |
 |---|---|
 | `lab`, `ml` | a workstation inside a department |
-| `perimeter` | a workstation outside both, reaching only the two gateways |
+| `perimeter` | a workstation outside the departments, reaching them only across a boundary |
 | `lab-manager`, `ml-manager` | a department's PVACMS |
 | `testioc`, `tstioc`, `ml-ioc` | an IOC |
 | `gateway`, `ml-gateway` | a department's boundary |
@@ -191,7 +194,10 @@ The other shorthands:
 - `lab_ids` reads the issuer ids into the shell, and `lab_ids_show` prints them.
 - `authority_says` reports what the facility root's responder says about the root, and
   `authority_revoke`, `authority_restore`, `authority_unreachable` and `authority_reachable`
-  change it. Section 10 is what they are for.
+  change it. They belong to Part 3, which is the one laboratory with a responder: the pair
+  that stops and starts it is [When the responder cannot be
+  reached](#when-the-responder-cannot-be-reached), and the pair that changes the answer is
+  section 10.
 
 ---
 
@@ -539,11 +545,12 @@ only to whoever is deciding.
 
 One row in that listing is the trust anchor everything terminates at. Its Type says
 `ROOT_AUTH`, and the column that would carry a request identifier says where its status comes
-from instead. In this laboratory that root was issued by nobody here, so it reads
-`EXTERN`, or `EXTERN OCSP` where the certificate names a responder, which is what section 10
-is about. Part 4 has the other case: a department signing with its own self-signed root reads
-`SELF` there, and every other column matches the row for the same certificate as the authority
-it signs with.
+from instead. In this laboratory PVACMS minted that root itself and keeps it in its own
+records, so the column reads `SELF`: the certificate signed itself, no request was ever made
+for it, and every other column matches the row for the same certificate as the authority it
+signs with. A department standing beneath somebody else's root has nothing recorded to read
+and says `EXTERN` instead, or `EXTERN OCSP` where the root names a responder to be asked, which
+is what Part 3 does. Part 4 puts one department of each kind side by side.
 
 ```sh
 run_in lab-manager as admin pvxcert -l --where "type:ROOT_AUTH"
@@ -638,7 +645,7 @@ run_in lab as guest without a certificate pvxput CERT:STATUS:${ROOT}:0123456789 
 could not match however the user is named.
 
 The view of certificates **awaiting a decision** is gated the same way, at channel creation.
-The guest asks holding the certificate approved in section 2, so what comes back is about who
+The guest asks holding the certificate approved in section 1, so what comes back is about who
 it is rather than about what it presented:
 
 ```sh
@@ -889,9 +896,9 @@ run_in perimeter as guest pvxinfo -v test:open | grep '^#'
 ```
 
 Two things in one line. The identity is `gateway`, because the secure connection is
-established with the gateway and terminates there; the address is `10.89.4.10`, the load
-balancer's, because that is the path the bytes took. Identity comes from the certificate
-presented, and the address from the route, and they name different machines.
+established with the gateway and terminates there; the address is the load balancer's, because
+that is the path the bytes took. Identity comes from the certificate presented, and the address
+from the route, and they name different machines.
 
 **So a request that crosses is judged twice, against two different files.**
 
@@ -1056,10 +1063,10 @@ Three answers in the lab department, two in the ML one, none outside. Read the t
 together and they say the whole addressing arrangement.
 
 **What is missing from the first list is the point.** The lab gateway stands on `net-lab` too,
-at `10.89.0.199`, and it is not there. It serves on its perimeter address alone, so it never
-answers a search on the department behind it - which is what lets discovery be left on without
-a name ever being answered twice, once by the IOC and once by the gateway in front of it. The
-ML gateway is absent from the second list for the same reason.
+with an address of its own there, and it is not in the list. It serves on its perimeter address
+alone, so it never answers a search on the department behind it - which is what lets discovery
+be left on without a name ever being answered twice, once by the IOC and once by the gateway in
+front of it. The ML gateway is absent from the second list for the same reason.
 
 **The third list is empty**, and that is why the workstation outside has name servers and
 nothing else. There is no IOC on `net-internet` to find; the only thing there is the balancer,
@@ -1187,7 +1194,7 @@ run_in lab-manager as idm bash -c \
 #       89:CA:AB:D6:38:05:AA:70:A2:FF:EA:28:32:F0:5F:5B:12:46:B9:63
 ```
 
-> **Every identifier printed in this document came from one run.** Each laboratory mints its
+> **Every identifier printed in this document is an example.** Each laboratory mints its
 > own authorities, and mints them again on `./reset.sh --authorities`, so yours are different.
 > Where a command has to carry one, it is written `${LAB}` or `${LAB_SKID}`, which `lab_ids`
 > fills in from the laboratory in front of you. Where a certificate has to be named, take the
@@ -1890,7 +1897,7 @@ zoomable: every access rule and pvlist is readable there.
 ## The shape, and the paths through it
 
 - **Three segments.** `net-lab` (10.89.0.0/24), `net-ml` (10.89.1.0/24), and `net-internet`
-  (10.89.4.0/24) outside the facility. There is no perimeter network. 
+  (10.89.4.0/24) outside the facility. There is no perimeter network.
 - **Two authority groups.** 
 	- The lab root, `certs/lab_root.p12`, signs the lab intermediate, `certs/lab_intermediate.p12`, 
 	  and the lab PVACMS signs with the intermediate. 
@@ -1901,7 +1908,7 @@ zoomable: every access rule and pvlist is readable there.
   workstation finds its own department by address list and names the far department's gateway
   as its name server - `pvxs-lab-ml-gateway:5075` from the lab, `pvxs-lab-gateway:5075` from
   the ML side. The workstation outside the facility names both.
-- **Certificate traffic crosses keyed by issuer id.** Each gateway's PV list
+- **Certificate traffic crosses keyed by issuer id.** Each gateway's pvlist
   forwards the `CERT:CREATE`, `CERT:STATUS` and `CERT:LIST` names that carry its own
   department's issuer id and no other, so a request about a certificate reaches the department
   that issued it, wherever the request is made.
@@ -1914,13 +1921,13 @@ The configuration is in `topologies/federated-non-shared-root/compose.yaml`:
 - `config/pvacms-lab.acf` and `config/pvacms-ml.acf` for the two PVACMS,
 - `config/testioc.acf`, `config/tstioc.acf` and `config/mlioc.acf` for the IOCs, 
 - `config/gateway.acf` for both gateways, and 
-- a configuration and PV list per gateway 
+- a configuration and pvlist per gateway
 	- `config/gateway-lab.conf`, `config/gateway-lab.pvlist`,
 	- `config/gateway-ml.conf`, `config/gateway-ml.pvlist`.
 
-## 11. Two roots
+## 11. Two roots, and nothing above them
 
-Look before at the two roots:
+Look first at the two roots:
 
 ```sh
 run_in lab-manager as admin pvxcert -l --where "type:ROOT_AUTH or type:CERT_AUTH"
@@ -1986,10 +1993,11 @@ replaces the set with the list named, which is how an explicit new set is writte
 leave the keychain trusting nothing, and neither touches the identity, of which a keychain holds
 exactly one.
 
-The anchors are listed in the output, primary first, if the trust anchor is being established or replaced. 
-Primary is the root the identity chains to, and in a file that holds
-no identity it is the first anchor named and the one that will be used by default to mint the identity certificate. 
-Both roots are in the file now:
+The anchors are listed in the output, primary first, whenever the set or the primary ends up
+different from what it was. Nothing in the file marks which anchor is the primary one, so those
+lines are the only place it is visible. Primary is the root the identity chains to, and in a
+file that holds no identity it is the first anchor named, and the one that will be used by
+default to mint the identity certificate. Both roots are in the file now:
 
 ```sh
 run_in lab as guest bash -c \
@@ -2035,11 +2043,12 @@ run_in lab as ml/guest authnstd --trust-anchor --issuer "${LAB_SKID} ${ML_SKID}"
 #   Trusted Root CA         : CN=EPICS ML Root Certificate Authority, OU=epics.org Certificate Authority, O=certs.epics.org, C=US
 
 run_in lab as ml/guest authnstd -u client --issuer ${ML}
-run_in ml-manager as admin pvxcert --review-pending --all approve --yes
 #   Keychain file created   : /home/guest/.config/pva/1.5/ml.p12
 #   Certificate identifier  : <ml issuer>:<serial>
 #   Primary Root CA         : CN=EPICS ML Root Certificate Authority, OU=epics.org Certificate Authority, O=certs.epics.org, C=US
 #   Trusted Root CA         : CN=EPICS Lab Root Certificate Authority, C=US, O=certs.epics.org, OU=epics.org Certificate Authority
+
+run_in ml-manager as admin pvxcert --review-pending --all approve --yes
 ```
 
 Two things happened there. 
@@ -2105,8 +2114,8 @@ run_in ml-manager  as admin pvxcert --review-pending --all approve --yes
 ```
 
 The `ml/operator` request is a `CERT:CREATE` carrying the ML
-issuer id, resolved through the lab workstation's `EPIC_PVA_NAMESERVERS` - the ML gateway -
-and forwarded because that gateway's pvlist names that issuer. 
+issuer id, resolved through the lab workstation's `EPICS_PVA_NAME_SERVERS`, which is the ML
+gateway, and forwarded because that gateway's pvlist names that issuer.
 It names both authorities because the file is new and
 holds neither: the first is asked to mint, and the second joins the anchors, which is the one
 moment on an ordinary request when naming two means anything.
@@ -2151,8 +2160,7 @@ For that write to work, every one of these had to hold, and none had a shared ch
 - the IOC verified a certificate signed by the ML root against the copy of that root in its
   own anchor list
 - its rule authorised the write by naming both authorities: `testioc.acf` grants `test:spec`
-  writes to operators under `AUTHORITY(AUTH_LAB, ML_CA)` - the lab intermediate or the machine
-  learning root
+  writes to operators under `AUTHORITY(AUTH_LAB, ML_CA)`, the lab intermediate or the ML root
 - the certificate's operational status was checked with the department that issued it: the
   status PV includes the ML issuer id, so the request crossed the ML gateway, and the response
   came back signed by the ML root and verified against the same anchor list
@@ -2191,9 +2199,12 @@ independent roots buy: here every rule that names an authority is naming a depar
 
 ## The layout
 
-The `federated-shared-root` laboratory, which is the largest of the four. Every other one is a
-part of this: `simple` is the lab department alone, and `simple-with-gateway` adds the boundary
-and the facility address to it.
+The `federated-shared-root` laboratory, which is the largest of the four. Two of the others are
+a part of it: `simple` is the lab department alone, and `simple-with-gateway` adds the boundary
+and the facility address to that. `federated-non-shared-root` is a different arrangement rather
+than a subset, and [The shape, and the paths through it](#the-shape-and-the-paths-through-it)
+lays it out: three segments, no perimeter network, no balancer, no responder, and each gateway
+standing on `net-internet` under its own name.
 
 | Service | Segment(s) | What it is |
 |---|---|---|
@@ -2265,10 +2276,10 @@ The fields:
 | `issuer` | the issuing authority; naming another empties the result without a query |
 | `name` | the common name |
 | `org`, `unit`, `country` | the rest of the subject; a certificate with several units matches on any one |
-| `state` | `VALID`, `PENDING_APPROVAL`, `PENDING`, `EXPIRED`, `REVOKED`, `PENDING_RENEWAL` |
-| `type` | `CLIENT`, `SERVER`, `IOC`, `CERT_AUTH`, `UNKNOWN` - the word in the Type column |
+| `state` | `UNKNOWN`, `VALID`, `PENDING`, `PENDING_APPROVAL`, `PENDING_RENEWAL`, `EXPIRED`, `REVOKED`. `AUTHORITY_REVOKED` is not among them: it is read off the authority rather than recorded against a row, and naming it is refused with the list above |
+| `type` | `CLIENT`, `SERVER`, `IOC`, `CERT_AUTH`, `ROOT_AUTH`, `UNKNOWN`, the word in the Type column |
 | `issued`, `expires`, `renew_by`, `changed` | a date, matching that whole day |
-| `..._before`, `..._after` | the same four, taking a date or a period |
+| `issued_before`, `expires_before`, `renew_before`, `changed_before`, and the `_after` form of each | the same four, taking a date or a period. The `renew_by` pair drops the `by` |
 
 Dates are written `2026-07-31`, or `'2026-07-31 10:31:21'` in quotes. A bare date matches
 the whole day. Periods are a number and a unit letter - `y` years, `M` months, `w` weeks,
@@ -2299,13 +2310,14 @@ needs parsing.
 
 **Nothing crosses a boundary.** The gateway goes on answering searches while no request
 through it completes, so the symptom is a read that times out rather than one that is refused.
-Run the four reads that cross a department before you restart anything: they take seconds and
+Run the reads that cross a department before you restart anything: they take seconds and
 say whether there is a repair to do. A gateway that started before the IOCs were serving never
-made the connection, and restarting the two gateways is the remedy. A gateway whose department
-was cut off while the authority's status was unknown sometimes comes back on its own and
-sometimes does not, and which of the two you get is not predictable. That case is [an
-unreachable responder](#when-the-responder-cannot-be-reached), not a revoked authority
-(section 10), which restarting anything does not repair.
+made the connection, and restarting the gateways is the remedy, in any laboratory that has one.
+In Part 3 there is a second cause: a gateway whose department was cut off while the facility
+root's status was unknown sometimes comes back on its own and sometimes does not, and which of
+the two you get is not predictable. That case is [an unreachable
+responder](#when-the-responder-cannot-be-reached), not a revoked authority (section 10), which
+restarting anything does not repair.
 
 Check the department is ready before restarting them, or you will be doing it twice. An IOC is
 ready when it answers over TLS, which is later than its certificate reading `VALID`:
@@ -2322,19 +2334,22 @@ podman-compose -p podman -f topologies/federated-shared-root/compose.yaml \
 ```
 
 Every `podman-compose` here names the project and the compose file, because each laboratory
-lives in its own directory and they all make the same set of containers. Leave them off and
-compose looks for a compose file in this directory, where there is none.
+lives in its own directory and they all make the same set of containers. Name the laboratory
+you brought up. Leave the two options off and compose looks for a compose file in this
+directory, where there is none.
 
-**A workstation cannot reach the other department.** Check that the facility address answers
-where it is asked:
+**A workstation cannot reach the other department.** Check that the name it is told to use
+answers where it is asked. In Parts 2 and 3 that name is the facility address; in Part 4 it is
+the peer department's gateway, which the workstation names directly:
 
 ```sh
-podman exec podman_lab-client_1 getent hosts facility
+podman exec podman_lab-client_1 getent hosts facility               # Parts 2 and 3
+podman exec podman_lab-client_1 getent hosts pvxs-lab-ml-gateway    # Part 4
 ```
 
-Nothing back means the balancer has no leg on that workstation's segment. Podman answers a name
-only for containers that share one, so an appliance addressed by name has to stand on every
-segment that names it - and with `isolate: "true"` on every segment, a leg is now the only way
+Nothing back means that appliance has no leg on the workstation's segment. Podman answers a name
+only for containers that share one, so anything addressed by name has to stand on every
+segment that names it, and with `isolate: "true"` on every segment a leg is the only way
 to reach it as well as the only way to name it.
 
 **Containers vanish when you log out.** `loginctl enable-linger "$USER"`, then bring them
@@ -2374,13 +2389,17 @@ everything back up, restarts the gateways last so the boundaries work, and then 
 demonstration depends on before handing it back. It takes a minute or two. Name a different
 laboratory and you get that one instead; nothing of the last one is left behind.
 
-Afterwards each PVACMS holds only what it creates for itself - its own service certificate,
-its administrator identity, and its intermediate authority - and no IOC, gateway or client
-holds anything:
+Afterwards each PVACMS holds only what it creates for itself, which is its own service
+certificate, its administrator identity and the authority it signs with, alongside the trust
+anchor row every listing ends at. No IOC, gateway or client holds anything:
 
 ```sh
 run_in testioc as testioc ls /home/testioc/.config/pva/1.5/    # empty
 ```
+
+`federated-non-shared-root` is the exception, and deliberately so. Its IOCs and gateways are
+handed both roots when the laboratory is built, because neither can reach the other department
+to fetch one, so each starts with a keychain holding two trust anchors and no identity.
 
 Reading still works from everywhere, and writing is refused everywhere, which is exactly
 where [the baseline section](#first-what-works-with-no-certificates-at-all) starts.
