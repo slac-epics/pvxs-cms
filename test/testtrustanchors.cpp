@@ -30,7 +30,9 @@
 #include <openssl/x509.h>
 
 #include "auth.h"
+#include "certfactory.h"
 #include "certfilefactory.h"
+#include "certrequestid.h"
 #include "certstatus.h"
 #include "configauthn.h"
 #include "issuerlist.h"
@@ -82,9 +84,10 @@ struct Material {
     CertData root_a, root_b, root_c, root_d;
     CertData client_a, client_b, client_c;
     CertData client_intermediate;
+    CertData intermediate_two;
     CertData client_selfsigned;
 
-    X509 *A{nullptr}, *B{nullptr}, *C{nullptr}, *D{nullptr}, *I{nullptr};
+    X509 *A{nullptr}, *B{nullptr}, *C{nullptr}, *D{nullptr}, *I{nullptr}, *I2{nullptr};
     std::string a, b, c, d;  // the whole subject key identifier of each authority
 
     void load() {
@@ -96,6 +99,7 @@ struct Material {
         client_b = IdFileFactory::createReader("ta_client_b.p12")->getCertDataFromFile();
         client_c = IdFileFactory::createReader("ta_client_c.p12")->getCertDataFromFile();
         client_intermediate = IdFileFactory::createReader("ta_client_intermediate.p12")->getCertDataFromFile();
+        intermediate_two = IdFileFactory::createReader("ta_intermediate_two.p12")->getCertDataFromFile();
         client_selfsigned = IdFileFactory::createReader("ta_client_selfsigned.p12")->getCertDataFromFile();
 
         A = ta::anchorsInChain(root_a.cert_auth_chain).front();
@@ -103,6 +107,7 @@ struct Material {
         C = ta::anchorsInChain(root_c.cert_auth_chain).front();
         D = ta::anchorsInChain(root_d.cert_auth_chain).front();
         I = ta::certsInChain(client_intermediate.cert_auth_chain).front();
+        I2 = ta::certsInChain(intermediate_two.cert_auth_chain).front();
 
         a = CertStatus::getFullSkId(A);
         b = CertStatus::getFullSkId(B);
@@ -122,6 +127,7 @@ struct Material {
                                {C, "C"},
                                {D, "D"},
                                {I, "I"},
+                               {I2, "I2"},
                                {client_a.cert.get(), "id_a"},
                                {client_b.cert.get(), "id_b"},
                                {client_c.cert.get(), "id_c"},
@@ -523,6 +529,95 @@ void testTheAnchorsAreListedWhenTrustChanges() {
     testFalse(ta::trustChanged(held_two, unchanged));
 }
 
+// The reply a certificate manager sends when it is asked for its trust anchor: the certificate
+// it signs with, followed by the chain above it. Built exactly as `onCreateCertificate` builds
+// it and read exactly as the retrieval path reads it, so what follows is fed the shape the real
+// path delivers. This is as close to that path as these cases can get: everything between the
+// two is a remote procedure call to a live certificate manager, which no unit test here starts.
+CertData replyFrom(X509 *authority, const std::vector<X509 *> &above) {
+    const ossl_ptr<X509> signing(X509_dup(authority));
+    const auto chain = asStack(above);
+    return certDataFromPem(CertFactory::certAndCasToPemString(signing, above.empty() ? nullptr : chain.get()));
+}
+
+// A keychain's trust anchor is a self-signed root. Writing the certificate a manager signs with
+// instead put two intermediates in the file with no root above either, so nothing in it was
+// self-signed, the file was no trust store at all, and the anchor listing stayed silent because
+// there was correctly nothing to list.
+void testEveryAnchorWrittenIsARoot() {
+    testDiag("A named authority contributes the root above it, and every anchor written is self-signed");
+
+    X509 *const A = material.A;
+    X509 *const B = material.B;
+    X509 *const I = material.I;
+
+    // A manager that signs from an intermediate certificate authority answers that intermediate
+    // with the root above it, and the root is what the keychain has to hold
+    const CertData from_intermediate = replyFrom(I, {A});
+    testEq(material.label(certs::anchorFromReply(from_intermediate)), std::string("A"));
+
+    // A single-level authority signs with its own root and answers it directly
+    const CertData from_single_level = replyFrom(B, {});
+    testEq(material.label(certs::anchorFromReply(from_single_level)), std::string("B"));
+
+    // A reply that reaches no root fails the command rather than handing back the certificate
+    // that was delivered, and names the authority that answered so an operator knows which
+    const CertData without_the_root = replyFrom(I, {});
+    testTrue(contains(refusalFor([&] { certs::anchorFromReply(without_the_root); }),
+                      CertStatus::getFullSkId(I)));
+
+    // The ordinary certificate request resolves the same way: the authority is named by the
+    // certificate it signs with, and what is held is the root the walk from there reaches
+    testEq(material.label(ta::anchorForIssuerId(CertStatus::getFullSkId(I), {I, A})), std::string("A"));
+
+    const CertData holds_nothing;
+
+    // Two authorities under one shared root, which is the federated laboratory's arrangement.
+    // The root is written once and neither intermediate is written at all.
+    {
+        const CertData second_intermediate = replyFrom(material.I2, {A});
+        const std::vector<X509 *> anchors{certs::anchorFromReply(from_intermediate),
+                                          certs::anchorFromReply(second_intermediate)};
+
+        writeKeychain("testtrustanchors_written.p12", nullptr, nullptr,
+                      ta::chainForAnchorReset(holds_nothing, anchors));
+        const auto written = IdFileFactory::createReader("testtrustanchors_written.p12")->getCertDataFromFile();
+
+        testEq(material.show(written.cert_auth_chain), material.show({A}));
+
+        // Every certificate the file holds is self-signed, which is the assertion that fails
+        // outright when an intermediate is written in place of a root
+        testEq(ta::anchorsInChain(written.cert_auth_chain).size(), ta::certsInChain(written.cert_auth_chain).size());
+        testTrue(contains(ta::anchorSubject(ta::anchorsInChain(written.cert_auth_chain).front()),
+                          "EPICS Trust Anchor a Root Certificate Authority"));
+
+        // So the anchors are found, the change is seen, and the listing an operator reads prints
+        testEq(show(ta::heldAnchorIds(written)), show({material.a}));
+        testTrue(ta::trustChanged(holds_nothing, written));
+        std::ostringstream out;
+        ta::printAnchorListing(written, out);
+        testTrue(contains(out.str(), "Primary Root CA         : CN=EPICS Trust Anchor a Root Certificate Authority"));
+    }
+
+    // Two authorities under unrelated roots hold both roots, and both are self-signed
+    {
+        const std::vector<X509 *> anchors{certs::anchorFromReply(from_intermediate),
+                                          certs::anchorFromReply(from_single_level)};
+
+        writeKeychain("testtrustanchors_written.p12", nullptr, nullptr,
+                      ta::chainForAnchorReset(holds_nothing, anchors));
+        const auto written = IdFileFactory::createReader("testtrustanchors_written.p12")->getCertDataFromFile();
+
+        testEq(material.show(written.cert_auth_chain), material.show({A, B}));
+        testEq(ta::anchorsInChain(written.cert_auth_chain).size(), ta::certsInChain(written.cert_auth_chain).size());
+    }
+
+    // The write itself refuses a certificate that is not self-signed as an anchor, so the rule
+    // holds however a caller reached it and no later path can quietly write one
+    testTrue(contains(refusalFor([&] { ta::chainForAnchorReset(holds_nothing, {I}); }),
+                      CertStatus::getFullSkId(I)));
+}
+
 // The generated keychains are written into the architecture build directory and opened by name,
 // so they are only found when that is the working directory. Started elsewhere the reader
 // returns nothing and assertions fail, which reads as a fault in the code under test rather than
@@ -542,10 +637,10 @@ void requireFixture(const char *name) {
 MAIN(testtrustanchors) {
     for (const char *name : {"ta_root_a.p12", "ta_root_b.p12", "ta_root_c.p12", "ta_root_d.p12", "ta_client_a.p12",
                              "ta_client_b.p12", "ta_client_c.p12", "ta_client_intermediate.p12",
-                             "ta_client_selfsigned.p12"})
+                             "ta_intermediate_two.p12", "ta_client_selfsigned.p12"})
         requireFixture(name);
 
-    testPlan(102);
+    testPlan(115);
     removeScratchFiles();
     material.load();
 
@@ -555,6 +650,7 @@ MAIN(testtrustanchors) {
     testTheIssuerCertificateAuthorityIsStillElementZero();
     testThePrimaryAnchorIsDerivedAndNotPositional();
     testAResetRefusesToStrandTheIdentity();
+    testEveryAnchorWrittenIsARoot();
     testTheConfigurationReadsTheListFromTheEnvironment();
     testTheIssuerOptionGivenTwiceIsRefused();
     testTheAnchorsAreListedWhenTrustChanges();

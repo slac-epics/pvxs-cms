@@ -633,6 +633,31 @@ inline void requireCompleteUnlessHeld(const std::string &issuer_id, const std::v
 }
 
 /**
+ * @brief Verify that the authority a trust anchor reply is about is the one that was named.
+ *
+ * A trust anchor reply is the certificate the manager signs with followed by the chain above it,
+ * which is the opposite shape to a keychain, where the first certificate is an identity and the
+ * authority is the one after it. `verifyDeliveredIssuerId` reads the keychain shape, so it must
+ * not be used here: given a reply carrying a chain it would compare the root against the
+ * authority that was asked for and reject a correct answer.
+ *
+ * @param delivered the reply
+ * @param expected_issuer_id the authority that was asked
+ * @throws std::runtime_error if the certificate delivered is not the authority named
+ */
+inline void verifyDeliveredAuthority(const CertData &delivered, const std::string &expected_issuer_id) {
+    if (!delivered.cert)
+        throw std::runtime_error(SB() << "The certificate authority '" << expected_issuer_id
+                                      << "' answered without a certificate.");
+    const std::string delivered_issuer_id = CertStatus::getFullSkId(delivered.cert.get());
+    if (!issuerIdIsExpected(expected_issuer_id, delivered_issuer_id))
+        throw std::runtime_error(SB() << "The certificate authority that answered is '" << delivered_issuer_id
+                                      << "', not the '" << expected_issuer_id
+                                      << "' that was asked for. Rejecting: the authority may have been substituted "
+                                         "in transit.");
+}
+
+/**
  * @brief Ask one certificate manager for the certificate authority it signs with.
  *
  * The reply is checked against the identifier that was named before it is handed back, because
@@ -663,23 +688,41 @@ CertData retrieveTrustAnchor(const AuthT &authenticator,
                                       << "' did not answer, so nothing has been written and the keychain is as it was.");
 
     CertData delivered = certDataFromPem(p12_pem_string);
-    verifyDeliveredIssuerId(delivered, issuer_id);
+    verifyDeliveredAuthority(delivered, issuer_id);
     return delivered;
 }
 
 /**
  * @brief The root a trust anchor reply amounts to.
  *
- * A certificate manager answers with the certificate it signs with, so a single-level authority
- * answers its own root. One that signs from an intermediate answers that intermediate and
- * nothing above it, and then that is all there is to hold.
+ * A keychain's trust anchor is a self-signed root, so what a named authority contributes is the
+ * root its chain terminates at, never the certificate it signs with. A single-level authority
+ * signs with its own root and answers it directly; one that signs from an intermediate
+ * certificate authority answers that intermediate together with the chain above it, and the root
+ * is where the walk up that chain ends.
+ *
+ * A reply that reaches no root fails the command rather than falling back to the certificate
+ * that was delivered. Holding a certificate that is not self-signed as though it were an anchor
+ * writes a keychain that trusts nothing while reporting success, which is worse than refusing.
+ *
+ * @param delivered the reply, the authority's certificate followed by the chain above it
+ * @return the root, borrowed from @p delivered
+ * @throws std::runtime_error if the reply reaches no self-signed root
  */
 inline X509 *anchorFromReply(const CertData &delivered) {
-    try {
-        return cms::cert::primaryAnchor(delivered);
-    } catch (const std::exception &) {
-        return delivered.cert.get();
-    }
+    if (!delivered.cert) throw std::runtime_error("A certificate authority answered without a certificate.");
+    X509 *const authority = delivered.cert.get();
+
+    std::vector<X509 *> path;
+    const std::vector<X509 *> no_anchors;
+    if (X509 *const root =
+            cms::cert::walkToAnchor(authority, cms::cert::certsInChain(delivered.cert_auth_chain), no_anchors, path))
+        return root;
+
+    throw std::runtime_error(SB() << "The certificate authority '" << CertStatus::getFullSkId(authority)
+                                  << "' answered with a certificate that is not self-signed and sent nothing above "
+                                     "it, so there is no root to hold as a trust anchor for it. Nothing has been "
+                                     "written and the keychain is as it was.");
 }
 
 /**
@@ -796,14 +839,30 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
             available.insert(available.end(), held_chain.begin(), held_chain.end());
 
             // Everything to hand that could name an authority, so each anchor the plan calls for
-            // can be resolved to the root certificate the file has to hold.
+            // can be resolved to the root certificate the file has to hold. The whole of each
+            // reply goes in, the authority's certificate and the chain above it: an authority
+            // is named by the certificate it signs with, so that certificate is what matches the
+            // name, and the chain above it is what the walk from there to the root needs.
             std::vector<X509 *> pool = available;
-            for (const auto &extra : extra_anchors)
-                if (X509 *const anchor = anchorFromReply(extra)) pool.push_back(anchor);
+            for (const auto &extra : extra_anchors) {
+                if (extra.cert) pool.push_back(extra.cert.get());
+                const auto extra_chain = cms::cert::certsInChain(extra.cert_auth_chain);
+                pool.insert(pool.end(), extra_chain.begin(), extra_chain.end());
+            }
 
+            // An anchor the plan calls for that resolves to no root fails the request, rather
+            // than being left out of a keychain reported as written. Leaving it out is how a
+            // file ends up holding no trust anchor at all while the command says it succeeded.
             std::vector<X509 *> anchors_to_hold;
-            for (const auto &anchor_id : plan.anchor_ids)
-                if (X509 *const anchor = cms::cert::anchorForIssuerId(anchor_id, pool)) anchors_to_hold.push_back(anchor);
+            for (const auto &anchor_id : plan.anchor_ids) {
+                X509 *const anchor = cms::cert::anchorForIssuerId(anchor_id, pool);
+                if (!anchor)
+                    throw std::runtime_error(SB() << "No root certificate could be found for the certificate "
+                                                     "authority '" << anchor_id
+                                                  << "', so the keychain would hold nothing able to verify what it "
+                                                     "issues. Nothing has been written and the keychain is as it was.");
+                anchors_to_hold.push_back(anchor);
+            }
 
             const auto chain = cms::cert::layOutChain(delivered.cert.get(), available, anchors_to_hold);
 

@@ -882,6 +882,32 @@ int main(int argc, char *argv[])
                 p12.write("ta_client_intermediate.p12");
             }
 
+            // A second intermediate under the same authority a, written with the root above it
+            // and with no identity and no key, which is the shape a trust anchor reply arrives
+            // in. It is the arrangement the federated laboratory is built around: two
+            // departments each signing from their own intermediate under one shared root.
+            {
+                CertCreator cc;
+                cc.CN = "EPICS Trust Anchor a Second Intermediate Certificate Authority";
+                cc.root = authorities[0].cert.get();
+                cc.serial = serial++;
+                cc.issuer = authorities[0].cert.get();
+                cc.ikey = authorities[0].key.get();
+                cc.isCA = true;
+                cc.key_usage = "digitalSignature,cRLSign,keyCertSign";
+                cc.extended_key_usage = "serverAuth,clientAuth,OCSPSigning";
+
+                pvxs::ossl_ptr<X509> cert;
+                pvxs::ossl_ptr<EVP_PKEY> key;
+                std::tie(key, cert) = cc.create();
+
+                PKCS12Writer p12(outdir);
+                p12.friendlyName = cc.CN;
+                MUST(1, sk_X509_push(p12.cacerts.get(), cert.get()));
+                MUST(2, sk_X509_push(p12.cacerts.get(), authorities[0].cert.get()));
+                p12.write("ta_intermediate_two.p12");
+            }
+
             // A self-signed identity, which is its own issuer and its own root
             {
                 CertCreator cc;

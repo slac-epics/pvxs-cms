@@ -1145,9 +1145,13 @@ int64_t onCreateCertificate(ConfigCms &config,
     auto pub_key = ccr["pub_key"].as<std::string>();
 
     if (pub_key.empty()) {
-        // We only want to get the trust-anchor if the pub key is empty
-        // Create the certificate using the certificate factory, store it in the database and return the PEM string
-        auto pem_string = CertFactory::certAndCasToPemString(cert_auth_cert, nullptr);
+        // We only want to get the trust-anchor if the pub key is empty.
+        // The certificate this manager signs with, and the chain above it. The chain has to go
+        // too: a keychain's trust anchor is a self-signed root, so a manager that signs from an
+        // intermediate certificate authority has to send the root above it or the asker is left
+        // holding an intermediate it can trust nothing by. A manager that is its own root has no
+        // chain and sends that one certificate.
+        auto pem_string = CertFactory::certAndCasToPemString(cert_auth_cert, cert_auth_cert_chain.get());
 
         // Construct and return the reply
         auto serial = CertStatusFactory::getSerialNumber(cert_auth_cert);

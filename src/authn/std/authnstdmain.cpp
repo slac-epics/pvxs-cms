@@ -293,10 +293,10 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
         }
 
         try {
+            // The root each named authority chains to, not the certificate it signs with. Two
+            // authorities under one root each answer that root, and it is written once.
             std::vector<X509 *> anchors_to_hold;
-            for (const auto &delivered : retrieved) {
-                if (X509 *const anchor = certs::anchorFromReply(delivered)) anchors_to_hold.push_back(anchor);
-            }
+            for (const auto &delivered : retrieved) anchors_to_hold.push_back(certs::anchorFromReply(delivered));
 
             // The identity already in the file is kept, so the chain is laid out around it and
             // the reset is refused outright when it would leave that identity unverifiable.

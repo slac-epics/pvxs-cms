@@ -226,11 +226,23 @@ inline X509 *anchorForIssuerId(const std::string &issuer_id, const std::vector<X
  * @param available every other certificate to hand, the delivered chain before the held one
  * @param anchors_to_hold the anchors the file is to hold, in the order they were named
  * @return the chain to write
- * @throws std::runtime_error if the identity's issuer is not to hand, or it chains to no anchor
+ * @throws std::runtime_error if an anchor is not self-signed, if the identity's issuer is not to
+ *         hand, or if the identity chains to no anchor
  */
 inline pvxs::ossl_ptr<STACK_OF(X509)> layOutChain(X509 *identity,
                                                   const std::vector<X509 *> &available,
                                                   const std::vector<X509 *> &anchors_to_hold) {
+    // A trust anchor is a self-signed root, and this is the one place every write passes
+    // through, so the rule is enforced here rather than trusted of each caller. Writing the
+    // certificate an authority signs with in place of the root above it produces a file that
+    // reads as a keychain and trusts nothing, and it does so without any error.
+    for (X509 *anchor : anchors_to_hold)
+        if (!isTrustAnchor(anchor))
+            throw std::runtime_error(pvxs::SB()
+                                     << "The certificate '" << pvxs::certs::CertStatus::getFullSkId(anchor)
+                                     << "' is not self-signed, so it is not a trust anchor, and holding it as one "
+                                        "would write a keychain that can verify nothing. Nothing has been written.");
+
     pvxs::ossl_ptr<STACK_OF(X509)> chain(sk_X509_new_null());
     std::vector<X509 *> placed;
 
