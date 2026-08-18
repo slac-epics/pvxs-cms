@@ -75,8 +75,8 @@ if [ -x "${topology_dir}/mint.sh" ]; then
     fi
     # compose substitutes ${LAB_ISSUER} and the rest in the file itself, and reads .env from
     # the directory the compose file is in - not the one it is run from, whatever the run
-    # command says. Without the second copy every substitution comes out empty, and a
-    # IOC starts with no issuer to trust and can ask for nothing.
+    # command says. Without the second copy every substitution comes out empty, and an IOC
+    # starts with no issuer to trust and can ask for nothing.
     cp "${topology_dir}/issuer_ids.env" .env
     cp "${topology_dir}/issuer_ids.env" "${topology_dir}/.env"
 else

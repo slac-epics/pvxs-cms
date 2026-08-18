@@ -1,4 +1,4 @@
-# Access control for the laboratory's second controller.
+# Access control for the laboratory's second IOC.
 #
 # One authority issues every certificate here, so a rule that names it says only "holds a
 # certificate this laboratory issued". What tells one holder from another is the user access
