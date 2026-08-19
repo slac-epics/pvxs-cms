@@ -7,29 +7,63 @@
 # network an unqualified name would be claimed by both, and neither gateway could tell
 # which department a request meant.
 set -euo pipefail
-var="${1:?usage: start-gateway <LAB_ISSUER|ML_ISSUER>}"
-issuer="${!var:-}"
-[ -n "$issuer" ] || { echo "$var is not set - is issuer_ids.env present?" >&2; exit 1; }
+var="${1:?usage: start-gateway <LAB_ISSUER|ML_ISSUER|none>}"
 
-# The two forms are wanted for two different things, so both are read rather than one
-# derived from the other. The short one names the department's certificate process
-# variables, below. The whole one is what the gateway has to be given to establish trust in
-# the authority the first time it asks for its own certificate; the short form is refused
-# for that, being too little to decide which authority is meant.
-skid_var="${var}_SKID"
-skid="${!skid_var:-}"
-[ -n "$skid" ] || { echo "$skid_var is not set - is issuer_ids.env up to date?" >&2; exit 1; }
+# 'none' is a laboratory with one certificate manager, where the certificate process
+# variables have no issuer in their names because there is nothing to be ambiguous about, and
+# where the authority is minted by that manager at its first start rather than beforehand. Its
+# issuer id therefore does not exist yet when this runs: reset.sh writes it into
+# /etc/epics/issuer once the manager has made it, and the gateway is restarted after that,
+# along with the controllers, when the certificates are issued.
+if [ "${var}" = none ]; then
+    issuer=
+else
+    issuer="${!var:-}"
+    [ -n "$issuer" ] || { echo "$var is not set - is issuer_ids.env present?" >&2; exit 1; }
 
-# For any login shell in this container. A login shell resets the environment, so the image
-# reads it back from here; without it the gateway cannot request its own certificate.
-mkdir -p /etc/epics && printf '%s' "${skid}" > /etc/epics/issuer
+    # The two forms are wanted for two different things, so both are read rather than one
+    # derived from the other. The short one names the department's certificate process
+    # variables, below. The whole one is what the gateway has to be given to establish trust in
+    # the authority the first time it asks for its own certificate; the short form is refused
+    # for that, being too little to decide which authority is meant.
+    skid_var="${var}_SKID"
+    skid="${!skid_var:-}"
+    [ -n "$skid" ] || { echo "$skid_var is not set - is issuer_ids.env up to date?" >&2; exit 1; }
+
+    # For any login shell in this container. A login shell resets the environment, so the image
+    # reads it back from here; without it the gateway cannot request its own certificate.
+    mkdir -p /etc/epics && printf '%s' "${skid}" > /etc/epics/issuer
+fi
 
 # The gateway writes its keychain into its home when it asks for a certificate, and the
 # volume is mounted owned by root.
 mkdir -p /home/gateway/.config/pva/1.5 && chown -R gateway /home/gateway/.config
 
-sed "s/__${var}__/${issuer}/g" /home/gateway/gateway.pvlist.in > /home/gateway/gateway.pvlist
-cp /home/gateway/gateway.conf.in /home/gateway/gateway.conf
+if [ -n "${issuer}" ]; then
+    sed "s/__${var}__/${issuer}/g" /home/gateway/gateway.pvlist.in > /home/gateway/gateway.pvlist
+else
+    cp /home/gateway/gateway.pvlist.in /home/gateway/gateway.pvlist
+fi
+
+# Which interface the gateway serves on.
+#
+# Left to itself it binds every interface it has, which includes the department's own
+# segment. A workstation there searching by broadcast is then answered twice for the same
+# name, once by the controller and once by the gateway forwarding to that controller, and
+# every command it runs stops with 'Duplicate PV name'.
+#
+# The address cannot be written into the configuration because podman assigns it at start, so
+# the subnet is named instead and the address is looked up here.
+if [ -n "${GATEWAY_SERVE_SUBNET:-}" ]; then
+    serve_addr=$(ip -o -4 addr show \
+        | awk -v p="${GATEWAY_SERVE_SUBNET}" '$4 ~ "^"p {split($4,a,"/"); print a[1]; exit}')
+    [ -n "${serve_addr}" ] || {
+        echo "no interface on ${GATEWAY_SERVE_SUBNET} - is this container on that segment?" >&2; exit 1; }
+    echo "serving on ${serve_addr}, the ${GATEWAY_SERVE_SUBNET}0/24 segment, and on no other"
+    sed "s/__SERVE_ADDR__/${serve_addr}/g" /home/gateway/gateway.conf.in > /home/gateway/gateway.conf
+else
+    cp /home/gateway/gateway.conf.in /home/gateway/gateway.conf
+fi
 echo "gateway process variable list, with the issuer substituted:"
 sed 's/^/    /' /home/gateway/gateway.pvlist
 
