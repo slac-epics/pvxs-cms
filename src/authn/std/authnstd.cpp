@@ -148,7 +148,7 @@ std::shared_ptr<AuthnCredentials> AuthNStd::getCredentials(const client::Config 
     if (std_config.trust_anchor_only) {
         std_credentials->name = "";
         std_credentials->organization = "";
-        std_credentials->organization_unit = "";
+        std_credentials->organization_unit = {};
         std_credentials->country = "";
         log_debug_printf(auth_std, "Trust Anchor%s\n", "");
         return std_credentials;

@@ -7,8 +7,13 @@
 #ifndef PVXS_CONFIGAUTHN_H_
 #define PVXS_CONFIGAUTHN_H_
 
+#include <string>
+#include <vector>
+
 #include <pvxs/client.h>
 #include <pvxs/config.h>
+
+#include "security.h"
 
 namespace pvxs {
 namespace certs {
@@ -17,14 +22,16 @@ class ConfigAuthN : public client::Config {
    public:
     std::string name{};
     std::string organization{};
-    std::string organizational_unit{};
+    //! Organizational units, innermost first: the first sits inside the second, and so on.
+    std::vector<std::string> organizational_unit{};
     std::string country{"US"};
     bool no_status{false};
     std::string issuer_id{};
 
     std::string server_name{};
     std::string server_organization{};
-    std::string server_organizational_unit{};
+    //! Organizational units, innermost first: the first sits inside the second, and so on.
+    std::vector<std::string> server_organizational_unit{};
     std::string server_country{"US"};
 
     std::string tls_srv_keychain_file{};

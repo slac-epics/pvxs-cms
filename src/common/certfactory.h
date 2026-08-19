@@ -31,6 +31,18 @@ namespace certs {
 #define NAME_STRING(name, org) name + (org.empty() ? "" : ("@" + (org)))
 
 /**
+ * @brief Read every organizational unit out of a certificate subject, in the order it lists them.
+ *
+ * `X509_NAME_get_text_by_NID` returns the first occurrence and silently discards the rest, which
+ * loses all but the innermost unit. This walks the entries by index instead, so a subject that
+ * names a containment path is read back whole and in order.
+ *
+ * @param subject the subject name of a certificate
+ * @return the organizational units, in the order the subject lists them
+ */
+std::vector<std::string> getSubjectOrganizationalUnits(const X509_NAME *subject);
+
+/**
  * @brief Enum to control whether certificates require status subscription
  */
 enum CertStatusSubscription {
@@ -54,7 +66,8 @@ class CertFactory {
     const std::string name_;
     const std::string country_;
     const std::string org_;
-    const std::string org_unit_;
+    //! Organizational units, innermost first: the first sits inside the second, and so on.
+    const std::vector<std::string> org_unit_;
     const time_t not_before_;
     const time_t not_after_;
     time_t renew_by_{0};
@@ -84,7 +97,7 @@ class CertFactory {
      * @param name the name
      * @param country the country
      * @param org the organization
-     * @param org_unit the organizational unit
+     * @param org_unit the organizational units, innermost first
      * @param not_before the not-before time
      * @param not_after the not-after time
      * @param renew_by the renew-by date if specified
@@ -99,7 +112,7 @@ class CertFactory {
      * @param initial_status the initial status
      */
     CertFactory(const uint64_t serial, const std::shared_ptr<KeyPair> &key_pair, const std::string &name, const std::string &country, const std::string &org,
-                const std::string &org_unit, const time_t not_before, const time_t not_after, const time_t renew_by, const uint16_t &usage,
+                const std::vector<std::string> &org_unit, const time_t not_before, const time_t not_after, const time_t renew_by, const uint16_t &usage,
                 const std::string &cert_pv_prefix, const CertStatusSubscription cert_status_subscription_required = DEFAULT, const bool no_status = false, const bool allow_duplicates = false,
                 X509 *issuer_certificate_ptr = nullptr, EVP_PKEY *issuer_pkey_ptr = nullptr,
                 STACK_OF(X509) *issuer_chain_ptr = nullptr, certstatus_t initial_status = VALID)
@@ -131,7 +144,7 @@ class CertFactory {
      * @param name the name
      * @param country the country
      * @param org the organization
-     * @param org_unit the organizational unit
+     * @param org_unit the organizational units, innermost first
      * @param not_before the not before time
      * @param not_after the not after time
      * @param renew_by the renew by date if specified
@@ -152,7 +165,7 @@ class CertFactory {
      * @param initial_status the initial status - defaults to VALID
      */
     CertFactory(const uint64_t serial, const std::shared_ptr<KeyPair> &key_pair, const std::string &name, const std::string &country, const std::string &org,
-                const std::string &org_unit, const time_t not_before, const time_t not_after, const time_t renew_by, const uint16_t &usage, const std::string &cert_pv_prefix, const std::string &cert_config_uri_base,
+                const std::vector<std::string> &org_unit, const time_t not_before, const time_t not_after, const time_t renew_by, const uint16_t &usage, const std::string &cert_pv_prefix, const std::string &cert_config_uri_base,
                 const CertStatusSubscription cert_status_subscription_required = DEFAULT, const bool no_status = false, const bool allow_duplicates = false, X509 *issuer_certificate_ptr = nullptr, EVP_PKEY *issuer_pkey_ptr = nullptr,
                 STACK_OF(X509) *issuer_chain_ptr = nullptr, const certstatus_t initial_status = VALID)
         : serial_(serial),
