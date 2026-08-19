@@ -533,6 +533,13 @@ void WildcardSource::onSearch(Search& op) {
     }
 }
 
+WildcardSource& WildcardSource::authorize(std::function<bool(const std::string&, const ChannelControl&)>&& fn)
+{
+    auto G(lock.lockWriter());
+    authorizer = std::move(fn);
+    return *this;
+}
+
 void WildcardSource::onCreate(std::unique_ptr<ChannelControl>&& op)
 {
     WildcardPV pv;
@@ -541,6 +548,13 @@ void WildcardSource::onCreate(std::unique_ptr<ChannelControl>&& op)
         const auto searched_name = op->name();
 
         if(wildcardMatch(searched_name, pv)) {
+            // Per-client read decision, before the channel exists. Once it does, every
+            // later subscriber to the same name joins without being asked.
+            if(authorizer && !authorizer(searched_name, *op)) {
+                log_debug_printf(logsource, "%p refused '%s'\n", this, searched_name.c_str());
+                op->close();
+                return;
+            }
             log_debug_printf(logsource, "%p create '%s'\n", this, searched_name.c_str());
             pv.attach(std::move(op), pv.getParameters(searched_name));
         } else {
