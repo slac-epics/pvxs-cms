@@ -585,9 +585,9 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
             const auto issuer_id = CertStatus::getIssuerId(cert_data.cert_auth_chain);
 
             // Get the start and end dates of the certificate
-            const std::string from = std::ctime(&credentials->not_before);
+            const std::string from = CertDate(credentials->not_before).s;
             const auto expiration_t = CmsStatusManager::getExpirationDateFromCert(cert_data.cert);
-            const std::string expiration_s = std::ctime(&expiration_t);
+            const std::string expiration_s = CertDate(expiration_t).s;
 
             // Log the certificate info
             log_info_printf(auth, "   CERT ID: %s\n", getCertId(issuer_id, serial_number).c_str());
@@ -597,12 +597,12 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
             if (!credentials->organization.empty()) log_info_printf(auth, "SUBJECT  O: %s\n", credentials->organization.c_str());
             if (!credentials->organization_unit.empty()) log_info_printf(auth, "SUBJECT OU: %s\n", credentials->organization_unit.c_str());
             if (!credentials->country.empty()) log_info_printf(auth, "SUBJECT  C:%s\n", credentials->country.c_str());
-            log_info_printf(auth, "VALID FROM: %s\n", from.substr(0, from.size()-1).c_str());
+            log_info_printf(auth, "VALID FROM: %s\n", from.c_str());
             if (renew_by) {
-                const std::string renew_by_date = std::ctime(&renew_by);
-                log_info_printf(auth, "RENEWAL BY: %s\n", renew_by_date.substr(0, renew_by_date.size()-1).c_str());
+                const std::string renew_by_date = CertDate(renew_by).s;
+                log_info_printf(auth, "RENEWAL BY: %s\n", renew_by_date.c_str());
             }
-            log_info_printf(auth, "EXPIRES ON: %s\n", expiration_s.substr(0, expiration_s.size()-1).c_str());
+            log_info_printf(auth, "EXPIRES ON: %s\n", expiration_s.c_str());
             std::cout << "Certificate identifier  : " << issuer_id << ":" << serial_number << std::endl;
             log_info_printf(auth, "--------------------------------------%s", "\n");
         }

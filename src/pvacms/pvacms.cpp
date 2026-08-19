@@ -759,8 +759,8 @@ ossl_ptr<X509> createCertificate(sql_ptr &certs_db, CertFactory &cert_factory) {
     auto effective_status = storeCertificate(certs_db, cert_factory);
 
     // Print info about certificate creation
-    std::string from = std::ctime(&cert_factory.not_before_);
-    std::string to = std::ctime(&cert_factory.not_after_);
+    std::string from = CertDate(cert_factory.not_before_).s;
+    std::string to = CertDate(cert_factory.not_after_).s;
     std::string renew_by_s;
 
     auto const issuer_id = CertStatus::getSkId(cert_factory.issuer_certificate_ptr_);
@@ -785,9 +785,9 @@ ossl_ptr<X509> createCertificate(sql_ptr &certs_db, CertFactory &cert_factory) {
     if (!cert_factory.org_unit_.empty()) log_debug_printf(pvacms, "SUBJECT OU: %s\n", cert_factory.org_unit_.c_str());
     if (!cert_factory.country_.empty()) log_debug_printf(pvacms, "SUBJECT  C: %s\n", cert_factory.country_.c_str());
     log_debug_printf(pvacms, "    STATUS: %s\n", CERT_STATE(effective_status));
-    log_debug_printf(pvacms, "VALID FROM: %s\n", from.substr(0, from.size() - 1).c_str());
-    if (!renew_by_s.empty()) log_debug_printf(pvacms, "RENEWAL BY: %s\n", renew_by_s.substr(0, renew_by_s.size() - 1).c_str());
-    log_debug_printf(pvacms, "EXPIRES ON: %s\n", to.substr(0, to.size() - 1).c_str());
+    log_debug_printf(pvacms, "VALID FROM: %s\n", from.c_str());
+    if (!renew_by_s.empty()) log_debug_printf(pvacms, "RENEWAL BY: %s\n", renew_by_s.c_str());
+    log_debug_printf(pvacms, "EXPIRES ON: %s\n", to.c_str());
     log_debug_printf(pvacms, "--------------------------------------%s", "\n");
 
     return certificate;
@@ -1150,8 +1150,8 @@ int64_t onCreateCertificate(ConfigCms &config,
         const auto org_unit_val = ccr["organizational_unit"];
         const auto org = org_val ? org_val.as<std::string>() : "";
         const auto org_unit = org_unit_val ? org_unit_val.as<std::string>() : "";
-        const std::string from = std::ctime(&now);
-        const std::string expiration_s = std::ctime(&expiration);
+        const std::string from = CertDate(now).s;
+        const std::string expiration_s = CertDate(expiration).s;
 
         log_info_printf(pvacms, "%s *=> %s\n", cert_id.c_str(), CERT_STATE(state));
         log_info_printf(pvacms, "AUTHN TYPE: %s\n", type.c_str());
@@ -1159,12 +1159,12 @@ int64_t onCreateCertificate(ConfigCms &config,
         if (org_val) log_info_printf(pvacms, "SUBJECT  O: %s\n", org.c_str());
         if (org_unit_val) log_info_printf(pvacms, "SUBJECT OU: %s\n", org_unit.c_str());
         if (!country.empty()) log_info_printf(pvacms, "SUBJECT  C: %s\n", country.c_str());
-        log_info_printf(pvacms, "VALID FROM: %s\n", from.substr(0, from.size()-1).c_str());
+        log_info_printf(pvacms, "VALID FROM: %s\n", from.c_str());
         if (has_renew_by) {
-            const std::string renew_by_s = std::ctime(&renew_by);
-            log_info_printf(pvacms, "RENEWAL BY: %s\n", renew_by_s.substr(0, renew_by_s.size()-1).c_str());
+            const std::string renew_by_s = CertDate(renew_by).s;
+            log_info_printf(pvacms, "RENEWAL BY: %s\n", renew_by_s.c_str());
         }
-        log_info_printf(pvacms, "EXPIRES ON: %s\n", expiration_s.substr(0, expiration_s.size()-1).c_str());
+        log_info_printf(pvacms, "EXPIRES ON: %s\n", expiration_s.c_str());
         op->reply(reply);
         return static_cast<int64_t>(serial);
     } catch (std::exception &e) {
@@ -1955,8 +1955,8 @@ void createAdminClientCert(const ConfigCms &config,
     cert_file_factory->writeIdentityFile();
     std::cout << "Keychain file created   : " << config.admin_keychain_file << std::endl;
 
-    std::string from = std::ctime(&certificate_factory.not_before_);
-    std::string to = std::ctime(&certificate_factory.not_after_);
+    std::string from = CertDate(certificate_factory.not_before_).s;
+    std::string to = CertDate(certificate_factory.not_after_).s;
 }
 
 // Helper: ensure a loaded certificate is present in the DB, validating status extension and issuer
