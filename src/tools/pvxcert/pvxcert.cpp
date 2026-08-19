@@ -16,9 +16,12 @@
 #endif
 #include <pvxs/client.h>
 #include <pvxs/log.h>
+#include <pvxs/nt.h>
 
 #include <CLI/CLI.hpp>
 
+#include "certfilter.h"
+#include "certlistprint.h"
 #include "certfactory.h"
 #include "certfilefactory.h"
 #include "certstatusmanager.h"
@@ -50,7 +53,9 @@ std::string actionToString(const CertAction &action) {
     return action == STATUS ? "Get Status" : action == APPROVE ? "Approve" : action == REVOKE ? "Revoke" : "Deny";
 }
 int readParameters(const int argc, char *argv[], const char *program_name, client::Config &conf, bool &approve, bool &revoke, bool &deny, bool &debug,
-                   bool &password_flag, bool &verbose, std::string &cert_file, std::string &issuer_serial_string, std::string &cert_pv_prefix) {
+                   bool &password_flag, bool &verbose, std::string &cert_file, std::string &issuer_serial_string, std::string &cert_pv_prefix,
+                   bool &list, std::string &format_name, std::string &cert_list_pv_prefix, std::string &where,
+                   bool &pending, std::string &expiring) {
     bool show_version{false}, help{false};
 
     // Argument configuration
@@ -75,6 +80,14 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                    "Status PV name prefix for the <issuer>:<serial> form (default CERT:STATUS:). "
                    "Ignored when -f/--file is given (the full status PV is read from the certificate).");
 
+    app.add_flag("-l,--list", list);
+    app.add_option("--where", where, "Narrow the listing, for example \"state:VALID and org:SLAC\"");
+    app.add_flag("--pending", pending);
+    app.add_option("--expiring", expiring, "List certificates expiring within a period, for example 30d");
+    app.add_option("--format", format_name, "How --list writes its table: columns (default), csv or json");
+    app.add_option("--cert-list-pv-prefix", cert_list_pv_prefix,
+                   "Prefix the listing operation is served under (default CERT)");
+
     // Action flags in a mutually exclusive group
     app.add_flag("-A,--approve", approve);
     app.add_flag("-R,--revoke", revoke);
@@ -91,7 +104,7 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << std::endl
                   << "  Get certificate status from serial number: The certificate ID is specified as <issuer>:<serial>, \n"
                   << "  where <issuer> is the first 8 hex digits of the subject key identifier of the issuer and <serial>\n"
-                  << "  is the serial number of the certificate. e.g. 27975e6b:7246297371190731775.\n"
+                  << "  is the serial number of the certificate. e.g. 27975e6b:07246297371190731775.\n"
                   << std::endl
                   << "  Get certificate status from keychain file: The keychain file must be a PKCS#12 file.\n"
                   << std::endl
@@ -108,6 +121,7 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "  " << program_name << " [options] (-D | --deny) <cert_id>  DENY pending certificate approval request (ADMIN ONLY)\n"
                   << "  " << program_name << " [options] (-R | --revoke) <cert_id>\n"
                   << "                                             REVOKE certificate (ADMIN ONLY)\n"
+                  << "  " << program_name << " [options] (-l | --list)     List certificates\n"
                   << "  " << program_name << " (-h | --help)                      Show this help message and exit\n"
                   << "  " << program_name << " (-V | --version)                   Print version and exit\n"
                   << std::endl
@@ -117,8 +131,23 @@ int readParameters(const int argc, char *argv[], const char *program_name, clien
                   << "options:\n"
                   << "  (-w | --timeout) <timout_secs>             Operation timeout in seconds.  Default 5.0s\n"
                   << "  (--cert-pv-prefix) <prefix>                Status PV prefix for the <cert_id> form.  Default CERT:STATUS:\n"
+                  << "  (--cert-list-pv-prefix) <prefix>           Prefix the listing is served under.  Default CERT\n"
+                  << "  (--format) <columns|csv|json>              How --list writes its table.  Default columns\n"
+                  << "  (--where) <expression>                     Narrow the listing.  See below\n"
+                  << "  (--pending)                                Short for --where \"state:PENDING_APPROVAL\"\n"
+                  << "  (--expiring) <period>                      Short for --where \"expires_before:<period> and state:VALID\"\n"
                   << "  (-d | --debug)                             Debug mode: Shorthand for $PVXS_LOG=\"pvxs.*=DEBUG\"\n"
                   << "  (-v | --verbose)                           Verbose mode\n"
+                  << std::endl
+                  << "filter expression:\n"
+                  << "  A test is written field:value, and tests join with and, or and not, grouped\n"
+                  << "  with brackets.  Several values for one field are separated by | and mean any\n"
+                  << "  of them.  Fields: id, serial, issuer, name, org, unit, country, state, issued,\n"
+                  << "  expires, renew_by, changed, and the before and after forms such as\n"
+                  << "  expires_before.  A date is 2026-07-31 or '2026-07-31 10:31:21' in Coordinated\n"
+                  << "  Universal Time; a period is a number and a unit letter such as 30d.\n"
+                  << "\n"
+                  << "  " << program_name << " --list --where \"(org:SLAC or org:LBNL) and expires_before:30d\"\n"
                   << std::endl;
         exit(0);
     }
@@ -143,13 +172,91 @@ int main(int argc, char *argv[]) {
 
         // Variables to store options
         CertAction action{STATUS};
-        bool approve{false}, revoke{false}, deny{false}, debug{false}, password_flag{false}, verbose{false};
-        std::string cert_file, password, issuer_serial_string;
+        bool approve{false}, revoke{false}, deny{false}, debug{false}, password_flag{false}, verbose{false}, list{false};
+        std::string cert_file, password, issuer_serial_string, format_name, where, expiring;
+        bool pending{false};
         std::string cert_pv_prefix{"CERT:STATUS:"};
+        std::string cert_list_pv_prefix{"CERT"};
 
-        auto parse_result =
-            readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, cert_file, issuer_serial_string, cert_pv_prefix);
+        auto parse_result = readParameters(argc, argv, program_name, conf, approve, revoke, deny, debug, password_flag, verbose, cert_file,
+                                           issuer_serial_string, cert_pv_prefix, list, format_name, cert_list_pv_prefix,
+                                           where, pending, expiring);
         if (parse_result) exit(parse_result);
+
+        certs::CertListFormat list_format{certs::CertListFormat::Columns};
+        if (!format_name.empty()) {
+            if (!list) {
+                log_err_printf(certslog, "Error: --format only applies to --list.%s", "\n");
+                return 3;
+            }
+            if (!certs::parseCertListFormat(format_name, list_format)) {
+                log_err_printf(certslog, "Error: unrecognised --format '%s'. Accepted: columns, csv, json.\n", format_name.c_str());
+                return 3;
+            }
+        }
+
+        // The two shorthands stand for expressions. Combining either with --where would leave
+        // it unclear which one applies, so it is refused rather than guessed at.
+        if ((pending || !expiring.empty()) && !where.empty()) {
+            log_err_printf(certslog, "Error: --pending and --expiring cannot be combined with --where.%s", "\n");
+            return 3;
+        }
+        if (pending && !expiring.empty()) {
+            log_err_printf(certslog, "Error: --pending and --expiring cannot be used together.%s", "\n");
+            return 3;
+        }
+        if (pending) where = "state:PENDING_APPROVAL";
+        if (!expiring.empty()) where = "expires_before:" + expiring + " and state:VALID";
+
+        if (!where.empty() && !list) {
+            log_err_printf(certslog, "Error: --where, --pending and --expiring only apply to --list.%s", "\n");
+            return 3;
+        }
+
+        // Read the expression before building a client, so a typing mistake costs no round trip
+        // and is reported even when the certificate manager cannot be reached.
+        if (!where.empty()) {
+            try {
+                certs::CertFilter::parse(where, certs::timeNow());
+            } catch (const certs::CertFilterError &e) {
+                std::cerr << e.what() << std::endl;
+                return 3;
+            }
+        }
+
+        if (list) {
+            // --list asks a different question from the others, and answers it for the whole
+            // database rather than one certificate, so combining it with them is meaningless
+            // rather than merely unsupported.
+            if (approve || revoke || deny || !cert_file.empty() || !issuer_serial_string.empty()) {
+                log_err_printf(certslog, "Error: --list cannot be used with -f, -A, -D, -R or a certificate ID.%s", "\n");
+                return 3;
+            }
+
+            // Transport security stays on, unlike the status path which turns it off: the
+            // caller has to be identified for an administrator to receive the request
+            // identifier column.
+            auto list_client = conf.build();
+            const auto list_pv = certs::getCertListPv(cert_list_pv_prefix);
+            if (verbose) std::cerr << "Listing certificates from " << list_pv << std::endl;
+
+            try {
+                // The expression travels as an argument on the call, so the certificate
+                // manager reads it for itself rather than trusting the check made above.
+                Value arguments = nt::NTURI({members::String("where")}).create();
+                arguments["query.where"] = where;
+                const auto table =
+                    list_client.rpc(list_pv, arguments).exec()->wait(conf.getRequestTimeout());
+                certs::printCertList(std::cout, table, list_format);
+                return 0;
+            } catch (const client::Timeout &) {
+                log_err_printf(certslog, "Timed out listing certificates from %s\n", list_pv.c_str());
+                return 4;
+            } catch (const std::exception &e) {
+                log_err_printf(certslog, "Failed to list certificates: %s\n", e.what());
+                return 1;
+            }
+        }
 
         if (password_flag && cert_file.empty()) {
             log_err_printf(certslog, "Error: -p must only be used with -f.%s", "\n");

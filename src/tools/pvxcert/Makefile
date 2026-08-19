@@ -14,12 +14,14 @@ PROD += pvxcert
 
 # Main entrypoint for the tool
 pvxcert_SRCS += pvxcert.cpp
+pvxcert_SRCS += certlistprint.cpp
 
 # Shared CMS/cert implementation sources (from src/common/)
 pvxcert_SRCS += p12filefactory.cpp
 pvxcert_SRCS += certfilefactory.cpp
 pvxcert_SRCS += certfactory.cpp
 pvxcert_SRCS += certstatus.cpp
+pvxcert_SRCS += certfilter.cpp
 pvxcert_SRCS += certstatusmanager.cpp
 pvxcert_SRCS += cmsversion.cpp
 
