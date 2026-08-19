@@ -17,12 +17,18 @@ FROM ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${BASE_IMAGE}:${BASE_IMAGE_TAG}
 ENV PROJECT_HOME=/opt/epics
 ENV DEBIAN_FRONTEND=noninteractive
 
+# fonts-liberation is not optional. The display builder calibrates every font size it draws
+# against Liberation Mono at size 40, expecting a known pixel width (FontCalibration.java), and
+# the dashboard asks for Liberation Sans by name eleven times. Without the package Phoebus logs
+# "Cannot obtain font Liberation Mono for calibration ... Check installation of calibration
+# font" and falls back to a factor of 1.0, so every text size on the display is wrong.
 RUN apt-get update && \
     apt-get install -y \
             openjdk-21-jdk \
             libgtk-3-0 \
             libgl1 \
-            libgl1-mesa-dri && \
+            libgl1-mesa-dri \
+            fonts-liberation && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=phoebus-builder /build/phoebus-product/target/product-*.jar /opt/phoebus/
