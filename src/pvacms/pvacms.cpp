@@ -3249,13 +3249,19 @@ int main(int argc, char *argv[]) {
         auto our_issuer_id = CertStatus::getSkId(cert_auth_cert);
 
         if (!admin_name.empty()) {
+            // Name the step that failed. Creating the certificate and registering the
+            // administrator in the access security file fail for different reasons, and
+            // reporting the first for a failure of the second sends the reader to the
+            // wrong place.
+            const char *stage = "creating the admin user certificate";
             try {
                 createAdminClientCert(config, certs_db, cert_auth_pkey, cert_auth_cert, cert_auth_chain, admin_name);
+                stage = "registering the admin user in the access security file";
                 addUserToAdminACF(config, admin_name);
-                log_warn_printf(pvacms, "Admin user \"%s\" has been added to list of administrators of this PVACMS.  Restart the PVACMS for it to take effect\n", admin_name.c_str());
+                log_warn_printf(pvacms, "Admin user \"%s\" is an administrator of this PVACMS.  If the access security file was changed, restart the PVACMS for it to take effect\n", admin_name.c_str());
             } catch (const std::runtime_error &e) {
                 if (!is_initialising)
-                    throw std::runtime_error(std::string("Error creating admin user certificate: ") + e.what());
+                    throw std::runtime_error(std::string("Error ") + stage + ": " + e.what());
             }
             exit(0);
         }
