@@ -88,16 +88,6 @@ TESTS += testtlsstatus
 TESTPROD_HOST += testtlsstatus
 testtlsstatus_SRCS += testtlsstatus.cpp
 
-# Test the settings the certificate database is opened with. Chiefly the busy
-# timeout: without it SQLite reports "database is locked" the instant it meets a
-# lock instead of waiting, which stopped the certificate manager from starting.
-TESTS += testsqlitehardening
-TESTPROD_HOST += testsqlitehardening
-testsqlitehardening_SRCS += testsqlitehardening.cpp
-testsqlitehardening_SRCS += sqlitehardening.cpp
-testsqlitehardening_LIBS += pvxsIoc dbRecStd dbCore ca
-testsqlitehardening_SYS_LIBS += sqlite3
-
 # Test the certificate request identifier: the identifier itself, the package built around
 # it, the table it is stored in, and the substituted-key case it exists to make visible
 TESTS += testcertrequestid
@@ -110,6 +100,37 @@ testcertrequestid_SRCS += p12filefactory.cpp
 testcertrequestid_SRCS += openssl.cpp
 testcertrequestid_LIBS += pvxsIoc dbRecStd dbCore ca
 testcertrequestid_SYS_LIBS += sqlite3
+
+# Test the settings the certificate database is opened with. Chiefly the busy
+# timeout: without it SQLite reports "database is locked" the instant it meets a
+# lock instead of waiting, which stopped the certificate manager from starting.
+TESTS += testsqlitehardening
+TESTPROD_HOST += testsqlitehardening
+testsqlitehardening_SRCS += testsqlitehardening.cpp
+testsqlitehardening_SRCS += sqlitehardening.cpp
+testsqlitehardening_LIBS += pvxsIoc dbRecStd dbCore ca
+testsqlitehardening_SYS_LIBS += sqlite3
+
+# Test the certificate listing: the rendering a control room display depends on, and
+# that the served result really is a normative table so a display needs no support for it
+TESTS += testcertlist
+TESTPROD_HOST += testcertlist
+testcertlist_SRCS += testcertlist.cpp
+testcertlist_SRCS += certlist.cpp
+testcertlist_SRCS += certsubjectunits.cpp
+testcertlist_SRCS += certfilter.cpp
+testcertlist_SRCS += certlistprint.cpp
+testcertlist_LIBS += pvxsIoc dbRecStd dbCore ca
+testcertlist_SYS_LIBS += sqlite3
+
+# Test the filter expression: how the words bind, what happens when the query cannot express
+# a test, and what an operator is told when they get it wrong
+TESTS += testcertfilter
+TESTPROD_HOST += testcertfilter
+testcertfilter_SRCS += testcertfilter.cpp
+testcertfilter_SRCS += certfilter.cpp
+testcertfilter_LIBS += pvxsIoc dbRecStd dbCore ca
+testcertfilter_SYS_LIBS += sqlite3
 
 # Test nested organizational units: the order that carries containment, the two request fields
 # that must agree or verification can be bypassed, and the subject entries they become
@@ -130,26 +151,6 @@ testorgunits_SRCS += openssl.cpp
 testorgunits_LIBS += pvxsIoc dbRecStd dbCore ca
 testorgunits_SYS_LIBS += sqlite3
 
-# Test the certificate listing: the rendering a control room display depends on, and
-# that the served result really is a normative table so a display needs no support for it
-TESTS += testcertlist
-TESTPROD_HOST += testcertlist
-testcertlist_SRCS += testcertlist.cpp
-testcertlist_SRCS += certlist.cpp
-testcertlist_SRCS += certfilter.cpp
-testcertlist_SRCS += certlistprint.cpp
-testcertlist_LIBS += pvxsIoc dbRecStd dbCore ca
-testcertlist_SYS_LIBS += sqlite3
-
-# Test the filter expression: how the words bind, what happens when the query cannot express
-# a test, and what an operator is told when they get it wrong
-TESTS += testcertfilter
-TESTPROD_HOST += testcertfilter
-testcertfilter_SRCS += testcertfilter.cpp
-testcertfilter_SRCS += certfilter.cpp
-testcertfilter_LIBS += pvxsIoc dbRecStd dbCore ca
-testcertfilter_SYS_LIBS += sqlite3
-
 # Test a keychain holding several trust anchors: which authority mints and which roots the file
 # trusts decided apart, the layout the chain is written in, which anchor is the primary one, and
 # when the anchors are listed
@@ -163,6 +164,7 @@ testtrustanchors_SRCS += certfactory.cpp
 testtrustanchors_SRCS += certfilefactory.cpp
 testtrustanchors_SRCS += p12filefactory.cpp
 testtrustanchors_SRCS += certrequestid.cpp
+testtrustanchors_SRCS += keychainreport.cpp
 testtrustanchors_SRCS += openssl.cpp
 testtrustanchors_LIBS += pvxsIoc dbRecStd dbCore ca
 testtrustanchors_SYS_LIBS += sqlite3
