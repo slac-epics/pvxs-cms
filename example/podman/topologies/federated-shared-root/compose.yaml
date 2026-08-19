@@ -20,10 +20,6 @@
 #
 # Run ./bootstrap.sh first: it builds the images and mints the authorities.
 
-# Carried by the things that never look for a process variable: a certificate manager serves
-# and is served, and a gateway is told its upstream in its own configuration file. Everything
-# else here leaves discovery on, finds its own department by broadcast, and names the facility
-# address for the other one.
 x-lab-env: &lab-env
   EPICS_PVA_AUTO_ADDR_LIST: "NO"
 
@@ -33,19 +29,12 @@ x-lab-env: &lab-env
 # segment are still assigned by podman when a container starts: per-container addresses
 # cannot be set here, because podman-compose passes them as --ip, which podman refuses on a
 # container attached to more than one network.
-# Every segment carries isolate=true, and that is what makes it a segment rather than a
-# label. Podman drops traffic between two of its own networks, so nothing on one reaches a
-# host on another by addressing it; what crosses does so through a container standing on
-# both sides, and each of those is drawn in this laboratory's picture.
+# Every segment carries isolate=true: no podman network forwards to another, so nothing
+# reaches another segment by addressing it. What crosses does so through a container standing
+# on both sides, and each of those is drawn in this laboratory's picture.
 #
-# Without it the host, which forwards between the bridges and permits everything, carries
-# any packet from any segment to any other, and every boundary below becomes a matter of
-# policy rather than of the network.
-#
-# This is the separation a routing firewall would be installed to enforce, and it is why
-# this laboratory needs no such appliance. topology-federated-shared-root-routed.svg draws
-# the firewall a site would build, and its SIMULATED BY note says which parts of this file
-# stand in for it.
+# This is what a routing firewall would be installed to enforce; see the SIMULATED BY note
+# on the routers in topology-federated-shared-root-routed.svg.
 networks:
   net-lab:
     driver_opts:
@@ -95,22 +84,19 @@ volumes:
   ml-ioc-config:
   lab-client-config:
   ml-client-config:
-  internet-client-config:
+  perimeter-client-config:
 
 services:
 
   # ------------------------------------------------------------- the facility authority
-  # Answers for the facility root, at the address named in the root's own extension. What it
-  # says is in ./ocsp/index.txt, read when it starts.
-  #
-  # net-it is its own segment; the other two are legs into the networks that name it, the same
-  # accommodation pvxs-facility-lb needs. The certificate managers stay on one interface each
-  # so that neither can address the other's.
+  # Answers for the facility root, at the address named in the root's own extension. On both
+  # departmental networks, because both certificate managers chain to that root. What it says
+  # is in ./ocsp/index.txt, read when it starts.
   pvxs-lab-authority-status:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-authority-status
-    networks: [net-it, net-lab, net-ml]
+    networks: [net-it]
     volumes:
       - ./ocsp:/ocsp:ro,Z
       - ../../../kubernetes/docker/idm/ocsp-supervisor.conf:/etc/supervisor/conf.d/ocsp.conf:ro,z
@@ -123,10 +109,13 @@ services:
     depends_on: [pvxs-lab-authority-status]
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-pvacms
-    networks: [net-lab]
+    # net-it as well: the root names its responder by hostname, and podman answers a name
+    # only for containers that share a segment with the asker.
+    networks: [net-lab, net-it]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
       EPICS_PVACMS_DB: /home/idm/.local/share/pva/1.5/certs.db
       EPICS_PVA_TLS_KEYCHAIN: /home/idm/.config/pva/1.5/server.p12
     volumes:
@@ -147,7 +136,8 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      <<: *lab-env
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - testioc-config:/home/testioc/.config/pva/1.5
@@ -162,7 +152,8 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      <<: *lab-env
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - tstioc-config:/home/tstioc/.config/pva/1.5
@@ -196,10 +187,11 @@ services:
     depends_on: [pvxs-lab-authority-status]
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml:latest
     hostname: pvxs-lab-ml
-    networks: [net-ml]
+    networks: [net-ml, net-it]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
       EPICS_PVACMS_DB: /home/idm/.local/share/pva/1.5/certs.db
       EPICS_PVA_TLS_KEYCHAIN: /home/idm/.config/pva/1.5/server.p12
     volumes:
@@ -217,7 +209,8 @@ services:
     networks: [net-ml]
     env_file: [./issuer_ids.env]
     environment:
-      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      <<: *lab-env
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
     volumes:
       - ml-ioc-config:/home/mlioc/.config/pva/1.5
@@ -255,7 +248,8 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      <<: *lab-env
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
       EPICS_PVA_NAME_SERVERS: "facility:5175"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -273,7 +267,8 @@ services:
     networks: [net-ml]
     env_file: [./issuer_ids.env]
     environment:
-      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      <<: *lab-env
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
       EPICS_PVA_NAME_SERVERS: "facility:5075"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -284,18 +279,18 @@ services:
 
   # A shell outside both departments. Reaches the two gateways and nothing else, so
   # every certificate status lookup and every process variable crosses a gateway.
-  internet-client:
+  perimeter-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/internet:latest
-    hostname: internet-client
+    hostname: perimeter-client
     networks: [net-internet]
     env_file: [./issuer_ids.env]
     environment:
-      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      <<: *lab-env
       EPICS_PVA_NAME_SERVERS: "facility:5075 facility:5175"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
-      - internet-client-config:/home/guest/.config/pva/1.5
+      - perimeter-client-config:/home/guest/.config/pva/1.5
       - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
 

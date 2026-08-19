@@ -17,8 +17,7 @@ from topology_kit import (C, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields
 lab_client_l = fields('Role: client','Image: lab',
  'eth0  net-lab        10.89.0.0/24',
  'Listens: none (client only)','Logins: guest, operator',
- 'EPICS_PVA_ADDR_LIST: unset, and discovery left on',
- '    its own department, by broadcast on its own segment',
+ 'EPICS_PVA_ADDR_LIST: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc',
  'EPICS_PVA_NAME_SERVERS: facility:5175   the ML department, by its port')
 lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-perimeter','Image: gateway',
  'eth0  net-lab        10.89.0.0/24   upstream side, to its department',
@@ -30,21 +29,17 @@ lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-perimeter','Image
  'Presents: CN=gateway',
  'Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc','ACF: gateway.acf','PVList: config/gateway-lab.pvlist')
 testioc_l = fields('Role: IOC','Image: testioc','eth0  net-lab        10.89.0.0/24',
- 'Finds its certificate manager by broadcast, as everything here does',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: testioc.db, testiocg.db, testioc-lab.db',
  'ACF: testioc.acf','Serves:','    test:aiExample, test:stringExample, test:longExample',
  '    test:enumExample, test:arrayExample, test:calcExample',
  '    test:spec (SPECIAL), test:labspec (LABSPEC), test:open (OPEN)')
 tstioc_l = fields('Role: IOC','Image: tstioc','eth0  net-lab        10.89.0.0/24',
- 'Finds its certificate manager by broadcast, as everything here does',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: image.db, image.json','ACF: tstioc.acf',
  'Serves: tst:ArrayData, tst:ColorMode,','    and the rest of the image database')
 pvacms_l = fields('Role: PVACMS','Image: idm',
  'eth0  net-lab        10.89.0.0/24   its only interface',
- 'EPICS_PVA_AUTO_ADDR_LIST: NO   it serves and is served, and never',
- '                                   searches for anything itself',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/lab_intermediate.p12',
  'ACF: /etc/pvacms/pvacms.acf','Serves:','    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER',
@@ -64,18 +59,14 @@ ml_gw_l = fields('Role: gateway (dual-homed), net-ml <-> net-perimeter','Image: 
 ml_client_l = fields('Role: client','Image: lab',
  'eth0  net-ml         10.89.1.0/24',
  'Listens: none (client only)','Logins: guest, operator',
- 'EPICS_PVA_ADDR_LIST: unset, and discovery left on',
- '    its own department, by broadcast on its own segment',
+ 'EPICS_PVA_ADDR_LIST: pvxs-lab-ml, pvxs-lab-ml-ioc',
  'EPICS_PVA_NAME_SERVERS: facility:5075   the lab department, by its port')
 mlioc_l = fields('Role: IOC','Image: ml-ioc','eth0  net-ml         10.89.1.0/24',
- 'Finds its certificate manager by broadcast, as everything here does',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: mlioc.db','ACF: mlioc.acf',
  'Serves: ml:aiExample, ml:stringExample,','    ml:longExample, ml:open (OPEN)')
 mlcms_l = fields('Role: PVACMS','Image: ml',
  'eth0  net-ml         10.89.1.0/24   its only interface',
- 'EPICS_PVA_AUTO_ADDR_LIST: NO   it serves and is served, and never',
- '                                   searches for anything itself',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/ml_intermediate.p12',
  'ACF: /etc/pvacms/pvacms.acf','Serves:','    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER',
@@ -121,7 +112,7 @@ ml_router_l = _router('ML', 'net-ml', '10.89.1.0/24',
 pc_l = fields('Role: client','Image: internet',
  'eth0  net-internet   10.89.4.0/24',
  'Listens: none (client only)','Logins: guest, operator',
- 'EPICS_PVA_ADDR_LIST: unset - nothing on its own segment to find',
+ 'EPICS_PVA_ADDR_LIST: none',
  'EPICS_PVA_NAME_SERVERS: facility:5075, facility:5175',
  '    one address, one port per department')
 resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
@@ -130,8 +121,7 @@ resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
  'eth2  net-ml         10.89.1.0/24       as the balancer is',
  'An IT service: it belongs to neither department, as the root does not',
  'Listens: tcp/8888 OCSP over HTTP',
- 'Program: openssl ocsp, under supervisor with a watchdog - one call at',
- '    a time, so a manager asks up to five times before giving up',
+ 'Program: openssl ocsp, under supervisor with a watchdog',
  'Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt')
 root_l = fields('Subject: CN=EPICS Root Certificate Authority','OCSP: pvxs-lab-authority-status:8888',
  '    (named in the AIA extension)','File: certs/cert_auth.p12')
@@ -318,8 +308,8 @@ gx1 = lab_x + ZP + gx1_local
 gx2 = ml_x + ZP + gx2_local
 rx = (gx1 + gx2) / 2
 
-pz_w = measure('internet-client', pc_l)[0] + 2*ZP
-pz_h = ZTITLE + 12 + measure('internet-client', pc_l)[1] + 20
+pz_w = measure('perimeter-client', pc_l)[0] + 2*ZP
+pz_h = ZTITLE + 12 + measure('perimeter-client', pc_l)[1] + 20
 
 ca_children_w = colw('Lab Intermediate CA', labca_l) + colw('ML Intermediate CA', mlca_l) + colw('OCSP Signing Cert', signer_l) + 2*GAP
 ca_w = ca_children_w + 2*ZP
@@ -432,7 +422,7 @@ def build(cv):
         cv.hv([(t['cx'], bus_lab_y), (t['cx'], t['top'])], C[colr], 2); cv.dot(t['cx'], bus_lab_y, C[colr])
 
     # --- perimeter client + CA + responder cards
-    pcc = cv.card(pz_x + (pz_w - measure('internet-client', pc_l)[0])/2, pz_y + ZTITLE + 12, 'internet-client', pc_l, 'client', 'client')
+    pcc = cv.card(pz_x + (pz_w - measure('perimeter-client', pc_l)[0])/2, pz_y + ZTITLE + 12, 'perimeter-client', pc_l, 'client', 'client')
     rootc = cv.card(rx - root_w/2, ca_y + ZTITLE + 10, 'Facility Root CA', root_l, 'ca', 'ca')
     ch_y = rootc['bot'] + 46
     c1 = cv.card(ca_x + ZP, ch_y, 'Lab Intermediate CA', labca_l, 'ca', 'ca')
