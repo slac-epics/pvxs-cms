@@ -324,7 +324,7 @@ struct Tester {
 }  // namespace
 
 MAIN(testtlsstatus) {
-    testPlan(111);
+    testPlan(114);
 
     // A certificate says who it is twice: in the subject key identifier extension, which whoever
     // made it simply wrote down, and in its public key, from which the same identifier can be
@@ -424,6 +424,17 @@ MAIN(testtlsstatus) {
         testOk(!issuerIdIsExpected(full + "00", full), "More than the identifier holds cannot match");
         testOk(issuerIdIsExpected("0123ABCD", full.substr(0, 4) + "abcd" + full.substr(8)),
                "Compared without regard to case");
+    }
+
+    // The layout itself, asserted against a literal. A round trip through format and
+    // parse uses the same layout on both sides and passes whatever that layout is, so
+    // it cannot detect a change to it. Only a literal can.
+    {
+        const CertDate fixed(static_cast<time_t>(1754044281));  // 2025-08-01 10:31:21 UTC
+        testEq(fixed.s, std::string("2025-08-01 10:31:21 UTC"));
+        testOk(fixed.s.size() == 23, "Rendered date is fixed width (%zu characters)", fixed.s.size());
+        const CertDate round_tripped(fixed.s);
+        testEq(round_tripped.t, fixed.t);
     }
     testSetup();
     logger_config_env();

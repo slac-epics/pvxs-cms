@@ -24,7 +24,6 @@
 #include "ownedptr.h"
 #include "security.h"
 
-#define CERT_TIME_FORMAT "%a %b %d %H:%M:%S %Y UTC"
 
 typedef epicsGuard<epicsMutex> Guard;
 typedef epicsGuardRelease<epicsMutex> UnGuard;
