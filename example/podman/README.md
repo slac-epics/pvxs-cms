@@ -260,6 +260,61 @@ run_in testioc as testioc printenv EPICS_PVA_AUTH_ISSUER   # lab
 run_in ml-ioc  as mlioc   printenv EPICS_PVA_AUTH_ISSUER   # machine learning
 ```
 
+### Naming an authority
+
+That id is the first eight digits of the authority's subject key identifier, which is what a
+process variable name can carry. The authority itself carries the whole forty, and that is
+what you see if you read its certificate:
+
+```sh
+run_in lab-manager as idm bash -c \
+  "openssl pkcs12 -in /certs/lab_intermediate.p12 -passin pass: -nokeys \
+   | openssl x509 -noout -ext subjectKeyIdentifier"
+#   53:E8:04:2C:F6:8B:D9:A0:BA:C0:A0:89:85:AB:47:BF:0F:BB:EB:D0
+```
+
+All of these name that same authority, so any of them can be given to `--issuer` or to
+`EPICS_PVA_AUTH_ISSUER`, and the `issuer:` field of a filter takes them too:
+
+```sh
+run_in lab as guest authnstd -u client --issuer 53e8042c
+run_in lab as guest authnstd -u client --issuer 53E8042C
+run_in lab as guest authnstd -u client --issuer 53E8042CF68BD9A0BAC0A08985AB47BF0FBBEBD0
+run_in lab as guest authnstd -u client --issuer 53:E8:04:2C:F6:8B:D9:A0:BA:C0:A0:89:85:AB:47:BF:0F:BB:EB:D0
+```
+
+Separators are dropped and capitals folded. Something that is not an identifier at all, or
+is too short to name an authority, is refused rather than turned into a name nothing answers:
+
+```sh
+run_in lab as guest authnstd -u client --issuer 53e80
+#   '53e80' is too short to name a certificate authority: at least 8 hexadecimal digits are needed
+```
+
+**The whole identifier is required when nothing is trusted yet, and refused otherwise.**
+Eight digits is thirty-two bits, and a key whose identifier begins with any wanted
+thirty-two bits takes hours to generate on one processor core, so the short form names an
+authority conveniently but cannot establish that it is the right one:
+
+```sh
+run_in lab as guest authnstd -u client --issuer ${LAB}
+#   The issuer '53e8042c' is only 8 of the 40 digits of a subject key identifier, which is
+#   not enough to decide which certificate authority to trust ...
+run_in lab as guest authnstd -u client --issuer ${LAB_SKID}      # accepted
+```
+
+Once a keychain holds an authority, that pinned authority is what a delivered one is
+compared against, and the short form is accepted again for naming. Certificate identifiers
+keep the eight-digit form throughout, because that is what a process variable name carries.
+
+`helpers.sh` gives you both: `$LAB` and `$ML` are the naming form, `$LAB_SKID` and `$ML_SKID`
+the whole one. The certificate manager prints both when it starts:
+
+```
+| Issuer ID                             : 53e8042c
+| Issuer SKID                           : 53e8042cf68bd9a0bac0a08985ab47bf0fbbebd0
+```
+
 ## 2. Crossing a boundary is only possible through a gateway
 
 Inside a department, a client talks to its controllers directly:
@@ -321,7 +376,7 @@ certificate. It cannot reach that certificate manager, so the request travels th
 machine learning gateway:
 
 ```sh
-run_in perimeter  as operator authnstd -u client --issuer ${ML}
+run_in perimeter  as operator authnstd -u client --issuer ${ML_SKID}
 run_in ml-manager as admin    pvxcert --review-pending --all approve --yes
 ```
 

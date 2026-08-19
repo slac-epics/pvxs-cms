@@ -76,7 +76,7 @@ services:
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms"
-      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER}"
+      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - testioc-config:/home/testioc/.config/pva/1.5
       - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
@@ -92,7 +92,7 @@ services:
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms"
-      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER}"
+      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - tstioc-config:/home/tstioc/.config/pva/1.5
       - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
@@ -109,7 +109,7 @@ services:
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
-      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER}"
+      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - gateway-config:/home/gateway/.config/pva/1.5
       - ./config/gateway-lab.conf:/home/gateway/gateway.conf.in:ro,z
@@ -147,7 +147,7 @@ services:
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml"
-      EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER}"
+      EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
     volumes:
       - ml-ioc-config:/home/mlioc/.config/pva/1.5
       - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
@@ -163,7 +163,7 @@ services:
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
-      EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER}"
+      EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
     volumes:
       - ml-gateway-config:/home/gateway/.config/pva/1.5
       - ./config/gateway-ml.conf:/home/gateway/gateway.conf.in:ro,z
@@ -187,7 +187,7 @@ services:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
       EPICS_PVA_NAME_SERVERS: "pvxs-lab-ml-gateway:5075"
-      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER}"
+      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - lab-client-config:/home/guest/.config/pva/1.5
@@ -206,7 +206,7 @@ services:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
       EPICS_PVA_NAME_SERVERS: "pvxs-lab-gateway:5075"
-      EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER}"
+      EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - ml-client-config:/home/guest/.config/pva/1.5

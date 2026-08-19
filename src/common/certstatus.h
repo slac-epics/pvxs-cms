@@ -46,6 +46,35 @@ namespace certs {
 
 constexpr size_t kIssuerIdNameLength = 8;
 
+/** How many hex digits the whole subject key identifier has, being a SHA-1 digest. */
+constexpr size_t kIssuerIdFullLength = 40;
+
+/** Whether an identifier names an authority completely, rather than only enough to address it.
+ *
+ *  The naming length is 32 bits, which is few enough that a key pair whose identifier begins
+ *  with any wanted 32 bits can be generated in hours. That is adequate to say which certificate
+ *  manager to ask, and inadequate to decide which authority to trust.
+ */
+inline bool issuerIdIsComplete(const std::string &issuer_id) { return issuer_id.size() >= kIssuerIdFullLength; }
+
+/**
+ * @brief Read an issuer identifier the way somebody wrote it down.
+ *
+ * The identifier is the subject key identifier of a certificate authority, written as
+ * hexadecimal. A process channel name carries the first eight digits of it, but that is a naming
+ * convention rather than the identifier: what a person has in front of them is usually the whole
+ * forty digits, copied from a certificate, and often in capitals and split by colons because that
+ * is how the tools that print certificates lay it out.
+ *
+ * All three are the same identifier, so all three are read here: separators are dropped, capitals
+ * are folded, and what comes back is the digits alone. Nothing is shortened, so a caller checking
+ * an authority still compares every digit that was committed to. Only the channel names shorten
+ * it, and they do that where they are built.
+ *
+ * @param text the identifier as it was typed or configured
+ * @return the identifier as hex digits in lower case, or empty if @p text is empty
+ * @throws std::runtime_error if it is not hexadecimal, or too short to name an authority
+ */
 inline std::string readIssuerId(const std::string &text) {
     std::string digits;
     digits.reserve(text.size());
