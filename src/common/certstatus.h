@@ -12,6 +12,8 @@
 #ifndef PVXS_CERTSTATUS_H_
 #define PVXS_CERTSTATUS_H_
 
+#include <algorithm>
+#include <cctype>
 #include <iomanip>
 
 #include <openssl/x509.h>
@@ -42,6 +44,30 @@ DEFINE_LOGGER(status_setup, "pvxs.certs.status");
 namespace pvxs {
 namespace certs {
 
+constexpr size_t kIssuerIdNameLength = 8;
+
+inline std::string readIssuerId(const std::string &text) {
+    std::string digits;
+    digits.reserve(text.size());
+    for (const char c : text) {
+        if (c == ':' || c == '-' || c == ' ' || c == '\t') continue;
+        if (!std::isxdigit(static_cast<unsigned char>(c)))
+            throw std::runtime_error(SB() << "'" << text << "' is not an issuer identifier: it is written as "
+                                             "hexadecimal digits, optionally separated by colons");
+        digits += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (digits.empty()) return digits;
+    if (digits.size() < kIssuerIdNameLength)
+        throw std::runtime_error(SB() << "'" << text << "' is too short to name a certificate authority: at least "
+                                      << kIssuerIdNameLength << " hexadecimal digits are needed");
+    return digits;
+}
+
+inline std::string issuerIdForPvName(const std::string &issuer_id) {
+    const auto digits = readIssuerId(issuer_id);
+    return digits.substr(0, std::min(digits.size(), kIssuerIdNameLength));
+}
+
 /**
  * @brief Get the Certificate Status PV base.
  * e.g., CERT:STATUS
@@ -67,7 +93,7 @@ inline std::string getCertStatusPvBase(const std::string &cert_pv_prefix) {
 inline std::string getCertStatusPv(const std::string &cert_pv_prefix, const std::string& issuer_id) {
     std::string pv = getCertStatusPvBase(cert_pv_prefix);
     pv += ":";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     pv += ":*";
     return pv;
 }
@@ -104,7 +130,7 @@ inline std::string getCertIssuerPv(const std::string &cert_pv_prefix) {
 inline std::string getCertIssuerPv(const std::string &cert_pv_prefix, const std::string& issuer_id) {
     std::string pv = getCertIssuerPv(cert_pv_prefix);
     pv += ":";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     return pv;
 }
 
@@ -140,7 +166,7 @@ inline std::string getCertAuthRootPv(const std::string &cert_pv_prefix) {
 inline std::string getCertAuthRootPv(const std::string &cert_pv_prefix, const std::string& issuer_id) {
     std::string pv = getCertAuthRootPv(cert_pv_prefix);
     pv += ":";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     return pv;
 }
 
@@ -176,7 +202,7 @@ inline std::string getCertCreatePv(const std::string &cert_pv_prefix) {
 inline std::string getCertCreatePv(const std::string &cert_pv_prefix, const std::string& issuer_id) {
     std::string pv = getCertCreatePv(cert_pv_prefix);
     pv += ":";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     return pv;
 }
 
@@ -209,7 +235,7 @@ inline std::string getCertStatusURI(const std::string &prefix, const std::string
 inline std::string getConfigURI(const std::string &cert_pv_prefix, const std::string& issuer_id, const std::string& skid) {
     std::string pv = cert_pv_prefix;
     pv += ":CONFIG:";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     pv += ":";
     pv += skid;
     return pv;
