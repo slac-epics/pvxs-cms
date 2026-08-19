@@ -235,9 +235,14 @@ lab_ids() {
     if [ ! -r "${env_file}" ]; then
         echo "no ${env_file} yet - run ./bootstrap.sh first" >&2; return 1
     fi
+    # Two forms, wanted in different places. The short one names an authority in a process
+    # variable name, such as CERT:LIST:${LAB}:ALL. The whole one is what establishes trust in
+    # it, and is what --issuer wants on a first request.
     LAB=$(sed -n 's/^LAB_ISSUER=//p' "${env_file}")
     ML=$(sed -n 's/^ML_ISSUER=//p'  "${env_file}")
-    export LAB ML
+    LAB_SKID=$(sed -n 's/^LAB_ISSUER_SKID=//p' "${env_file}")
+    ML_SKID=$(sed -n 's/^ML_ISSUER_SKID=//p'  "${env_file}")
+    export LAB ML LAB_SKID ML_SKID
 }
 
 # Which parts of the laboratory are up, named the way run_in names them.

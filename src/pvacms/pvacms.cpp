@@ -3853,6 +3853,12 @@ int main(int argc, char *argv[]) {
                       << std::endl;
             std::cout << "| Certificate Database                  : " << config.certs_db_filename << std::endl;
             std::cout << "| Certificate Authority                 : " << subject_string << std::endl;
+            // Both forms, because they are used for different things and only one of them is
+            // safe to decide trust on. The identifier names this manager in a channel name; the
+            // whole subject key identifier is what a client must be given to pin the authority.
+            std::cout << "| Issuer ID                             : " << our_issuer_id << std::endl;
+            std::cout << "| Issuer SKID                           : " << CertStatus::getFullSkId(cert_auth_cert.get())
+                      << std::endl;
             std::cout << "| Certificate Authority Keychain File   : " << config.cert_auth_keychain_file << std::endl;
             std::cout << "| PVACMS Keychain File                  : " << config.tls_keychain_file << std::endl;
             std::cout << "| PVACMS Access Control File            : " << config.pvacms_acf_filename << std::endl;
@@ -3864,13 +3870,13 @@ int main(int argc, char *argv[]) {
             std::cout << "| Cluster Status                        : " << cluster_status << std::endl;
             std::cout << "+---------------------------------------+---------------------------------------"
                       << std::endl;
-            std::cout << "| PVACMS [" << our_issuer_id << "] Service Running     |" << std::endl;
+            std::cout << "| PVACMS Service Running                |" << std::endl;
             std::cout << "+=======================================+======================================="
                       << std::endl;
             pva_server.run();
             std::cout << "\n+=======================================+======================================="
                       << std::endl;
-            std::cout << "| PVACMS [" << our_issuer_id << "] Service Exiting     |" << std::endl;
+            std::cout << "| PVACMS Service Exiting                |" << std::endl;
             std::cout << "+=======================================+======================================="
                       << std::endl;
         } catch (const std::exception &e) {
