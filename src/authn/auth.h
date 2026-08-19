@@ -224,10 +224,10 @@ class Auth {
      */
     static Auth *getAuth(const std::string &type);
 
-    void runAuthNDaemon(const ConfigAuthN &authn_config,
-                        bool for_client,
-                        CertData &&cert_data,
-                        const std::function<CertData()> &&fn);
+    int runAuthNDaemon(const ConfigAuthN &authn_config,
+                       bool for_client,
+                       CertData &&cert_data,
+                       const std::function<CertData()> &&fn);
 
  protected:
     // Called to have a standard presentation of the CCR for the
@@ -469,6 +469,37 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
     return cert_data;
 }
 
+/** What the daemon's status monitor should do with the certificate it is monitoring,
+ *  given a status update from the CMS. */
+enum class CertStatusAction { None, MintNew, ExitNonRenewable };
+
+/** Is the certificate's renew_by usable, i.e. renewable?
+ *  Renewable means: renewable = non-zero renew_by strictly before the cert's not_after.
+ *  Both arguments must be Unix time_t in the same epoch. A renew_by on or after not_after
+ *  is NOT usable, because the cert cannot be renewed once it has expired.
+ *  Pure (no I/O) so it can be unit-tested without a certificate. */
+inline bool usableRenewBy(const time_t renew_by_unix, const time_t not_after) {
+    return (renew_by_unix != 0) && (renew_by_unix < not_after);
+}
+
+/** Decide what the daemon's status monitor should do for a received status update.
+ *  Pure (no I/O) so it can be unit-tested.
+ *
+ *  This evaluates the certificate the daemon already holds against the live status the CMS
+ *  reports, on both the first (initial) update and every subsequent one:
+ *   - REVOKED/EXPIRED  => MintNew (the held cert is bad; request a fresh one),
+ *   - no usable renew_by => ExitNonRenewable (the cert can never be renewed in time, so stop
+ *     the daemon with a distinct exit code rather than restart-loop),
+ *   - otherwise          => None (keep monitoring; renewal_due drives the actual renewal).
+ *
+ *  has_usable_renew_by means "has a USABLE renew_by": renewable = non-zero renew_by strictly
+ *  before the cert's not_after (see usableRenewBy). */
+inline CertStatusAction certStatusAction(const certstatus_t status, const bool has_usable_renew_by) {
+    if (status == REVOKED || status == EXPIRED) return CertStatusAction::MintNew;
+    if (!has_usable_renew_by) return CertStatusAction::ExitNonRenewable;
+    return CertStatusAction::None; // VALID/PENDING*; renewal_due drives the renewal itself
+}
+
 /**
  * @brief Run the authenticator
  *
@@ -529,6 +560,25 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
             }
         } catch (std::exception &) {}
 
+        if (daemon_mode && cert_data.cert && !force) {
+            // Decide here only what can be known locally, without any network I/O: does the
+            // existing certificate carry an online status PV extension? If it does NOT (or there
+            // is no cert file at all, handled above), behave as normal and mint a fresh cert.
+            // If it does, adopt the existing cert and start the daemon: the status monitor then
+            // fetches the initial status and handles renew-by / revoked / expired (and PVACMS
+            // connect/disconnect) itself, rather than doing a separate blocking status request
+            // here. See RenewalManager in auth.cpp.
+            bool has_status_ext = true;
+            try {
+                (void)CmsStatusManager::getStatusPvFromCert(cert_data.cert);
+            } catch (const CertStatusNoExtensionException&) {
+                has_status_ext = false;
+            }
+            if (!has_status_ext) {
+                cert_data = CertData{}; // no online status => mint as normal (one-shot mint path)
+            }
+        }
+
         if (!cert_data.cert || force) {
             cert_data = getCertificate(retrieved_credentials,
                                        config,
@@ -543,7 +593,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
         }
 
         if (cert_data.cert && daemon_mode) {
-            authenticator.runAuthNDaemon(config,
+            return authenticator.runAuthNDaemon(config,
                                          IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient),
                                          std::move(cert_data),
                                          [&retrieved_credentials,

@@ -20,6 +20,7 @@
 #include <pvxs/log.h>
 #include <pvxs/unittest.h>
 
+#include "auth.h"
 #include "clustertypes.h"
 #include "clusterdiscovery.h"
 #include "ownedptr.h"
@@ -1358,10 +1359,36 @@ void testRenewByPosixRoundTrip() {
            "renew_by is POSIX seconds, not EPICS-epoch");
 }
 
+void testCertStatusAction() {
+    testDiag("Daemon-mode monitor status action (pure, no I/O)");
+
+    using A = CertStatusAction;
+    // args: status, has_usable_renew_by
+    testEq((int)certStatusAction(VALID,           true),  (int)A::None);             // valid + renewable => keep monitoring
+    testEq((int)certStatusAction(PENDING_RENEWAL, true),  (int)A::None);             // pending renewal + renewable => keep monitoring
+    testEq((int)certStatusAction(REVOKED,         true),  (int)A::MintNew);          // revoked => re-mint
+    testEq((int)certStatusAction(EXPIRED,         true),  (int)A::MintNew);          // expired => re-mint
+    testEq((int)certStatusAction(REVOKED,         false), (int)A::MintNew);          // revoked takes precedence over !renew_by
+    testEq((int)certStatusAction(VALID,           false), (int)A::ExitNonRenewable); // valid but never renewable => stop
+    testEq((int)certStatusAction(PENDING_RENEWAL, false), (int)A::ExitNonRenewable); // not revoked/expired + !renew_by => stop
+
+    // usableRenewBy: renewable iff non-zero renew_by strictly before the cert's not_after.
+    testEq(usableRenewBy((std::time_t)0,    (std::time_t)2000), false); // unset renew_by => not usable
+    testEq(usableRenewBy((std::time_t)1000, (std::time_t)2000), true);  // before not_after => usable
+    testEq(usableRenewBy((std::time_t)2000, (std::time_t)2000), false); // == not_after => not usable
+    testEq(usableRenewBy((std::time_t)3000, (std::time_t)2000), false); // after not_after => not usable
+
+    // Integrated: the renew-by predicate feeds the action function.
+    testEq((int)certStatusAction(VALID, usableRenewBy((std::time_t)2000, (std::time_t)2000)),
+           (int)A::ExitNonRenewable);   // VALID + renew_by on/after expiry => stop daemon
+    testEq((int)certStatusAction(VALID, usableRenewBy((std::time_t)1000, (std::time_t)2000)),
+           (int)A::None);               // VALID + usable renew_by => keep monitoring
+}
+
 }  // namespace
 
 MAIN(testcluster) {
-    testPlan(162);
+    testPlan(175);
     testSetup();
     logger_config_env();
 
@@ -1504,6 +1531,11 @@ MAIN(testcluster) {
         testRenewByPosixRoundTrip();
     } catch (std::exception &e) {
         testFail("testRenewByPosixRoundTrip failed: %s", e.what());
+    }
+    try {
+        testCertStatusAction();
+    } catch (std::exception &e) {
+        testFail("testCertStatusAction failed: %s", e.what());
     }
 
     return testDone();
