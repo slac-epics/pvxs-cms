@@ -3058,8 +3058,6 @@ int readParameters(int argc,
             << "                                             server by default. Can be overridden in each CCR\n"
             << "        --preload-cert <cert_file> ...       A list of certificate files you want to pre-load on startup\n"
             << "        --status-validity-mins               Set Status Validity Time in Minutes\n"
-            << "        --cert-pv-prefix <cert_pv_prefix>    Specifies the prefix for all PVs published by this "
-               "PVACMS.  Default `CERT`\n"
             << "        --cluster-mode                        Enable cluster mode for multi-node replication\n"
             << "        --cluster-pv-prefix <prefix>         Prefix for cluster PV names. Default `CERT:CLUSTER`\n"
             << "        --cluster-discovery-timeout <secs>   Seconds to wait for cluster discovery. Default 10\n"
@@ -3079,6 +3077,8 @@ int readParameters(int argc,
                "keychain\n"
             << "        --cert-auth-keychain-pwd <file>      Specify location of file containing Certificate Authority "
                "keychain password\n"
+            << "        --cert-pv-prefix <cert_pv_prefix>    Specifies the prefix for all PVs published by this "
+               "PVACMS.  Default `CERT`\n"
             << authn_help << std::endl;
         exit(0);
     }
@@ -3094,12 +3094,14 @@ int readParameters(int argc,
 
     // --admin-keychain-new (generate an admin keychain and exit) may only be combined
     // with the options needed to place/sign it: the admin keychain (-a) and its
-    // password, the ACF, and the signing certificate authority (-c) and its password.
+    // password, the ACF, the signing certificate authority (-c) and its password, and
+    // the prefix the published PVs carry.
     // Value-taking options consume the following argv entry; flags (e.g. -v) do not.
     if (!admin_name.empty()) {
         static const std::set<std::string> value_opts = {
             "-a", "--admin-keychain", "--admin-keychain-pwd", "--admin-keychain-new",
-            "--acf", "-c", "--cert-auth-keychain", "--cert-auth-keychain-pwd"};
+            "--acf", "-c", "--cert-auth-keychain", "--cert-auth-keychain-pwd",
+            "--cert-pv-prefix"};
         static const std::set<std::string> flag_opts = {"-v", "--verbose"};
         for (auto arg = 1; arg < argc; ++arg) {
             const std::string option = argv[arg];
@@ -3109,8 +3111,8 @@ int readParameters(int argc,
                 // flag with no value
             } else {
                 std::cerr << "Error: --admin-keychain-new option cannot be used with any options other than "
-                             "-a/--admin-keychain, --admin-keychain-pwd, --acf, -c/--cert-auth-keychain, or "
-                             "--cert-auth-keychain-pwd.\n";
+                             "-a/--admin-keychain, --admin-keychain-pwd, --acf, -c/--cert-auth-keychain, "
+                             "--cert-auth-keychain-pwd, or --cert-pv-prefix.\n";
                 exit(11);
             }
         }
