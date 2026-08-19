@@ -44,6 +44,31 @@
 #   testioc, tstioc, mlioc,   the account a service runs as
 #   gateway, idm
 
+# Which laboratory is up, written by reset.sh. run_in uses it to tell "this laboratory has no
+# gateway" apart from "the gateway is not running", which are different problems with
+# different answers.
+_lab_topology() {
+    local f="${LAB_HELPERS_DIR:-.}/.topology"
+    [ -r "${f}" ] && head -1 "${f}" || echo unknown
+}
+
+_lab_topology_places() {
+    local t var env="${LAB_HELPERS_DIR:-.}/topologies/topologies.env"
+    t=$(_lab_topology)
+    [ "${t}" = unknown ] && return 1
+    [ -r "${env}" ] || return 1
+    # shellcheck disable=SC1090
+    . "${env}"
+    var="TOPOLOGY_${t//-/_}_PLACES"
+    # eval rather than ${!var}: this file is sourced by whichever shell the reader uses, and
+    # indirect expansion is spelt differently in each. zsh answers ${!var} with
+    # "bad substitution", which is what a person sees instead of their command running.
+    local places
+    places=$(eval "printf '%s' \"\${${var}-}\"")
+    [ -n "${places}" ] || return 1
+    printf '%s' "${places}"
+}
+
 _lab_place() {          # place -> compose service
     case "$1" in
         lab)          echo lab-client ;;
@@ -66,7 +91,7 @@ _lab_container() {
     local name
     name=$(podman ps --filter "label=com.docker.compose.service=$1" --format '{{.Names}}' 2>/dev/null | head -1)
     if [ -z "${name}" ]; then
-        echo "run_in: nothing is running for '$1'. Start the laboratory with: podman-compose up -d" >&2
+        echo "run_in: nothing is running for '$1'. Start a laboratory with: ./reset.sh <topology>" >&2
         return 1
     fi
     printf '%s' "${name}"
@@ -163,10 +188,23 @@ run_in() {
         esac
     done
 
-    local service container
+    local service container places topology
     if ! service=$(_lab_place "${place}"); then
         echo "run_in: no place called '${place}'. Places: lab ml perimeter lab-manager ml-manager testioc tstioc ml-ioc gateway ml-gateway" >&2
         return 2
+    fi
+
+    # A real place, but one this laboratory has none of: say which laboratory is up and what
+    # it does have, rather than reporting nothing is running for it.
+    if places=$(_lab_topology_places); then
+        case " ${places} " in
+            *" ${place} "*) ;;
+            *) topology=$(_lab_topology)
+               echo "run_in: the ${topology} laboratory has no '${place}'." >&2
+               echo "        It has: ${places}" >&2
+               echo "        Another topology does: ./reset.sh <topology>" >&2
+               return 2 ;;
+        esac
     fi
 
     # The administrator is not a user of a workstation. Say why rather than quietly running
@@ -227,15 +265,21 @@ export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076
 " ;;
         guest|operator)
             # The login profile supplies the tool paths and the organisation, but it was
-            # written for the lab department and names the lab's hosts. The container knows
-            # which department it is actually in, so put its own addressing back afterwards -
+            # written for the federated laboratory and names its hosts. The container knows
+            # which laboratory it is actually in, so put its own addressing back afterwards -
             # otherwise a command run on the machine learning workstation, or on the
             # perimeter, quietly talks to the lab instead.
+            #
+            # All three of these, not just the two lists: a laboratory that finds everything
+            # by broadcast sets neither list and turns automatic discovery on, and leaving the
+            # profile's "NO" in place would leave it with nowhere to search at all.
             prelude="_addr_was=\${EPICS_PVA_ADDR_LIST+set}; _addr=\${EPICS_PVA_ADDR_LIST-}
 _ns_was=\${EPICS_PVA_NAME_SERVERS+set}; _ns=\${EPICS_PVA_NAME_SERVERS-}
+_auto_was=\${EPICS_PVA_AUTO_ADDR_LIST+set}; _auto=\${EPICS_PVA_AUTO_ADDR_LIST-}
 source ~/.${who}_bashrc 2>/dev/null
 if [ -n \"\${_addr_was}\" ]; then export EPICS_PVA_ADDR_LIST=\"\${_addr}\"; else unset EPICS_PVA_ADDR_LIST; fi
 if [ -n \"\${_ns_was}\" ]; then export EPICS_PVA_NAME_SERVERS=\"\${_ns}\"; else unset EPICS_PVA_NAME_SERVERS; fi
+if [ -n \"\${_auto_was}\" ]; then export EPICS_PVA_AUTO_ADDR_LIST=\"\${_auto}\"; else unset EPICS_PVA_AUTO_ADDR_LIST; fi
 export EPICS_PVA_TLS_KEYCHAIN=\${HOME}/.config/pva/1.5/${keychain_name}.p12
 ${prelude}" ;;
         *)
@@ -278,7 +322,7 @@ ${script}"
 lab_ids() {
     local env_file="${LAB_HELPERS_DIR:-.}/.env"
     if [ ! -r "${env_file}" ]; then
-        echo "no ${env_file} yet - run ./bootstrap.sh first" >&2; return 1
+        echo "no ${env_file} yet - run ./reset.sh <topology> first" >&2; return 1
     fi
     # Two forms, wanted in different places. The short one names an authority in a process
     # variable name, such as CERT:LIST:${LAB}:ALL. The whole one is what establishes trust in
@@ -287,7 +331,37 @@ lab_ids() {
     ML=$(sed -n 's/^ML_ISSUER=//p'  "${env_file}")
     LAB_SKID=$(sed -n 's/^LAB_ISSUER_SKID=//p' "${env_file}")
     ML_SKID=$(sed -n 's/^ML_ISSUER_SKID=//p'  "${env_file}")
-    export LAB ML LAB_SKID ML_SKID
+    # A laboratory with one authority names it $ROOT, and has no departments.
+    ROOT=$(sed -n 's/^ROOT_ISSUER=//p' "${env_file}")
+    ROOT_SKID=$(sed -n 's/^ROOT_ISSUER_SKID=//p' "${env_file}")
+    export LAB ML LAB_SKID ML_SKID ROOT ROOT_SKID
+    # Silent: this is also run when the file is sourced, and sourcing should say nothing.
+    # Use lab_ids_show to see them.
+}
+
+# Shows the authorities under the names a shell uses for them.
+#
+# The file holds LAB_ISSUER and the rest, which is what compose substitutes and what the
+# containers are given. A shell uses shorter names for the same values. Printing the file
+# as it stands would name variables that lab_ids does not set, so it is printed the way it will
+# be typed, and this is the only place that knows both spellings.
+lab_ids_show() {
+    local env_file="${LAB_HELPERS_DIR:-.}/.env"
+    [ -r "${env_file}" ] || return 0
+    local lab ml lab_skid ml_skid
+    lab=$(sed -n 's/^LAB_ISSUER=//p' "${env_file}")
+    ml=$(sed -n 's/^ML_ISSUER=//p' "${env_file}")
+    lab_skid=$(sed -n 's/^LAB_ISSUER_SKID=//p' "${env_file}")
+    ml_skid=$(sed -n 's/^ML_ISSUER_SKID=//p' "${env_file}")
+    # A laboratory with one authority names it differently, and has no departments to show.
+    local root root_skid
+    root=$(sed -n 's/^ROOT_ISSUER=//p' "${env_file}")
+    root_skid=$(sed -n 's/^ROOT_ISSUER_SKID=//p' "${env_file}")
+    if [ -n "${root}" ]; then
+        printf '    %-10s %s\n' "\$ROOT" "${root}" "\$ROOT_SKID" "${root_skid}"
+        return 0
+    fi
+    printf '    %-9s %s\n' "\$LAB" "${lab}" "\$ML" "${ml}" "\$LAB_SKID" "${lab_skid}" "\$ML_SKID" "${ml_skid}"
 }
 
 # What the facility root's responder says about the root, and how to change it.
@@ -347,7 +421,9 @@ authority_reachable() {
 lab_status() {
     local place service
     printf '%-12s %-18s %-10s %s\n' PLACE SERVICE STATE CONTAINER
-    for place in lab-manager testioc tstioc gateway ml-manager ml-ioc ml-gateway lab ml perimeter; do
+    local all="lab-manager testioc tstioc gateway ml-manager ml-ioc ml-gateway lab ml perimeter"
+    local places; places=$(_lab_topology_places) || places="${all}"
+    for place in ${places}; do
         service=$(_lab_place "${place}")
         printf '%-12s %-18s %-10s %s\n' "${place}" "${service}" \
             "$(podman ps -a --filter "label=com.docker.compose.service=${service}" --format '{{.State}}' 2>/dev/null | head -1)" \
