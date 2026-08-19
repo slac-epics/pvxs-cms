@@ -274,9 +274,12 @@ if [ ! -x "${topology_dir}/mint.sh" ]; then
     for _svc in $(_compose config --services 2>/dev/null); do
         _c=$(podman ps --filter "label=com.docker.compose.service=${_svc}" --format '{{.Names}}' | head -1)
         [ -n "${_c}" ] || continue
-        # As root: the images run their shells as an unprivileged user, and /etc is root's.
-        podman exec --user root "${_c}" \
-            bash -c 'mkdir -p /etc/epics && printf "%s" "$1" > /etc/epics/issuer' _ "${_skid}" \
+        # As root, because the images run their shells as an unprivileged user and /etc is
+        # root's. sh rather than bash, and only where EPICS is installed: a laboratory has
+        # appliances in it that are not ours and have neither.
+        podman exec --user root "${_c}" sh -c '
+            [ -d /opt/epics ] || exit 0
+            mkdir -p /etc/epics && printf "%s" "$1" > /etc/epics/issuer' _ "${_skid}" \
             || echo "    could not give ${_svc} the issuer id" >&2
     done
 fi
@@ -284,6 +287,17 @@ fi
 # shellcheck source=helpers.sh
 . ./helpers.sh
 lab_ids >/dev/null 2>&1 || true
+
+# A gateway makes its upstream connections when it starts and does not retry the ones it
+# could not make, so one that came up before the controllers were serving forwards nothing
+# until it is restarted. Everything is up by now, so this is where that is put right.
+_gateways=$(podman ps --format '{{.Names}}' | grep -- '-gateway' || true)
+if [ -n "${_gateways}" ]; then
+    echo "==> restarting the gateways, now that the controllers are serving"
+    # shellcheck disable=SC2086
+    podman restart ${_gateways} >/dev/null 2>&1 || true
+    sleep 8
+fi
 
 if _has ml-manager; then
     echo "==> checking the facility root can be established"
