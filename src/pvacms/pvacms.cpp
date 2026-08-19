@@ -2360,6 +2360,9 @@ void setValue(Value &target, const std::string &field, const T &new_value) {
  * @param cert_status The status of the certificate (UNKNOWN, VALID, EXPIRED, REVOKED, PENDING_APPROVAL, PENDING).
  */
 
+// Kept alive until process exit because OpenSSL cleanup runs before static destructors.
+X509 *the_root_certificate = nullptr;
+
 Value postCertificateStatus(server::WildcardPV &status_pv,
                             const std::string &pv_name,
                             const uint64_t serial,
