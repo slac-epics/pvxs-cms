@@ -21,6 +21,10 @@ inside a podman machine, or on Windows inside WSL2 (the Windows Subsystem for Li
 
 **[Part 2 - simple, with a gateway](#part-2---simple-with-a-gateway)**
 - [5. External access through a gateway](#5-external-access-through-a-gateway)
+- [Nothing crosses the boundary yet](#nothing-crosses-the-boundary-yet)
+- [Issue the laboratory's certificates, the gateway among them](#issue-the-laboratorys-certificates-the-gateway-among-them)
+- [Carry the authority to the workstation](#carry-the-authority-to-the-workstation)
+- [Ask for an identity over TLS](#ask-for-an-identity-over-tls)
 - [6. Identity across a gateway](#6-identity-across-a-gateway)
 
 **[Part 3 - federated, one facility root](#part-3---federated-one-facility-root)**
@@ -70,7 +74,7 @@ diagram and its own part of the walkthrough, and no test appears twice.
 | Laboratory | Walkthrough | Description |
 |---|---|---|
 | [`simple`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple.svg) | Part 1 | One segment, one self-signed authority, no boundary to cross |
-| [`simple-with-gateway`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple-with-gateway.svg) | Part 2 | One laboratory, published at a facility address and reached through a gateway |
+| [`simple-with-gateway`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple-with-gateway.svg) | Part 2 | One laboratory, published at a facility address and reached through a gateway that carries TLS alone |
 | [`federated-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-shared-root.svg) | Part 3 | Two departments under one facility root, with a status responder for the root |
 | [`federated-non-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-non-shared-root.svg) | Part 4 | Two departments under two independent roots, with both roots in every keychain |
 
@@ -851,6 +855,14 @@ network and proxies inward; a load balancer owns the address and maps a port to 
 gateway. Nothing inside originates traffic outward, so there is no router here: every
 crossing is inbound, and the gateway is the only thing that crosses.
 
+The boundary carries TLS and nothing else. The gateway closes its plaintext listener, so
+there is no unencrypted way in and no anonymous way in either: a workstation outside has
+to hold the authority the facility issues under before it can verify what answers it, and
+it has to be given that authority by some route the facility does not provide. That is
+what this part walks through, and it is the order the steps come in: the laboratory
+issues its own certificates first, the boundary closes, and only then is a workstation
+outside set up from nothing.
+
 ```sh
 ./reset.sh simple-with-gateway
 ```
@@ -869,26 +881,60 @@ might have said:
 
 ```sh
 run_in perimeter as guest sh -c 'echo ${EPICS_PVA_NAME_SERVERS}'
-#   facility:5075
+#   pvas://facility:5076
 ```
 
 `facility` is the load balancer. It is HAProxy in `tcp` mode: it maps a port to a
 gateway and forwards the stream without inspecting it, which is what layer 4 means. Its
-configuration is `topologies/simple-with-gateway/config/haproxy.cfg`, and the part that
-matters is two pairs:
+configuration is `topologies/simple-with-gateway/config/haproxy.cfg`, and it publishes
+one port:
 
-- `frontend pva_plain` binds `:5075` and its backend is `pvxs-lab-gateway:5075`
 - `frontend pva_tls` binds `:5076` and its backend is `pvxs-lab-gateway:5076`
 
-Both port numbers are the same on each line, deliberately. A server names its own port
-in a search reply, and the client then dials that port on the address the reply came
-from, so a client answered "come back on 5075" reaches whatever 5075 maps to. Translate
-the port and the client arrives somewhere else.
+Both port numbers are the same, deliberately. A server names its own port in a search
+reply, and the client then dials that port on the address the reply came from, so a
+client answered "come back on 5076" reaches whatever 5076 maps to. Translate the port
+and the client arrives somewhere else.
 
-**Everything the laboratory has is issued as in Part 1, and the gateway needs a
-certificate too.** It requests an `ioc` certificate rather than a `server` one, because
-it is a server to the workstation outside and a client to the IOCs, and only an `ioc`
-certificate is both:
+The `pvas://` scheme is what makes this a secure name server rather than an ordinary
+one. A name server is asked for a name over a connection to it, so with `pvas://` the
+question itself travels over TLS, and the connection has to be established before the
+question can be put. That is the difference this part turns on: outside this boundary
+you cannot even ask what exists until you can verify what is answering.
+
+### Nothing crosses the boundary yet
+
+The laboratory has just been reset, so nothing holds a certificate and the workstation
+outside holds nothing at all. It cannot read:
+
+```sh
+run_in perimeter as guest without a certificate pvxget test:aiExample
+#   Timeout with 1 outstanding
+```
+
+And it cannot ask for a certificate either, which is the part worth pausing on:
+
+```sh
+run_in perimeter as guest without a certificate authnstd -u client -n remote
+#   ERR pvxs.auth.common
+#        No certificate manager answered CERT:CREATE:b1196b1d within 5 seconds. Nothing
+#        serves that name, so either no certificate manager for this authority is
+#        running, or it cannot be reached from here.
+```
+
+Both fail for the same reason. The only way in carries TLS, TLS is refused unless the
+workstation can verify what answers, and it has nothing to verify against. The
+certificate manager is behind the very boundary you would have to cross to ask it for
+anything. Nothing here is misconfigured: this is what a closed boundary looks like from
+outside, and it stays this way until somebody carries the authority across.
+
+### Issue the laboratory's certificates, the gateway among them
+
+Everything inside is issued as in Part 1, and **the gateway needs a certificate before
+the boundary can carry anything**. A gateway with no certificate serves no TLS, and a
+gateway that serves no TLS and no plaintext serves nothing whatsoever. It requests an
+`ioc` certificate rather than a `server` one, because it is a server to the workstation
+outside and a client to the IOCs, and only an `ioc` certificate is both:
 
 ```sh
 run_in lab as guest    authnstd -u client
@@ -898,26 +944,14 @@ run_in tstioc  as tstioc  authnstd -u ioc
 run_in gateway as gateway authnstd -u ioc
 
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+#   b1196b1d:01360524055551771210  done
 ```
 
-The workstation outside requests one too, and this is the first proof the path works:
-its request crosses the load balancer and the gateway to reach a PVACMS it cannot
-address. It requests under a name of its own, because the laboratory already has a
-`guest` and PVACMS refuses a second certificate for a subject it has issued:
-
-```sh
-run_in perimeter as guest authnstd -u client -n remote
-#   email this Certificate Request ID: CSCS-DCQV-WJQ9-JPZT, to your SPVA administrator
-#   Certificate identifier  : b1d050ed:17275979695046077977
-
-run_in lab-manager as admin pvxcert --review-pending --all approve --yes
-```
-
-Restart the three services that read a keychain at start. **Restart the IOCs first, and
-the gateway only once they are serving**, because a gateway makes its upstream
-connections when it starts and does not retry the ones it could not make. Restart them
-together and the gateway comes up against IOCs that are still starting, forwards
-nothing, and every read across the boundary times out with bytes visibly flowing:
+Restart the services that read a keychain at start. **Restart the IOCs first, and the
+gateway only once they are serving**, because a gateway makes its upstream connections
+when it starts and does not retry the ones it could not make. Restart them together and
+the gateway comes up against IOCs that are still starting, forwards nothing, and every
+read across the boundary times out with bytes visibly flowing:
 
 ```sh
 podman-compose -p podman -f topologies/simple-with-gateway/compose.yaml \
@@ -931,7 +965,7 @@ answers over TLS:
 
 ```sh
 run_in lab as operator pvxinfo -v test:aiExample | grep '^#'
-#   # TLS x509:...:EPICS Root Certificate Authority/testioc@10.89.0.95:5076
+#   # TLS x509:b1196b1d:15450121003520414239:EPICS Root Certificate Authority/testioc@10.89.0.8:5076
 ```
 
 Until then the same line says `anonymous/@...:5075`. Then restart the gateway:
@@ -941,12 +975,101 @@ podman-compose -p podman -f topologies/simple-with-gateway/compose.yaml \
     restart pvxs-lab-gateway
 ```
 
+It now holds a certificate, so it serves the boundary. One port is listening, and it is
+the secure one:
+
+```sh
+run_in gateway as gateway sh -c 'ss -lnt | grep 507'
+#   LISTEN 0 4 10.89.2.5:5076 0.0.0.0:*
+```
+
+The gateway says so as it starts, too:
+
+```text
+WARN pvxs.svr.init tls-only transport active without client_cert=require --
+     anonymous TLS clients will still be accepted
+```
+
+That warning is about the other axis. Closing the plaintext listener decides which
+*transport* is carried; it does not by itself decide who has to present a certificate.
+A holder that has the authority can still connect anonymously over TLS, and what it may
+then do is decided by the access rules in section 6.
+
+### Carry the authority to the workstation
+
+The workstation needs the root the facility issues under, and it cannot fetch it,
+because fetching it is one of the things the boundary refuses. So it is carried across
+by a route the facility does not provide, which here is a file copy.
+
+PVACMS writes that file out for you. Beside its own keychain sits `trust_anchor.p12`,
+holding the root certificate and nothing else:
+
+```sh
+podman cp podman_pvxs-lab-pvacms_1:/home/idm/.local/share/pva/1.5/trust_anchor.p12 .
+podman cp trust_anchor.p12 \
+    podman_internet-client_1:/home/guest/.config/pva/1.5/client.p12
+podman exec --user root podman_internet-client_1 \
+    chown guest /home/guest/.config/pva/1.5/client.p12
+```
+
+The certificate authority's own keychain would have done the job too, and handing it
+over would have handed over the key that signs certificates with it. `trust_anchor.p12`
+holds enough to verify what the authority signs and not enough to sign anything, which
+is what makes it safe to copy about. Read it where it landed:
+
+```sh
+run_in perimeter as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
+#   No identity certificate; trust anchors only:
+#   Primary Root CA         : CN=EPICS Root Certificate Authority, OU=epics.org Certificate Authority, O=certs.epics.org, C=US
+```
+
+A holder that already has the authority needs no issuer identifier and no first-use
+decision to make, because there is nothing left to decide. That is the difference
+between this and the reference subsection in Part 1: there the identifier is supplied
+and the authority is fetched, here the authority itself arrives and nothing is fetched.
+
+### Ask for an identity over TLS
+
+Now the workstation can verify what answers it, so it can ask. The request crosses the
+load balancer and the gateway to reach a PVACMS it cannot address, over the only
+transport the boundary carries. It asks under a name of its own, because the laboratory
+already has a `guest` and PVACMS refuses a second certificate for a subject it has
+issued:
+
+```sh
+run_in perimeter as guest authnstd -u client -n remote
+#   Keychain file created   : /home/guest/.config/pva/1.5/client.p12
+#   Certificate identifier  : b1196b1d:3952516796146155152
+
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+#   b1196b1d:03952516796146155152  CN=remote,O=epics.org,C=US
+#         PENDING_APPROVAL -> VALID  (APPROVE)
+```
+
+The request keeps the authority already in the keychain and adds the identity beside it,
+so one file ends up carrying both. That is the whole sequence: a trust anchor arrives by
+hand, and an identity follows over the wire.
+
 Now read across the boundary:
 
 ```sh
 run_in perimeter as guest pvxget test:aiExample
 #   value double = 4
 ```
+
+If the first read after approval times out, ask again. The certificate reads `VALID` at
+the moment it is approved, and the connection that was already open has to be remade
+before it carries the new identity.
+
+> **Why this workstation is configured with `remote_verification`.** A holder normally
+> confirms its own certificate with the certificate manager before using it. This one
+> cannot: the certificate manager is behind the boundary, and reaching it means using
+> the certificate whose standing is in question. The gateway checks what is presented to
+> it and refuses a holder that does not stand, so the check still happens, at the point
+> the connection is accepted rather than before it is made. The setting is in
+> `compose.yaml` as `EPICS_PVA_TLS_OPTIONS: "remote_verification"`, and it applies only
+> to a name server named with `pvas://`. A workstation with an ordinary route to the
+> certificate manager establishes its own standing as usual.
 
 ## 6. Identity across a gateway
 
@@ -957,14 +1080,14 @@ From inside the laboratory, the peer is the IOC itself:
 
 ```sh
 run_in lab as operator pvxinfo -v test:open | grep '^#'
-#   # TLS x509:0b5ee2fc:7327241123256509997:EPICS Root Certificate Authority/testioc@10.89.0.95:5076
+#   # TLS x509:b1196b1d:15450121003520414239:EPICS Root Certificate Authority/testioc@10.89.0.8:5076
 ```
 
 From outside, the peer is the **gateway**, at the load balancer's address:
 
 ```sh
 run_in perimeter as guest pvxinfo -v test:open | grep '^#'
-#   # TLS x509:0b5ee2fc:9808356842445051647:EPICS Root Certificate Authority/gateway@10.89.4.14:5076
+#   # TLS x509:b1196b1d:1360524055551771210:EPICS Root Certificate Authority/gateway@10.89.4.2:5076
 ```
 
 That one line carries two facts. The identity is `gateway`, because the secure
