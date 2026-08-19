@@ -61,7 +61,11 @@ if [ -e "topologies/${topology}/.stub" ]; then
     echo "Its picture is topology/topology-${topology}.svg, and what building it needs is" >&2
     echo "written at the top of topologies/${topology}/compose.yaml." >&2
     echo >&2
-    echo "Built today: federated-shared-root." >&2
+    _built=
+    for t in ${TOPOLOGY_NAMES}; do
+        [ -e "topologies/${t}/.stub" ] || _built="${_built} ${t}"
+    done
+    echo "Built today:${_built}." >&2
     exit 2
 fi
 
@@ -188,9 +192,14 @@ _check_reads() {
     for _ in $(seq 1 18); do
         # Each line is guarded by what it needs, which is a place to ask from AND a
         # controller to answer. ml:aiExample needs the machine learning controller however
-        # many other places a laboratory has.
+        # many other places a laboratory has. The two that cross departments are here
+        # because they are the ones nothing else covers: a workstation reaches the peer
+        # department by the facility address, and that name has to be answerable where it
+        # is asked as well as reachable, which are two different things to get wrong.
         if run_in lab as guest without a certificate pvxget test:aiExample >/dev/null 2>&1 \
         && { ! _has ml-ioc    || run_in ml        as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; } \
+        && { ! _has ml-ioc    || run_in lab       as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; } \
+        && { ! _has ml        || run_in ml        as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; } \
         && { ! _has perimeter || run_in perimeter as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; } \
         && { ! _has perimeter || ! _has ml-ioc \
                               || run_in perimeter as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; }; then
@@ -202,7 +211,12 @@ _check_reads() {
     echo "    reading does not work from everywhere yet." >&2
     echo "    Try them one at a time to see which:" >&2
     echo "        run_in lab as guest without a certificate pvxget test:aiExample" >&2
+    _has ml-ioc    && echo "        run_in ml        as guest without a certificate pvxget ml:aiExample" >&2
+    _has ml-ioc    && echo "        run_in lab       as guest without a certificate pvxget ml:aiExample" >&2
+    _has ml        && echo "        run_in ml        as guest without a certificate pvxget test:aiExample" >&2
     _has perimeter && echo "        run_in perimeter as guest without a certificate pvxget test:aiExample" >&2
+    _has perimeter && _has ml-ioc \
+                   && echo "        run_in perimeter as guest without a certificate pvxget ml:aiExample" >&2
     return 1
 }
 

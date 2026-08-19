@@ -4,9 +4,11 @@
 # leaves a department, and one facility load balancer owning the facility address and mapping
 # ports inward to the two gateways. The responder is an IT service on its own segment.
 #
-# THIS PICTURE DESCRIBES A DESIGN, NOT THE RUNNING LABORATORY. compose.yaml dual-homes its
-# workstations and has neither router nor load balancer. topology-federated-shared-root.svg
-# is the one that matches what runs.
+# THIS PICTURE DESCRIBES A DESIGN, NOT THE RUNNING LABORATORY. The difference is the two
+# routers, which rootless podman cannot run: a forwarding container passes traffic one way
+# and never returns it. Everything those routers do is done without them, and each router
+# box says exactly how. topology-federated-shared-root.svg is the one that matches what
+# runs, and is otherwise the same laboratory.
 # Every coordinate is computed here. See topology_kit for the primitives.
 from topology_kit import (C, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields,
                           measure, output_path)
@@ -125,7 +127,15 @@ def _router(dept, seg, cidr, far_gw, far_ports):
      '    tcp/8888 to pvxs-lab-authority-status on net-it',
      'Broadcast stays on the segment it was sent to, so a PVAccess',
      '    search stays inside the department. Anything past it is',
-     '    reached by naming a server, which is unicast and routes.')
+     '    reached by naming a server, which is unicast and routes.',
+     '',
+     '§SIMULATED BY  -  there is no such container',
+     'separation: isolate=true on every network - no network forwards',
+     '    to another',
+     'routing:    pvxs-facility-lb and pvxs-lab-authority-status each',
+     '    get an interface in every network that names them, so what',
+     '    would have been routed is reached by name directly')
+
 lab_router_l = _router('lab', 'net-lab', '10.89.0.0/24',
                        'pvxs-lab-ml-gateway', ('tcp/5175', 'tcp/5176'))
 ml_router_l = _router('ML', 'net-ml', '10.89.1.0/24',
@@ -139,8 +149,10 @@ pc_l = fields('Role: client','Image: internet',
  '    one address, one port per department')
 resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
  'eth0  net-it         10.89.3.0/24',
- 'An IT service: both certificate managers reach it through',
- '    their own router',
+ 'An IT service: in this design both certificate managers reach it',
+ '    through their own router',
+ 'SIMULATED BY: no router - it gets a foot in every network that',
+ '    names it, so each manager asks it without leaving its own',
  'Listens: tcp/8888 OCSP over HTTP',
  'Program: openssl ocsp, under supervisor with a watchdog',
  'Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt')
@@ -578,7 +590,7 @@ def build(cv):
 
     # --- page title
     hdr.append(f'<text x="{M}" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="{C["ink"]}">Secure PVAccess demonstration laboratory</text>')
-    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates, so every certificate traces to it - example/podman</text>')
+    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root, drawn the way a site would build it: a routing firewall carries what leaves each department. A DESIGN STUDY - there are no routers in compose.yaml, and each router box says what does its job instead</text>')
     return hdr
 
 
