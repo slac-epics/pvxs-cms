@@ -100,6 +100,7 @@ run_in() {
         sed -n '/^# ----* where things are/,/^_lab_place/p' "${LAB_HELPERS_DIR:-.}/helpers.sh" \
             | sed -e '$d' -e 's/^# \{0,1\}//'
         echo "usage: run_in <place> as <person> [without a certificate] [--show] <command...>"
+        echo "       run_in <place> as <person>            with no command, opens a shell there"
         return 2
     fi
 
@@ -110,6 +111,20 @@ run_in() {
         echo "run_in: say it as: run_in <place> as <person> <command...>" >&2; return 2
     fi
     shift 3
+
+    # A person may be written <department>/<user>, which is the same user holding a
+    # certificate from that department rather than from the one they are sitting in. It reads
+    # as what it is - "ml/operator in lab" is the machine learning operator, at a lab
+    # workstation - and it needs a keychain of its own, since the two certificates cannot
+    # share one file. Anything without a slash is unchanged.
+    local from_dept= keychain_name=client
+    case "${who}" in
+        */*) from_dept="${who%%/*}"; who="${who##*/}"; keychain_name="${from_dept}" ;;
+    esac
+    if [ -n "${from_dept}" ] && [ "${from_dept}" != lab ] && [ "${from_dept}" != ml ]; then
+        echo "run_in: no department called '${from_dept}'. Write lab/<user> or ml/<user>." >&2
+        return 2
+    fi
 
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -157,12 +172,17 @@ run_in() {
     local attach="podman exec"
     if [ -t 0 ] && [ -t 1 ]; then attach="podman exec -it"; fi
 
-    local script
+    # No command at a terminal opens a shell there, as that person, with everything set up
+    # that a command would have had. It is how to answer something that asks a question -
+    # pvxcert --review-pending puts its prompts to a terminal and reads the answers back from
+    # one - and how to try things without writing run_in in front of each.
+    local script interactive=no
     if [ "$#" -gt 0 ]; then
         script=$(_lab_quote "$@")
     elif [ -t 0 ]; then
-        echo "run_in: no command given, and nothing on standard input to read one from." >&2
-        return 2
+        interactive=yes
+        script="export PS1=\"[${who}@${place}] > \"
+exec bash --norc -i"
     else
         script=$(cat)
     fi
@@ -192,6 +212,7 @@ _ns_was=\${EPICS_PVA_NAME_SERVERS+set}; _ns=\${EPICS_PVA_NAME_SERVERS-}
 source ~/.${who}_bashrc 2>/dev/null
 if [ -n \"\${_addr_was}\" ]; then export EPICS_PVA_ADDR_LIST=\"\${_addr}\"; else unset EPICS_PVA_ADDR_LIST; fi
 if [ -n \"\${_ns_was}\" ]; then export EPICS_PVA_NAME_SERVERS=\"\${_ns}\"; else unset EPICS_PVA_NAME_SERVERS; fi
+export EPICS_PVA_TLS_KEYCHAIN=\${HOME}/.config/pva/1.5/${keychain_name}.p12
 ${prelude}" ;;
         *)
             # A service acting as itself, through its own login, which is where its keychain
