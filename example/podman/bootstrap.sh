@@ -36,7 +36,18 @@ build_image() {
 }
 
 keep_certs=no
-[ "${1:-}" = "--keep-certs" ] && keep_certs=yes
+build_images=yes
+case "${1:-}" in
+    --keep-certs) keep_certs=yes ;;
+    # Mint the authorities and nothing else. The images are already built and none of this
+    # changes them, so rebuilding them to hand out new authorities costs many minutes and
+    # recompiles EPICS Base, pvxs, pvxs-cms and p4p for no gain. reset.sh uses this.
+    --certs-only) build_images=no ;;
+    "") ;;
+    *) echo "usage: ./bootstrap.sh [--keep-certs | --certs-only]" >&2; exit 2 ;;
+esac
+
+if [ "${build_images}" = yes ]; then
 
 # The images form a chain, each built on the one before:
 #
@@ -61,7 +72,9 @@ for target in lab_tools lab_base idm ml testioc tstioc ml-ioc gateway lab intern
     build_image "../kubernetes/docker/${target}" >/dev/null
 done
 
-if [ "$keep_certs" = yes ] && [ -s issuer_ids.env ] && [ -d certs ]; then
+fi
+
+if [ "${keep_certs}" = yes ] && [ -s issuer_ids.env ] && [ -d certs ]; then
     echo "==> keeping the existing certificate authorities"
 else
     echo "==> minting the facility root and both departmental intermediates"
