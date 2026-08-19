@@ -10,6 +10,7 @@ authnldap_SRCS += certstatusfactory.cpp
 authnldap_SRCS += certstatus.cpp
 authnldap_SRCS += certstatusmanager.cpp
 authnldap_SRCS += certfactory.cpp
+authnldap_SRCS += certrequestid.cpp
 authnldap_SRCS += certfilefactory.cpp
 authnldap_SRCS += p12filefactory.cpp
 authnldap_SRCS += auth.cpp

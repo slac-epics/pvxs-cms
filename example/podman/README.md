@@ -305,8 +305,8 @@ run_in lab as guest authnstd -u client --issuer 53e80
 #   '53e80' is too short to name a certificate authority: at least 8 hexadecimal digits are needed
 ```
 
-**The whole identifier is required when nothing is trusted yet, and refused otherwise.**
-Eight digits is thirty-two bits, and a key whose identifier begins with any wanted
+**The short form is accepted only for an authority the keychain already holds. It cannot be
+used to establish trust.** Eight digits is thirty-two bits, and a key whose identifier begins with any wanted
 thirty-two bits takes hours to generate on one processor core, so the short form names an
 authority conveniently but cannot establish that it is the right one:
 

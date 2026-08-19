@@ -26,7 +26,15 @@ class ConfigAuthN : public client::Config {
     std::vector<std::string> organizational_unit{};
     std::string country{"US"};
     bool no_status{false};
-    std::string issuer_id{};
+    //! Certificate authorities named on this invocation, in the order they were named. The first
+    //! is asked to mint; the rest matter only when trust is being established.
+    std::vector<std::string> issuer_ids{};
+
+    //! The authority asked to mint on this invocation, or an empty string when none was named.
+    //!
+    //! Named separately from the list so that the difference between the one authority that
+    //! mints and the set of roots a keychain trusts is visible at every call site.
+    std::string mintingIssuerId() const { return issuer_ids.empty() ? std::string() : issuer_ids.front(); }
 
     std::string server_name{};
     std::string server_organization{};
