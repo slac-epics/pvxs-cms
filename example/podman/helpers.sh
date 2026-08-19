@@ -32,7 +32,7 @@
 # calling both of them "lab" would hide the very thing these examples are about.
 #
 #   lab, ml                   a workstation inside a department
-#   perimeter                 a workstation outside both, reaching only the two gateways
+#   perimeter                 a workstation outside, reaching in only across a boundary
 #   lab-manager, ml-manager   a department's certificate manager
 #   testioc, tstioc, ml-ioc   a controller
 #   gateway, ml-gateway       a department's boundary
@@ -273,7 +273,7 @@ ${script}"
 
 # ------------------------------------------------------------------------------- conveniences
 
-# The two departments' issuer identifiers, as bootstrap.sh recorded them, so an example can
+# This laboratory's issuer identifiers, as bootstrap.sh recorded them, so an example can
 # say CERT:LIST:${LAB}:ALL rather than a forty-character string.
 lab_ids() {
     local env_file="${LAB_HELPERS_DIR:-.}/.env"

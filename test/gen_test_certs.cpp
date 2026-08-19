@@ -785,6 +785,150 @@ int main(int argc, char *argv[])
         }
 
         // ============================================================
+        // Trust anchor material: four unrelated single-level authorities, each its own issuer
+        // and its own root, plus identities under three of them. A keychain that holds several
+        // anchors can then be built and read back without any laboratory, and a certificate that
+        // appears once because its issuer is its own root can be told from one that does not.
+        // ============================================================
+        {
+            struct Authority {
+                const char *letter;
+                pvxs::ossl_ptr<X509> cert;
+                pvxs::ossl_ptr<EVP_PKEY> key;
+            };
+            Authority authorities[4] = {{"a", {}, {}}, {"b", {}, {}}, {"c", {}, {}}, {"d", {}, {}}};
+
+            for (Authority &authority : authorities) {
+                const std::string common_name(SB() << "EPICS Trust Anchor " << authority.letter
+                                                   << " Root Certificate Authority");
+                CertCreator cc;
+                cc.CN = common_name.c_str();
+                cc.serial = serial++;
+                cc.isCA = true;
+                cc.key_usage = "cRLSign,keyCertSign";
+                std::tie(authority.key, authority.cert) = cc.create();
+
+                // The root alone, with no key and no identity: the shape a trust anchor file has
+                PKCS12Writer p12(outdir);
+                p12.friendlyName = cc.CN;
+                MUST(1, sk_X509_push(p12.cacerts.get(), authority.cert.get()));
+                const std::string file_name(SB() << "ta_root_" << authority.letter << ".p12");
+                p12.write(file_name.c_str());
+            }
+
+            // An identity under each of the first three, so a keychain whose identity chains to
+            // an authority other than the first one written can be built.
+            for (int i = 0; i < 3; i++) {
+                const Authority &authority = authorities[i];
+                const std::string common_name(SB() << "ta_client_" << authority.letter);
+                CertCreator cc;
+                cc.CN = common_name.c_str();
+                cc.root = authority.cert.get();
+                cc.serial = serial++;
+                cc.key_usage = "digitalSignature";
+                cc.extended_key_usage = "clientAuth";
+                cc.issuer = authority.cert.get();
+                cc.ikey = authority.key.get();
+
+                pvxs::ossl_ptr<X509> cert;
+                pvxs::ossl_ptr<EVP_PKEY> key;
+                std::tie(key, cert) = cc.create();
+
+                PKCS12Writer p12(outdir);
+                p12.friendlyName = cc.CN;
+                p12.key = key.get();
+                p12.cert = cert.get();
+                MUST(1, sk_X509_push(p12.cacerts.get(), authority.cert.get()));
+                const std::string file_name(SB() << "ta_client_" << authority.letter << ".p12");
+                p12.write(file_name.c_str());
+            }
+
+            // An intermediate under authority a, and an identity under that intermediate, so the
+            // case where the identity's issuer is not itself a root is covered.
+            pvxs::ossl_ptr<X509> intermediate_cert;
+            pvxs::ossl_ptr<EVP_PKEY> intermediate_key;
+            {
+                CertCreator cc;
+                cc.CN = "EPICS Trust Anchor a Intermediate Certificate Authority";
+                cc.root = authorities[0].cert.get();
+                cc.serial = serial++;
+                cc.issuer = authorities[0].cert.get();
+                cc.ikey = authorities[0].key.get();
+                cc.isCA = true;
+                cc.key_usage = "digitalSignature,cRLSign,keyCertSign";
+                cc.extended_key_usage = "serverAuth,clientAuth,OCSPSigning";
+                std::tie(intermediate_key, intermediate_cert) = cc.create();
+            }
+            {
+                CertCreator cc;
+                cc.CN = "ta_client_intermediate";
+                cc.root = authorities[0].cert.get();
+                cc.serial = serial++;
+                cc.key_usage = "digitalSignature";
+                cc.extended_key_usage = "clientAuth";
+                cc.issuer = intermediate_cert.get();
+                cc.ikey = intermediate_key.get();
+
+                pvxs::ossl_ptr<X509> cert;
+                pvxs::ossl_ptr<EVP_PKEY> key;
+                std::tie(key, cert) = cc.create();
+
+                PKCS12Writer p12(outdir);
+                p12.friendlyName = cc.CN;
+                p12.key = key.get();
+                p12.cert = cert.get();
+                MUST(1, sk_X509_push(p12.cacerts.get(), intermediate_cert.get()));
+                MUST(2, sk_X509_push(p12.cacerts.get(), authorities[0].cert.get()));
+                p12.write("ta_client_intermediate.p12");
+            }
+
+            // A second intermediate under the same authority a, written with the root above it
+            // and with no identity and no key, which is the shape a trust anchor reply arrives
+            // in. It is the arrangement the federated laboratory is built around: two
+            // departments each signing from their own intermediate under one shared root.
+            {
+                CertCreator cc;
+                cc.CN = "EPICS Trust Anchor a Second Intermediate Certificate Authority";
+                cc.root = authorities[0].cert.get();
+                cc.serial = serial++;
+                cc.issuer = authorities[0].cert.get();
+                cc.ikey = authorities[0].key.get();
+                cc.isCA = true;
+                cc.key_usage = "digitalSignature,cRLSign,keyCertSign";
+                cc.extended_key_usage = "serverAuth,clientAuth,OCSPSigning";
+
+                pvxs::ossl_ptr<X509> cert;
+                pvxs::ossl_ptr<EVP_PKEY> key;
+                std::tie(key, cert) = cc.create();
+
+                PKCS12Writer p12(outdir);
+                p12.friendlyName = cc.CN;
+                MUST(1, sk_X509_push(p12.cacerts.get(), cert.get()));
+                MUST(2, sk_X509_push(p12.cacerts.get(), authorities[0].cert.get()));
+                p12.write("ta_intermediate_two.p12");
+            }
+
+            // A self-signed identity, which is its own issuer and its own root
+            {
+                CertCreator cc;
+                cc.CN = "ta_client_selfsigned";
+                cc.serial = serial++;
+                cc.isCA = true;
+                cc.key_usage = "digitalSignature,cRLSign,keyCertSign";
+
+                pvxs::ossl_ptr<X509> cert;
+                pvxs::ossl_ptr<EVP_PKEY> key;
+                std::tie(key, cert) = cc.create();
+
+                PKCS12Writer p12(outdir);
+                p12.friendlyName = cc.CN;
+                p12.key = key.get();
+                p12.cert = cert.get();
+                p12.write("ta_client_selfsigned.p12");
+            }
+        }
+
+        // ============================================================
         // Fake certificate hierarchy for name-matching attack tests
         // These certificates have the SAME CNs as the real certificates
         // but are signed by different (fake) CAs.

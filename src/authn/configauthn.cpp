@@ -15,6 +15,7 @@
 
 #include "certdate.h"
 #include "certstatus.h"
+#include "issuerlist.h"
 
 #ifndef _WIN32
 struct ifaddrs;
@@ -62,11 +63,12 @@ void ConfigAuthN::fromAuthEnv(const std::map<std::string, std::string> &defs) {
 
     // EPICS_PVA_AUTH_ISSUER, EPICS_PVAS_AUTH_ISSUER
     //
-    // Read here rather than where it is used, so that something unusable is refused with the
-    // value in the message. Left at whatever length was given: naming an authority by more of
-    // its identifier is a stronger statement about which one is meant, and the channel names
-    // take the part they carry when they are built.
-    if (pickone({"EPICS_PVA_AUTH_ISSUER", "EPICS_PVAS_AUTH_ISSUER"})) issuer_id = readIssuerId(pickone.val);
+    // A list, separated by whitespace or by a comma, in exactly the shape the --issuer option
+    // takes. Read here rather than where it is used, so that something unusable is refused with
+    // the value in the message. Each entry is left at whatever length was given: naming an
+    // authority by more of its identifier is a stronger statement about which one is meant, and
+    // the channel names take the part they carry when they are built.
+    if (pickone({"EPICS_PVA_AUTH_ISSUER", "EPICS_PVAS_AUTH_ISSUER"})) issuer_ids = cms::cert::parseIssuerList(pickone.val);
 
     // EPICS_PVA_AUTH_ORGANIZATION, EPICS_PVAS_AUTH_ORGANIZATION
     organization = pickone({"EPICS_PVA_AUTH_ORGANIZATION"}) ? pickone.val : retrieved_organization;
@@ -137,7 +139,7 @@ void ConfigAuthN::updateDefs(defs_t &defs) const {
     }
     defs["EPICS_PVA_AUTH_CERT_VALIDITY_MINS"] = CertDate::formatDurationMins(cert_validity_mins);
     defs["EPICS_PVA_AUTH_COUNTRY"] = country;
-    defs["EPICS_PVA_AUTH_ISSUER"] = defs["EPICS_PVAS_AUTH_ISSUER"] = issuer_id;
+    defs["EPICS_PVA_AUTH_ISSUER"] = defs["EPICS_PVAS_AUTH_ISSUER"] = cms::cert::joinIssuerList(issuer_ids);
     defs["EPICS_PVA_AUTH_NAME"] = name;
     defs["EPICS_PVA_AUTH_ORGANIZATION"] = organization;
     defs["EPICS_PVA_AUTH_ORGANIZATIONAL_UNIT"] = joinOrganizationalUnits(organizational_unit);
