@@ -218,3 +218,51 @@ spec:
     requests:
       storage: {{ .Values.csStudioInternet.persistence.size | quote }}
 {{- end }}
+
+---
+{{- if .Values.certAdminLab.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-cert-admin-lab-pva
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.certAdminLab.persistence.storageClassName }}
+  storageClassName: {{ .Values.certAdminLab.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.certAdminLab.persistence.size | quote }}
+{{- end }}
+
+---
+{{- if .Values.certAdminMl.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-cert-admin-ml-pva
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.certAdminMl.persistence.storageClassName }}
+  storageClassName: {{ .Values.certAdminMl.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.certAdminMl.persistence.size | quote }}
+{{- end }}
+
+---
+{{- if .Values.certAdminInternet.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvxs-lab.fullname" . }}-cert-admin-internet-pva
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.certAdminInternet.persistence.storageClassName }}
+  storageClassName: {{ .Values.certAdminInternet.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.certAdminInternet.persistence.size | quote }}
+{{- end }}

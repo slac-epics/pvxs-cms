@@ -1,0 +1,25 @@
+
+export XDG_DATA_HOME=${XDG_DATA_HOME-~/.local/share}
+export XDG_CONFIG_HOME=${XDG_CONFIG_HOME-~/.config}
+export PROJECT_HOME=/opt/epics
+
+export EPICS_PVA_AUTH_ORGANIZATION=epics.org
+
+# The machine learning department's certificate manager, and nothing else. The same reasoning as
+# the laboratory administrator: this identity administers its own department's certificates, and
+# the other department's certificate manager would refuse it.
+export EPICS_PVA_ADDR_LIST="127.0.0.1 pvxs-lab-ml"
+export EPICS_PVA_AUTO_ADDR_LIST="NO"
+
+# In a pod carrying both departments' issuer ids and no pod-level issuer, the choice of
+# department is made here, by the user the session is running as. In a pod that serves one
+# department the id is not published under this name, so keep whatever the pod already set
+# rather than blanking it. ML_ISSUER is exported to a
+# login shell by /etc/profile.d/epics-issuers.sh in the lab_base image.
+export EPICS_PVA_AUTH_ISSUER="${ML_ISSUER:-${EPICS_PVA_AUTH_ISSUER}}"
+
+export EPICS_HOST_ARCH=$(${PROJECT_HOME}/epics-base/startup/EpicsHostArch)
+export PATH="${PROJECT_HOME}/pvxs-cms/bin/${EPICS_HOST_ARCH}:$PATH"
+export PATH="${PROJECT_HOME}/pvxs/bin/${EPICS_HOST_ARCH}:$PATH"
+
+cd ~

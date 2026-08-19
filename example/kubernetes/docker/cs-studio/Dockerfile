@@ -37,12 +37,17 @@ COPY --from=phoebus-builder /build/phoebus-product/target/lib/ /opt/phoebus/lib/
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/pvxs-lab-dashboard.bob /opt/phoebus/displays/pvxs-lab-dashboard.bob
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/phoebus-settings.ini /opt/phoebus/phoebus-settings.ini
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/cs-studio.sh /usr/local/bin/cs-studio
-RUN chmod +x /usr/local/bin/cs-studio
+COPY pvxs-cms/example/kubernetes/docker/cs-studio/pvxs-lab-certificate-administration.bob /opt/phoebus/displays/pvxs-lab-certificate-administration.bob
+COPY pvxs-cms/example/kubernetes/docker/cs-studio/certadmin_scripts/ /opt/phoebus/displays/certadmin_scripts/
+COPY pvxs-cms/example/kubernetes/docker/cs-studio/cs-studio-certificates.sh /usr/local/bin/cs-studio-certificates
+RUN chmod +x /usr/local/bin/cs-studio /usr/local/bin/cs-studio-certificates
 
 RUN useradd -m -s /bin/bash operator -g operator && echo "operator:secret" | chpasswd
 RUN useradd -m -s /bin/bash guest             && echo "guest:secret"    | chpasswd
 RUN useradd -m -s /bin/bash mloperator        && echo "mloperator:secret" | chpasswd
 RUN useradd -m -s /bin/bash mlsystem          && echo "mlsystem:secret"   | chpasswd
+RUN useradd -m -s /bin/bash certadmin         && echo "certadmin:secret"   | chpasswd
+RUN useradd -m -s /bin/bash mlcertadmin       && echo "mlcertadmin:secret" | chpasswd
 
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/operator_bashrc            /home/operator/.operator_bashrc
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/guest_bashrc               /home/guest/.guest_bashrc
@@ -50,17 +55,23 @@ COPY pvxs-cms/example/kubernetes/docker/cs-studio/mloperator_bashrc          /ho
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/mlsystem_bashrc            /home/mlsystem/.mlsystem_bashrc
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/internet_operator_bashrc   /home/operator/.internet_operator_bashrc
 COPY pvxs-cms/example/kubernetes/docker/cs-studio/internet_guest_bashrc      /home/guest/.internet_guest_bashrc
+COPY pvxs-cms/example/kubernetes/docker/cs-studio/certadmin_bashrc            /home/certadmin/.certadmin_bashrc
+COPY pvxs-cms/example/kubernetes/docker/cs-studio/mlcertadmin_bashrc          /home/mlcertadmin/.mlcertadmin_bashrc
 
 RUN chown operator:operator     /home/operator/.operator_bashrc && \
     chown operator:operator     /home/operator/.internet_operator_bashrc && \
     chown guest:guest           /home/guest/.guest_bashrc && \
     chown guest:guest           /home/guest/.internet_guest_bashrc && \
     chown mloperator:mloperator /home/mloperator/.mloperator_bashrc && \
-    chown mlsystem:mlsystem     /home/mlsystem/.mlsystem_bashrc
+    chown mlsystem:mlsystem     /home/mlsystem/.mlsystem_bashrc && \
+    chown certadmin:certadmin   /home/certadmin/.certadmin_bashrc && \
+    chown mlcertadmin:mlcertadmin /home/mlcertadmin/.mlcertadmin_bashrc
 
 RUN echo "source ~/.operator_bashrc" >> /home/operator/.bashrc
 RUN echo "source ~/.guest_bashrc"    >> /home/guest/.bashrc
 RUN echo "source ~/.mloperator_bashrc" >> /home/mloperator/.bashrc
 RUN echo "source ~/.mlsystem_bashrc"   >> /home/mlsystem/.bashrc
+RUN echo "source ~/.certadmin_bashrc"   >> /home/certadmin/.bashrc
+RUN echo "source ~/.mlcertadmin_bashrc" >> /home/mlcertadmin/.bashrc
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

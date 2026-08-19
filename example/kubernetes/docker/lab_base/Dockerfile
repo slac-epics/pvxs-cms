@@ -39,6 +39,11 @@ COPY display-supervisor.conf /etc/supervisor/conf.d/display.conf
 COPY epics-issuer.sh /etc/profile.d/epics-issuer.sh
 RUN chmod 644 /etc/profile.d/epics-issuer.sh
 
+# A pod that carries a user per department cannot have one pod-level issuer, because the right
+# answer differs by user. Those pods mount both ids and each user's profile picks one.
+COPY epics-issuers.sh /etc/profile.d/epics-issuers.sh
+RUN chmod 644 /etc/profile.d/epics-issuers.sh
+
 EXPOSE 8080 5900
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
