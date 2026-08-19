@@ -1,5 +1,7 @@
+# Default placeholder pvlist baked into the gateway image. At deploy time the helm
+# ConfigMap supplies the real gateway.pvlist (and ml.pvlist for the lab gateway),
+# with the department issuer id substituted, and overwrites gateway.conf - so this
+# baked file is NOT used by the deployed lab. Kept minimal to avoid confusion.
 test:.* ALLOW
-tst:.* ALLOW
-test:spec ALLOW SPECIAL
 CERT:CREATE(?::.*)? ALLOW CERT_CREATE
 CERT:STATUS(?::.*)? ALLOW CERT_STATUS

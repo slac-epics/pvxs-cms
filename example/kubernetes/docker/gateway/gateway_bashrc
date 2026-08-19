@@ -25,7 +25,10 @@ export PATH="${PROJECT_HOME}/pvxs/bin/${EPICS_HOST_ARCH}:$PATH"
 export PATH="${PROJECT_HOME}/p4p/bin/${EPICS_HOST_ARCH}:$PATH"
 
 # Gateway user commandline access
-export EPICS_PVA_ADDR_LIST="pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+GW_ADDR_LIST=$(grep -m1 '"addrlist"' gateway.conf 2>/dev/null | cut -d'"' -f4)
+if [ -n "$GW_ADDR_LIST" ]; then
+    export EPICS_PVA_ADDR_LIST="$GW_ADDR_LIST"
+fi
 export EPICS_PVA_AUTO_ADDR_LIST=NO
 
 cd ~
