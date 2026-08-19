@@ -1,16 +1,16 @@
 #!/usr/bin/env zsh
 
 function gw_build_images {
- pushd $PVXS_CMS/example/kubernetes/docker
- builder="./build.sh"
-  if [[ "$1" == "gateway" || "$1" == "lab" || "$1" == "lab_base" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "cs-studio" ]]
- then
- 	cd $1
- 	builder="./build_docker.sh"
- 	shift
- fi
- $builder $*
- popd
+    (
+        cd "${PVXS_CMS}/example/kubernetes/docker" || return 1
+        local builder="./build.sh"
+        if [[ "$1" == "gateway" || "$1" == "lab" || "$1" == "lab_tools" || "$1" == "lab_base" || "$1" == "idm" || "$1" == "testioc" || "$1" == "tstioc" || "$1" == "internet" || "$1" == "ml" || "$1" == "ml-ioc" || "$1" == "cs-studio" ]]; then
+            cd "$1" || return 1
+            builder="./build_docker.sh"
+            shift
+        fi
+        "$builder" "$@"
+    )
 }
 
 function gw_deploy {
