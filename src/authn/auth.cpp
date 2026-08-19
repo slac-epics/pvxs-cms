@@ -82,7 +82,13 @@ std::shared_ptr<CertCreationRequest> Auth::createCertCreationRequest(const std::
         // Optional CCR components
         if (!credentials->name.empty()) cert_creation_request->ccr["name"] = credentials->name;
         if (!credentials->organization.empty()) cert_creation_request->ccr["organization"] = credentials->organization;
-        if (!credentials->organization_unit.empty()) cert_creation_request->ccr["organization_unit"] = credentials->organization_unit;
+        if (!credentials->organization_unit.empty()) {
+            // The whole list travels in the repeatable field, innermost first, and the innermost
+            // value also travels in the single-value field so an older server still sees a unit.
+            const shared_array<const std::string> units(credentials->organization_unit.begin(), credentials->organization_unit.end());
+            cert_creation_request->ccr["organization_units"] = units;
+            cert_creation_request->ccr["organization_unit"] = credentials->organization_unit.front();
+        }
         if (!credentials->country.empty()) cert_creation_request->ccr["country"] = credentials->country;
         if (credentials->not_before >0) cert_creation_request->ccr["not_before"] = credentials->not_before;
         if (credentials->not_after >0) cert_creation_request->ccr["not_after"] = credentials->not_after;
