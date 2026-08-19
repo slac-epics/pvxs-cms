@@ -17,6 +17,7 @@
 
 #include "certfilter.h"
 #include "certlistcols.h"
+#include "certstatus.h"
 
 namespace pvxs {
 namespace certs {
@@ -78,6 +79,18 @@ namespace certs {
     "WHERE c.not_after >= :now AND c.not_after <= :window_end " \
     SQL_LIST_CERTS_ORDER
 
+/**
+ * What this manager records about one certificate, asked for by serial.
+ *
+ * Read for the trust anchor alone, and outside the listing query rather than out of its
+ * result: the view and the filter both narrow what that query returns, so a root the
+ * database does hold could be absent from the rows and the anchor would be reported as
+ * unknown to a manager that issued it.
+ */
+#define SQL_GET_CERT_STANDING         \
+    "SELECT c.status, c.status_date, c.renew_by " \
+    "FROM certs c WHERE c.serial = :serial"
+
 
 /**
  * @brief Which certificates a listing covers.
@@ -99,6 +112,32 @@ enum class CertListView {
  * scalar arrays and has nowhere to put per-column units or display form, so what the server
  * puts in the column is exactly what a viewer shows.
  */
+/**
+ * @brief The trust anchor this manager issues beneath, for the listing.
+ *
+ * Assembled from the certificate the manager loaded rather than selected by the listing query,
+ * because the anchor is not always in the certificates table. A manager that signs with an
+ * intermediate stands beneath somebody else's root: nothing here issued it, nothing here can be
+ * asked about it, and this is the only way it appears in a listing at all.
+ *
+ * A manager that signs with its own self-signed root is the other case. There the same
+ * certificate is also a row of the certificates table, and the listing reads its standing back
+ * out of the table (`SQL_GET_CERT_STANDING`) so that the two rows agree.
+ *
+ * It is listed because of when it expires. Every certificate beneath it stops working the day
+ * it does, and an authority that appears in no listing is one nobody is watching the calendar
+ * for.
+ */
+struct RootAuthority {
+    bool names_responder{false};  //!< whether the certificate says where its revocation is published
+    certstatus_t standing{UNKNOWN};  //!< what that responder says, or UNKNOWN when there is none
+    std::string cert_id;          //!< its own subject key identifier and serial, since it issued itself
+    std::string common_name, organization, country;
+    std::vector<std::string> organizational_units;
+    uint64_t serial{0};
+    time_t not_before{0}, not_after{0};
+};
+
 struct CertListRow {
     std::string cert_id;         //!< issuer id and serial, the form a status channel name accepts
     std::string type;            //!< what the certificate is for, from its stored usage
@@ -147,7 +186,8 @@ std::string renderCertType(const std::string &key_usage, const std::string &exte
  */
 std::vector<CertListRow> queryCertList(sqlite3 *certs_db, CertListView view, const std::string &issuer_id,
                                        bool with_request_id, time_t expiry_window_secs,
-                                       const CertFilter *filter = nullptr);
+                                       const CertFilter *filter = nullptr,
+                                       const RootAuthority *root = nullptr);
 
 /**
  * @brief Build the normative table a listing is served as.
