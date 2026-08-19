@@ -32,6 +32,7 @@ _usage() {
     for t in ${TOPOLOGY_NAMES}; do
         var="TOPOLOGY_${t//-/_}_TITLE"
         printf '    %-28s %s\n' "${t}" "${!var}" >&2
+        [ -e "topologies/${t}/.stub" ] && printf '    %-28s %s\n' "" "(not built yet)" >&2
     done
     exit 2
 }
@@ -53,6 +54,20 @@ case " ${TOPOLOGY_NAMES} " in
     *" ${topology} "*) ;;
     *) echo "./reset.sh: no topology called '${topology}'" >&2; _usage ;;
 esac
+
+if [ -e "topologies/${topology}/.stub" ]; then
+    echo "'${topology}' is drawn but not built yet." >&2
+    echo >&2
+    echo "Its picture is topology/topology-${topology}.svg, and what building it needs is" >&2
+    echo "written at the top of topologies/${topology}/compose.yaml." >&2
+    echo >&2
+    _built=
+    for t in ${TOPOLOGY_NAMES}; do
+        [ -e "topologies/${t}/.stub" ] || _built="${_built} ${t}"
+    done
+    echo "Built today:${_built}." >&2
+    exit 2
+fi
 
 # podman-compose names everything it makes after the directory this file sits in. The name is
 # pinned rather than taken from the compose file's own directory, so every topology makes and
@@ -77,8 +92,11 @@ if [ -x "${topology_dir}/mint.sh" ]; then
         echo "==> keeping the existing certificate authorities"
     fi
     # compose substitutes ${LAB_ISSUER} and the rest in the file itself, and reads .env from
-    # the directory it is run from, which is this one whichever topology is up.
+    # the directory the compose file is in - not the one it is run from, whatever the run
+    # command says. Without the second copy every substitution comes out empty, and a
+    # controller starts with no issuer to trust and can ask for nothing.
     cp "${topology_dir}/issuer_ids.env" .env
+    cp "${topology_dir}/issuer_ids.env" "${topology_dir}/.env"
 else
     echo "==> the certificate manager will create its own authority when it starts"
     : > .env
@@ -94,15 +112,47 @@ _networks()   { podman network ls --format '{{.Name}}' 2>/dev/null | grep -E "^$
 
 _destroy_containers() {
     _compose down >/dev/null 2>&1 || true
-    local ids; ids=$(_containers)
-    [ -n "${ids}" ] && podman rm -f ${ids} >/dev/null 2>&1 || true
+    # Two things make this a loop over one container at a time rather than one command over
+    # all of them:
+    #
+    #   depends_on makes a podman dependency, and 'podman rm -f' refuses a container another
+    #   still depends on - so a single pass leaves behind exactly the services the others
+    #   depend on, which for a laboratory being switched away from are its certificate
+    #   manager and its responder. Those then answer the next laboratory's searches, which
+    #   looks like the new one misbehaving. --depend takes the dependents with it.
+    #
+    #   Removing one that way removes others named later in the same command, and podman
+    #   stops at the first name that has gone rather than passing over it.
+    local pass ids id
+    for pass in 1 2 3; do
+        ids=$(_containers)
+        [ -n "${ids}" ] || return 0
+        for id in ${ids}; do
+            podman rm -f --depend "${id}" >/dev/null 2>&1 || true
+        done
+    done
 }
 
 _destroy_everything() {
     _destroy_containers
+    # Said rather than assumed. Everything above hides its output, because most of what it
+    # reports is a container that was already gone, and a laboratory built on top of another
+    # one's leftovers fails later in ways that point at the wrong thing.
+    local left; left=$(_containers)
+    if [ -n "${left}" ]; then
+        echo "    these containers could not be removed:" >&2
+        podman ps -a --filter "label=io.podman.compose.project=${project}" \
+                     --format '        {{.Names}}  {{.Status}}' >&2
+        echo "    Remove them and run this again:" >&2
+        echo "        podman rm -f --depend \$(podman ps -aq --filter label=io.podman.compose.project=${project})" >&2
+        return 1
+    fi
     local vols nets
+    # shellcheck disable=SC2086
     vols=$(_volumes); [ -n "${vols}" ] && podman volume rm -f ${vols} >/dev/null 2>&1 || true
+    # shellcheck disable=SC2086
     nets=$(_networks); [ -n "${nets}" ] && podman network rm -f ${nets} >/dev/null 2>&1 || true
+    return 0
 }
 
 _bring_up() {
@@ -128,11 +178,6 @@ _bring_up() {
 # where there is none.
 _places=$(eval "printf '%s' \"\${TOPOLOGY_${topology//-/_}_PLACES}\"")
 _has() { case " ${_places} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
-
-# A responder answers for a root that names one, and only a laboratory with a facility root
-# has one to answer for. Asked of the compose file rather than of a list kept in step by hand,
-# because the compose file is what decides whether the container exists.
-_has_responder() { _compose config --services 2>/dev/null | grep -q -- '-authority-status'; }
 
 # Each returns non-zero and says where to look. They ask the laboratory the same questions a
 # person would, rather than inspecting anything's insides.
@@ -303,7 +348,7 @@ if [ -n "${_gateways}" ]; then
     sleep 8
 fi
 
-if _has_responder; then
+if _has ml-manager; then
     echo "==> checking the facility root can be established"
     _check_responder
 fi
@@ -318,10 +363,6 @@ echo "==> checking a write with no certificate is refused"
 _check_refusals
 
 echo
-echo "The laboratory is running with no certificates issued."
-# Named the way a shell names them, which is not how the file spells them.
-# shellcheck source=helpers.sh
-. ./helpers.sh
 lab_ids_show
 echo
 if [ "${new_authorities}" = yes ]; then
@@ -333,7 +374,7 @@ if [ "${new_authorities}" = yes ]; then
 fi
 echo "The ${topology} laboratory is up with no certificates issued, and this much was just"
 echo "checked:"
-_has_responder && echo "    the responder answers for the facility root"
+_has ml-manager && echo "    the responder answers for the facility root"
 echo "    each certificate manager answers its administrator"
 if _has perimeter; then
     echo "    reading works, from every department and from outside"
@@ -343,4 +384,15 @@ else
     echo "    a write with no certificate is refused by the controller"
 fi
 echo
-echo "Follow 'Issue the certificates' to go on."
+# Each laboratory has one part of the README to itself, and the walkthrough in another part
+# names places this one may not have. Say which, rather than leaving the reader to find out
+# by running a command that cannot work here.
+case "${topology}" in
+    simple)                    _part="Part 1 - simple" ;;
+    simple-with-gateway)       _part="Part 2 - simple, with a gateway" ;;
+    federated-shared-root)     _part="Part 3 - federated, one facility root" ;;
+    federated-non-shared-root) _part="Part 4 - federated, two independent roots" ;;
+    *)                         _part="the part of README.md named after this laboratory" ;;
+esac
+echo "Its walkthrough is '${_part}' in README.md. Follow that one: another part is written"
+echo "for another laboratory and names places this one has none of."
