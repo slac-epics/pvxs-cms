@@ -36,6 +36,7 @@
 #include "certfilefactory.h"
 #include "certstatusmanager.h"
 #include "cmsversion.h"
+#include "keychainreport.h"
 #include "openssl.h"
 
 using namespace pvxs;
@@ -480,20 +481,9 @@ int main(int argc, char *argv[]) {
         if (!cert_file.empty()) {
             try {
                 auto cert_data = certs::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
-                if (cert_data.cert == nullptr) {
-                    throw std::runtime_error("Failed to read certificate from file");
-                }
-                std::string config_id{};
-                try {
-                    config_id = certs::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
-                } catch (...) {
-                }
-
-                std::cerr << "Certificate Details: " << std::endl << "============================================" << std::endl;
-                std::cout << ossl::ShowX509{cert_data.cert.get()} << std::endl
-                          << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n");
-                std::cerr << "--------------------------------------------\n" << std::endl;
-                cert_id = certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
+                cert_id = cms::cert::printKeychainReport(cert_data, std::cout, std::cerr);
+                // An anchors-only keychain has no certificate to ask the status of.
+                if (cert_id.empty()) return 0;
             } catch (std::exception &e) {
                 std::cerr << "Online Certificate Status: " << std::endl
                           << "============================================" << std::endl
@@ -525,7 +515,7 @@ int main(int argc, char *argv[]) {
             }
             Indented I(std::cout);
             if (result) {
-                std::cerr << "Certificate Status: " << std::endl << "============================================" << std::endl;
+                std::cerr << std::endl << "Certificate Status: " << std::endl << "============================================" << std::endl;
                 std::cout << "Certificate ID: " << cert_id.substr(cert_id.rfind(':') - 8) << std::endl
                           << "Status        : " << result["state"].as<std::string>() << std::endl
                           << "Status Issued : " << result["ocsp_status_date"].as<std::string>() << std::endl
