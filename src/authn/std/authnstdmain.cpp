@@ -52,7 +52,11 @@ namespace certs {
     app.add_flag("-D,--daemon", daemon_mode, "Daemon mode");
     app.add_flag("--add-config-uri", add_config_uri, "Add a config uri to the generated certificate");
     app.add_option("--cert-pv-prefix", cert_pv_prefix, "Specifies the pv prefix to use to contact PVACMS.  Default `CERT`");
-    app.add_option("-i,--issuer", config.issuer_id, "The issuer ID of the PVACMS service to contact.  If not specified (default) broadcast to any that are listening");
+    // Read the same way as EPICS_PVA_AUTH_ISSUER, so all the forms a certificate prints its
+    // authority in are accepted, and a value that is not one is refused here with the value in
+    // the message rather than becoming a channel name that nothing answers.
+    app.add_option("-i,--issuer", config.issuer_id, "The issuer ID of the PVACMS service to contact.  If not specified (default) broadcast to any that are listening")
+        ->transform([](std::string value) { return certs::readIssuerId(value); });
 
     app.add_option("-u,--cert-usage", usage, "Certificate usage.  `server`, `client`, `ioc`");
 
