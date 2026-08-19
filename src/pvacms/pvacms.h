@@ -332,7 +332,12 @@ std::string extractCountryCode(const std::string &locale_str);
 
 std::string getCountryCode();
 
-Value getCreatePrototype();
+/**
+ * @brief Build the reply to a certificate creation request.
+ * @param response_fields members an authenticator wants added, under `authenticator`.
+ *        Empty leaves the reply exactly as it was before authenticators could add to it.
+ */
+Value getCreatePrototype(const std::vector<pvxs::Member> &response_fields = {});
 
 time_t getNotAfterTimeFromCert(const X509 *cert);
 
