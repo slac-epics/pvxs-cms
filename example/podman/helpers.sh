@@ -95,6 +95,28 @@ _lab_quote() {
     printf '%s' "${out}"
 }
 
+# Whether the authority this shell names is still the one the laboratory has.
+#
+# Minting new authorities rewrites .env, but an exported variable in a shell that is already
+# open cannot be reached from outside it. Anything typed with ${LAB} or ${LAB_SKID} then names
+# an authority that no longer exists, and what comes back says nothing about why: a request
+# times out, because there is nothing to answer it, and a certificate manager that never saw
+# the authority has nothing to say about it either.
+_lab_ids_are_current() {
+    local env_file="${LAB_HELPERS_DIR:-.}/.env"
+    [ -r "${env_file}" ] || return 0
+    [ -n "${LAB:-}" ] || return 0          # nothing named yet, so nothing to disagree
+
+    local on_disk
+    on_disk=$(sed -n 's/^LAB_ISSUER=//p' "${env_file}")
+    [ -n "${on_disk}" ] || return 0
+    [ "${on_disk}" != "${LAB}" ] || return 0
+
+    echo "run_in: this shell names authority ${LAB}, but the laboratory now has ${on_disk}." >&2
+    echo "        The authorities were minted again since these were read. Run: lab_ids" >&2
+    return 1
+}
+
 run_in() {
     if [ "$#" -eq 0 ] || [ "$1" = --help ]; then
         sed -n '/^# ----* where things are/,/^_lab_place/p' "${LAB_HELPERS_DIR:-.}/helpers.sh" \
@@ -111,6 +133,8 @@ run_in() {
         echo "run_in: say it as: run_in <place> as <person> <command...>" >&2; return 2
     fi
     shift 3
+
+    _lab_ids_are_current || true
 
     # A person may be written <department>/<user>, which is the same user holding a
     # certificate from that department rather than from the one they are sitting in. It reads
@@ -264,6 +288,59 @@ lab_ids() {
     LAB_SKID=$(sed -n 's/^LAB_ISSUER_SKID=//p' "${env_file}")
     ML_SKID=$(sed -n 's/^ML_ISSUER_SKID=//p'  "${env_file}")
     export LAB ML LAB_SKID ML_SKID
+}
+
+# What the facility root's responder says about the root, and how to change it.
+#
+# The root is the one certificate the laboratory cannot ask about over Secure PVAccess: it has
+# no status channel, and an answer carried over a connection it underwrites would be worth
+# nothing. It names a responder instead, and each certificate manager asks that responder
+# whether the root still stands.
+#
+# The responder reads its answer at start, so each of these rewrites the file and restarts it.
+authority_says() {
+    local index="${LAB_HELPERS_DIR:-.}/ocsp/index.txt"
+    [ -r "${index}" ] || { echo "no ${index} yet - run ./bootstrap.sh first" >&2; return 1; }
+    case "$(cut -f1 "${index}")" in
+        R) echo "the facility root is REVOKED" ;;
+        V) echo "the facility root stands" ;;
+        *) echo "the responder's index says something this does not understand" ;;
+    esac
+}
+
+# Revoke the facility root, as its own authority would.
+authority_revoke() {
+    local index="${LAB_HELPERS_DIR:-.}/ocsp/index.txt"
+    [ -r "${index}" ] || { echo "no ${index} yet - run ./bootstrap.sh first" >&2; return 1; }
+    # The revocation time is the two-digit-year form the index uses throughout; the four-digit
+    # form makes the responder answer with an internal error rather than a status.
+    awk -F'\t' -v when="$(date -u +%y%m%d%H%M%SZ)" 'BEGIN{OFS="\t"}
+        {print "R", $2, when, $4, $5, $6}' "${index}" > "${index}.new" && mv "${index}.new" "${index}"
+    (cd "${LAB_HELPERS_DIR:-.}" && podman-compose restart pvxs-lab-authority-status) >/dev/null 2>&1
+    authority_says
+}
+
+# Put the facility root back, so a demonstration can be run again.
+authority_restore() {
+    local index="${LAB_HELPERS_DIR:-.}/ocsp/index.txt"
+    [ -r "${index}" ] || { echo "no ${index} yet - run ./bootstrap.sh first" >&2; return 1; }
+    awk -F'\t' 'BEGIN{OFS="\t"} {print "V", $2, "", $4, $5, $6}' "${index}" > "${index}.new" \
+        && mv "${index}.new" "${index}"
+    (cd "${LAB_HELPERS_DIR:-.}" && podman-compose restart pvxs-lab-authority-status) >/dev/null 2>&1
+    authority_says
+}
+
+# Take the responder away without changing what it would have said, which is the other thing
+# that can happen to it.
+authority_unreachable() {
+    (cd "${LAB_HELPERS_DIR:-.}" && podman-compose stop pvxs-lab-authority-status) >/dev/null 2>&1
+    echo "the responder is stopped; nothing can be learned about the root"
+}
+
+authority_reachable() {
+    (cd "${LAB_HELPERS_DIR:-.}" && podman-compose start pvxs-lab-authority-status) >/dev/null 2>&1
+    echo "the responder is running again"
+    authority_says
 }
 
 # Which parts of the laboratory are up, named the way run_in names them.

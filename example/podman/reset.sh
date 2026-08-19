@@ -33,6 +33,14 @@ else
     echo "==> keeping the existing certificate authorities"
 fi
 
+# A demonstration may have left the facility root revoked, and a laboratory that starts with a
+# revoked authority issues nothing. Put it back.
+if [ -s ocsp/index.txt ] && [ "$(cut -f1 ocsp/index.txt)" != V ]; then
+    echo "==> putting the facility root back"
+    awk -F'\t' 'BEGIN{OFS="\t"} {print "V", $2, "", $4, $5, $6}' ocsp/index.txt > ocsp/index.new
+    mv ocsp/index.new ocsp/index.txt
+fi
+
 echo "==> starting the laboratory"
 podman-compose up -d >/dev/null 2>&1
 
@@ -53,10 +61,58 @@ echo "==> restarting the gateways"
 podman-compose restart pvxs-lab-gateway pvxs-lab-ml-gateway >/dev/null 2>&1
 sleep 10
 
+# The authority has to be established before anything can be issued, and a laboratory that
+# looks up but cannot establish it is the worst state to hand back: every certificate is
+# reported unusable, and administration stops with them, so the tools that would show you why
+# have stopped too. Prove it works rather than assume it.
+echo "==> checking the facility root can be established"
+authority_ok=no
+for i in $(seq 1 12); do
+    if podman exec podman_pvxs-lab-authority-status_1 \
+        timeout 8 openssl ocsp -issuer /ocsp/ca.pem -cert /ocsp/ca.pem \
+                               -url http://127.0.0.1:8888 -CAfile /ocsp/ca.pem >/dev/null 2>&1; then
+        authority_ok=yes
+        break
+    fi
+    sleep 5
+done
+if [ "${authority_ok}" != yes ]; then
+    echo "    the responder for the facility root is not answering." >&2
+    echo "    Nothing can be issued until it does. Look at:" >&2
+    echo "        podman logs podman_pvxs-lab-authority-status_1" >&2
+    exit 1
+fi
+
+# The managers ask again every fifteen seconds after a failure, so give them one round to
+# notice, then check the thing a person would actually try first.
+echo "==> waiting for the certificate managers to agree"
+listing_ok=no
+for i in $(seq 1 12); do
+    if podman exec podman_pvxs-lab-pvacms_1 \
+        bash -lc 'EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12 pvxcert -l' >/dev/null 2>&1; then
+        listing_ok=yes
+        break
+    fi
+    sleep 5
+done
+if [ "${listing_ok}" != yes ]; then
+    echo "    the certificate manager will not answer its administrator." >&2
+    echo "    That is what a facility root nobody can establish looks like. Look at:" >&2
+    echo "        podman logs podman_pvxs-lab-pvacms_1 | grep -i 'authority status'" >&2
+    exit 1
+fi
+
 echo
 echo "The laboratory is running with no certificates issued."
 sed 's/^/    /' .env 2>/dev/null || true
 echo
+if [ "${new_authorities}" = yes ]; then
+    # A shell that read the old ones still holds them, and nothing here can reach into it.
+    echo "These are new. A shell that already read the old ones still holds them, so in each"
+    echo "one that has, run:"
+    echo "    lab_ids"
+    echo
+fi
 echo "Reading works now, from anywhere, over plain TCP:"
 echo "    podman exec podman_lab-client_1       bash -c 'pvxget test:aiExample'"
 echo "    podman exec podman_perimeter-client_1 bash -c 'pvxget ml:aiExample'"

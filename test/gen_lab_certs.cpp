@@ -213,12 +213,12 @@ void add_extension(X509* cert, int nid, const char *expr,
 void add_skid_extension(X509* cert, EVP_PKEY* pkey) {
     auto skid = computeSkidFromKey(pkey);
 
-    ASN1_OCTET_STRING* skid_asn1 = ASN1_OCTET_STRING_new();
-    ASN1_OCTET_STRING_set(skid_asn1, skid.data(), skid.size());
+    const pvxs::ossl_ptr<ASN1_OCTET_STRING> skid_asn1(ASN1_OCTET_STRING_new());
+    ASN1_OCTET_STRING_set(skid_asn1.get(), skid.data(), skid.size());
 
-    X509_EXTENSION* ext = X509V3_EXT_i2d(NID_subject_key_identifier, 0, skid_asn1);
-    MUST(1, X509_add_ext(cert, ext, -1));
-    X509_EXTENSION_free(ext);
+    // Owned: MUST throws on failure, and neither of these went back when it did.
+    const pvxs::ossl_ptr<X509_EXTENSION> ext(X509V3_EXT_i2d(NID_subject_key_identifier, 0, skid_asn1.get()));
+    MUST(1, X509_add_ext(cert, ext.get(), -1));
 }
 
 /**
@@ -324,6 +324,60 @@ struct PKCS12Writer {
     }
 };
 
+/** Writes a certificate where a tool that speaks PEM can read it. */
+void writePem(const std::string& path, X509* cert) {
+    const pvxs::file_ptr out(fopen(path.c_str(), "w"), false);
+    if (!out) throw std::runtime_error(SB()<<"Error opening for write : "<<path);
+    if (!PEM_write_X509(out.get(), cert)) throw std::runtime_error(SB()<<"Error writing : "<<path);
+}
+
+/** Writes a private key, unencrypted, for a laboratory responder to sign with. */
+void writePemKey(const std::string& path, EVP_PKEY* key) {
+    const pvxs::file_ptr out(fopen(path.c_str(), "w"), false);
+    if (!out) throw std::runtime_error(SB()<<"Error opening for write : "<<path);
+    if (!PEM_write_PrivateKey(out.get(), key, nullptr, nullptr, 0, nullptr, nullptr))
+        throw std::runtime_error(SB()<<"Error writing : "<<path);
+}
+
+/**
+ * Writes the certificate index a responder reads to decide what to say about a certificate.
+ *
+ * The format is one tab-separated line per certificate: state, expiry, revocation time, serial,
+ * file name, subject. Times are the two-digit-year form, which is what an X.509 UTCTime already
+ * holds, and a four-digit year in the revocation field makes the responder answer with an
+ * internal error instead of a status. Revoking is a matter of changing the state letter and
+ * filling in the revocation time.
+ */
+void writeOcspIndex(const std::string& path, X509* cert, const std::string& subject_cn, bool revoked) {
+    // An expiry in this century is stored as a UTCTime, whose contents are already YYMMDDHHMMSSZ.
+    // A GeneralizedTime spells the century out in front, so drop it.
+    const ASN1_TIME* not_after = X509_get0_notAfter(cert);
+    std::string expiry(reinterpret_cast<const char*>(ASN1_STRING_get0_data(not_after)),
+                       static_cast<size_t>(ASN1_STRING_length(not_after)));
+    if (ASN1_STRING_type(not_after) == V_ASN1_GENERALIZEDTIME && expiry.size() > 2) expiry = expiry.substr(2);
+
+    // The serial in the same spelling the responder derives from the certificate: the contents
+    // of the integer, in upper case hexadecimal.
+    const ASN1_INTEGER* serial = X509_get_serialNumber(cert);
+    std::string serial_hex;
+    for (int i = 0; i < ASN1_STRING_length(serial); ++i) {
+        char byte[3];
+        snprintf(byte, sizeof(byte), "%02X", ASN1_STRING_get0_data(serial)[i]);
+        serial_hex += byte;
+    }
+
+    char revoked_at[32] = "";
+    if (revoked) {
+        const time_t now = time(nullptr);
+        strftime(revoked_at, sizeof(revoked_at), "%y%m%d%H%M%SZ", gmtime(&now));
+    }
+
+    const pvxs::file_ptr out(fopen(path.c_str(), "w"), false);
+    if (!out) throw std::runtime_error(SB()<<"Error opening for write : "<<path);
+    fprintf(out.get(), "%s\t%s\t%s\t%s\tunknown\t/CN=%s\n",
+            revoked ? "R" : "V", expiry.c_str(), revoked_at, serial_hex.c_str(), subject_cn.c_str());
+}
+
 struct CertCreator {
     // commonName string
     const char *CN = nullptr;
@@ -344,6 +398,10 @@ struct CertCreator {
     // PVACMS certificate-status PV prefix used when writing the SPVA status extension.
     // MUST match the loading PVACMS's prefix (default "CERT") or the PVACMS aborts at startup.
     const char *cert_pv_prefix = "CERT";
+    // Address of the responder that publishes this certificate's own revocation, written into
+    // the Authority Information Access extension. Set on the facility root, whose revocation
+    // has no other way to reach the certificates issued beneath it.
+    const char *ocsp_uri = nullptr;
     // algorithm attributes
     int keytype = EVP_PKEY_RSA;
     size_t keylen = 2048;
@@ -479,6 +537,10 @@ struct CertCreator {
         if(extended_key_usage)
             add_extension(cert.get(), NID_ext_key_usage, extended_key_usage);
 
+        if (ocsp_uri) {
+            add_extension(cert.get(), NID_info_access, (std::string("OCSP;URI:") + ocsp_uri).c_str());
+        }
+
         if ( add_status_extension) {
             const auto issuer_id = pvxs::certs::CertStatus::getSkId(root ? root : issuer);
             addCustomExtensionByNid(cert, pvxs::ossl::NID_SPvaCertStatusURI, getCertStatusURI(cert_pv_prefix, issuer_id, serial));
@@ -493,7 +555,7 @@ struct CertCreator {
 };
 
 void usage(const char* argv0) {
-    std::cerr<<"Usage: "<<argv0<<" [-O <outdir>] [-R <cn>] [-L <cn>] [-M <cn>]\n"
+    std::cerr<<"Usage: "<<argv0<<" [-O <outdir>] [-R <cn>] [-L <cn>] [-M <cn>] [-S <uri>]\n"
                "\n"
                "    Mint the federated-lab certificate hierarchy:\n"
                "      * one facility Root CA           (no status extension)\n"
@@ -516,6 +578,12 @@ void usage(const char* argv0) {
                "                   (default: EPICS Controls Intermediate CA)\n"
                "    -M <cn>      - Common name of the ML intermediate.\n"
                "                   (default: EPICS ML Intermediate CA)\n"
+               "    -S <uri>     - Address of the responder that publishes the facility\n"
+               "                   root\'s own revocation, written into the root\'s Authority\n"
+               "                   Information Access extension.  A certificate manager\n"
+               "                   loading the root reads it and asks that responder whether\n"
+               "                   the root still stands.  Omit it and the root names no\n"
+               "                   responder, which is what the tests expect.\n"
                "\n"
                "    The three names must match the ones each department's access security\n"
                "    file names, or its certificate manager will refuse every administrator.\n"
@@ -532,9 +600,10 @@ int main(int argc, char *argv[])
         std::string root_cn("EPICS Root Certificate Authority");
         std::string lab_cn("EPICS Controls Intermediate CA");
         std::string ml_cn("EPICS ML Intermediate CA");
+        std::string root_ocsp_uri;
         {
             int opt;
-            while ((opt = getopt(argc, argv, "hO:R:L:M:")) != -1) {
+            while ((opt = getopt(argc, argv, "hO:R:L:M:S:")) != -1) {
                 switch(opt) {
                 case 'h': usage(argv[0]); return 0;
                 case 'O':
@@ -548,6 +617,10 @@ int main(int argc, char *argv[])
                 case 'L':
                     lab_cn = optarg;
                     if(lab_cn.empty()) throw std::runtime_error("-L argument must not be empty");
+                    break;
+                case 'S':
+                    root_ocsp_uri = optarg;
+                    if(root_ocsp_uri.empty()) throw std::runtime_error("-S argument must not be empty");
                     break;
                 case 'M':
                     ml_cn = optarg;
@@ -576,6 +649,9 @@ int main(int argc, char *argv[])
             cc.serial = serial++;
             cc.isCA = true;
             cc.key_usage = "cRLSign,keyCertSign";
+            // The root has no status PV of its own, so the responder it names here is the only
+            // way its revocation reaches the certificates issued beneath it.
+            if (!root_ocsp_uri.empty()) cc.ocsp_uri = root_ocsp_uri.c_str();
             std::tie(root_key, root_cert) = cc.create(false); // false => no status extension on the root
 
             PKCS12Writer p12(outdir);
@@ -583,6 +659,32 @@ int main(int argc, char *argv[])
             // Root cert only (no key) - the trust anchor mounted into every pod.
             MUST(1, sk_X509_push(p12.cacerts.get(), root_cert.get()));
             p12.write("cert_auth.p12");
+        }
+
+        // Everything the responder named by the root needs in order to answer for it. A
+        // responder signs with a certificate the root has authorised for the purpose, so the
+        // root's own key stays where it was minted and never reaches the responder.
+        if (!root_ocsp_uri.empty()) {
+            CertCreator cc;
+            cc.CN = "EPICS Root Certificate Authority OCSP Responder";
+            cc.serial = serial++;
+            cc.issuer = root_cert.get();
+            cc.ikey = root_key.get();
+            cc.key_usage = "digitalSignature";
+            cc.extended_key_usage = "OCSPSigning";
+            pvxs::ossl_ptr<X509> signer_cert;
+            pvxs::ossl_ptr<EVP_PKEY> signer_key;
+            std::tie(signer_key, signer_cert) = cc.create(false);
+
+            writePem(SB()<<outdir<<"ocsp_ca.pem", root_cert.get());
+            writePem(SB()<<outdir<<"ocsp_signer.pem", signer_cert.get());
+            writePemKey(SB()<<outdir<<"ocsp_signer.key", signer_key.get());
+
+            // The responder reads the authority's standing from this file. It is written here
+            // rather than by a script because the format is a certificate index: two-digit-year
+            // times, tab separated, and a wrong field makes the responder answer with an
+            // internal error rather than a status.
+            writeOcspIndex(SB()<<outdir<<"ocsp_index.txt", root_cert.get(), root_cn, false);
         }
 
         // Helper to mint one departmental intermediate CA signed by the facility Root.
