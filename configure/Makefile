@@ -43,6 +43,8 @@ TOOLCHAIN: toolchain.c
 	# Propagate detected/custom include paths into the toolchain so all targets (incl. tests) see them
 	$(if $(LIBEVENT),echo "USR_INCLUDES += -I$(LIBEVENT)/include" >> $@.tmp, true)
 	$(if $(OPENSSL),echo "USR_INCLUDES += -I$(OPENSSL)/include" >> $@.tmp, true)
+	# Record the PVACMS setting so later make runs, including the test step, see it
+	$(if $(PVXS_ENABLE_PVACMS),echo "PVXS_ENABLE_PVACMS = $(PVXS_ENABLE_PVACMS)" >> $@.tmp, true)
 	$(MV) $@.tmp $@
 
 endif
