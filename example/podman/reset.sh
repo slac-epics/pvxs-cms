@@ -166,6 +166,16 @@ _has() { case " ${_places} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 # because the compose file is what decides whether the container exists.
 _has_responder() { _compose config --services 2>/dev/null | grep -q -- '-authority-status'; }
 
+# Whether the boundary carries TLS and nothing else, which changes what a workstation outside it
+# can do before anything has been handed to it: with no plaintext listener to answer, it cannot
+# read, and it cannot be refused a write either, because it cannot get far enough to be told no.
+# Asked of the gateway configuration rather than of a list kept in step by hand, for the same
+# reason as the responder above: that file is what decides the answer.
+_boundary_is_tls_only() {
+    grep -q '"EPICS_PVAS_SERVER_PORT"[[:space:]]*:[[:space:]]*"\(NO\|no\|off\|false\|disabled\)"' \
+         "topologies/${topology}/config/gateway.conf" 2>/dev/null
+}
+
 # Each returns non-zero and says where to look. They ask the laboratory the same questions a
 # person would, rather than inspecting anything's insides.
 
@@ -220,8 +230,9 @@ _check_reads() {
         && { ! _has ml-ioc    || run_in ml        as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; } \
         && { ! _has ml-ioc    || run_in lab       as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; } \
         && { ! _has ml        || run_in ml        as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; } \
-        && { ! _has perimeter || run_in perimeter as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; } \
-        && { ! _has perimeter || ! _has ml-ioc \
+        && { ! _has perimeter || _boundary_is_tls_only \
+                              || run_in perimeter as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; } \
+        && { ! _has perimeter || _boundary_is_tls_only || ! _has ml-ioc \
                               || run_in perimeter as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; }; then
             ok=yes; break
         fi
@@ -234,8 +245,9 @@ _check_reads() {
     _has ml-ioc    && echo "        run_in ml        as guest without a certificate pvxget ml:aiExample" >&2
     _has ml-ioc    && echo "        run_in lab       as guest without a certificate pvxget ml:aiExample" >&2
     _has ml        && echo "        run_in ml        as guest without a certificate pvxget test:aiExample" >&2
-    _has perimeter && echo "        run_in perimeter as guest without a certificate pvxget test:aiExample" >&2
-    _has perimeter && _has ml-ioc \
+    _has perimeter && ! _boundary_is_tls_only \
+                   && echo "        run_in perimeter as guest without a certificate pvxget test:aiExample" >&2
+    _has perimeter && ! _boundary_is_tls_only && _has ml-ioc \
                    && echo "        run_in perimeter as guest without a certificate pvxget ml:aiExample" >&2
     return 1
 }
@@ -256,6 +268,17 @@ _check_refusals() {
          run_in lab as guest without a certificate pvxput test:stringExample hello; then
         echo "    a request with no certificate was not refused by the IOC." >&2
         return 1
+    fi
+    # A boundary carrying TLS alone refuses earlier and more bluntly: a workstation that has been
+    # handed nothing cannot verify what answers, so it never gets far enough to be told no about
+    # a particular variable. What is checked there is that it cannot get in at all, which is the
+    # state the walkthrough starts from before the authority is carried across.
+    if _has perimeter && _boundary_is_tls_only; then
+        if run_in perimeter as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; then
+            echo "    the boundary carries TLS alone, but a workstation holding nothing read across it." >&2
+            return 1
+        fi
+        return 0
     fi
     if _has perimeter && ! _says 'denied by gateway' \
          run_in perimeter as guest without a certificate pvxput test:stringExample hello; then
@@ -361,7 +384,12 @@ echo "The ${topology} laboratory is up with no certificates issued, and this muc
 echo "checked:"
 _has_responder && echo "    the responder answers for the facility root"
 echo "    each PVACMS answers its administrator"
-if _has perimeter; then
+if _has perimeter && _boundary_is_tls_only; then
+    echo "    reading works from every department inside the facility"
+    echo "    a write with no certificate is refused by the IOC"
+    echo "    the boundary lets nothing in yet: it carries TLS alone, and the workstation"
+    echo "    outside has not been given the authority to verify it with"
+elif _has perimeter; then
     echo "    reading works, from every department and from outside"
     echo "    a write with no certificate is refused, by the IOC and at the boundary"
 else

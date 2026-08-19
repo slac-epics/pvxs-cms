@@ -161,7 +161,16 @@ services:
     environment:
       <<: *lab-env
       EPICS_PVA_AUTO_ADDR_LIST: "NO"
-      EPICS_PVA_NAME_SERVERS: "facility:5075"
+      # The boundary carries TLS and nothing else, so the facility address is named with the
+      # pvas:// scheme and the TLS port. A name reached this way is asked for over the secure
+      # connection itself, which is why the authority has to be held before anything is asked.
+      EPICS_PVA_NAME_SERVERS: "pvas://facility:5076"
+      # This workstation cannot reach the certificate manager except through the gateway, so it
+      # cannot establish the standing of its own certificate before using it. The gateway checks
+      # what is presented to it and refuses a holder that does not stand, so the check is made
+      # where the connection is accepted rather than here. It applies to this pvas:// name server
+      # and nothing else.
+      EPICS_PVA_TLS_OPTIONS: "remote_verification"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - internet-client-config:/home/guest/.config/pva/1.5

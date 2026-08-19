@@ -15,7 +15,9 @@ client_l = fields('Role: client','Image: lab',
 testioc_l = fields('Role: IOC','Image: testioc','eth0  net-lab  10.89.0.0/24',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: testioc.db, testiocg.db','ACF: testioc.acf',
- 'EPICS_PVA_AUTH_ISSUER: ROOT_ISSUER_SKID','Serves:',
+ 'EPICS_PVA_TLS_OPTIONS: remote_verification',
+ 'Holds the root by hand: trust_anchor.p12 copied in, because the',
+ '    authority cannot be fetched through a boundary that needs it','Serves:',
  '    test:aiExample, test:stringExample, test:longExample',
  '    test:enumExample, test:arrayExample, test:calcExample',
  '    test:spec (SPECIAL), test:open (OPEN)')
@@ -39,15 +41,17 @@ gateway_l = fields('Role: gateway (dual-homed), net-lab <-> net-perimeter','Imag
  'eth1  net-perimeter  10.89.2.0/24   server side, where it is asked',
  'Program: p4p pvagw, layer 7','Config: config/gateway-lab.conf',
  'Serves on eth1 alone: "interface" pinned to its net-perimeter address',
- 'Reached from outside at facility:5075 and facility:5076',
- 'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
+ 'Reached from outside at facility:5076, over TLS and nothing else',
+ 'Listens: tcp/5076 PVA over TLS   udp/5076 PVA search',
+ 'EPICS_PVAS_SERVER_PORT=NO closes the plaintext listener, so the',
+ '    boundary carries TLS alone. It needs its certificate to serve at all',
  'Presents: CN=gateway',
  'Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc',
  'ACF: gateway.acf','pvlist: config/gateway-lab.pvlist')
 perim_client_l = fields('Role: client','Image: internet',
  'eth0  net-internet   10.89.4.0/24',
  'Logins: guest, operator',
- 'EPICS_PVA_NAME_SERVERS: facility:5075',
+ 'EPICS_PVA_NAME_SERVERS: pvas://facility:5076',
  'EPICS_PVA_AUTH_ISSUER: ROOT_ISSUER_SKID',
  'It names the facility, and the balancer carries its',
  '    calls on into the laboratory')
@@ -154,8 +158,8 @@ lb_l = fields('Role: facility load balancer, layer 4 (dual-homed)','Image: lb',
  'eth1  net-perimeter  10.89.2.0/24   (its foot in the DMZ)',
  'The gateway stands only in the DMZ, so this is the one way in',
  'Maps inward, port for port:',
- '    facility:5075 -> pvxs-lab-gateway:5075',
  '    facility:5076 -> pvxs-lab-gateway:5076      over TLS',
+ 'Only the secure port is published: the gateway binds no other',
  'This is the one device here where a port picks a destination. It',
  '    rewrites the destination and the packet is routed afterwards.',
  'It answers as itself to the gateway, so replies come back through',
@@ -311,7 +315,7 @@ def build(cv):
     cv.hv([(gw['cx'], perim_bus_y), (gw['cx'], gw['top'])], C['perim'], 2)
     cv.dot(gw['cx'], perim_bus_y, C['perim'])
     cv.pill((pb0 + pb1)/2, perim_bus_y - 16,
-            'net-perimeter  10.89.2.0/24  tcp/5075, tcp/5076', C['perim'])
+            'net-perimeter  10.89.2.0/24  tcp/5076', C['perim'])
 
     # the segment outside the facility: the workstation on it, and the balancer's other foot
     inet_x = [pc['cx'], lb['cx'] + 40]
@@ -321,7 +325,7 @@ def build(cv):
     cv.hv([(lb['cx'] + 40, lb['top']), (lb['cx'] + 40, inet_bus_y)], C['bus_inet'], 2)
     cv.dot(lb['cx'] + 40, inet_bus_y, C['bus_inet'])
     cv.pill((min(inet_x) + max(inet_x))/2, inet_bus_y - 16,
-            'net-internet  10.89.4.0/24  tcp/5075, tcp/5076', C['bus_inet'])
+            'net-internet  10.89.4.0/24  tcp/5076', C['bus_inet'])
 
     # --- the root reaches PVACMS down the right margin, outside the network: an authority
     # --- is a file, held by the component it is mounted into
