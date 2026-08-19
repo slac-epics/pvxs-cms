@@ -1,0 +1,340 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2566 1861" width="2566" height="1861" font-synthesis="none">
+<!-- Secure PVAccess demonstration laboratory, simple topology with a gateway to a perimeter network - hand-drawn flat-design infographic. -->
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8E24AA"/></marker></defs>
+<rect x="0" y="0" width="2566" height="1861" fill="#FAFAFA"/>
+<text x="40" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="#263238">Secure PVAccess demonstration laboratory</text>
+<text x="40" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">simple with a gateway: one laboratory network, published at the facility address and reached through a gateway in the DMZ - example/podman</text>
+<rect x="40" y="831" width="2430" height="990" rx="10" fill="#E8EAF6" stroke="#3949AB" stroke-width="1.6"/>
+<path d="M 40 841 a10 10 0 0 1 10 -10 h2410 a10 10 0 0 1 10 10 v34 h-2430 z" fill="#3949AB" fill-opacity="0.92"/>
+<circle cx="57" cy="858" r="2.6" fill="white"/><circle cx="67" cy="858" r="2.6" fill="white"/><circle cx="62" cy="848" r="2.6" fill="white"/><path d="M 62 848 L 57 858 M 62 848 L 67 858 M 57 858 H 67" stroke="white" stroke-width="1.4"/>
+<text x="80" y="859" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">net-lab   10.89.0.0/24   bridge, isolated   -   the whole laboratory</text>
+<rect x="1224.9" y="90" width="504.20000000000005" height="240" rx="10" fill="#FFF8E1" stroke="#FFB300" stroke-width="1.6"/>
+<path d="M 1224.9 100 a10 10 0 0 1 10 -10 h484.20000000000005 a10 10 0 0 1 10 10 v34 h-504.20000000000005 z" fill="#FFB300" fill-opacity="0.92"/>
+<circle cx="1241.9" cy="117" r="2.6" fill="white"/><circle cx="1251.9" cy="117" r="2.6" fill="white"/><circle cx="1246.9" cy="107" r="2.6" fill="white"/><path d="M 1246.9 107 L 1241.9 117 M 1246.9 107 L 1251.9 117 M 1241.9 117 H 1251.9" stroke="white" stroke-width="1.4"/>
+<text x="1264.9" y="118" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">net-internet   10.89.4.0/24   -   outside the facility</text>
+<rect x="2055" y="90" width="415" height="223" rx="10" fill="#F3E5F5" stroke="#8E24AA" stroke-width="1.6"/>
+<path d="M 2055 100 a10 10 0 0 1 10 -10 h395 a10 10 0 0 1 10 10 v34 h-415 z" fill="#8E24AA" fill-opacity="0.92"/>
+<circle cx="2072" cy="117" r="2.6" fill="white"/><circle cx="2082" cy="117" r="2.6" fill="white"/><circle cx="2077" cy="107" r="2.6" fill="white"/><path d="M 2077 107 L 2072 117 M 2077 107 L 2082 117 M 2072 117 H 2082" stroke="white" stroke-width="1.4"/>
+<text x="2095" y="118" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">Certificate Authority</text>
+<path d="M 66 1162 L 2444 1162" fill="none" stroke="#3949AB" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<g><rect x="2095.8" y="1137" width="328.2" height="18" rx="9" fill="white" stroke="#3949AB" stroke-width="1.2"/><text x="2259.9" y="1149.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#3949AB">net-lab  10.89.0.0/24  tcp/5075, tcp/5076, udp/5076</text></g>
+<g><rect x="159.0" y="889" width="283" height="119" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.4"/>
+<path d="M 159.0 897 a8 8 0 0 1 8 -8 h267 a8 8 0 0 1 8 8 v22 h-283 z" fill="#546E7A"/>
+<rect x="168.0" y="898" width="16" height="10" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="176.0" y1="908" x2="176.0" y2="911" stroke="white" stroke-width="1.8"/><line x1="172.0" y1="911.5" x2="180.0" y2="911.5" stroke="white" stroke-width="1.8"/>
+<text x="191.0" y="909" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">lab-client</text>
+<text x="171.0" y="938" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: client</text>
+<text x="171.0" y="953" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: lab</text>
+<text x="171.0" y="968" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-lab  10.89.0.0/24</text>
+<text x="171.0" y="983" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Logins: guest, operator</text>
+<text x="171.0" y="998" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_AUTH_ISSUER: ROOT_ISSUER_SKID</text>
+</g>
+<g><rect x="1236.0" y="889" width="482" height="239" rx="8" fill="#FFF3E0" stroke="#FB8C00" stroke-width="1.4"/>
+<path d="M 1236.0 897 a8 8 0 0 1 8 -8 h466 a8 8 0 0 1 8 8 v22 h-482 z" fill="#FB8C00"/>
+<path d="M 1245.0 902 h9 m-3 -3 l3 3 l-3 3" stroke="white" stroke-width="1.8" fill="none"/><path d="M 1261.0 908 h-9 m3 -3 l-3 3 l3 3" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="1268.0" y="909" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-gateway</text>
+<text x="1248.0" y="938" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: gateway (dual-homed), net-lab &lt;-&gt; net-perimeter</text>
+<text x="1248.0" y="953" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: gateway</text>
+<text x="1248.0" y="968" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-lab        10.89.0.0/24   upstream side, to the laboratory</text>
+<text x="1248.0" y="983" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth1  net-perimeter  10.89.2.0/24   server side, where it is asked</text>
+<text x="1248.0" y="998" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Program: p4p pvagw, layer 7</text>
+<text x="1248.0" y="1013" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Config: config/gateway-lab.conf</text>
+<text x="1248.0" y="1028" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves on eth1 alone: "interface" pinned to its net-perimeter address</text>
+<text x="1248.0" y="1043" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Reached from outside at facility:5075 and facility:5076</text>
+<text x="1248.0" y="1058" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search</text>
+<text x="1248.0" y="1073" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Presents: CN=gateway</text>
+<text x="1248.0" y="1088" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc</text>
+<text x="1248.0" y="1103" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: gateway.acf</text>
+<text x="1248.0" y="1118" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVList: config/gateway-lab.pvlist</text>
+</g>
+<g><rect x="66.0" y="1196" width="469" height="209" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
+<path d="M 66.0 1204 a8 8 0 0 1 8 -8 h453 a8 8 0 0 1 8 8 v22 h-469 z" fill="#43A047"/>
+<rect x="77.0" y="1205" width="12" height="12" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="80.0" y1="1203" x2="80.0" y2="1205" stroke="white" stroke-width="1.4"/><line x1="80.0" y1="1217" x2="80.0" y2="1219" stroke="white" stroke-width="1.4"/><line x1="83.0" y1="1203" x2="83.0" y2="1205" stroke="white" stroke-width="1.4"/><line x1="83.0" y1="1217" x2="83.0" y2="1219" stroke="white" stroke-width="1.4"/><line x1="86.0" y1="1203" x2="86.0" y2="1205" stroke="white" stroke-width="1.4"/><line x1="86.0" y1="1217" x2="86.0" y2="1219" stroke="white" stroke-width="1.4"/>
+<text x="98.0" y="1216" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-testioc</text>
+<text x="78.0" y="1245" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: controller (IOC)</text>
+<text x="78.0" y="1260" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: testioc</text>
+<text x="78.0" y="1275" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-lab  10.89.0.0/24</text>
+<text x="78.0" y="1290" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search</text>
+<text x="78.0" y="1305" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">DB: testioc.db, testiocg.db</text>
+<text x="78.0" y="1320" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: testioc.acf</text>
+<text x="78.0" y="1335" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_AUTH_ISSUER: ROOT_ISSUER_SKID</text>
+<text x="78.0" y="1350" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves:</text>
+<text x="78.0" y="1365" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    test:aiExample, test:stringExample, test:longExample</text>
+<text x="78.0" y="1380" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    test:enumExample, test:arrayExample, test:calcExample</text>
+<text x="78.0" y="1395" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    test:spec (SPECIAL), test:open (OPEN)</text>
+</g>
+<g><rect x="563.0" y="1196" width="469" height="179" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
+<path d="M 563.0 1204 a8 8 0 0 1 8 -8 h453 a8 8 0 0 1 8 8 v22 h-469 z" fill="#43A047"/>
+<rect x="574.0" y="1205" width="12" height="12" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="577.0" y1="1203" x2="577.0" y2="1205" stroke="white" stroke-width="1.4"/><line x1="577.0" y1="1217" x2="577.0" y2="1219" stroke="white" stroke-width="1.4"/><line x1="580.0" y1="1203" x2="580.0" y2="1205" stroke="white" stroke-width="1.4"/><line x1="580.0" y1="1217" x2="580.0" y2="1219" stroke="white" stroke-width="1.4"/><line x1="583.0" y1="1203" x2="583.0" y2="1205" stroke="white" stroke-width="1.4"/><line x1="583.0" y1="1217" x2="583.0" y2="1219" stroke="white" stroke-width="1.4"/>
+<text x="595.0" y="1216" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-tstioc</text>
+<text x="575.0" y="1245" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: controller (IOC)</text>
+<text x="575.0" y="1260" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: tstioc</text>
+<text x="575.0" y="1275" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-lab  10.89.0.0/24</text>
+<text x="575.0" y="1290" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search</text>
+<text x="575.0" y="1305" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">DB: image.db, image.json</text>
+<text x="575.0" y="1320" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: tstioc.acf</text>
+<text x="575.0" y="1335" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_AUTH_ISSUER: ROOT_ISSUER_SKID</text>
+<text x="575.0" y="1350" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves: tst:ArrayData, tst:ColorMode,</text>
+<text x="575.0" y="1365" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    and the rest of the image database</text>
+</g>
+<g><rect x="1922.0" y="1196" width="522" height="209" rx="8" fill="#E3F2FD" stroke="#1E88E5" stroke-width="1.4"/>
+<path d="M 1922.0 1204 a8 8 0 0 1 8 -8 h506 a8 8 0 0 1 8 8 v22 h-522 z" fill="#1E88E5"/>
+<circle cx="1937.0" cy="1209" r="4.2" fill="none" stroke="white" stroke-width="1.8"/><path d="M 1940.0 1212 l6 6 m-2.5 -1 l2 -2 m-4.5 0 l1.6 -1.6" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="1954.0" y="1216" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-pvacms</text>
+<text x="1934.0" y="1245" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: certificate manager (PVACMS)</text>
+<text x="1934.0" y="1260" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm</text>
+<text x="1934.0" y="1275" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-lab  10.89.0.0/24</text>
+<text x="1934.0" y="1290" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search</text>
+<text x="1934.0" y="1305" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">CA keychain: certs/cert_auth.p12 - the CA root</text>
+<text x="1934.0" y="1320" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: /etc/pvacms/pvacms.acf</text>
+<text x="1934.0" y="1335" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves:</text>
+<text x="1934.0" y="1350" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER</text>
+<text x="1934.0" y="1365" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    CERT:CREATE:ROOT_ISSUER, CERT:ISSUER:ROOT_ISSUER, CERT:ROOT:ROOT_ISSUER</text>
+<text x="1934.0" y="1380" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    CERT:LIST:ROOT_ISSUER:ALL, :EXPIRING, :PENDING_APPROVAL</text>
+<text x="1934.0" y="1395" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    CERT:STATUS:ROOT_ISSUER:&lt;serial&gt;</text>
+</g>
+<g><rect x="89.0" y="1451" width="423" height="344" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
+<path d="M 89.0 1459 a8 8 0 0 1 8 -8 h407 a8 8 0 0 1 8 8 v22 h-423 z" fill="#9E9D24"/>
+<path d="M 100.0 1458 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 108.0 1458 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
+<text x="121.0" y="1471" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">testioc.acf</text>
+<text x="101.0" y="1500" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Authorities</text>
+<text x="101.0" y="1515" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority")</text>
+<text x="101.0" y="1530" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="101.0" y="1545" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">UAGs</text>
+<text x="101.0" y="1560" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    UAG(OPERATORS) {operator}</text>
+<text x="101.0" y="1575" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    UAG(GUESTS)    {guest}</text>
+<text x="101.0" y="1590" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="101.0" y="1605" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">ASGs</text>
+<text x="101.0" y="1620" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ASG(SPECIAL)     test:spec</text>
+<text x="101.0" y="1635" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,READ)</text>
+<text x="101.0" y="1650" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,WRITE,TRAPWRITE) { UAG(OPERATORS)</text>
+<text x="101.0" y="1665" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">            AUTHORITY(EPICS_CA) PROTOCOL(TLS) METHOD(X509) }</text>
+<text x="101.0" y="1680" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ASG(OPEN)        test:open</text>
+<text x="101.0" y="1695" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,READ)</text>
+<text x="101.0" y="1710" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,WRITE,TRAPWRITE) { AUTHORITY(EPICS_CA)</text>
+<text x="101.0" y="1725" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">            PROTOCOL(TLS) METHOD(X509) }</text>
+<text x="101.0" y="1740" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ASG(DEFAULT)     everything else</text>
+<text x="101.0" y="1755" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,READ)</text>
+<text x="101.0" y="1770" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,WRITE,TRAPWRITE) { UAG(OPERATORS,GUESTS)</text>
+<text x="101.0" y="1785" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">            AUTHORITY(EPICS_CA) PROTOCOL(TLS) METHOD(X509) }</text>
+</g>
+<g><rect x="586.0" y="1451" width="423" height="224" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
+<path d="M 586.0 1459 a8 8 0 0 1 8 -8 h407 a8 8 0 0 1 8 8 v22 h-423 z" fill="#9E9D24"/>
+<path d="M 597.0 1458 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 605.0 1458 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
+<text x="618.0" y="1471" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">tstioc.acf</text>
+<text x="598.0" y="1500" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Authorities</text>
+<text x="598.0" y="1515" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority")</text>
+<text x="598.0" y="1530" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="598.0" y="1545" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">UAGs</text>
+<text x="598.0" y="1560" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    UAG(OPERATORS) {operator}</text>
+<text x="598.0" y="1575" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    UAG(GUESTS)    {guest}</text>
+<text x="598.0" y="1590" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="598.0" y="1605" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">ASGs</text>
+<text x="598.0" y="1620" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ASG(DEFAULT)</text>
+<text x="598.0" y="1635" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,READ)</text>
+<text x="598.0" y="1650" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,WRITE,TRAPWRITE) { UAG(OPERATORS,GUESTS)</text>
+<text x="598.0" y="1665" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">            AUTHORITY(EPICS_CA) PROTOCOL(TLS) METHOD(X509) }</text>
+</g>
+<g><rect x="1060.0" y="1451" width="423" height="254" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
+<path d="M 1060.0 1459 a8 8 0 0 1 8 -8 h407 a8 8 0 0 1 8 8 v22 h-423 z" fill="#9E9D24"/>
+<path d="M 1071.0 1458 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 1079.0 1458 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
+<text x="1092.0" y="1471" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">gateway.acf</text>
+<text x="1072.0" y="1500" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">at gateway.acf</text>
+<text x="1072.0" y="1515" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="1072.0" y="1530" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Authorities</text>
+<text x="1072.0" y="1545" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority")</text>
+<text x="1072.0" y="1560" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="1072.0" y="1575" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">UAGs</text>
+<text x="1072.0" y="1590" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    UAG(OPERATORS) {operator}</text>
+<text x="1072.0" y="1605" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    UAG(GUESTS)    {guest}</text>
+<text x="1072.0" y="1620" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="1072.0" y="1635" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">ASGs</text>
+<text x="1072.0" y="1650" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ASG(DEFAULT)</text>
+<text x="1072.0" y="1665" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,READ)</text>
+<text x="1072.0" y="1680" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,WRITE,TRAPWRITE) { UAG(OPERATORS,GUESTS)</text>
+<text x="1072.0" y="1695" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">            AUTHORITY(EPICS_CA) PROTOCOL(TLS) METHOD(X509) }</text>
+</g>
+<g><rect x="1511.0" y="1451" width="383" height="269" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
+<path d="M 1511.0 1459 a8 8 0 0 1 8 -8 h367 a8 8 0 0 1 8 8 v22 h-383 z" fill="#9E9D24"/>
+<path d="M 1522.0 1458 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 1530.0 1458 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
+<text x="1543.0" y="1471" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">config/gateway-lab.pvlist</text>
+<text x="1523.0" y="1500" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">at config/gateway-lab.pvlist</text>
+<text x="1523.0" y="1515" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="1523.0" y="1530" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Evaluation order</text>
+<text x="1523.0" y="1545" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    EVALUATION ORDER ALLOW, DENY</text>
+<text x="1523.0" y="1560" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="1523.0" y="1575" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Laboratory process variables, forwarded</text>
+<text x="1523.0" y="1590" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    test:.*                    ALLOW</text>
+<text x="1523.0" y="1605" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    tst:.*                     ALLOW</text>
+<text x="1523.0" y="1620" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="1523.0" y="1635" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Certificate process variables, forwarded</text>
+<text x="1523.0" y="1650" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    CERT:CREATE:ROOT_ISSUER    ALLOW</text>
+<text x="1523.0" y="1665" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    CERT:STATUS:ROOT_ISSUER.*  ALLOW</text>
+<text x="1523.0" y="1680" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="1523.0" y="1695" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">So a perimeter workstation reads laboratory values and</text>
+<text x="1523.0" y="1710" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">asks for a certificate, both through this gateway</text>
+</g>
+<g><rect x="1975.0" y="1451" width="416" height="254" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
+<path d="M 1975.0 1459 a8 8 0 0 1 8 -8 h400 a8 8 0 0 1 8 8 v22 h-416 z" fill="#9E9D24"/>
+<path d="M 1986.0 1458 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 1994.0 1458 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
+<text x="2007.0" y="1471" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">config/pvacms-lab.acf</text>
+<text x="1987.0" y="1500" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">at /etc/pvacms/pvacms.acf</text>
+<text x="1987.0" y="1515" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="1987.0" y="1530" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Authorities</text>
+<text x="1987.0" y="1545" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    AUTHORITY(CMS_AUTH, "EPICS Root Certificate Authority")</text>
+<text x="1987.0" y="1560" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="1987.0" y="1575" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">UAGs</text>
+<text x="1987.0" y="1590" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    UAG(CMS_ADMIN) {admin, certadmin}</text>
+<text x="1987.0" y="1605" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="1987.0" y="1620" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">ASGs</text>
+<text x="1987.0" y="1635" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ASG(DEFAULT) {</text>
+<text x="1987.0" y="1650" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(0,READ)</text>
+<text x="1987.0" y="1665" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">        RULE(1,WRITE) { UAG(CMS_ADMIN) AUTHORITY(CMS_AUTH)</text>
+<text x="1987.0" y="1680" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">            PROTOCOL(TLS) METHOD("x509") }</text>
+<text x="1987.0" y="1695" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    }</text>
+</g>
+<g><rect x="2081" y="144" width="363" height="149" rx="8" fill="#EDE7F6" stroke="#5E35B1" stroke-width="1.4"/>
+<path d="M 2081 152 a8 8 0 0 1 8 -8 h347 a8 8 0 0 1 8 8 v22 h-363 z" fill="#5E35B1"/>
+<path d="M 2098 151 l7 3 v5 c0 4 -3.5 7 -7 8 c-3.5 -1 -7 -4 -7 -8 v-5 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 2095 158.5 l2.2 2.2 l4 -4" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="2113" y="164" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">Root Certificate Authority</text>
+<text x="2093" y="193" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Subject: CN=EPICS Root Certificate Authority</text>
+<text x="2093" y="208" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">SKID: ROOT_ISSUER_SKID</text>
+<text x="2093" y="223" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Issuer ID: ROOT_ISSUER</text>
+<text x="2093" y="238" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Self-signed: it is its own issuer, and issues every</text>
+<text x="2093" y="253" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    certificate in the laboratory directly</text>
+<text x="2093" y="268" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">File: certs/cert_auth.p12</text>
+<text x="2093" y="283" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Mounted into: pvxs-lab-pvacms</text>
+</g>
+<g><rect x="1295.5" y="146" width="363" height="164" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.4"/>
+<path d="M 1295.5 154 a8 8 0 0 1 8 -8 h347 a8 8 0 0 1 8 8 v22 h-363 z" fill="#546E7A"/>
+<rect x="1304.5" y="155" width="16" height="10" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="1312.5" y1="165" x2="1312.5" y2="168" stroke="white" stroke-width="1.8"/><line x1="1308.5" y1="168.5" x2="1316.5" y2="168.5" stroke="white" stroke-width="1.8"/>
+<text x="1327.5" y="166" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">perimeter-client</text>
+<text x="1307.5" y="195" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: client</text>
+<text x="1307.5" y="210" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: internet</text>
+<text x="1307.5" y="225" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-internet   10.89.4.0/24</text>
+<text x="1307.5" y="240" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Logins: guest, operator</text>
+<text x="1307.5" y="255" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_NAME_SERVERS: facility:5075</text>
+<text x="1307.5" y="270" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_AUTH_ISSUER: ROOT_ISSUER_SKID</text>
+<text x="1307.5" y="285" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">It names the facility, and the balancer carries its</text>
+<text x="1307.5" y="300" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    calls on into the laboratory</text>
+</g>
+<path d="M 1477.0 1128 L 1477.0 1162" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1477.0" cy="1162" r="4" fill="#3949AB"/>
+<path d="M 300.5 1008 L 300.5 1162" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="300.5" cy="1162" r="4" fill="#3949AB"/>
+<path d="M 300.5 1162 L 300.5 1196" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="300.5" cy="1162" r="4" fill="#3949AB"/>
+<path d="M 797.5 1162 L 797.5 1196" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="797.5" cy="1162" r="4" fill="#3949AB"/>
+<path d="M 2183.0 1162 L 2183.0 1196" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="2183.0" cy="1162" r="4" fill="#3949AB"/>
+<rect x="1210.0" y="418" width="534.0" height="367" rx="10" fill="#EDE7F6" stroke="#6A1B9A" stroke-width="1.6"/>
+<path d="M 1210.0 428 a10 10 0 0 1 10 -10 h514.0 a10 10 0 0 1 10 10 v34 h-534.0 z" fill="#6A1B9A" fill-opacity="0.92"/>
+<circle cx="1227.0" cy="445" r="2.6" fill="white"/><circle cx="1237.0" cy="445" r="2.6" fill="white"/><circle cx="1232.0" cy="435" r="2.6" fill="white"/><path d="M 1232.0 435 L 1227.0 445 M 1232.0 435 L 1237.0 445 M 1227.0 445 H 1237.0" stroke="white" stroke-width="1.4"/>
+<text x="1250.0" y="446" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">DMZ   -   net-perimeter, where the gateway stands</text>
+<g><rect x="1249.0" y="476" width="456" height="239" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 1249.0 484 a8 8 0 0 1 8 -8 h440 a8 8 0 0 1 8 8 v22 h-456 z" fill="#5D4037"/>
+<line x1="1260.0" y1="491" x2="1265.0" y2="491" stroke="white" stroke-width="1.8"/><path d="M 1265.0 491 L 1272.0 485" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1265.0 491 L 1272.0 491" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1265.0 491 L 1272.0 497" stroke="white" stroke-width="1.5" fill="none"/><circle cx="1265.0" cy="491" r="2" fill="white"/>
+<text x="1281.0" y="496" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-facility-lb</text>
+<text x="1261.0" y="525" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Role: facility load balancer, layer 4 (dual-homed)</text>
+<text x="1261.0" y="540" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: lb</text>
+<text x="1261.0" y="555" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0  net-internet   10.89.4.0/24   (the facility address)</text>
+<text x="1261.0" y="570" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth1  net-perimeter  10.89.2.0/24   (its foot in the DMZ)</text>
+<text x="1261.0" y="585" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">The gateway stands only in the DMZ, so this is the one way in</text>
+<text x="1261.0" y="600" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Maps inward, port for port:</text>
+<text x="1261.0" y="615" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5075 -&gt; pvxs-lab-gateway:5075</text>
+<text x="1261.0" y="630" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5076 -&gt; pvxs-lab-gateway:5076      over TLS</text>
+<text x="1261.0" y="645" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">This is the one device here where a port picks a destination. It</text>
+<text x="1261.0" y="660" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    rewrites the destination and the packet is routed afterwards.</text>
+<text x="1261.0" y="675" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">It answers as itself to the gateway, so replies come back through</text>
+<text x="1261.0" y="690" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    it. The gateway loses nothing by that: it authorises on the</text>
+<text x="1261.0" y="705" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    certificate presented, not on the address it came from.</text>
+</g>
+<path d="M 1417.0 755 L 1537.0 755" fill="none" stroke="#FB8C00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1477.0 715 L 1477.0 755" fill="none" stroke="#FB8C00" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1477.0" cy="755" r="4" fill="#FB8C00"/>
+<path d="M 1477.0 755 L 1477.0 889" fill="none" stroke="#FB8C00" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1477.0" cy="755" r="4" fill="#FB8C00"/>
+<g><rect x="1325.3" y="730" width="303.40000000000003" height="18" rx="9" fill="white" stroke="#FB8C00" stroke-width="1.2"/><text x="1477.0" y="742.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#FB8C00">net-perimeter  10.89.2.0/24  tcp/5075, tcp/5076</text></g>
+<path d="M 1407.0 374 L 1587.0 374" fill="none" stroke="#455A64" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1477.0 310 L 1477.0 374" fill="none" stroke="#455A64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1477.0" cy="374" r="4" fill="#455A64"/>
+<path d="M 1517.0 476 L 1517.0 374" fill="none" stroke="#455A64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1517.0" cy="374" r="4" fill="#455A64"/>
+<g><rect x="1348.4" y="349" width="297.2" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="1497.0" y="361.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">net-internet  10.89.4.0/24  tcp/5075, tcp/5076</text></g>
+<path d="M 2262.5 293 L 2262.5 350 L 2510 350 L 2510 1300.5 L 2447.0 1300.5" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="2502" y="364" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">held by, and signs every certificate directly</text>
+<path d="M 300.5 1405 L 300.5 1451" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 797.5 1375 L 797.5 1451" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 2183.0 1405 L 2183.0 1451" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1465.0 1128 L 1465.0 1435 L 1271.5 1435 L 1271.5 1451" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1489.0 1128 L 1489.0 1423 L 1702.5 1423 L 1702.5 1451" fill="none" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="40" y="141" width="883" height="646" rx="10" fill="white" stroke="#B0BEC5" stroke-width="1.4"/>
+<path d="M 40 151 a10 10 0 0 1 10 -10 h863 a10 10 0 0 1 10 10 v20 h-883 z" fill="#455A64"/>
+<text x="54" y="161" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" font-weight="bold" fill="white">Legend</text>
+<line x1="477.0" y1="179" x2="477.0" y2="777" stroke="#CFD8DC" stroke-width="1"/>
+<rect x="54" y="181" width="14" height="14" rx="3" fill="#5E35B1"/>
+<text x="78" y="192" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">certificate authority - a file, mounted into a component</text>
+<rect x="54" y="205" width="14" height="14" rx="3" fill="#1E88E5"/>
+<text x="78" y="216" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS - certificate manager</text>
+<rect x="54" y="229" width="14" height="14" rx="3" fill="#43A047"/>
+<text x="78" y="240" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC - controller</text>
+<rect x="54" y="253" width="14" height="14" rx="3" fill="#546E7A"/>
+<text x="78" y="264" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">client - workstation</text>
+<rect x="54" y="277" width="14" height="14" rx="3" fill="#FB8C00"/>
+<text x="78" y="288" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway - proxies PVAccess between the</text>
+<text x="78" y="312" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    laboratory and the DMZ</text>
+<rect x="54" y="325" width="14" height="14" rx="3" fill="#5D4037"/>
+<text x="78" y="336" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">load balancer - owns the facility address</text>
+<text x="78" y="360" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    and maps a port to the gateway</text>
+<rect x="54" y="373" width="14" height="14" rx="3" fill="#9E9D24"/>
+<text x="78" y="384" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a file a component loads: access security, or the list</text>
+<text x="78" y="408" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    of process variables a gateway forwards</text>
+<line x1="54" y1="437" x2="94" y2="437" stroke="#3949AB" stroke-width="4"/>
+<text x="104" y="441" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">net-lab bus - tapping it = attached to net-lab</text>
+<line x1="54" y1="461" x2="94" y2="461" stroke="#FB8C00" stroke-width="4"/>
+<text x="104" y="465" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">net-perimeter bus - the DMZ segment</text>
+<line x1="54" y1="485" x2="94" y2="485" stroke="#455A64" stroke-width="4"/>
+<text x="104" y="489" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">net-internet bus - outside the facility</text>
+<line x1="54" y1="509" x2="94" y2="509" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5"/>
+<text x="104" y="513" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">certificate relationship - signs</text>
+<line x1="54" y1="533" x2="94" y2="533" stroke="#9E9E9E" stroke-width="1.6" stroke-dasharray="2 4"/>
+<text x="104" y="537" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a file the component loads</text>
+<text x="494" y="191" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Notation</text>
+<text x="494" y="206" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">10.89.0.0/24 : the laboratory segment, in CIDR. One podman</text>
+<text x="494" y="221" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               bridge, carrying this laboratory alone</text>
+<text x="494" y="236" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">10.89.2.0/24 : the DMZ segment, its own podman bridge, where</text>
+<text x="494" y="251" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               the gateway is asked and the balancer answers</text>
+<text x="494" y="266" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">10.89.4.0/24 : the segment outside the facility, where the</text>
+<text x="494" y="281" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               facility address is published</text>
+<text x="494" y="296" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth0         : the host's interface on its own segment</text>
+<text x="494" y="311" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">eth1         : the gateway's second interface, its foot on</text>
+<text x="494" y="326" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               the perimeter segment</text>
+<text x="494" y="341" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/5075     : PVAccess, plaintext</text>
+<text x="494" y="356" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">tcp/5076     : PVAccess over TLS</text>
+<text x="494" y="371" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">udp/5076     : PVAccess search and beacons, sent to the</text>
+<text x="494" y="386" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">               segment broadcast address</text>
+<text x="494" y="401" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="494" y="416" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Both segment CIDRs are pinned in compose.yaml, so they are</text>
+<text x="494" y="431" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">this on every laboratory. Host addresses within a segment are</text>
+<text x="494" y="446" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">assigned by podman when a container starts, and change</text>
+<text x="494" y="461" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">between runs.</text>
+<text x="494" y="486" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Abbreviations</text>
+<text x="494" y="501" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">CA     : certificate authority</text>
+<text x="494" y="516" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">SKID   : subject key identifier, 40 hex digits</text>
+<text x="494" y="531" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Issuer ID: the first 8 digits of a SKID</text>
+<text x="494" y="546" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS : certificate manager</text>
+<text x="494" y="561" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC    : input output controller</text>
+<text x="494" y="576" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF    : access security file</text>
+<text x="494" y="591" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVList : the process variables a gateway forwards</text>
+<text x="494" y="606" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">pvagw  : the p4p gateway program</text>
+<text x="494" y="631" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">A line claims attachment. Arrowheads appear only where</text>
+<text x="494" y="646" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">a direction is real.</text>
+<text x="494" y="661" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve"></text>
+<text x="494" y="676" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">A workstation outside names the facility address, so its</text>
+<text x="494" y="691" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">search goes straight to the balancer, which hands it to</text>
+<text x="494" y="706" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">the gateway, which searches the laboratory on its behalf.</text>
+<text x="494" y="721" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve"></text>
+<text x="494" y="736" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">ROOT_ISSUER and ROOT_ISSUER_SKID are named rather than</text>
+<text x="494" y="751" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">printed here: a fresh mint changes them.</text>
+<text x="494" y="766" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">Values: issuer_ids.env</text>
+</svg>

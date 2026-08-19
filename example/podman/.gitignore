@@ -1,4 +1,17 @@
-# Minted by bootstrap.sh, never committed: these are the laboratory's private keys.
+# Minted per topology by its own mint.sh, never committed: these are a laboratory's private
+# keys. A topology whose certificate manager makes its own authority has none of these.
+topologies/*/certs/
+topologies/*/ocsp/
+topologies/*/issuer_ids.env
+.env
+
+# The old shared locations, from when one laboratory was the only one.
 certs/
 issuer_ids.env
-.env
+
+# Written by bootstrap.sh from the minted authorities, for the responder to read.
+ocsp/
+
+# Written by reset.sh: which of the four laboratories is up. helpers.sh reads it so that
+# run_in can tell "this laboratory has no gateway" from "the gateway is not running".
+.topology
