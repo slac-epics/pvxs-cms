@@ -69,10 +69,10 @@ diagram and its own part of the walkthrough, and no test appears twice.
 
 | Laboratory | Walkthrough | Description |
 |---|---|---|
-| [`simple`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-simple.svg) | Part 1 | One segment, one self-signed authority, no boundary to cross |
-| [`simple-with-gateway`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-simple-with-gateway.svg) | Part 2 | One laboratory, published at a facility address and reached through a gateway |
-| [`federated-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-shared-root.svg) | Part 3 | Two departments under one facility root, with a status responder for the root |
-| [`federated-non-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-non-shared-root.svg) | Part 4 | Two departments under two independent roots, with both roots in every keychain |
+| [`simple`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple.svg) | Part 1 | One segment, one self-signed authority, no boundary to cross |
+| [`simple-with-gateway`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple-with-gateway.svg) | Part 2 | One laboratory, published at a facility address and reached through a gateway |
+| [`federated-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-shared-root.svg) | Part 3 | Two departments under one facility root, with a status responder for the root |
+| [`federated-non-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-non-shared-root.svg) | Part 4 | Two departments under two independent roots, with both roots in every keychain |
 
 Each diagram is a complete map of its laboratory: every network segment, every service,
 the certificate authorities with their issuer identifiers, and the full text of every
@@ -257,7 +257,7 @@ certificate does on its own.
 ./reset.sh simple
 ```
 
-[![The simple laboratory: one segment carrying a PVACMS, two IOCs and a workstation, and one self-signed authority beside it](topology/topology-simple.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-simple.svg)
+[![The simple laboratory: one segment carrying a PVACMS, two IOCs and a workstation, and one self-signed authority beside it](topology/topology-simple.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple.svg)
 
 The diagram is wide. To read every access rule and `pvlist` at full size, click the
 diagram to open the raw file.
@@ -855,7 +855,7 @@ crossing is inbound, and the gateway is the only thing that crosses.
 ./reset.sh simple-with-gateway
 ```
 
-[![The simple laboratory published at a facility address: a load balancer and a gateway in the perimeter network, the laboratory segment behind them, and a workstation outside](topology/topology-simple-with-gateway.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-simple-with-gateway.svg)
+[![The simple laboratory published at a facility address: a load balancer and a gateway in the perimeter network, the laboratory segment behind them, and a workstation outside](topology/topology-simple-with-gateway.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple-with-gateway.svg)
 
 The diagram is wide. To read every access rule and `pvlist` at full size, click the
 diagram to open the raw file.
@@ -1067,7 +1067,7 @@ this part shows.
 ./reset.sh federated-shared-root
 ```
 
-[![Two departments side by side, each with its own PVACMS and gateway, one facility root above them and a responder answering for it](topology/topology-federated-shared-root.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-shared-root.svg)
+[![Two departments side by side, each with its own PVACMS and gateway, one facility root above them and a responder answering for it](topology/topology-federated-shared-root.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-shared-root.svg)
 
 The diagram is wide. To read every access rule and `pvlist` at full size, click the
 diagram to open the raw file.
@@ -2013,7 +2013,7 @@ roots as trust anchors: one identity, many anchors.
 ./reset.sh federated-non-shared-root
 ```
 
-[![Two departments side by side under two independent roots, with a keychain below them holding one identity and both roots as trust anchors](topology/topology-federated-non-shared-root.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/scratch/fy26-four-topologies/example/podman/topology/topology-federated-non-shared-root.svg)
+[![Two departments side by side under two independent roots, with a keychain below them holding one identity and both roots as trust anchors](topology/topology-federated-non-shared-root.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-non-shared-root.svg)
 
 The diagram is wide. To read every access rule and `pvlist` at full size, click the
 diagram to open the raw file.
