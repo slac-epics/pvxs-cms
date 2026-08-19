@@ -52,6 +52,11 @@ TESTFILES += superserver1.p12
 TESTPROD_HOST += gen_test_certs
 gen_test_certs_SRCS += gen_test_certs.cpp
 
+# Federated-lab certificate hierarchy generator (example/kubernetes federated lab).
+# Mints one facility Root + a Controls (Lab) intermediate + an ML intermediate.
+TESTPROD_HOST += gen_lab_certs
+gen_lab_certs_SRCS += gen_lab_certs.cpp
+
 # Test TLS with Mock CMS
 TESTS += testtlswithcms
 TESTPROD_HOST += testtlswithcms
