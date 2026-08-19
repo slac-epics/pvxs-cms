@@ -116,7 +116,7 @@ services:
 
   # ---------------------------------------------------------------- the DMZ
   # One foot in the laboratory, one in the DMZ. It is asked on its DMZ interface and reaches
-  # the controllers and the certificate manager on the other.
+  # the IOCs and PVACMS on the other.
   pvxs-lab-gateway:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
@@ -125,7 +125,7 @@ services:
     environment:
       <<: *lab-env
       # Which segment it serves on. Binding every interface would answer laboratory
-      # workstations twice for the same name, once from the controller and once from here.
+      # workstations twice for the same name, once from the IOC and once from here.
       GATEWAY_SERVE_SUBNET: "10.89.2."
     volumes:
       - gateway-config:/home/gateway/.config/pva/1.5
@@ -133,7 +133,7 @@ services:
       - ./config/gateway.pvlist:/home/gateway/gateway.pvlist.in:ro,z
       - ../../scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro,z
     # 'none' because this laboratory's certificate process variables carry no issuer in their
-    # names, and its issuer id does not exist until the certificate manager has started.
+    # names, and its issuer id does not exist until PVACMS has started.
     command: ["/usr/local/bin/start-gateway", "none"]
     depends_on: [pvxs-lab-pvacms]
 

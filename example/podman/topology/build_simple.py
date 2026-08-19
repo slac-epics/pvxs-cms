@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # The simple topology: one network, one self-signed root certificate authority held by the
-# one certificate manager, two controllers and a client workstation, all on one segment.
-# The root is self-signed and issues every certificate directly, so a chain is one link long
-# and every host reaches every other over the same bus.
+# one PVACMS, two IOCs and a client workstation, all on one segment. The root issues every
+# certificate directly, and every host reaches every other over the same bus.
 # Every coordinate is computed here. See topology_kit for the primitives.
 from topology_kit import (C, CH, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields,
                           measure, output_path)
@@ -12,19 +11,19 @@ client_l = fields('Role: client','Image: lab',
  'eth0  net-lab  10.89.0.0/24',
  'Logins: guest, operator',
  'EPICS_PVA_AUTH_ISSUER: ROOT_ISSUER_SKID')
-testioc_l = fields('Role: controller (IOC)','Image: testioc','eth0  net-lab  10.89.0.0/24',
+testioc_l = fields('Role: IOC','Image: testioc','eth0  net-lab  10.89.0.0/24',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: testioc.db, testiocg.db','ACF: testioc.acf',
  'EPICS_PVA_AUTH_ISSUER: ROOT_ISSUER_SKID','Serves:',
  '    test:aiExample, test:stringExample, test:longExample',
  '    test:enumExample, test:arrayExample, test:calcExample',
  '    test:spec (SPECIAL), test:open (OPEN)')
-tstioc_l = fields('Role: controller (IOC)','Image: tstioc','eth0  net-lab  10.89.0.0/24',
+tstioc_l = fields('Role: IOC','Image: tstioc','eth0  net-lab  10.89.0.0/24',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: image.db, image.json','ACF: tstioc.acf',
  'EPICS_PVA_AUTH_ISSUER: ROOT_ISSUER_SKID',
  'Serves: tst:ArrayData, tst:ColorMode,','    and the rest of the image database')
-pvacms_l = fields('Role: certificate manager (PVACMS)','Image: idm','eth0  net-lab  10.89.0.0/24',
+pvacms_l = fields('Role: PVACMS','Image: idm','eth0  net-lab  10.89.0.0/24',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/cert_auth.p12 - the CA root',
  'ACF: /etc/pvacms/pvacms.acf','Serves:',
@@ -38,8 +37,8 @@ root_l = fields('Subject: CN=EPICS Root Certificate Authority',
  '    certificate in the laboratory directly',
  'File: certs/cert_auth.p12','Mounted into: pvxs-lab-pvacms')
 
-# One authority, so one AUTHORITY entry: every certificate here traces to the same root, and
-# a rule distinguishes holders by their user access group alone.
+# One authority, so one AUTHORITY entry. A rule distinguishes holders by their user access
+# group alone.
 testacf_l = ['§Authorities',
  '    AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority")','',
  '§UAGs','    UAG(OPERATORS) {operator}','    UAG(GUESTS)    {guest}','',
@@ -66,8 +65,8 @@ cmsacf_l = ['at /etc/pvacms/pvacms.acf','',
 
 # ---------------------------------------------------------------- legend content
 CHIPS = [('certificate authority - a file, mounted into a component', C['ca'][1]),
-         ('PVACMS - certificate manager', C['pvacms'][1]),
-         ('IOC - controller', C['ioc'][1]),
+         ('PVACMS', C['pvacms'][1]),
+         ('IOC', C['ioc'][1]),
          ('client - workstation', C['client'][1]),
          ('ACF - an access security file a component loads', C['file'][1])]
 SAMPLES = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, None),
@@ -97,9 +96,8 @@ NOTE = ['A line claims attachment. Arrowheads appear only where','a direction is
 M = 40
 title_h = 64
 
-# One column per service. A column is as wide as the widest card standing in it - the
-# component and the file it loads - and every card is centred in its column, so a file
-# drop is a straight line down.
+# One column per service, as wide as the widest card in it, with every card centred so a
+# file drop is a straight line down.
 COLS = [max(colw('lab-client', client_l), colw('pvxs-lab-testioc', testioc_l), colw('testioc.acf', testacf_l)),
         max(colw('pvxs-lab-tstioc', tstioc_l), colw('tstioc.acf', tstacf_l)),
         max(colw('pvxs-lab-pvacms', pvacms_l), colw('config/pvacms-lab.acf', cmsacf_l))]
@@ -108,8 +106,8 @@ for w in COLS[:-1]: cxs.append(cxs[-1] + w + GAP)
 inner = cxs[-1] + COLS[-1]
 W_lab = inner + 2*ZP
 lab_x = M
-# The right margin is wider than the left: the authority reaches the certificate manager
-# down it, outside the network, and that line needs room to be read as outside.
+# The right margin is wider than the left: the authority reaches PVACMS down it, outside
+# the network, and that line needs room to be read as outside.
 RIGHT = 96
 CANVAS_W = lab_x + W_lab + RIGHT
 
@@ -123,8 +121,8 @@ lg_w = 14 + LEG_COL_L + LEG_COL_GAP + LEG_COL_R + 14
 lg_h = HDR + max(12 + len(CHIPS)*24 + 10 + len(SAMPLES)*24,
                  12 + LH + len(NOTATION)*LH + 10 + LH + len(ABBREV)*LH + 10 + len(NOTE)*LH) + 14
 
-# the authority sits in the top band, right of the legend and above the certificate
-# manager it is mounted into, so the eye follows it straight down into that card
+# the authority sits in the top band, right of the legend and above the PVACMS it is
+# mounted into, so the eye follows it straight down into that card
 root_w, root_h = measure('Root Certificate Authority', root_l)
 ca_w = root_w + 2*ZP
 ca_h = ZTITLE + 10 + root_h + 20
@@ -180,8 +178,8 @@ def build(cv):
     for t in (t1, t2, pv):
         cv.hv([(t['cx'], bus_y), (t['cx'], t['top'])], C['bus_lab'], 2); cv.dot(t['cx'], bus_y, C['bus_lab'])
 
-    # --- the root reaches the certificate manager down the right margin, outside the
-    # --- network: an authority is a file, held by the component it is mounted into
+    # --- the root reaches PVACMS down the right margin, outside the network: an authority
+    # --- is a file, held by the component it is mounted into
     nx = lab_x + W_lab + 40
     pmid = pv['top'] + pv['h']/2
     cv.hv([(rootc['cx'], rootc['bot']), (rootc['cx'], band_y), (nx, band_y), (nx, pmid),

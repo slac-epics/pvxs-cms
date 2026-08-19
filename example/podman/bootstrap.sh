@@ -17,30 +17,39 @@ cd "$(dirname "$0")"
 # is the podman-docker shim, so check for it early rather than failing halfway through.
 command -v podman >/dev/null || { echo "podman is not installed" >&2; exit 1; }
 command -v docker >/dev/null || {
-    echo "no 'docker' command found. Install the podman-docker shim." >&2
-    exit 1
-}
+    echo "no 'docker' command found. The image build scripts call it; install the shim:" >&2
+    echo "    sudo apt install podman-docker        # Debian, Ubuntu" >&2
+    echo "    sudo dnf install podman-docker        # Fedora, RHEL" >&2
+    exit 1; }
 
+# Built images are referenced by these names in compose.yaml.
 export DOCKER_REGISTRY="${DOCKER_REGISTRY:-localhost}"
 export DOCKER_USERNAME="${DOCKER_USERNAME:-spva}"
 
+# An unset JOBS means "one compiler process per core". Written as an if rather than a
+# short-circuit, because under set -e a trailing && that evaluates false exits the script.
 if [ -n "${JOBS:-}" ]; then
     echo "==> building with JOBS=${JOBS}"
 else
     echo "==> building with one compiler process per core; set JOBS to lower it"
 fi
 
+# Build one image, offering it JOBS only if it compiles something. An image is asked rather
+# than listed here, so adding one that compiles needs nothing changed in this file. Offering
+# it to an image that declares no such argument is not an error but is reported as a warning
+# on every build.
 build_image() {
     local dir="$1"; shift
     local args=()
     if [ -n "${JOBS:-}" ] && grep -q '^ARG JOBS' "${dir}/Dockerfile"; then
         args=(--build-arg "JOBS=${JOBS}")
     fi
+    # The guarded expansion keeps bash 3.2 (macOS /bin/bash) happy: under set -u it
+    # treats an empty array expanded with "${args[@]}" as an unbound variable.
     ( cd "${dir}" && ./build_docker.sh ${args[@]+"${args[@]}"} "$@" )
 }
 
-# --keep-certs is accepted and ignored: it meant "rebuild the images without reminting", and
-# building no longer mints anything, so that is what it does now anyway.
+# --keep-certs is accepted and ignored: building mints nothing.
 case "${1:-}" in
     --keep-certs|"") ;;
     *) echo "usage: ./bootstrap.sh [--keep-certs]" >&2; exit 2 ;;
@@ -54,8 +63,7 @@ if true; then
 #
 # The first two live in the pvxs tree, the third in this one. Only these three are taken
 # from example/docker: the Kerberos and LDAP authenticator images beside them are not used
-# here, because this laboratory issues certificates with the standard authenticator, and
-# the display images are left out because everything is verified from the command line.
+# here, and nor are the display images.
 echo "==> building epics-base and pvxs (compiles EPICS Base and pvxs)"
 build_image ../../../pvxs/example/docker/epics-base
 build_image ../../../pvxs/example/docker/pvxs

@@ -1,14 +1,13 @@
 # Two departments with no authority above them, for podman-compose.
 #
-# The difference from the shared-root laboratory beside it is the whole point: there is no
-# facility root. Each department holds a root of its own, rotates it on its own schedule, and
-# neither signs the other. Trust therefore cannot come from a shared chain. It comes from each
-# keychain holding both roots as trust anchors: one identity, many anchors.
+# There is no facility root. Each department holds a root of its own, rotates it on its own
+# schedule, and neither signs the other. Trust comes from each keychain holding both roots as
+# trust anchors: one identity, many anchors.
 #
 # Three segments, and only three:
 #
-#   net-lab       the accelerator side: its certificate manager, its controllers, its gateway
-#   net-ml        the second department: its own certificate manager, controller and gateway
+#   net-lab       the accelerator side: its PVACMS, its IOCs, its gateway
+#   net-ml        the second department: its own PVACMS, IOC and gateway
 #   net-internet  outside the facility, where both gateways present their outward face
 #
 # There is no perimeter network and no facility address. Both gateways stand on net-internet
@@ -22,8 +21,8 @@
 #
 # Picture: topology/topology-federated-non-shared-root.svg
 
-# Carried by the things that never look for a process variable: a certificate manager serves
-# and is served, and a gateway is told its upstream in its own configuration file.
+# Carried by the things that never look for a process variable: PVACMS serves and is served,
+# and a gateway is told its upstream in its own configuration file.
 x-lab-env: &lab-env
   EPICS_PVA_AUTO_ADDR_LIST: "NO"
 
@@ -80,8 +79,7 @@ services:
 
   # ---------------------------------------------------------------- lab department
   # Signs with the intermediate its root issued. The root itself is never mounted into a
-  # running service: what is wanted here is the authority that signs, and the key of the one
-  # above it is not.
+  # running service.
   pvxs-lab-pvacms:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
@@ -100,9 +98,9 @@ services:
       - ../../scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
     command: ["/usr/local/bin/start-pvacms", "lab"]
 
-  # A controller is told its own department's authority and given both roots as a file. It
-  # cannot reach the department next door to ask for that department's root, so it is handed
-  # over instead; see certs/trust_anchors.p12 and mint.sh.
+  # An IOC is told its own department's authority and given both roots as a file. It cannot
+  # reach the peer department to ask for that department's root, so it is handed over
+  # instead; see certs/trust_anchors.p12 and mint.sh.
   pvxs-lab-testioc:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/testioc:latest
@@ -160,9 +158,8 @@ services:
     command: ["/usr/local/bin/start-gateway", "LAB_ISSUER"]
     depends_on: [pvxs-lab-pvacms]
 
-  # ------------------------------------------------- machine learning department
-  # Signs with its root, which it holds outright. That is the difference from the lab
-  # department, and it is allowed precisely because nothing above either root says otherwise.
+  # ------------------------------------------------- ML department
+  # Signs with its root.
   pvxs-lab-ml:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml:latest
@@ -226,8 +223,7 @@ services:
   # The picture gives it one interface and a route to net-internet through the lab department's
   # routing firewall. There is no firewall container here, so what stands in for that route is
   # a second leg: podman answers a name only for containers sharing a segment with the asker,
-  # and isolate=true means nothing reaches another segment any other way. Discovery is off, so
-  # the extra leg carries nothing the workstation did not ask for by name.
+  # and isolate=true means nothing reaches another segment any other way.
   lab-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
@@ -245,7 +241,7 @@ services:
       - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
 
-  # The mirror of lab-client, in the machine learning department.
+  # The mirror of lab-client, in the ML department.
   ml-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest

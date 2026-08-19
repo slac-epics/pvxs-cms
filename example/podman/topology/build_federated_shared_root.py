@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # The federated shared-root topology: five segments, two departments each with its own gateway
-# and certificate manager, a facility load balancer owning one address for the whole facility,
-# and an OCSP responder answering for the root both departments chain to.
+# and PVACMS, a facility load balancer owning one address for the whole facility, and an OCSP
+# responder answering for the root both departments chain to.
 #
 # The two routers are the only boxes here that no container corresponds to. Rootless podman
-# cannot run one - a forwarding container passes traffic one way and never returns it - so each
-# says SIMULATED where every other card names its image, and what does its work instead is
-# drawn: the extra interfaces on the balancer and the responder, and isolate=true on every
-# network. Everything else in this picture is what topologies/federated-shared-root/compose.yaml
-# builds.
+# cannot run one, so each says SIMULATED where every other card names its image, and what does
+# its work instead is drawn: the extra interfaces on the balancer and the responder, and
+# isolate=true on every network. Everything else in this picture is what
+# topologies/federated-shared-root/compose.yaml builds.
 # Every coordinate is computed here. See topology_kit for the primitives.
 from topology_kit import (C, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields,
                           measure, output_path)
@@ -17,7 +16,8 @@ from topology_kit import (C, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields
 lab_client_l = fields('Role: client','Image: lab',
  'eth0  net-lab        10.89.0.0/24',
  'Listens: none (client only)','Logins: guest, operator',
- 'EPICS_PVA_ADDR_LIST: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc',
+ 'EPICS_PVA_ADDR_LIST: unset, and discovery left on',
+ '    its own department, by broadcast on its own segment',
  'EPICS_PVA_NAME_SERVERS: facility:5175   the ML department, by its port')
 lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-perimeter','Image: gateway',
  'eth0  net-lab        10.89.0.0/24   upstream side, to its department',
@@ -27,19 +27,23 @@ lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-perimeter','Image
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'Reached from outside at facility:5075 and facility:5076',
  'Presents: CN=gateway',
- 'Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc','ACF: gateway.acf','PVList: config/gateway-lab.pvlist')
+ 'Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc','ACF: gateway.acf','pvlist: config/gateway-lab.pvlist')
 testioc_l = fields('Role: IOC','Image: testioc','eth0  net-lab        10.89.0.0/24',
+ 'Finds its PVACMS by broadcast',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: testioc.db, testiocg.db, testioc-lab.db',
  'ACF: testioc.acf','Serves:','    test:aiExample, test:stringExample, test:longExample',
  '    test:enumExample, test:arrayExample, test:calcExample',
  '    test:spec (SPECIAL), test:labspec (LABSPEC), test:open (OPEN)')
 tstioc_l = fields('Role: IOC','Image: tstioc','eth0  net-lab        10.89.0.0/24',
+ 'Finds its PVACMS by broadcast',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: image.db, image.json','ACF: tstioc.acf',
  'Serves: tst:ArrayData, tst:ColorMode,','    and the rest of the image database')
 pvacms_l = fields('Role: PVACMS','Image: idm',
  'eth0  net-lab        10.89.0.0/24   its only interface',
+ 'EPICS_PVA_AUTO_ADDR_LIST: NO   it serves and is served, and never',
+ '                                   searches for anything itself',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/lab_intermediate.p12',
  'ACF: /etc/pvacms/pvacms.acf','Serves:','    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER',
@@ -55,18 +59,22 @@ ml_gw_l = fields('Role: gateway (dual-homed), net-ml <-> net-perimeter','Image: 
  'Listens: tcp/5175 PVA   tcp/5176 PVA over TLS   udp/5176 PVA search',
  'Reached from outside at facility:5175 and facility:5176',
  'Presents: CN=ml-gateway',
- 'Upstream: pvxs-lab-ml, pvxs-lab-ml-ioc','ACF: gateway.acf','PVList: config/gateway-ml.pvlist')
+ 'Upstream: pvxs-lab-ml, pvxs-lab-ml-ioc','ACF: gateway.acf','pvlist: config/gateway-ml.pvlist')
 ml_client_l = fields('Role: client','Image: lab',
  'eth0  net-ml         10.89.1.0/24',
  'Listens: none (client only)','Logins: guest, operator',
- 'EPICS_PVA_ADDR_LIST: pvxs-lab-ml, pvxs-lab-ml-ioc',
+ 'EPICS_PVA_ADDR_LIST: unset, and discovery left on',
+ '    its own department, by broadcast on its own segment',
  'EPICS_PVA_NAME_SERVERS: facility:5075   the lab department, by its port')
 mlioc_l = fields('Role: IOC','Image: ml-ioc','eth0  net-ml         10.89.1.0/24',
+ 'Finds its PVACMS by broadcast',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: mlioc.db','ACF: mlioc.acf',
  'Serves: ml:aiExample, ml:stringExample,','    ml:longExample, ml:open (OPEN)')
 mlcms_l = fields('Role: PVACMS','Image: ml',
  'eth0  net-ml         10.89.1.0/24   its only interface',
+ 'EPICS_PVA_AUTO_ADDR_LIST: NO   it serves and is served, and never',
+ '                                   searches for anything itself',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/ml_intermediate.p12',
  'ACF: /etc/pvacms/pvacms.acf','Serves:','    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER',
@@ -90,8 +98,8 @@ lb_l = fields('Role: facility load balancer, layer 4','Image: haproxy',
  'Backends: resolve-net 10.89.2.0/24, the DMZ address of each gateway')
 
 def _router(dept, seg, cidr, far_gw, far_ports):
-    # Not an image. This is the one box in the picture that no container corresponds to, so
-    # what stands in for it goes where every other card names its image.
+    # Not an image: no container corresponds to this box, so what stands in for it goes
+    # where every other card names its image.
     return fields('Role: routing firewall, layers 3 and 4',
      '§Image: SIMULATED - by isolate=true on every network, and by the',
      '§    extra interfaces drawn on pvxs-facility-lb and',
@@ -112,7 +120,7 @@ ml_router_l = _router('ML', 'net-ml', '10.89.1.0/24',
 pc_l = fields('Role: client','Image: internet',
  'eth0  net-internet   10.89.4.0/24',
  'Listens: none (client only)','Logins: guest, operator',
- 'EPICS_PVA_ADDR_LIST: none',
+ 'EPICS_PVA_ADDR_LIST: unset - nothing on its own segment to find',
  'EPICS_PVA_NAME_SERVERS: facility:5075, facility:5175',
  '    one address, one port per department')
 resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
@@ -121,7 +129,8 @@ resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
  'eth2  net-ml         10.89.1.0/24       as the balancer is',
  'An IT service: it belongs to neither department, as the root does not',
  'Listens: tcp/8888 OCSP over HTTP',
- 'Program: openssl ocsp, under supervisor with a watchdog',
+ 'Program: openssl ocsp, under supervisor with a watchdog - one call at',
+ '    a time, so a PVACMS asks up to five times before giving up',
  'Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt')
 root_l = fields('Subject: CN=EPICS Root Certificate Authority','OCSP: pvxs-lab-authority-status:8888',
  '    (named in the AIA extension)','File: certs/cert_auth.p12')
@@ -247,15 +256,15 @@ legend_x, legend_y = M, title_h + 26
 # out here rather than while drawing.
 chips = [('CA or certificate - a file, on no network', C['ca'][1]),
          ('OCSP responder', C['ocsp'][1]),
-         ('PVACMS - certificate manager', C['pvacms'][1]),
-         ('IOC - controller', C['ioc'][1]),
+         ('PVACMS', C['pvacms'][1]),
+         ('IOC', C['ioc'][1]),
          ('gateway - proxies PVAccess between a zone', C['gateway'][1]),
          ('    and the perimeter', None),
          ('load balancer - owns the facility address', C['lb'][1]),
          ('    and maps a port to a department', None),
          ('router - SIMULATED: no such container', C['router'][1]),
          ('client - workstation', C['client'][1]),
-         ('ACF or PVList - a file a component loads', C['file'][1])]
+         ('ACF or pvlist - a file a component loads', C['file'][1])]
 samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, None),
            ('net-ml bus - the same for net-ml', C['bus_ml'], 4, None),
            ('net-it bus - the same for net-it', C['bus_it'], 4, None),
@@ -284,7 +293,7 @@ notation = ['10.89.0.0/24 : the segment, in CIDR. Five of them, each with',
 abbrev = ['CA     : certificate authority','SKID   : subject key identifier, 40 hex digits',
           'Issuer ID: the first 8 digits of a SKID','PVACMS : certificate manager',
           'IOC    : input output controller','ACF    : access security file',
-          'PVList : gateway process variable list','OCSP   : online certificate status protocol',
+          'pvlist : what a gateway forwards','OCSP   : online certificate status protocol',
           'AIA    : authority information access extension','ML     : machine learning']
 note = ['A line claims attachment, not direction.','Arrowheads only where a direction is real.','',
         'LAB_ISSUER, ML_ISSUER and the _SKID forms are','named, not printed: a fresh mint changes them.',
@@ -308,8 +317,8 @@ gx1 = lab_x + ZP + gx1_local
 gx2 = ml_x + ZP + gx2_local
 rx = (gx1 + gx2) / 2
 
-pz_w = measure('perimeter-client', pc_l)[0] + 2*ZP
-pz_h = ZTITLE + 12 + measure('perimeter-client', pc_l)[1] + 20
+pz_w = measure('internet-client', pc_l)[0] + 2*ZP
+pz_h = ZTITLE + 12 + measure('internet-client', pc_l)[1] + 20
 
 ca_children_w = colw('Lab Intermediate CA', labca_l) + colw('ML Intermediate CA', mlca_l) + colw('OCSP Signing Cert', signer_l) + 2*GAP
 ca_w = ca_children_w + 2*ZP
@@ -422,7 +431,7 @@ def build(cv):
         cv.hv([(t['cx'], bus_lab_y), (t['cx'], t['top'])], C[colr], 2); cv.dot(t['cx'], bus_lab_y, C[colr])
 
     # --- perimeter client + CA + responder cards
-    pcc = cv.card(pz_x + (pz_w - measure('perimeter-client', pc_l)[0])/2, pz_y + ZTITLE + 12, 'perimeter-client', pc_l, 'client', 'client')
+    pcc = cv.card(pz_x + (pz_w - measure('internet-client', pc_l)[0])/2, pz_y + ZTITLE + 12, 'internet-client', pc_l, 'client', 'client')
     rootc = cv.card(rx - root_w/2, ca_y + ZTITLE + 10, 'Facility Root CA', root_l, 'ca', 'ca')
     ch_y = rootc['bot'] + 46
     c1 = cv.card(ca_x + ZP, ch_y, 'Lab Intermediate CA', labca_l, 'ca', 'ca')
@@ -587,7 +596,7 @@ def build(cv):
 
     # --- page title
     hdr.append(f'<text x="{M}" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="{C["ink"]}">Secure PVAccess demonstration laboratory</text>')
-    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates, so every certificate traces to it - the laboratory topologies/federated-shared-root/compose.yaml builds, with the two routers a site would install marked SIMULATED</text>')
+    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated, shared root: one facility root signing both departmental intermediates - the laboratory topologies/federated-shared-root/compose.yaml builds, with the two routers a site would install marked SIMULATED</text>')
     return hdr
 
 
