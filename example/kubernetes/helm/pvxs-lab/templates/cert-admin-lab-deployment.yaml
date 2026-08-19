@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pvxs-lab.certAdminLabService" . }}
+  labels:
+    {{- include "pvxs-lab.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.certAdminLab.replicas }}
+  selector:
+    matchLabels:
+      app: cert-admin-lab
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: cert-admin-lab
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: cert-admin-lab
+          image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.csStudio.name "tag" .Values.images.csStudio.tag) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/bash", "-lc"]
+          args:
+            - exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+          volumeMounts:
+            {{- include "pvxs-lab.issuersMount" (dict "ctx" .) | nindent 12 }}
+            - name: pva-config
+              mountPath: /home/certadmin/.config/pva/1.5
+              subPath: certadmin
+            - name: krb5-conf
+              mountPath: /etc/krb5.conf
+              subPath: krb5.conf
+              readOnly: true
+          env:
+          {{- /* Both ids, and no pod-level EPICS_PVA_AUTH_ISSUER: the user's profile selects. */}}
+          {{- include "pvxs-lab.issuersEnv" (dict "ctx" .) | nindent 12 }}
+            - name: EPICS_AUTH_KRB_REALM
+              value: "EPICS.ORG"
+          ports:
+            - name: novnc
+              containerPort: 8080
+      volumes:
+        {{- include "pvxs-lab.issuersVolume" (dict "ctx" .) | nindent 8 }}
+        - name: pva-config
+          {{- if .Values.certAdminLab.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pvxs-lab.fullname" . }}-cert-admin-lab-pva
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: krb5-conf
+          configMap:
+            name: {{ include "pvxs-lab.fullname" . }}-krb5

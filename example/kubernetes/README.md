@@ -148,6 +148,7 @@ WRITE authorisation and NetworkPolicy, not in the trust anchors — do not split
 | idm           | idm, admin      |
 | lab           | guest, operator |
 | cs-studio-lab | guest, operator |
+| cert-admin-lab | certadmin |
 | it            | idm, admin      |
 | gateway       | gateway         |
 | testioc       | testioc         |
@@ -415,6 +416,65 @@ cs_studio_lab       # then open http://localhost:8080
 cs_studio_ml        # then open http://localhost:8081
 cs_studio_internet  # then open http://localhost:8082
 ```
+
+### Certificate administration
+
+A separate display, in its own pod per zone, carrying nothing but certificate administration: a
+table of certificates awaiting a decision with approve and deny, and a table of issued
+certificates with revoke.
+
+- **cert_admin_lab** — laboratory department, http://localhost:8083
+- **cert_admin_ml** — machine learning department, http://localhost:8084
+- **cert_admin_internet** — issued certificates only, http://localhost:8085
+
+```sh
+cert_admin_lab        # then open http://localhost:8083, log in as certadmin
+cert_admin_ml         # then open http://localhost:8084, log in as mlcertadmin
+cert_admin_internet   # then open http://localhost:8085, log in as operator
+```
+
+Inside the desktop, open a terminal and run `cs-studio-certificates`. It takes the department
+from the issuer id the user's profile set, so `certadmin` gets the laboratory certificate manager
+and `mlcertadmin` gets the machine learning one, with no department baked into the image.
+
+**An administrator of one department is not an administrator of the other.** Each certificate
+manager grants administrator rights through its own access security file, whose authority clause
+names that department's own intermediate certificate authority, and the two intermediates have
+different names. `certadmin` is named in the laboratory certificate manager's administrator group
+and `mlcertadmin` in the machine learning one, and neither in the other's. So a laboratory
+administrator cannot approve a machine learning request, which is the wanted behaviour: the two
+departments run two certificate services and each decides its own.
+
+Trust is shared across the laboratory and authorisation is not. Every node holds the one facility
+root and both intermediates, so a certificate issued by either department is trusted everywhere;
+who may approve one is a separate question, answered per department.
+
+**Each administrator identity is minted once, through the same workflow as every other identity
+in the laboratory** - there is no new mechanism and no keychain is copied between pods:
+
+```sh
+# Laboratory department
+kubectl -n pvxs-lab exec deploy/pvxs-lab-cert-admin-lab -- \
+    su - certadmin -c "source ~/.certadmin_bashrc; authnstd -u client"
+kubectl -n pvxs-lab exec deploy/pvxs-lab-idm -c idm -- bash -c \
+    'su - admin -c "source ~/.admin_bashrc; export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076;
+                    pvxcert --approve <ISSUER>:<SERIAL>"'
+
+# Machine learning department: the same, as mlcertadmin against deploy/pvxs-lab-ml
+```
+
+That is one manual step per department per fresh install, the same as every input and output
+controller in the laboratory already needs.
+
+**The internet zone display shows issued certificates without acting on them.** A gateway makes
+its upstream connection as itself, so a certificate manager reached through one sees the gateway
+and not the administrator behind it: the view of certificates awaiting a decision is refused at
+channel creation, and an approval, denial or revocation is refused too. Rather than offer
+controls that come back refused, that display carries the issued table and the expiring view
+only, and says on screen that decisions are applied from the department's own zone. Neither
+gateway is named an administrator of anything, which is the point - the decision about who may
+approve a certificate stays inside the certificate manager rather than moving into a gateway's
+access rules.
 
 ## File copy helpers
 
