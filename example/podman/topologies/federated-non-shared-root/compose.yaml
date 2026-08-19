@@ -1,13 +1,282 @@
-# federated-non-shared-root - not built yet.
+# Two departments with no authority above them, for podman-compose.
 #
-# The picture is drawn: topology/topology-federated-non-shared-root.svg. What is missing is this file and the
-# configuration beside it. Until then ./reset.sh federated-non-shared-root stops here rather than starting a
-# laboratory that would only half work.
+# The difference from the shared-root laboratory beside it is the whole point: there is no
+# facility root. Each department holds a root of its own, rotates it on its own schedule, and
+# neither signs the other. Trust therefore cannot come from a shared chain. It comes from each
+# keychain holding both roots as trust anchors: one identity, many anchors.
 #
-# What building it means, beyond copying the federated-shared-root file:
-#   - its own authorities, minted by bootstrap.sh into certs/ in the shape this topology
-#     needs, which is the part that differs most between the four
-#   - its own config/ beside this file: an access security file per certificate manager,
-#     and a gateway configuration and process variable list per gateway
-#   - the segments the picture shows, with only the services that stand on them
-services: {}
+# Three segments, and only three:
+#
+#   net-lab       the accelerator side: its certificate manager, its controllers, its gateway
+#   net-ml        the second department: its own certificate manager, controller and gateway
+#   net-internet  outside the facility, where both gateways present their outward face
+#
+# There is no perimeter network and no facility address. Both gateways stand on net-internet
+# with an address each and serve on the usual two ports, so each is reached by its own name
+# rather than by a shared address with a port per department.
+#
+# Service names match the DNS names used inside the images, so the shell profiles and the
+# gateway configuration work unchanged.
+#
+# Run ./bootstrap.sh first: it builds the images. ./reset.sh mints the authorities.
+#
+# Picture: topology/topology-federated-non-shared-root.svg
+
+# Carried by the things that never look for a process variable: a certificate manager serves
+# and is served, and a gateway is told its upstream in its own configuration file.
+x-lab-env: &lab-env
+  EPICS_PVA_AUTO_ADDR_LIST: "NO"
+
+# The three segments are pinned, so what a diagram or a note says about them stays true.
+# Left to itself podman allocates them from its own pool in whatever order the networks
+# happen to be made, and reset.sh makes them again every time. Host addresses within a
+# segment are still assigned by podman when a container starts: per-container addresses
+# cannot be set here, because podman-compose passes them as --ip, which podman refuses on a
+# container attached to more than one network.
+#
+# Every segment carries isolate=true: no podman network forwards to another, so nothing
+# reaches another segment by addressing it. What crosses does so through a container standing
+# on both sides. The picture draws a routing firewall at each department's edge; what stands
+# in for it here is a leg on net-internet, given only to the containers the picture routes
+# out of their department.
+networks:
+  net-lab:
+    driver_opts:
+      isolate: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.0.0/24
+  net-ml:
+    driver_opts:
+      isolate: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.1.0/24
+  net-internet:
+    driver_opts:
+      isolate: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.4.0/24
+
+volumes:
+  idm-config:
+  idm-data:
+  ml-config:
+  ml-data:
+  gateway-config:
+  ml-gateway-config:
+  testioc-config:
+  tstioc-config:
+  ml-ioc-config:
+  lab-client-config:
+  ml-client-config:
+  internet-client-config:
+
+services:
+
+  # ---------------------------------------------------------------- lab department
+  # Signs with the intermediate its root issued. The root itself is never mounted into a
+  # running service: what is wanted here is the authority that signs, and the key of the one
+  # above it is not.
+  pvxs-lab-pvacms:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
+    hostname: pvxs-lab-pvacms
+    networks: [net-lab]
+    env_file: [./issuer_ids.env]
+    environment:
+      <<: *lab-env
+      EPICS_PVACMS_DB: /home/idm/.local/share/pva/1.5/certs.db
+      EPICS_PVA_TLS_KEYCHAIN: /home/idm/.config/pva/1.5/server.p12
+    volumes:
+      - idm-config:/home/idm/.config/pva/1.5
+      - idm-data:/home/idm/.local/share/pva/1.5
+      - ./certs/lab_intermediate.p12:/certs/lab_intermediate.p12:ro,Z
+      - ./config/pvacms-lab.acf:/etc/pvacms/pvacms.acf:ro,z
+      - ../../scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
+    command: ["/usr/local/bin/start-pvacms", "lab"]
+
+  # A controller is told its own department's authority and given both roots as a file. It
+  # cannot reach the department next door to ask for that department's root, so it is handed
+  # over instead; see certs/trust_anchors.p12 and mint.sh.
+  pvxs-lab-testioc:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/testioc:latest
+    hostname: pvxs-lab-testioc
+    networks: [net-lab]
+    env_file: [./issuer_ids.env]
+    environment:
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
+    volumes:
+      - testioc-config:/home/testioc/.config/pva/1.5
+      - ./config/testioc.acf:/home/testioc/testioc.acf:ro,z
+      - ./certs/trust_anchors.p12:/certs/trust_anchors.p12:ro,Z
+      - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
+    command: ["/usr/local/bin/start-ioc", "testioc"]
+    depends_on: [pvxs-lab-pvacms]
+
+  pvxs-lab-tstioc:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/tstioc:latest
+    hostname: pvxs-lab-tstioc
+    networks: [net-lab]
+    env_file: [./issuer_ids.env]
+    environment:
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
+    volumes:
+      - tstioc-config:/home/tstioc/.config/pva/1.5
+      - ./config/tstioc.acf:/home/tstioc/tstioc.acf:ro,z
+      - ./certs/trust_anchors.p12:/certs/trust_anchors.p12:ro,Z
+      - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
+    command: ["/usr/local/bin/start-ioc", "tstioc"]
+    depends_on: [pvxs-lab-pvacms]
+
+  # The lab department's outward face. One leg in the department and one outside the facility,
+  # serving on the outside one alone.
+  pvxs-lab-gateway:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
+    hostname: pvxs-lab-gateway
+    networks: [net-lab, net-internet]
+    env_file: [./issuer_ids.env]
+    environment:
+      <<: *lab-env
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
+      GATEWAY_SERVE_SUBNET: "10.89.4."
+    volumes:
+      - gateway-config:/home/gateway/.config/pva/1.5
+      - ./config/gateway-lab.conf:/home/gateway/gateway.conf.in:ro,z
+      - ./config/gateway-lab.pvlist:/home/gateway/gateway.pvlist.in:ro,z
+      - ./config/gateway.acf:/home/gateway/gateway.acf:ro,z
+      - ./certs/trust_anchors.p12:/certs/trust_anchors.p12:ro,Z
+      - ../../scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro,z
+    command: ["/usr/local/bin/start-gateway", "LAB_ISSUER"]
+    depends_on: [pvxs-lab-pvacms]
+
+  # ------------------------------------------------- machine learning department
+  # Signs with its root, which it holds outright. That is the difference from the lab
+  # department, and it is allowed precisely because nothing above either root says otherwise.
+  pvxs-lab-ml:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml:latest
+    hostname: pvxs-lab-ml
+    networks: [net-ml]
+    env_file: [./issuer_ids.env]
+    environment:
+      <<: *lab-env
+      EPICS_PVACMS_DB: /home/idm/.local/share/pva/1.5/certs.db
+      EPICS_PVA_TLS_KEYCHAIN: /home/idm/.config/pva/1.5/server.p12
+    volumes:
+      - ml-config:/home/idm/.config/pva/1.5
+      - ml-data:/home/idm/.local/share/pva/1.5
+      - ./certs/ml_root.p12:/certs/ml_root.p12:ro,Z
+      - ./config/pvacms-ml.acf:/etc/pvacms/pvacms.acf:ro,z
+      - ../../scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
+    command: ["/usr/local/bin/start-pvacms", "ml-root"]
+
+  pvxs-lab-ml-ioc:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml-ioc:latest
+    hostname: pvxs-lab-ml-ioc
+    networks: [net-ml]
+    env_file: [./issuer_ids.env]
+    environment:
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
+    volumes:
+      - ml-ioc-config:/home/mlioc/.config/pva/1.5
+      - ./config/mlioc.acf:/home/mlioc/mlioc.acf:ro,z
+      - ./certs/trust_anchors.p12:/certs/trust_anchors.p12:ro,Z
+      - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
+    command: ["/usr/local/bin/start-ioc", "mlioc"]
+    depends_on: [pvxs-lab-ml]
+
+  pvxs-lab-ml-gateway:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
+    hostname: pvxs-lab-ml-gateway
+    networks: [net-ml, net-internet]
+    env_file: [./issuer_ids.env]
+    environment:
+      <<: *lab-env
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
+      EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
+      GATEWAY_SERVE_SUBNET: "10.89.4."
+    volumes:
+      - ml-gateway-config:/home/gateway/.config/pva/1.5
+      - ./config/gateway-ml.conf:/home/gateway/gateway.conf.in:ro,z
+      - ./config/gateway-ml.pvlist:/home/gateway/gateway.pvlist.in:ro,z
+      - ./config/gateway.acf:/home/gateway/gateway.acf:ro,z
+      - ./certs/trust_anchors.p12:/certs/trust_anchors.p12:ro,Z
+      - ../../scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro,z
+    command: ["/usr/local/bin/start-gateway", "ML_ISSUER"]
+    depends_on: [pvxs-lab-ml]
+
+  # ------------------------------------------------------------------- clients
+  # A shell inside the lab department. It finds its own department by naming the three hosts
+  # that serve it, and reaches the other department by naming that department's gateway.
+  #
+  # The picture gives it one interface and a route to net-internet through the lab department's
+  # routing firewall. There is no firewall container here, so what stands in for that route is
+  # a second leg: podman answers a name only for containers sharing a segment with the asker,
+  # and isolate=true means nothing reaches another segment any other way. Discovery is off, so
+  # the extra leg carries nothing the workstation did not ask for by name.
+  lab-client:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
+    hostname: lab-client
+    networks: [net-lab, net-internet]
+    env_file: [./issuer_ids.env]
+    environment:
+      EPICS_PVA_AUTO_ADDR_LIST: "NO"
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+      EPICS_PVA_NAME_SERVERS: "pvxs-lab-ml-gateway:5075"
+      EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID} ${ML_ISSUER_SKID}"
+      PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    volumes:
+      - lab-client-config:/home/guest/.config/pva/1.5
+      - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
+    command: ["/usr/local/bin/start-shell", "guest", "operator"]
+
+  # The mirror of lab-client, in the machine learning department.
+  ml-client:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
+    hostname: ml-client
+    networks: [net-ml, net-internet]
+    env_file: [./issuer_ids.env]
+    environment:
+      EPICS_PVA_AUTO_ADDR_LIST: "NO"
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
+      EPICS_PVA_NAME_SERVERS: "pvxs-lab-gateway:5075"
+      EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID} ${LAB_ISSUER_SKID}"
+      PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    volumes:
+      - ml-client-config:/home/guest/.config/pva/1.5
+      - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
+    command: ["/usr/local/bin/start-shell", "guest", "operator"]
+
+  # A shell outside the facility. It names both gateways and reaches nothing else, so every
+  # certificate status lookup and every process variable crosses a gateway.
+  internet-client:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/internet:latest
+    hostname: internet-client
+    networks: [net-internet]
+    env_file: [./issuer_ids.env]
+    environment:
+      EPICS_PVA_AUTO_ADDR_LIST: "NO"
+      EPICS_PVA_NAME_SERVERS: "pvxs-lab-gateway:5075 pvxs-lab-ml-gateway:5075"
+      PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    volumes:
+      - internet-client-config:/home/guest/.config/pva/1.5
+      - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
+    command: ["/usr/local/bin/start-shell", "guest", "operator"]
+    depends_on: [pvxs-lab-gateway, pvxs-lab-ml-gateway]
