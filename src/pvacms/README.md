@@ -56,8 +56,9 @@ All default paths follow the XDG Base Directory Specification.
 | Admin Keychain | `${XDG_CONFIG_HOME}/pva/1.5/admin.p12` | `-a, --admin-keychain` | `EPICS_ADMIN_TLS_KEYCHAIN` |
 | Access Control File | `${XDG_CONFIG_HOME}/pva/1.5/pvacms.acf` | `--acf` | `EPICS_PVACMS_ACF` |
 
-Password files for each keychain can be specified via the corresponding
-`*_PWD_FILE` environment variable (e.g. `EPICS_CERT_AUTH_TLS_KEYCHAIN_PWD_FILE`).
+A password for each keychain can be supplied by appending `;<password>` to the
+keychain path (e.g. `EPICS_CERT_AUTH_TLS_KEYCHAIN=/path/cert_auth.p12;secret`),
+or via the corresponding `--*-keychain-pwd` command line option.
 
 ## PV Interface
 

@@ -57,9 +57,8 @@ struct AuthNLdapRegistrar {
  * EPICS_PVA_AUTH_NAME environment variable if it is set, otherwise
  * it defaults to the logged in user.
  *
- * - The password is copied from the configuration using the
- * EPICS_AUTH_LDAP_ACCOUNT_PWD_FILE environment variable if it is set to
- * read it from a file, otherwise it is read from the command line.
+ * - The password is taken from the --password command line option if it is
+ * given, otherwise it is read interactively from the command line.
  *
  * - The organization is copied from the configuration using the
  * EPICS_PVA_AUTH_ORGANIZATION environment variable if it is set, otherwise
