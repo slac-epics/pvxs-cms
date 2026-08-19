@@ -27,6 +27,7 @@ PROD += pvacms
 # Entry points and pvacms-specific config
 pvacms_SRCS += pvacms.cpp
 pvacms_SRCS += configcms.cpp
+pvacms_SRCS += sqlitehardening.cpp
 pvacms_SRCS += clustertypes.cpp
 pvacms_SRCS += clustersync.cpp
 pvacms_SRCS += clusterctrl.cpp

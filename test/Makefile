@@ -68,6 +68,16 @@ TESTS += testtlsstatus
 TESTPROD_HOST += testtlsstatus
 testtlsstatus_SRCS += testtlsstatus.cpp
 
+# Test the settings the certificate database is opened with. Chiefly the busy
+# timeout: without it SQLite reports "database is locked" the instant it meets a
+# lock instead of waiting, which stopped the certificate manager from starting.
+TESTS += testsqlitehardening
+TESTPROD_HOST += testsqlitehardening
+testsqlitehardening_SRCS += testsqlitehardening.cpp
+testsqlitehardening_SRCS += sqlitehardening.cpp
+testsqlitehardening_LIBS += pvxsIoc dbRecStd dbCore ca
+testsqlitehardening_SYS_LIBS += sqlite3
+
 # Test cluster functionality
 TESTS += testcluster
 TESTPROD_HOST += testcluster
