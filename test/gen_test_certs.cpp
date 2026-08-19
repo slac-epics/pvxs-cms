@@ -411,14 +411,16 @@ struct CertCreator {
                                                   reinterpret_cast<const unsigned char*>(CN),
                                                   -1, -1, 0));
             }
-            MUST(1, X509_NAME_add_entry_by_txt(sub, "C", MBSTRING_ASC,
-                                               reinterpret_cast<const unsigned char*>("US"),
+            // Leaf first, matching what CertFactory emits, so a test certificate has the
+            // same shape of subject as one this system issues.
+            MUST(1, X509_NAME_add_entry_by_txt(sub, "OU", MBSTRING_ASC,
+                                               reinterpret_cast<const unsigned char*>("epics.org Certificate Authority"),
                                                -1, -1, 0));
             MUST(1, X509_NAME_add_entry_by_txt(sub, "O", MBSTRING_ASC,
                                                reinterpret_cast<const unsigned char *>("certs.epics.org"),
                                                -1, -1, 0));
-            MUST(1, X509_NAME_add_entry_by_txt(sub, "OU", MBSTRING_ASC,
-                                               reinterpret_cast<const unsigned char*>("epics.org Certificate Authority"),
+            MUST(1, X509_NAME_add_entry_by_txt(sub, "C", MBSTRING_ASC,
+                                               reinterpret_cast<const unsigned char*>("US"),
                                                -1, -1, 0));
         }
         if(!issuer) {
