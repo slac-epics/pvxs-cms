@@ -39,7 +39,8 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
                                                               const std::string &issuer_id,
                                                               const double timeout,
                                                               const std::shared_ptr<KeyPair> &key_pair,
-                                                              const CertData &held_before_request) {
+                                                              const CertData &held_before_request,
+                                                              const std::string &expected_issuer_id) {
     auto uri = nt::NTURI({}).build();
     uri += {Struct("query", CCR_PROTOTYPE(cert_creation_request->verifier_fields))};
     auto arg = uri.create();
@@ -71,7 +72,8 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     // adds nothing is never entered and nothing about its path changes.
     if (const auto authenticator_part = value["authenticator"]) {
         (void)authenticator_part;
-        Auth::getAuth(cert_creation_request->type)->handleCreateResponse(value, key_pair, held_before_request);
+        Auth::getAuth(cert_creation_request->type)
+            ->handleCreateResponse(value, key_pair, held_before_request, expected_issuer_id);
     }
 
     const auto renew_by_val = value["renew_by"];

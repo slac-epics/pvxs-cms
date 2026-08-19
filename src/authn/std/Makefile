@@ -10,6 +10,7 @@ authnstd_SRCS += certstatusfactory.cpp
 authnstd_SRCS += certstatus.cpp
 authnstd_SRCS += certstatusmanager.cpp
 authnstd_SRCS += certfactory.cpp
+authnstd_SRCS += certrequestid.cpp
 authnstd_SRCS += certfilefactory.cpp
 authnstd_SRCS += p12filefactory.cpp
 authnstd_SRCS += auth.cpp

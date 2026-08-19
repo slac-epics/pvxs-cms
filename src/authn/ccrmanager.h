@@ -20,7 +20,8 @@ class CCRManager {
                                                              const std::string &issuer_id,
                                                              double timeout,
                                                              const std::shared_ptr<KeyPair> &key_pair = {},
-                                                             const CertData &held_before_request = {});
+                                                             const CertData &held_before_request = {},
+                                                             const std::string &expected_issuer_id = {});
 };
 }  // namespace certs
 }  // namespace pvxs
