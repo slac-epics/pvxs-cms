@@ -52,7 +52,10 @@ const char *kCreateCertsTable =
     "  renew_by INTEGER,"
     "  renewal_due INTEGER,"
     "  status INTEGER,"
-    "  status_date INTEGER"
+    "  status_date INTEGER,"
+    "  created_date INTEGER,"
+    "  key_usage TEXT,"
+    "  extended_key_usage TEXT"
     ")";
 
 /**
@@ -409,7 +412,7 @@ void testApplySyncBackwardDropped() {
 
     // Insert cert with EXPIRED status
     {
-        const std::string sql = "INSERT INTO certs VALUES(42,'skid1','CN1','O1','OU1','C1',1,1000,2000,1800,0,"
+        const std::string sql = "INSERT INTO certs (serial, skid, CN, O, OU, C, approved, not_before, not_after, renew_by, renewal_due, status, status_date) VALUES(42,'skid1','CN1','O1','OU1','C1',1,1000,2000,1800,0,"
                           + std::to_string(EXPIRED) + ",1500)";
         sqlite3_exec(tdb.get(), sql.c_str(), nullptr, nullptr, nullptr);
     }
@@ -447,7 +450,7 @@ void testApplySyncForwardAccepted() {
     epicsMutex lock;
 
     {
-        std::string sql = "INSERT INTO certs VALUES(42,'skid1','CN1','O1','OU1','C1',1,1000,2000,1800,0,"
+        std::string sql = "INSERT INTO certs (serial, skid, CN, O, OU, C, approved, not_before, not_after, renew_by, renewal_due, status, status_date) VALUES(42,'skid1','CN1','O1','OU1','C1',1,1000,2000,1800,0,"
                           + std::to_string(PENDING_APPROVAL) + ",1500)";
         sqlite3_exec(tdb.get(), sql.c_str(), nullptr, nullptr, nullptr);
     }
@@ -1215,7 +1218,7 @@ void testFullSnapshotPayloadFormat() {
     epicsMutex lock;
 
     {
-        std::string sql = "INSERT INTO certs VALUES(42,'skid1','CN1','O1','OU1','C1',1,1000,2000,1800,0,"
+        std::string sql = "INSERT INTO certs (serial, skid, CN, O, OU, C, approved, not_before, not_after, renew_by, renewal_due, status, status_date) VALUES(42,'skid1','CN1','O1','OU1','C1',1,1000,2000,1800,0,"
                           + std::to_string(VALID) + ",1500)";
         sqlite3_exec(tdb.get(), sql.c_str(), nullptr, nullptr, nullptr);
     }
@@ -1299,7 +1302,7 @@ void testIncrementalIngestion() {
     epicsMutex lock;
 
     {
-        std::string sql = "INSERT INTO certs VALUES(1,'skidA','ExistingCert','O','OU','C',1,1000,2000,1800,0,"
+        std::string sql = "INSERT INTO certs (serial, skid, CN, O, OU, C, approved, not_before, not_after, renew_by, renewal_due, status, status_date) VALUES(1,'skidA','ExistingCert','O','OU','C',1,1000,2000,1800,0,"
                           + std::to_string(VALID) + ",1500)";
         sqlite3_exec(tdb.get(), sql.c_str(), nullptr, nullptr, nullptr);
     }

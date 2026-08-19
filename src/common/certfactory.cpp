@@ -297,7 +297,8 @@ void CertFactory::addExtensions(const ossl_ptr<X509> &certificate) const {
     auto basic_constraint(IS_USED_FOR_(usage_, ssl::kForCertAuth) ? "critical,CA:TRUE" : "CA:FALSE");
     addExtension(certificate, NID_basic_constraints, basic_constraint);
 
-    // Key usage
+    // Key usage. Recorded on the factory as well as written into the certificate, so
+    // whatever stores the certificate can record what it is for without decoding it back.
     std::string usage;
     if (IS_USED_FOR_(usage_, ssl::kForIntermediateCertAuth)) {
         usage = "digitalSignature,cRLSign,keyCertSign";
@@ -308,6 +309,7 @@ void CertFactory::addExtensions(const ossl_ptr<X509> &certificate) const {
     } else {
         usage = "digitalSignature";
     }
+    key_usage_ = usage;
     if (!usage.empty()) {
         addExtension(certificate, NID_key_usage, usage.c_str());
     }
@@ -325,6 +327,7 @@ void CertFactory::addExtensions(const ossl_ptr<X509> &certificate) const {
     } else if (IS_USED_FOR_(usage_, ssl::kForCMS)) {
         extended_usage = "serverAuth,clientAuth,OCSPSigning";
     }
+    extended_key_usage_ = extended_usage;
     if (!extended_usage.empty()) {
         addExtension(certificate, NID_ext_key_usage, extended_usage.c_str());
     }
