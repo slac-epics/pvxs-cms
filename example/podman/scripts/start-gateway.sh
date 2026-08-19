@@ -39,6 +39,17 @@ fi
 # volume is mounted owned by root.
 mkdir -p /home/gateway/.config/pva/1.5 && chown -R gateway /home/gateway/.config
 
+# The trust anchors, where a laboratory hands them over rather than leaving them to be
+# fetched. A gateway with no path to the other department's certificate manager cannot ask it
+# for its root, and in a laboratory whose departments share no root it has to hold that root
+# to verify anything signed under it. So the file is placed here before the gateway asks for
+# an identity: what it then receives is added to a keychain that already holds both anchors,
+# and asking for an identity never removes one.
+keychain=/home/gateway/.config/pva/1.5/gateway.p12
+if [ -r /certs/trust_anchors.p12 ] && [ ! -s "${keychain}" ]; then
+    install -m 600 -o gateway /certs/trust_anchors.p12 "${keychain}"
+fi
+
 if [ -n "${issuer}" ]; then
     sed "s/__${var}__/${issuer}/g" /home/gateway/gateway.pvlist.in > /home/gateway/gateway.pvlist
 else

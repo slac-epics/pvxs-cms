@@ -213,8 +213,8 @@ gwx = lab_x + ZP + (cxs[C_GWACF] + cxs[C_GWPVL] + COLS[C_GWPVL])/2
 # Wide enough for the card AND for its own title strip: the title is set in 15px bold from
 # 40px in, so a zone sized only by its card would let the title run out past the corner.
 PERIM_TITLE = 'net-internet   10.89.4.0/24   -   outside the facility'
-pz_w = max(measure('perimeter-client', perim_client_l)[0] + 2*ZP, 40 + len(PERIM_TITLE)*8.3 + 16)
-pz_h = ZTITLE + 12 + measure('perimeter-client', perim_client_l)[1] + 20
+pz_w = max(measure('internet-client', perim_client_l)[0] + 2*ZP, 40 + len(PERIM_TITLE)*8.3 + 16)
+pz_h = ZTITLE + 12 + measure('internet-client', perim_client_l)[1] + 20
 pz_x = min(max(gwx - pz_w/2, legend_x + lg_w + 40), ca_x - pz_w - 40)
 pz_y = top_y                         # level with the authority across the band
 
@@ -291,8 +291,8 @@ def build(cv):
     fp = at(C_GWPVL, files_y, 'config/gateway-lab.pvlist', gwpvlist_l, 'file', 'file')
     f3 = at(C_CMS, files_y, 'config/pvacms-lab.acf', cmsacf_l, 'file', 'file')
     rootc = cv.card(ca_x + ZP, ca_y + ZTITLE + 10, 'Root Certificate Authority', root_l, 'ca', 'ca')
-    pcw = measure('perimeter-client', perim_client_l)[0]
-    pc = cv.card(pz_x + (pz_w - pcw)/2, pz_y + ZTITLE + 12, 'perimeter-client', perim_client_l, 'client', 'client')
+    pcw = measure('internet-client', perim_client_l)[0]
+    pc = cv.card(pz_x + (pz_w - pcw)/2, pz_y + ZTITLE + 12, 'internet-client', perim_client_l, 'client', 'client')
 
     # --- bus taps: the gateway and the client from above, the servers from below
     for t in (gw, cl):

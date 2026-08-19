@@ -1,20 +1,25 @@
 #!/bin/bash
 # Start one department's certificate manager.
 #
-# Takes the department (lab|ml). The intermediate certificate authority for that
-# department, and the facility root, were minted by bootstrap.sh into /certs.
+# Takes the department. The certificate authority it signs with was minted by ./reset.sh
+# into /certs, which is where each of these names one.
 set -euo pipefail
-dept="${1:?usage: start-pvacms <lab|ml|own>}"
+dept="${1:?usage: start-pvacms <lab|ml|ml-root|own>}"
 
 # 'own' is a laboratory with one certificate manager and no minted authorities: pvacms finds
 # no keychain where it is told to look, mints a self-signed authority there, and issues every
 # certificate under it. The departmental cases are the opposite - their authority was minted
 # before anything started, because two managers on one laboratory have to be told apart.
+#
+# 'ml-root' is the machine learning department where there is no facility root: that
+# department holds a root of its own and signs with it directly, so the keychain it is given
+# is a root rather than an intermediate.
 case "${dept}" in
-  lab) ca=/certs/lab_intermediate.p12 ;;
-  ml)  ca=/certs/ml_intermediate.p12 ;;
-  own) ca= ;;
-  *)   echo "unknown department: ${dept}" >&2; exit 2 ;;
+  lab)     ca=/certs/lab_intermediate.p12 ;;
+  ml)      ca=/certs/ml_intermediate.p12 ;;
+  ml-root) ca=/certs/ml_root.p12 ;;
+  own)     ca= ;;
+  *)       echo "unknown department: ${dept}" >&2; exit 2 ;;
 esac
 
 if [ -n "${ca}" ]; then
