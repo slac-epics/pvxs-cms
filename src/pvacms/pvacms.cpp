@@ -88,6 +88,9 @@ namespace certs {
 /** What the authority above this service's certificates is known to be. */
 cert_authority_standing_t authorityStanding();
 
+/** The facility root as the listing needs it, or nothing when none is loaded. */
+std::unique_ptr<RootAuthority> currentRootAuthority();
+
 
 // fwd decl
 /**
@@ -1363,6 +1366,186 @@ int64_t onCreateCertificate(ConfigCms &config,
     }
 }
 
+
+/**
+ * @brief Keeps the three standing listing views up to date.
+ *
+ * A monitored table resends every column whenever anything changes, because a change mask
+ * marks fields and an array is one field. So the case to defend against is not a large table
+ * but a burst: approving fifty certificates one after another would otherwise post fifty
+ * complete tables. A shortest gap between posts collapses a burst into one or two.
+ *
+ * The gap delays a post and never drops a change. A change arriving inside the gap sets a
+ * pending flag, and the next call after the gap has passed posts the table as it then is, so
+ * the last change of a burst is always carried.
+ */
+class CertListViews {
+  public:
+    CertListViews(const ConfigCms &config, const sql_ptr &certs_db, const std::string &issuer_id,
+                  server::WildcardPV &pv, std::string all_name, std::string pending_name,
+                  std::string expiring_name, std::string qualified_all_name,
+                  std::string qualified_pending_name, std::string qualified_expiring_name)
+        : config_(config), certs_db_(certs_db), issuer_id_(issuer_id), pv_(pv), all_name_(std::move(all_name)),
+          pending_name_(std::move(pending_name)), expiring_name_(std::move(expiring_name)),
+          qualified_all_name_(std::move(qualified_all_name)),
+          qualified_pending_name_(std::move(qualified_pending_name)),
+          qualified_expiring_name_(std::move(qualified_expiring_name)) {}
+
+    /** Build one view's table as it stands now. */
+    Value build(const std::string &pv_name) const {
+        const auto view = viewOf(pv_name);
+        // The identifier column rides only on the pending view: it is what an administrator
+        // searches on to find the row, and the other two views have no use for it.
+        const bool with_request_id = view == CertListView::PendingApproval;
+        const auto root = currentRootAuthority();
+        const auto rows = queryCertList(certs_db_.get(), view, issuer_id_, with_request_id,
+                                        config_.cert_list_expiry_window_secs, nullptr, root.get());
+        return buildCertListTable(rows, with_request_id,
+                                  view == CertListView::Expiring ? config_.cert_list_expiry_window_secs : 0);
+    }
+
+    /** Open a view for its first subscriber. */
+    void open(const std::string &pv_name) {
+        if (!pv_.isOpen(pv_name)) pv_.open(pv_name, build(pv_name));
+    }
+
+    /** A certificate changed: refresh every open view, subject to the gap between posts. */
+    void refresh() {
+        Guard G(lock_);
+        const auto now = timeNow();
+        if (now - last_post_ < static_cast<time_t>(config_.cert_list_min_post_interval_secs)) {
+            pending_ = true;  // delayed, not dropped: the next post carries it
+            return;
+        }
+        last_post_ = now;
+        pending_ = false;
+        postAll();
+    }
+
+    /** Called on a timer, so a change that arrived inside the gap is still posted. */
+    void postIfPending() {
+        Guard G(lock_);
+        if (!pending_) return;
+        const auto now = timeNow();
+        if (now - last_post_ < static_cast<time_t>(config_.cert_list_min_post_interval_secs)) return;
+        last_post_ = now;
+        pending_ = false;
+        postAll();
+    }
+
+  private:
+    CertListView viewOf(const std::string &pv_name) const {
+        if (pv_name == pending_name_ || pv_name == qualified_pending_name_) return CertListView::PendingApproval;
+        if (pv_name == expiring_name_ || pv_name == qualified_expiring_name_) return CertListView::Expiring;
+        return CertListView::All;
+    }
+
+    void postAll() {
+        for (const auto &name : {all_name_, pending_name_, expiring_name_, qualified_all_name_,
+                                 qualified_pending_name_, qualified_expiring_name_}) {
+            if (!pv_.isOpen(name)) continue;  // nobody is watching this one
+            try {
+                pv_.post(name, build(name));
+            } catch (const std::exception &e) {
+                log_err_printf(pvacms, "Failed to post the %s certificate listing: %s\n", name.c_str(), e.what());
+            }
+        }
+    }
+
+    const ConfigCms &config_;
+    const sql_ptr &certs_db_;
+    const std::string &issuer_id_;
+    server::WildcardPV &pv_;
+    const std::string all_name_, pending_name_, expiring_name_;
+    const std::string qualified_all_name_, qualified_pending_name_, qualified_expiring_name_;
+
+    mutable epicsMutex lock_;
+    time_t last_post_{0};
+    bool pending_{false};
+};
+
+/**
+ * @brief Decide whether a caller is an administrator of this certificate authority.
+ *
+ * The same access security check the status put handler applies, so the listing and the
+ * decisions made from it agree on who is an administrator.
+ */
+bool callerIsAdministrator(const server::ExecOp *op) {
+    const auto creds = op->credentials();
+    if (!creds) return false;
+    pvxs::ioc::Credentials credentials(*creds);
+    pvxs::ioc::SecurityClient security_client;
+    static ASMember as_member;
+    security_client.update(as_member.mem, ASL1, credentials);
+    return security_client.canWrite();
+}
+
+/**
+ * @brief Answer the one-shot certificate listing call.
+ *
+ * The call carries every query that needs a parameter, which a monitored view cannot: a
+ * display tool parses only a field clause out of a process variable name, so there is
+ * nowhere for a parameter to go. It is what the command line tool uses.
+ *
+ * The request identifier column is filled for an administrator and left empty for everyone
+ * else, and is present either way. That is deliberate: the identifier is a search key an
+ * administrator uses to find a row and then read it, not a token that approves anything.
+ *
+ * A pvRequest is not read. A remote procedure call reply is written in full rather than
+ * masked against a prototype, so `-r field(...)` would be accepted and silently ignored;
+ * the columns wanted are named in the query structure instead.
+ *
+ * @param config server configuration, for the expiry window
+ * @param certs_db the certificate database
+ * @param our_issuer_id the serving issuer, which the identifier column is built from
+ * @param op the operation, carrying the caller's credentials
+ * @param args the call arguments
+ */
+void onListCertificates(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id,
+                        std::unique_ptr<server::ExecOp> &&op, const pvxs::Value &args) {
+    try {
+        const bool is_admin = callerIsAdministrator(op.get());
+
+        // Re-read here rather than trust what the tool checked: the call is reachable by any
+        // client, and one can be hand-built.
+        std::unique_ptr<CertFilter> filter;
+        if (const auto where_arg = args["query.where"]) {
+            const auto expression = where_arg.as<std::string>();
+            if (!expression.empty()) {
+                try {
+                    filter.reset(new CertFilter(CertFilter::parse(expression, timeNow())));
+                } catch (const CertFilterError &e) {
+                    // The operator's own message, unchanged: it already says what is wrong,
+                    // where, and what to do.
+                    op->error(e.what());
+                    return;
+                }
+            }
+        }
+
+        auto view = CertListView::All;
+        if (const auto view_arg = args["query.view"]) {
+            const auto requested = view_arg.as<std::string>();
+            if (requested == CERT_LIST_VIEW_PENDING_APPROVAL) {
+                view = CertListView::PendingApproval;
+            } else if (requested == CERT_LIST_VIEW_EXPIRING) {
+                view = CertListView::Expiring;
+            }
+        }
+
+        const auto root = currentRootAuthority();
+        const auto rows = queryCertList(certs_db.get(), view, our_issuer_id, is_admin,
+                                        config.cert_list_expiry_window_secs, filter.get(), root.get());
+        auto table = buildCertListTable(rows, true,
+                                        view == CertListView::Expiring ? config.cert_list_expiry_window_secs : 0);
+        op->reply(table);
+    } catch (const std::exception &e) {
+        log_err_printf(pvacms, "Certificate listing failed: %s\n", e.what());
+        op->error(SB() << "Failed to list certificates: " << e.what());
+    }
+}
+
+
 /**
  * Retrieves the status of the certificate identified by the pv_name.
  * This will verify the certificate chain back to the root certificate for all certificates that are managed by this
@@ -2576,6 +2759,53 @@ cert_authority_standing_t authorityStanding() {
     return the_authority_monitor->standing();
 }
 
+/**
+ * @brief The facility root as the listing needs it, assembled fresh each time it is asked for.
+ *
+ * Fresh because its standing is not recorded anywhere: it is what the responder last said, and
+ * that is read at the point of answering like every other status this service composes.
+ *
+ * @return the root, or nothing when this service has not loaded one
+ */
+std::unique_ptr<RootAuthority> currentRootAuthority() {
+    if (!the_root_certificate) return {};
+    X509 *const cert = the_root_certificate;
+
+    std::unique_ptr<RootAuthority> root(new RootAuthority());
+
+    // A responder that was never named cannot have said anything, so nothing is known about
+    // the authority rather than nothing being wrong with it.
+    root->names_responder = the_authority_monitor && the_authority_monitor->isActive();
+    if (root->names_responder) {
+        switch (the_authority_monitor->standing()) {
+            case cert_authority_standing_t::STANDING: root->standing = VALID; break;
+            case cert_authority_standing_t::REVOKED: root->standing = REVOKED; break;
+            default: root->standing = UNKNOWN; break;
+        }
+    }
+
+    // It issued itself, so the identifier carries its own subject key identifier rather than
+    // this service's: nobody can ask this service about it, and the identifier should not
+    // suggest otherwise.
+    root->serial = CertStatusFactory::getSerialNumber(cert);
+    root->cert_id = getCertId(CertStatus::getSkId(cert), root->serial);
+
+    auto *const subject = X509_get_subject_name(cert);
+    const auto field = [subject](const int nid) -> std::string {
+        char buf[512] = {0};
+        const int len = X509_NAME_get_text_by_NID(subject, nid, buf, sizeof(buf));
+        return len < 0 ? std::string() : std::string(buf, static_cast<size_t>(len));
+    };
+    root->common_name = field(NID_commonName);
+    root->organization = field(NID_organizationName);
+    root->country = field(NID_countryName);
+    root->organizational_units = getSubjectOrganizationalUnits(subject);
+
+    root->not_before = CertDate(X509_get0_notBefore(cert)).t;
+    root->not_after = CertDate(X509_get0_notAfter(cert)).t;
+    return root;
+}
+
 Value postCertificateStatus(server::WildcardPV &status_pv,
                             const std::string &pv_name,
                             const uint64_t serial,
@@ -3523,6 +3753,7 @@ int main(int argc, char *argv[]) {
 
         // The root states where its own revocation can be learned. Ask, so that a revoked
         // authority reaches the certificates issued beneath it.
+        the_root_certificate = X509_dup(cert_auth_root_cert.get());
         the_authority_monitor.reset(
             new cms::cert::AuthorityMonitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status));
         the_authority_monitor->start();
