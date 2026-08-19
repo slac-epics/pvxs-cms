@@ -21,6 +21,7 @@
 #include <sqlite3.h>
 
 #include "pvacmsVersion.h"
+#include "sqlitestmt.h"
 
 DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
 
@@ -103,14 +104,14 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
         const auto serial = row["serial"].as<int64_t>();
         const auto remote_status = static_cast<certstatus_t>(row["status"].as<int32_t>());
 
-        sqlite3_stmt *check_stmt;
-        if (sqlite3_prepare_v2(certs_db, SQL_SYNC_CHECK_CERT_STATUS, -1, &check_stmt, nullptr) != SQLITE_OK)
+        SqliteStmt check_stmt;
+        if (sqlite3_prepare_v2(certs_db, SQL_SYNC_CHECK_CERT_STATUS, -1, check_stmt.acquire(), nullptr) != SQLITE_OK)
             continue;
         sqlite3_bind_int64(check_stmt, sqlite3_bind_parameter_index(check_stmt, ":serial"), serial);
 
         if (sqlite3_step(check_stmt) == SQLITE_ROW) {
             const auto local_status = static_cast<certstatus_t>(sqlite3_column_int(check_stmt, 0));
-            sqlite3_finalize(check_stmt);
+            check_stmt.reset();
 
             if (!isValidStatusTransition(local_status, remote_status))
                 continue;
@@ -123,8 +124,8 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
                 result.revoked_skids.push_back(row["skid"].as<std::string>());
             }
 
-            sqlite3_stmt *upd_stmt;
-            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, &upd_stmt, nullptr) != SQLITE_OK)
+            SqliteStmt upd_stmt;
+            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_UPDATE_CERT, -1, upd_stmt.acquire(), nullptr) != SQLITE_OK)
                 continue;
 
             auto bind_text = [&](const char *param, const char *field) {
@@ -145,12 +146,12 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":status_date"), row["status_date"].as<int64_t>());
             sqlite3_bind_int64(upd_stmt, sqlite3_bind_parameter_index(upd_stmt, ":serial"), serial);
             sqlite3_step(upd_stmt);
-            sqlite3_finalize(upd_stmt);
+            upd_stmt.reset();
             result.had_changes = true;
         } else {
-            sqlite3_finalize(check_stmt);
-            sqlite3_stmt *ins_stmt;
-            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_INSERT_CERT, -1, &ins_stmt, nullptr) != SQLITE_OK)
+            check_stmt.reset();
+            SqliteStmt ins_stmt;
+            if (sqlite3_prepare_v2(certs_db, SQL_SYNC_INSERT_CERT, -1, ins_stmt.acquire(), nullptr) != SQLITE_OK)
                 continue;
 
             sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":serial"), serial);
@@ -171,7 +172,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             sqlite3_bind_int(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":status"), row["status"].as<int32_t>());
             sqlite3_bind_int64(ins_stmt, sqlite3_bind_parameter_index(ins_stmt, ":status_date"), row["status_date"].as<int64_t>());
             sqlite3_step(ins_stmt);
-            sqlite3_finalize(ins_stmt);
+            ins_stmt.reset();
             result.had_changes = true;
 
             if (remote_status == REVOKED) {
