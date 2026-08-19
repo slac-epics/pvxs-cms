@@ -23,6 +23,10 @@ spec:
           command: ["/bin/bash", "-lc"]
           args: ["sleep infinity"]
           env:
+            {{- /* Internet zone defaults to the Lab department's certificate service,
+                   reached through the lab gateway named in this zone's name servers.
+                   A user may point it at the ML department by hand. */}}
+            {{- include "pvxs-lab.issuerEnv" (dict "ctx" . "key" "LAB_ISSUER") | nindent 12 }}
             - name: EPICS_AUTH_KRB_REALM
               value: "EPICS.ORG"
             - name: KRB5_CONFIG
@@ -32,6 +36,7 @@ spec:
             - name: KADMIN_ADMIN_SERVER
               value: '{{ include "pvxs-lab.fullname" . }}-idm:{{ .Values.idm.service.tcpPort }}'
           volumeMounts:
+            {{- include "pvxs-lab.issuerMount" (dict "ctx" . "key" "LAB_ISSUER") | nindent 12 }}
             - name: pva-config
               mountPath: /home/guest/.config/pva/1.5
               subPath: guest
@@ -43,6 +48,7 @@ spec:
               subPath: krb5.conf
               readOnly: true
       volumes:
+        {{- include "pvxs-lab.issuerVolume" (dict "ctx" . "key" "LAB_ISSUER") | nindent 8 }}
         - name: pva-config
           {{- if .Values.internet.persistence.enabled }}
           persistentVolumeClaim:

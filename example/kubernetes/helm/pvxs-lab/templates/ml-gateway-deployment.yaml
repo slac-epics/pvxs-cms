@@ -12,6 +12,13 @@ spec:
       release: {{ .Release.Name }}
   template:
     metadata:
+      annotations:
+        # Roll the pods when the gateway configuration changes. The init container
+        # copies gateway.conf out of the ConfigMap once, at pod start, so without
+        # this a configuration-only change updates the ConfigMap and nothing else:
+        # the deployment spec is untouched, no pod restarts, and the running gateway
+        # keeps the old file while helm reports success.
+        checksum/config: {{ include (print $.Template.BasePath "/ml-gateway-configmap.yaml") . | sha256sum }}
       labels:
         app: ml-gateway
         release: {{ .Release.Name }}
@@ -24,16 +31,23 @@ spec:
           args:
             - |
               set -e
+              # Substitute the ML department issuer id (from the issuer-ids ConfigMap)
+              # into the pvlist's __ML_ISSUER__ placeholder.
+              ML_ISSUER="$(cat /issuer/ML_ISSUER)"
               install -d -m 0755 -o gateway -g gateway /work
               install -m 0644 -o gateway -g gateway /conf-src/gateway.conf /work/gateway.conf
-              install -m 0644 -o gateway -g gateway /conf-src/internet.pvlist /work/internet.pvlist
-              install -m 0644 -o gateway -g gateway /conf-src/cross-zone.pvlist /work/cross-zone.pvlist
+              sed "s/__ML_ISSUER__/${ML_ISSUER}/g" /conf-src/gateway.pvlist > /work/gateway.pvlist
+              chown gateway:gateway /work/gateway.pvlist
+              chmod 0644 /work/gateway.pvlist
           volumeMounts:
             - name: gw-conf-src
               mountPath: /conf-src
               readOnly: true
             - name: gw-conf
               mountPath: /work
+            - name: issuer-ids
+              mountPath: /issuer
+              readOnly: true
       containers:
         - name: ml-gateway
           image: {{ include "pvxs-lab.image" (dict "Values" .Values "name" .Values.images.gateway.name "tag" .Values.images.gateway.tag) | quote }}
@@ -48,33 +62,40 @@ spec:
             - name: pva-udp
               containerPort: {{ .Values.ports.pvaUdp }}
               protocol: UDP
-            - name: xgw-tcp
-              containerPort: 5175
-              protocol: TCP
-            - name: xgw-udp
-              containerPort: 5176
-              protocol: UDP
           env:
+          {{- include "pvxs-lab.issuerEnv" (dict "ctx" . "key" "ML_ISSUER") | nindent 12 }}
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: "/home/gateway/.config/pva/1.5/gateway.p12"
             - name: EPICS_PVAS_TLS_KEYCHAIN
               value: "/home/gateway/.config/pva/1.5/gateway.p12"
+            # Where this gateway looks up the status of a certificate presented to it by a
+            # client of the other department. A Lab-issued certificate can only be answered
+            # for by the Lab PVACMS, which this gateway may not reach directly, so it asks
+            # through the Lab gateway. This must be an environment variable: the inner client
+            # a server uses for peer status takes its name servers from the environment
+            # (pvxs Server::clientConfig), so the same setting in gateway.conf is discarded.
+            # The clustered configuration solved the same problem the same way, with
+            # EPICS_PVACMS_CLUSTER_NAME_SERVERS.
+            - name: EPICS_PVA_NAME_SERVERS
+              value: "{{ include "pvxs-lab.gatewayService" . }}:5075"
           volumeMounts:
+            {{- include "pvxs-lab.issuerMount" (dict "ctx" . "key" "ML_ISSUER") | nindent 12 }}
             - name: gw-conf
               mountPath: /home/gateway/gateway.conf
               subPath: gateway.conf
             - name: gw-conf
-              mountPath: /home/gateway/internet.pvlist
-              subPath: internet.pvlist
-            - name: gw-conf
-              mountPath: /home/gateway/cross-zone.pvlist
-              subPath: cross-zone.pvlist
+              mountPath: /home/gateway/gateway.pvlist
+              subPath: gateway.pvlist
             - name: pva-config
               mountPath: /home/gateway/.config/pva/1.5
       volumes:
+        {{- include "pvxs-lab.issuerVolume" (dict "ctx" . "key" "ML_ISSUER") | nindent 8 }}
         - name: gw-conf-src
           configMap:
             name: {{ include "pvxs-lab.mlGatewayService" . }}-conf
+        - name: issuer-ids
+          configMap:
+            name: {{ include "pvxs-lab.fullname" . }}-issuer-ids
         - name: gw-conf
           emptyDir: {}
         - name: pva-config

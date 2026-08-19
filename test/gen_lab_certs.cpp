@@ -493,7 +493,7 @@ struct CertCreator {
 };
 
 void usage(const char* argv0) {
-    std::cerr<<"Usage: "<<argv0<<" [-O <outdir>]\n"
+    std::cerr<<"Usage: "<<argv0<<" [-O <outdir>] [-R <cn>] [-L <cn>] [-M <cn>]\n"
                "\n"
                "    Mint the federated-lab certificate hierarchy:\n"
                "      * one facility Root CA           (no status extension)\n"
@@ -509,6 +509,17 @@ void usage(const char* argv0) {
                "    Also prints LAB_ISSUER=/ML_ISSUER= to stdout.\n"
                "\n"
                "    -O <outdir>  - Write files to this directory.  (default: .)\n"
+               "    -R <cn>      - Common name of the facility root.\n"
+               "                   (default: EPICS Root Certificate Authority)\n"
+               "    -L <cn>      - Common name of the Controls (Lab) intermediate.\n"
+               "                   (default: EPICS Controls Intermediate CA)\n"
+               "    -M <cn>      - Common name of the ML intermediate.\n"
+               "                   (default: EPICS ML Intermediate CA)\n"
+               "\n"
+               "    The three names must match the ones each department's access security\n"
+               "    file names, or its certificate manager will refuse every administrator.\n"
+               "    The laboratory chart passes both from one place; see certAuthorities in\n"
+               "    the chart values.\n"
                ;
 }
 } // namespace
@@ -517,14 +528,29 @@ int main(int argc, char *argv[])
 {
     try {
         std::string outdir(".");
+        std::string root_cn("EPICS Root Certificate Authority");
+        std::string lab_cn("EPICS Controls Intermediate CA");
+        std::string ml_cn("EPICS ML Intermediate CA");
         {
             int opt;
-            while ((opt = getopt(argc, argv, "hO:")) != -1) {
+            while ((opt = getopt(argc, argv, "hO:R:L:M:")) != -1) {
                 switch(opt) {
                 case 'h': usage(argv[0]); return 0;
                 case 'O':
                     outdir = optarg;
                     if(outdir.empty()) throw std::runtime_error("-O argument must not be empty");
+                    break;
+                case 'R':
+                    root_cn = optarg;
+                    if(root_cn.empty()) throw std::runtime_error("-R argument must not be empty");
+                    break;
+                case 'L':
+                    lab_cn = optarg;
+                    if(lab_cn.empty()) throw std::runtime_error("-L argument must not be empty");
+                    break;
+                case 'M':
+                    ml_cn = optarg;
+                    if(ml_cn.empty()) throw std::runtime_error("-M argument must not be empty");
                     break;
                 default:
                     usage(argv[0]);
@@ -545,7 +571,7 @@ int main(int argc, char *argv[])
         pvxs::ossl_ptr<EVP_PKEY> root_key;
         {
             CertCreator cc;
-            cc.CN = "EPICS Root Certificate Authority";
+            cc.CN = root_cn.c_str();
             cc.serial = serial++;
             cc.isCA = true;
             cc.key_usage = "cRLSign,keyCertSign";
@@ -561,10 +587,10 @@ int main(int argc, char *argv[])
         // Helper to mint one departmental intermediate CA signed by the facility Root.
         // Returns the intermediate's own issuer id (first 8 hex of its Subject Key Identifier),
         // which is what leaf certs issued by that CMS will carry as CERT:STATUS:<issuer>:<serial>.
-        auto mintIntermediate = [&](const char* cn, const char* p12name) -> std::string {
+        auto mintIntermediate = [&](const std::string& cn, const char* p12name) -> std::string {
             CertCreator cc;
             cc.root = root_cert.get();          // status URI on the intermediate keyed by root SKID
-            cc.CN = cn;
+            cc.CN = cn.c_str();
             cc.serial = serial++;
             cc.issuer = root_cert.get();
             cc.ikey = root_key.get();
@@ -577,7 +603,7 @@ int main(int argc, char *argv[])
             std::tie(key, cert) = cc.create(true); // true => WITH status extension (CERT prefix)
 
             PKCS12Writer p12(outdir);
-            p12.friendlyName = cn;
+            p12.friendlyName = cn.c_str();
             p12.key = key.get();
             p12.cert = cert.get();
             // Chain must END in the facility Root: PVACMS derives the root via getRootCa =
@@ -589,8 +615,12 @@ int main(int argc, char *argv[])
             return pvxs::certs::CertStatus::getSkId(cert.get());
         };
 
-        const std::string lab_issuer = mintIntermediate("EPICS Controls Intermediate CA", "lab_intermediate.p12");
-        const std::string ml_issuer  = mintIntermediate("EPICS ML Intermediate CA",       "ml_intermediate.p12");
+        if (lab_cn == ml_cn)
+            throw std::runtime_error("The two departmental intermediates must have different common "
+                                     "names, or no access security file can tell them apart");
+
+        const std::string lab_issuer = mintIntermediate(lab_cn, "lab_intermediate.p12");
+        const std::string ml_issuer  = mintIntermediate(ml_cn,  "ml_intermediate.p12");
 
         if (lab_issuer == ml_issuer) {
             throw std::runtime_error("Lab and ML intermediates produced the same issuer id - "

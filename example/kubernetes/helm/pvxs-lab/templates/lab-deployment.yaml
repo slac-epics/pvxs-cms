@@ -25,6 +25,7 @@ spec:
           args: {{ toJson .Values.lab.keepalive.args }}
           {{- end }}
           volumeMounts:
+            {{- include "pvxs-lab.issuerMount" (dict "ctx" . "key" "LAB_ISSUER") | nindent 12 }}
             - name: pva-config
               mountPath: /home/guest/.config/pva/1.5
               subPath: guest
@@ -36,9 +37,11 @@ spec:
               subPath: krb5.conf
               readOnly: true
           env:
+          {{- include "pvxs-lab.issuerEnv" (dict "ctx" . "key" "LAB_ISSUER") | nindent 12 }}
             - name: EPICS_AUTH_KRB_REALM
               value: "EPICS.ORG"
       volumes:
+        {{- include "pvxs-lab.issuerVolume" (dict "ctx" . "key" "LAB_ISSUER") | nindent 8 }}
         - name: pva-config
           {{- if .Values.lab.persistence.enabled }}
           persistentVolumeClaim:

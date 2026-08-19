@@ -8,9 +8,6 @@ images:
   internet:
     name: "internet"
     tag: "latest"
-  it:
-    name: "idm"
-    tag: "latest"
   testioc:
     name: "testioc"
     tag: "latest"
@@ -63,20 +60,10 @@ internet:
     size: 64Mi
     storageClassName: ""
 
-it:
-  replicas: 1
-  debug:
-    enabled: false
-    logLevel: "pvxs.*=INFO"
-  persistence:
-    enabled: true
-    size: 64Mi
-    storageClassName: ""
-
 ml:
   replicas: 1
   debug:
-    enabled: false
+    enabled: true
     logLevel: "pvxs.*=INFO"
   persistence:
     enabled: true
@@ -115,48 +102,38 @@ mlGateway:
       ],
       "servers": [
         {
-          "name": "internet",
+          "name": "gateway",
           "clients": ["ml-local"],
           "acf_client": "ml-local",
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.mlGatewayService" . }} {{ include "pvxs-lab.mlService" . }}",
+          "addrlist": "{{ include "pvxs-lab.mlService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12",
           "serverport": "5075",
           "EPICS_PVAS_TLS_PORT": "5076",
           "bcastport": "5076",
           "access": "gateway.acf",
-          "pvlist": "internet.pvlist"
-        },
-        {
-          "name": "cross-zone",
-          "clients": ["ml-local"],
-          "statusprefix": "GW:STS:",
-          "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.mlGatewayService" . }}-xgw",
-          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12",
-          "serverport": "5175",
-          "EPICS_PVAS_TLS_PORT": "5176",
-          "bcastport": "5176",
-          "access": "gateway.acf",
-          "pvlist": "cross-zone.pvlist"
+          "pvlist": "gateway.pvlist"
         },
         {
           "name": "downstream_status",
           "clients": [],
           "interface": ["127.0.0.1"],
+          "serverport": "0",
           "statusprefix": "GW:STS:"
         }
       ]
     }
 
-  internetPvlist: |
+  # ML gateway forwards ML PVs, and - keyed by the ML department issuer id - the ML
+  # cert CREATE/STATUS PVs to the ML PVACMS. Naming the issuer (rather than a wildcard)
+  # means only the requests this gateway can actually serve are claimed, so a client
+  # reaching both gateways from the Internet routes straight to the right one.
+  # __ML_ISSUER__ is substituted at pod start from the issuer-ids ConfigMap.
+  gatewayPvlist: |
     ml:.* ALLOW
-
-  crossZonePvlist: |
-    ml:.* ALLOW
-    CERT:CLUSTER(?::.*)? ALLOW CERT_CREATE
-
+    CERT:CREATE:__ML_ISSUER__(?::.*)? ALLOW CERT_CREATE
+    CERT:STATUS:__ML_ISSUER__(?::.*)? ALLOW CERT_STATUS
 
 testioc:
   replicas: 1
@@ -200,53 +177,39 @@ gateway:
       ],
       "servers": [
         {
-          "name": "internet",
+          "name": "gateway",
           "clients": ["local"],
           "acf_client": "local",
           "statusprefix": "GW:STS:",
           "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.gatewayService" . }} {{ include "pvxs-lab.pvacmsService" . }}",
+          "addrlist": "{{ include "pvxs-lab.pvacmsService" . }}",
           "tls_keychain": "/home/gateway/.config/pva/1.5/gateway{{ if .Values.gateway.separate_server_keychain }}{{ "S" }}{{ end }}.p12",
           "serverport": "5075",
           "EPICS_PVAS_TLS_PORT": "5076",
           "bcastport": "5076",
           "access": "gateway.acf",
-          "pvlist": "internet.pvlist"
-        },
-        {
-          "name": "cross-zone",
-          "clients": ["local"],
-          "statusprefix": "GW:STS:",
-          "autoaddrlist": false,
-          "addrlist": "{{ include "pvxs-lab.gatewayService" . }}-xgw {{ include "pvxs-lab.pvacmsService" . }}",
-          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway{{ if .Values.gateway.separate_server_keychain }}{{ "S" }}{{ end }}.p12",
-          "serverport": "5175",
-          "EPICS_PVAS_TLS_PORT": "5176",
-          "bcastport": "5176",
-          "access": "gateway.acf",
-          "pvlist": "cross-zone.pvlist"
+          "pvlist": "gateway.pvlist"
         },
         {
           "name": "downstream_status",
           "clients": [],
           "interface": ["127.0.0.1"],
+          "serverport": "0",
           "statusprefix": "GW:STS:"
         }
       ]
     }
 
-  internetPvlist: |
+  # The lab gateway serves NON-lab clients (ML + Internet) that want lab PVs. One
+  # server, one gateway.pvlist: the lab IOC PVs plus - keyed by the Controls (Lab)
+  # department issuer id - the Lab cert CREATE/STATUS PVs to the Lab (idm) PVACMS.
+  # __LAB_ISSUER__ is substituted at pod start from the issuer-ids ConfigMap.
+  gatewayPvlist: |
     test:.* ALLOW
     tst:.* ALLOW
     test:spec ALLOW SPECIAL
-    CERT:CREATE(?::.*)? ALLOW CERT_CREATE
-    CERT:STATUS(?::.*)? ALLOW CERT_STATUS
-
-  crossZonePvlist: |
-    test:.* ALLOW
-    tst:.* ALLOW
-    test:spec ALLOW SPECIAL
-    CERT:CLUSTER(?::.*)? ALLOW CERT_CREATE
+    CERT:CREATE:__LAB_ISSUER__(?::.*)? ALLOW CERT_CREATE
+    CERT:STATUS:__LAB_ISSUER__(?::.*)? ALLOW CERT_STATUS
 
   debug:
     enabled: false
@@ -292,6 +255,18 @@ lab:
     command: ["/bin/sh", "-lc"]
     args: ["sleep infinity"]
 
+# Common names of the certificate authorities the laboratory mints.
+#
+# These are the single source: the certificate generation job mints with them and
+# each department's access security file names its own intermediate with them, so
+# changing one here changes both. Change one without the other and the certificate
+# manager will refuse every administrator, because the authority the rule names
+# will no longer be the authority that issued the administrator's certificate.
+certAuthorities:
+  root: "EPICS Root Certificate Authority"
+  labIntermediate: "EPICS Controls Intermediate CA"
+  mlIntermediate: "EPICS ML Intermediate CA"
+
 # Internal PVAccess ports (PVXS/P4P defaults)
 ports:
   pvaTcp: 5075
@@ -299,4 +274,24 @@ ports:
   pvaTls: 5076
   exposePvaTls: true
 
+# Health probes for the two certificate managers. supervisord keeps the container
+# up whatever happens to the programs under it, so without these a dead
+# certificate manager still reports the pod Running and Ready. The check is a TCP
+# connect to pvaTcp above. Set enabled to false while debugging a wedged
+# certificate manager you want left exactly as it is.
+pvacmsProbes:
+  enabled: true
+  # Up to two minutes to start: a first start mints an administrator keychain.
+  startup:
+    periodSeconds: 5
+    failureThreshold: 24
+  # Out of the Service within about twenty seconds of it going quiet.
+  readiness:
+    periodSeconds: 10
+    failureThreshold: 2
+  # Slow on purpose: supervisord restarts the program itself, and a container
+  # restart takes the rest of the pod down with it. About ninety seconds.
+  liveness:
+    periodSeconds: 15
+    failureThreshold: 6
 
