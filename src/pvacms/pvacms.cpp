@@ -67,6 +67,7 @@
 #include "authoritymonitor.h"
 #include "certstatusfactory.h"
 #include "cmsversion.h"
+#include "trustanchors.h"
 #include "clusterctrl.h"
 #include "clusterdiscovery.h"
 #include "clustersync.h"
@@ -1889,6 +1890,8 @@ uint64_t getParameters(const std::list<std::string> &parameters) {
  * @param cert_auth_root_cert reference to the returned root of the certificate authority chain
  * @param is_initialising true if we are in the initializing state when called
  */
+void writeTrustAnchorFile(const ConfigCms &config, const CertData &cert_data);
+
 void getOrCreateCertAuthCertificate(const ConfigCms &config,
                                     sql_ptr &certs_db,
                                     ossl_ptr<X509> &cert_auth_cert,
@@ -1920,6 +1923,7 @@ void getOrCreateCertAuthCertificate(const ConfigCms &config,
     }
 
     createDefaultAdminACF(config, cert_data);
+    writeTrustAnchorFile(config, cert_data);
 
     if (is_initialising) {
         createAdminClientCert(config, certs_db, key_pair->pkey, cert_data.cert, cert_data.cert_auth_chain);
@@ -2047,6 +2051,74 @@ std::string toACFYamlAuth(const std::string &id, const CertData &cert_data) {
     }
 
     return result;
+}
+
+/**
+ * @brief The file a trust anchor is written to, beside the certificate authority's own keychain
+ *
+ * @param cert_auth_keychain_file the certificate authority's keychain file
+ * @return the path of the trust anchor file
+ */
+std::string trustAnchorFileBeside(const std::string &cert_auth_keychain_file) {
+    const auto separator = cert_auth_keychain_file.find_last_of("/\\");
+    const auto directory = separator == std::string::npos ? std::string() : cert_auth_keychain_file.substr(0, separator + 1);
+    return directory + "trust_anchor.p12";
+}
+
+/**
+ * @brief Write the root this certificate manager issues under, on its own, as a file to hand out
+ *
+ * A holder that already has the authority needs no identifier to establish trust and no route to
+ * fetch one, which is what lets a workstation outside a boundary be set up by copying a single
+ * file to it. Handing over the certificate authority's own keychain would hand over the key that
+ * signs certificates with it, so what is written here is the root certificate and nothing else:
+ * enough to verify what the authority signs, and not enough to sign anything.
+ *
+ * Written on every start rather than only when the authority is minted, so that a manager that
+ * already had one ends up with the file too, and so that minting a new authority replaces it.
+ *
+ * Where several authorities sit under one facility root this writes that root, which is the one
+ * worth handing out. A laboratory whose departments share no root has more than one, and no
+ * single file stands for all of them, so the file is only part of the story there.
+ *
+ * @param config the configuration naming the certificate authority's keychain
+ * @param cert_data the certificate authority's certificate and chain
+ */
+void writeTrustAnchorFile(const ConfigCms &config, const CertData &cert_data) {
+    const auto trust_anchor_file = trustAnchorFileBeside(config.cert_auth_keychain_file);
+    try {
+        X509 *const root = cms::cert::primaryAnchor(cert_data);
+        if (!root) {
+            log_debug_printf(pvacms, "No trust anchor to write to %s\n", trust_anchor_file.c_str());
+            return;
+        }
+
+        // Written only when it would say something different, because writing a keychain file
+        // renames the previous one aside, and a manager that is restarted often would otherwise
+        // leave a trail of copies of a file that had not changed.
+        try {
+            const auto existing = IdFileFactory::create(trust_anchor_file, "")->getCertDataFromFile();
+            X509 *const existing_root = cms::cert::primaryAnchor(existing);
+            if (existing_root && X509_cmp(existing_root, root) == 0) {
+                log_debug_printf(pvacms, "Trust anchor file already holds this root: %s\n", trust_anchor_file.c_str());
+                return;
+            }
+        } catch (const std::exception &) {
+            // No readable file yet, so write one.
+        }
+
+        // No identity, so the chain laid out is the anchor by itself.
+        const CertData anchor_only{};
+        const auto chain = cms::cert::chainForAnchorReset(anchor_only, {root});
+
+        // No password: the file holds one certificate, which is public, and asking for a password
+        // to read what is meant to be handed out freely only gets in the way.
+        IdFileFactory::create(trust_anchor_file, "", nullptr, nullptr, chain.get(), "")->writeIdentityFile();
+        std::cout << "Trust anchor file       : " << trust_anchor_file << std::endl;
+    } catch (const std::exception &e) {
+        // A manager that cannot write this still serves certificates, so say so and carry on.
+        log_warn_printf(pvacms, "Could not write the trust anchor file %s: %s\n", trust_anchor_file.c_str(), e.what());
+    }
 }
 
 /*
