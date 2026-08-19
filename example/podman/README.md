@@ -16,6 +16,7 @@ demonstrating can be shown and checked directly.
 - [1. Two certificate managers, one per department](#1-two-certificate-managers-one-per-department)
 - [2. Crossing a boundary is only possible through a gateway](#2-crossing-a-boundary-is-only-possible-through-a-gateway)
 - [3. One facility root, so each department trusts the other's certificates](#3-one-facility-root-so-each-department-trusts-the-others-certificates)
+  - [Narrowing a write to a unit, not a department](#narrowing-a-write-to-a-unit-not-a-department)
 - [4. The request identifier an administrator checks](#4-the-request-identifier-an-administrator-checks)
 - [5. Listing certificates](#5-listing-certificates)
 - [6. Filtering the listing](#6-filtering-the-listing)
@@ -117,6 +118,20 @@ run_in lab as guest --show pvxget test:aiExample
 #   podman exec --user guest podman_lab-client_1 bash -lc '...'
 ```
 
+**With no command, it opens a shell there.** You land as that person, with everything set up
+that a command would have had, and a prompt saying who and where you are:
+
+```sh
+run_in lab-manager as admin
+#   [admin@lab-manager] > pvxcert -l
+#   [admin@lab-manager] > exit
+```
+
+That is how to answer anything that asks a question, since those read their answers from a
+terminal, and how to try a few things without writing `run_in` in front of each. Pass the
+command as arguments instead when scripting: piping into a shell will not do, because a
+terminal never reaches the end of its input.
+
 `run_in` on its own lists the places and people; `lab_status` shows what is running.
 
 ### First, what works with no certificates at all
@@ -147,20 +162,20 @@ run_in perimeter as guest without a certificate pvxget ml:aiExample
 Read is deliberately open, to anyone, in any zone. Certificates are not about hiding
 readings.
 
-**Writing is refused.** `test:spec` is the one process variable a gateway will carry a
-write for, and it still requires a certificate presented over TLS by an operator:
+**Writing is refused, whatever you write to.** Every write rule in the laboratory names
+`PROTOCOL(TLS)` and `METHOD(X509)`, so with no certificate nothing is writable anywhere:
 
 ```sh
-# inside the department, refused by the controller itself
-run_in lab as guest without a certificate pvxput test:spec 3
+# from inside the department: the request reaches the controller, which refuses it
+run_in lab as guest without a certificate pvxput test:stringExample "hello"
 #   ERROR ... Put not permitted
 
-# from the peer department, refused earlier, by the lab gateway
-run_in ml as guest without a certificate pvxput test:spec 3
+# from the peer department: stopped at the lab's boundary, before reaching the controller
+run_in ml as guest without a certificate pvxput test:stringExample "hello"
 #   ERROR ... Put permission denied by gateway
 
-# from outside both departments, refused the same way
-run_in perimeter as guest without a certificate pvxput test:spec 3
+# from outside both departments: stopped at that same boundary
+run_in perimeter as guest without a certificate pvxput test:stringExample "hello"
 #   ERROR ... Put permission denied by gateway
 ```
 
@@ -168,14 +183,6 @@ The messages come from two different places, and the difference is worth noticin
 first the request reached the controller, which applied its own access file. In the other
 two it never got that far: the gateway refused it on the boundary, whether the request came
 from the peer department or from outside both.
-
-Any other process variable is refused the same way, because every write rule in the
-laboratory names `PROTOCOL(TLS)` and `METHOD(X509)`:
-
-```sh
-run_in lab as guest without a certificate pvxput test:aiExample 3
-#   ERROR ... Put not permitted
-```
 
 So: reading needs nothing, writing needs an identity. Section 3 returns to `test:spec` and
 writes it successfully with a certificate issued by the *other* department.
@@ -367,7 +374,75 @@ Each names its **own** issuer only, so a request for the other department's cert
 not claimed by the wrong gateway. The view of certificates awaiting a decision appears in
 neither list, for the reason in section 9.
 
-## 3. One facility root, so each department trusts the other's certificates
+## 3. What a certificate is worth, one step at a time
+
+Access widens in steps, and each step is a separate condition in the access file. Walking
+them in order shows what each one buys. All of these run from a lab workstation except where
+they say otherwise.
+
+**No certificate: nothing is writable.** That is the baseline above, and it holds for every
+process variable, ordinary or special.
+
+**A certificate, in its own department: ordinary variables open up.** The rule for them
+names lab guests and operators, so either may write:
+
+```sh
+run_in lab as guest    pvxput test:stringExample "from the guest"
+run_in lab as operator pvxput test:stringExample "from the operator"
+```
+
+**A special variable narrows that to operators.** `test:spec` carries its own access group,
+which names operators and not guests, so a guest holding a perfectly good certificate is
+still refused:
+
+```sh
+run_in lab as guest    pvxput test:spec 11
+#   ERROR ... Put not permitted
+run_in lab as operator pvxput test:spec 22
+```
+
+**From another zone, only what a gateway carries a write for crosses at all.** A gateway's
+list marks those individually; everything else it forwards is readable and not writable,
+however good the certificate is:
+
+```sh
+run_in perimeter as operator pvxput test:stringExample "from outside"
+#   ERROR ... Put permission denied by gateway
+```
+
+Each department marks one variable that any certificate holder may write, and the two make
+the point in both directions. Neither of these people is an operator:
+
+```sh
+run_in lab as guest pvxput ml:open   11      # a lab guest, into the machine learning department
+run_in ml  as guest pvxput test:open 22      # a machine learning guest, into the lab
+```
+
+Who may write them is decided at the **gateway**, not at the controller. A gateway makes its
+upstream connection as itself, so what the controller sees is the gateway rather than the
+person behind it; the controller's rule therefore names the gateways, and the gateway's rule
+is the one that names nobody and asks only for a certificate. Opening the variable up at the
+controller does not open it to anyone the gateway would have turned away.
+
+**A variable that crosses may still name who may write it.** `test:spec` is carried across
+too, and names operators, so the same guest is refused where an operator is not:
+
+```sh
+run_in ml as guest    pvxput test:spec 33
+#   ERROR ... Put permission denied by gateway
+run_in perimeter as operator pvxput test:spec 33
+```
+
+That last write is the one section 4 is about: it came from outside both departments,
+holding a certificate the *other* department issued, and it succeeded.
+
+**And a variable may narrow further still, to what the certificate says about its holder.**
+That is section 5.
+
+Read is untouched throughout. Every one of these variables can be read by anyone, from
+anywhere, with nothing at all.
+
+## 4. One facility root, so each department trusts the other's certificates
 
 This is the point of the whole arrangement, and it is worth walking through.
 
@@ -414,6 +489,62 @@ A certificate from the wrong department, or none at all, is refused:
 run_in perimeter as guest pvxput test:spec 9
 #   Put permission denied by gateway
 ```
+
+### Narrowing a write to a unit, not a department
+
+`test:spec` above shows what the shared root buys: either department's operator may write it.
+`test:labspec` shows the other half. Its rule authorises on the same shared root, so a
+certificate from either department is equally trusted, and then asks what the certificate
+says about its holder - only one carrying the lab's own unit may write:
+
+```
+UAG(LAB_UNIT) { "OU=lab" }
+
+ASG(LABSPEC) {
+    RULE(1,READ)
+    RULE(1,WRITE,TRAPWRITE) { UAG(LAB_UNIT) AUTHORITY(EPICS_CA) PROTOCOL(TLS) METHOD(X509) }
+}
+```
+
+Give the lab's operator a certificate that says so, and give the same workstation a
+machine-learning operator's certificate to compare against. A person written
+`<department>/<user>` is that user holding a certificate from that department rather than from
+the one they are sitting in, kept in a keychain of its own:
+
+```sh
+run_in lab as operator    authnstd -u client --ou lab --issuer ${LAB_SKID}
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+
+run_in lab as ml/operator authnstd -u client --ou ml  --issuer ${ML_SKID}
+run_in ml-manager as admin  pvxcert --review-pending --all approve --yes
+```
+
+Each carries its own department's unit, which also keeps the two subjects distinct: a
+certificate manager refuses a second certificate for a subject it has already issued, and the
+machine learning department issued one to `CN=operator,O=epics.org` in section 3.
+
+Both are trusted by the lab controller, and only one may write:
+
+```sh
+run_in lab as operator    pvxput test:labspec 101      # allowed: carries OU=lab
+run_in lab as ml/operator pvxput test:labspec 202      # refused: no such unit
+#   ERROR ... Put not permitted
+run_in lab as ml/operator pvxget test:labspec          # reading is open to both
+```
+
+The refusal is on the unit and not on the authority. The machine learning certificate was
+verified, its status checked, and its holder found to be someone the rule does not name -
+which is what the same operator writing `test:spec` demonstrates by succeeding:
+
+```sh
+run_in lab as ml/operator pvxput test:spec 202         # allowed: authorised on the shared root
+```
+
+Note what naming a unit does and does not guarantee. The unit is a claim the issuing
+department vouched for, so a machine learning certificate asking for `--ou lab` would be
+admitted here. A rule that must not be crossed under any circumstances should name the
+authority as well; naming only the unit trusts every department sharing the root to issue
+that unit honestly.
 
 ## 4. The request identifier an administrator checks
 
@@ -553,11 +684,17 @@ needs parsing.
 
 ## 7. Approving, in batches or one at a time
 
-**One at a time**, with the full subject and the request identifier in front of you.
-Answer `approve`, `deny`, `skip`, `stop` or `cancel`:
+There are two separate questions - *what is the decision* and *are you sure* - and `--all`
+and `--yes` answer one each. That gives four ways of working, from reading every request to
+approving a hundred without being asked anything, and you choose how far to go.
+
+**Neither.** Each certificate in turn, with its subject and its request identifier in front
+of you, and a decision for each. The prompts are read from a terminal, so open a shell and
+answer them yourself:
 
 ```sh
-run_in lab-manager as admin pvxcert --review-pending
+run_in lab-manager as admin
+#   [admin@lab-manager] > pvxcert --review-pending
 ```
 
 `s` is refused, because it could mean `skip` or `stop`. `a`, `d`, `r` and `c` are accepted.

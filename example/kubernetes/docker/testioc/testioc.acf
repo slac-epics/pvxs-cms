@@ -29,12 +29,91 @@ UAG(GUESTS) {
     "guest"
 }
 
+# The two gateways, by the common name each presents when it forwards a request upstream.
+UAG(GATEWAYS) {
+    "gateway",
+    "ml-gateway"
+}
+
+# Anyone at or below the beamline, named by what their certificate says rather than by who
+# they are. An entry that names subject fields places a condition only on the fields it names,
+# so this one says nothing about the common name or the organization.
+#
+# The organizational units a subject carries are read innermost first, so they are a
+# containment path: a certificate for OU=staff,OU=beamline says staff sits inside beamline.
+# This entry names one unit, so it admits any certificate carrying beamline among its units,
+# wherever in the path it sits - OU=beamline and OU=staff,OU=beamline alike. Position only
+# starts to matter once the entry itself names more than one unit, because then the entry's
+# units must appear among the peer's in the same relative order. An entry reading
+# "OU=staff,OU=beamline" would admit OU=staff,OU=beamline and refuse OU=beamline,OU=staff.
+#
+# Try it: authnstd -u client -n visitor --ou staff --ou beamline
+UAG(BEAMLINE) {
+    "OU=beamline"
+}
+
+# Anyone whose certificate places them in the lab's own unit. Named the same way as
+# BEAMLINE above, and used below to narrow a write to a unit rather than to a department.
+UAG(LAB_UNIT) {
+    "OU=lab"
+}
+
 # The test:spec special PV: operators (either department) may write; guests cannot.
 ASG(SPECIAL) {
     RULE(1,READ)
     RULE(1,WRITE,TRAPWRITE) {
         UAG(OPERATORS)
         AUTHORITY(AUTH_LAB, AUTH_ML)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
+
+# The test:labspec special PV: trust and authorisation asked separately.
+#
+# The rule authorises on EPICS_CA, the root both departments chain to, so a certificate from
+# either is equally trusted here - exactly as for test:spec. What it then asks is what the
+# certificate says about its holder: only one carrying the lab's own unit may write. An
+# operator from the machine learning department is refused on the unit, not on the authority,
+# which is the difference this PV exists to show.
+#
+# Note what that does and does not guarantee. The unit is a claim the issuing department
+# vouched for, so a rule which must not be crossed under any circumstances should name the
+# authority as well; naming only the unit trusts every department that shares the root to
+# issue that unit honestly.
+ASG(LABSPEC) {
+    RULE(1,READ)
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(LAB_UNIT)
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
+
+# A variable any certificate holder may write, from either zone.
+#
+# Two ways in, and they are checked differently. A client in this department connects to the
+# controller itself, so the rule sees that client: it names no user, only that a certificate
+# was presented over TLS and chains to the facility root, so anyone holding one qualifies.
+#
+# A client in another zone reaches this variable through a gateway, and a gateway makes its
+# upstream connection as itself. What this rule then sees is the gateway, not the client
+# behind it, which is why the gateway is named. Who the client was is decided at the gateway,
+# by the matching rule in its own access file - so opening this variable up here does not open
+# it to anyone the gateway would have refused.
+ASG(OPEN) {
+    RULE(1,READ)
+    # Anyone in this department holding a certificate.
+    RULE(1,WRITE,TRAPWRITE) {
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    # Forwarded from another zone, arriving as the gateway.
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(GATEWAYS)
+        AUTHORITY(EPICS_CA)
         PROTOCOL(TLS)
         METHOD(X509)
     }
@@ -55,6 +134,14 @@ ASG(DEFAULT) {
     RULE(1,WRITE,TRAPWRITE) {
         UAG(OPERATORS)
         AUTHORITY(AUTH_ML)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    # WRITE for anyone the beamline encloses, whoever they are. Nobody has to be named
+    # individually: a person joining the beamline gets a certificate saying so and can write.
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(BEAMLINE)
+        AUTHORITY(AUTH_LAB)
         PROTOCOL(TLS)
         METHOD(X509)
     }
