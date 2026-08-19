@@ -62,6 +62,10 @@ TESTS += testtlswithcms
 TESTPROD_HOST += testtlswithcms
 testtlswithcms_SRCS += testtlswithcms.cpp
 
+TESTS += testpvacmsoptions
+TESTPROD_HOST += testpvacmsoptions
+testpvacmsoptions_SRCS += testpvacmsoptions.cpp
+
 
 # Test TLS with Mock CMS and stapling
 TESTS += testtlswithcmsandstapling
@@ -119,6 +123,7 @@ include $(TOP)/configure/RULES
 ifdef BASE_3_15
 ifeq ($(EVENT2_HAS_OPENSSL),YES)
 testtlswithcms$(EXE): | cert_auth.p12
+testpvacmsoptions$(EXE): | cert_auth.p12
 
 # generate test certs only with EPICS_HOST_ARCH
 ifdef T_A

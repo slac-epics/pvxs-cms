@@ -85,14 +85,24 @@ void ConfigAuthN::fromAuthEnv(const std::map<std::string, std::string> &defs) {
         tls_keychain_file = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "client.p12";
     }
 
-    // EPICS_PVAS_TLS_KEYCHAIN
+    // EPICS_PVAS_TLS_KEYCHAIN (with optional ";<password>" postfix)
     if (pickone({"EPICS_PVAS_TLS_KEYCHAIN", "EPICS_PVA_TLS_KEYCHAIN"})) {
-        ensureDirectoryExists(tls_srv_keychain_file = pickone.val);
         if (pickone.name == "EPICS_PVAS_TLS_KEYCHAIN") {
-            // EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE
-            if (pickone({"EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE"})) tls_srv_keychain_pwd = getFileContents(pickone.val);
-        } else
+            auto sep = pickone.val.find(';');
+            if (sep != std::string::npos) {
+                tls_srv_keychain_file = pickone.val.substr(0, sep);
+                tls_srv_keychain_pwd = pickone.val.substr(sep + 1);
+            } else {
+                tls_srv_keychain_file = pickone.val;
+            }
+        } else {
+            // EPICS_PVA_TLS_KEYCHAIN alias: reuse the client keychain password
+            tls_srv_keychain_file = pickone.val;
             tls_srv_keychain_pwd = getKeychainPassword();
+        }
+        if (pickone.val.find(';') == std::string::npos)
+            tls_srv_keychain_pwd.clear();
+        ensureDirectoryExists(tls_srv_keychain_file);
     } else {
         const std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "server.p12";
         ensureDirectoryExists(tls_srv_keychain_file = filename);
@@ -117,14 +127,18 @@ void ConfigAuthN::updateDefs(defs_t &defs) const {
     defs["EPICS_PVAS_AUTH_NO_STATUS"] = no_status ? "YES" : "NO";
     defs["EPICS_PVAS_AUTH_ORGANIZATION"] = server_organization;
     defs["EPICS_PVAS_AUTH_ORGANIZATIONAL_UNIT"] = server_organizational_unit;
-    defs["EPICS_PVAS_TLS_KEYCHAIN"] = tls_srv_keychain_file;
+    {
+        // EPICS_PVAS_TLS_KEYCHAIN (with optional ";<password>" postfix)
+        std::string keychain = tls_srv_keychain_file;
+        if (!tls_srv_keychain_pwd.empty()) keychain += ";<password read>";
+        defs["EPICS_PVAS_TLS_KEYCHAIN"] = keychain;
+    }
     defs["EPICS_PVA_AUTH_CERT_VALIDITY_MINS"] = CertDate::formatDurationMins(cert_validity_mins);
     defs["EPICS_PVA_AUTH_COUNTRY"] = country;
     defs["EPICS_PVA_AUTH_ISSUER"] = defs["EPICS_PVAS_AUTH_ISSUER"] = issuer_id;
     defs["EPICS_PVA_AUTH_NAME"] = name;
     defs["EPICS_PVA_AUTH_ORGANIZATION"] = organization;
     defs["EPICS_PVA_AUTH_ORGANIZATIONAL_UNIT"] = organizational_unit;
-    if (!tls_srv_keychain_pwd.empty()) defs["EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE"] = "<password read>";
 }
 
 /**
