@@ -324,7 +324,7 @@ struct Tester {
 }  // namespace
 
 MAIN(testtlsstatus) {
-    testPlan(102);
+    testPlan(111);
 
     // A certificate says who it is twice: in the subject key identifier extension, which whoever
     // made it simply wrote down, and in its public key, from which the same identifier can be
@@ -425,7 +425,6 @@ MAIN(testtlsstatus) {
         testOk(issuerIdIsExpected("0123ABCD", full.substr(0, 4) + "abcd" + full.substr(8)),
                "Compared without regard to case");
     }
-
     testSetup();
     logger_config_env();
     const auto tester = new Tester();

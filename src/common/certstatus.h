@@ -424,6 +424,10 @@ struct CertStatus {
                         Member(TypeCode::Bool, "renewal_due"),
                         nt::NTEnum{}.build().as("ocsp_status"),
                         Member(TypeCode::String, "ocsp_state"),
+                        // The next three are informational only. They are plain text copies of
+                        // dates that the signed certificate status response already carries, and
+                        // are not covered by the signature on it. The signed response is the
+                        // authority: never make a trust decision from these fields.
                         Member(TypeCode::String, "ocsp_status_date"),
                         Member(TypeCode::String, "ocsp_certified_until"),
                         Member(TypeCode::String, "ocsp_revocation_date"),
@@ -929,9 +933,7 @@ struct PVACertificateStatus final : OCSPStatus {
         log_debug_printf(status_setup, "Status Date: %s\n", this->status_date.s.c_str());
         log_debug_printf(status_setup, "Status Validity: %s\n", this->status_valid_until_date.s.c_str());
         log_debug_printf(status_setup, "Revocation Date: %s\n", this->revocation_date.s.c_str());
-        if (!selfConsistent() ||
-            !dateConsistent(CertDate(status_value["ocsp_status_date"].as<std::string>()), CertDate(status_value["ocsp_certified_until"].as<std::string>()),
-                            CertDate(status_value["ocsp_revocation_date"].as<std::string>()))) {
+        if (!selfConsistent()) {
             throw OCSPParseException("Certificate status does not match certified OCSP status");
         }
     }
@@ -963,18 +965,6 @@ struct PVACertificateStatus final : OCSPStatus {
     bool selfConsistent() const {
         return (ocsp_status == OCSP_CERTSTATUS_UNKNOWN && !(status == VALID || status == REVOKED)) ||
                (ocsp_status == OCSP_CERTSTATUS_REVOKED && status == REVOKED) || (ocsp_status == OCSP_CERTSTATUS_GOOD && status == VALID);
-    }
-
-    /**
-     * @brief Check if the PVACertificateStatus is date-consistent,
-     * i.e., the status date, status valid-until date, and revocation date are all the same
-     * @param status_date_value Status date
-     * @param status_valid_until_date_value Status valid-until date
-     * @param revocation_date_value Revocation date
-     * @return true if the PVACertificateStatus is date-consistent, false otherwise
-     */
-    bool dateConsistent(const CertDate& status_date_value, const CertDate& status_valid_until_date_value, const CertDate& revocation_date_value) const {
-        return status_date == status_date_value && status_valid_until_date == status_valid_until_date_value && revocation_date == revocation_date_value;
     }
 };
 
