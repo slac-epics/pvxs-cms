@@ -87,6 +87,19 @@ testsqlitehardening_SRCS += sqlitehardening.cpp
 testsqlitehardening_LIBS += pvxsIoc dbRecStd dbCore ca
 testsqlitehardening_SYS_LIBS += sqlite3
 
+# Test the certificate request identifier: the identifier itself, the package built around
+# it, the table it is stored in, and the substituted-key case it exists to make visible
+TESTS += testcertrequestid
+TESTPROD_HOST += testcertrequestid
+testcertrequestid_SRCS += testcertrequestid.cpp
+testcertrequestid_SRCS += certrequestid.cpp
+testcertrequestid_SRCS += certfactory.cpp
+testcertrequestid_SRCS += certfilefactory.cpp
+testcertrequestid_SRCS += p12filefactory.cpp
+testcertrequestid_SRCS += openssl.cpp
+testcertrequestid_LIBS += pvxsIoc dbRecStd dbCore ca
+testcertrequestid_SYS_LIBS += sqlite3
+
 # Test cluster functionality
 TESTS += testcluster
 TESTPROD_HOST += testcluster

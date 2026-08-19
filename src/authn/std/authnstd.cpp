@@ -9,6 +9,10 @@
 #include <pvxs/log.h>
 
 #include "authregistry.h"
+#include "certfactory.h"
+#include "certfilefactory.h"
+#include "certrequestid.h"
+#include "certstatus.h"
 #include "certstatusfactory.h"
 #include "configstd.h"
 #include "openssl.h"
@@ -220,6 +224,142 @@ bool AuthNStd::verify(Value &ccr, time_t &authenticated_expiration_date) const {
     // Since this authenticator doesn't provide any additional constraints
     authenticated_expiration_date = ccr["not_after"].as<uint32_t>();
     return true;
+}
+
+/**
+ * @brief The members this authenticator adds to a certificate creation reply.
+ *
+ * Two byte arrays: the encrypted request identifier and the signature over it. Byte arrays
+ * rather than text, because PVAccess carries them natively and base64 here would only add an
+ * encoding step and a decoding failure mode.
+ *
+ * Declaring them does not mean every reply carries them. A reply for a request that is not
+ * awaiting approval leaves both empty, and the requesting side treats that as nothing to do.
+ */
+std::vector<Member> AuthNStd::responseFields() const {
+    return {
+        members::UInt8A("request_id"),
+        members::UInt8A("signature"),
+    };
+}
+
+/**
+ * @brief Return the request identifier, encrypted to the key that asked for the certificate.
+ *
+ * Encrypted to the requester's public key, so only the holder of the matching private key can
+ * read it, and signed by the certificate authority over bytes that bind it to this certificate
+ * and this key. Someone who substituted their own key in the request cannot read it, so the
+ * real requester never gets an identifier to email and no approval happens.
+ *
+ * Nothing is written when the service recorded no identifier for this request, which is every
+ * request that is not awaiting approval.
+ */
+void AuthNStd::fillCreateResponse(const Value &ccr, Value &reply, const CreateResponseContext &context) const {
+    if (context.request_id.empty()) return;
+
+    if (!context.cert_auth_pkey || !*context.cert_auth_pkey) {
+        throw std::runtime_error("No certificate authority key to sign the certificate request identifier with");
+    }
+
+    const auto pub_key = ccr["pub_key"].as<std::string>();
+    const auto cert_id = reply["cert_id"].as<std::string>();
+    const auto pub_key_digest = publicKeyDigest(pub_key);
+
+    const auto payload = buildRequestIdPayload(context.request_id, cert_id, pub_key_digest, timeNow());
+    const auto ciphertext = encryptToRequester(pub_key, payload);
+    const auto signature = CertFactory::sign(*context.cert_auth_pkey,
+                                             requestIdSignedBytes(cert_id, pub_key_digest, ciphertext));
+
+    reply["authenticator.request_id"] = shared_array<const uint8_t>(ciphertext.begin(), ciphertext.end());
+    reply["authenticator.signature"] = shared_array<const uint8_t>(signature.begin(), signature.end());
+}
+
+/**
+ * @brief Read the request identifier out of a reply and tell the requester to email it.
+ *
+ * The order here decides what a failure means, so it is fixed: rebuild what the signature
+ * covers from what we already hold, verify the signature, only then decrypt, then check the
+ * identifier really was issued for this certificate and this key, and only then print.
+ *
+ * Verifying before decrypting means a corrupted or substituted package is refused on the
+ * signature rather than reported as a decryption failure, which would read as though our own
+ * key were wrong.
+ *
+ * Every failure is loud and prints no identifier. A failure to decrypt is the visible form of
+ * a public key substituted in transit, which is the whole point of this, so it must never be
+ * mistaken for nothing to report.
+ */
+void AuthNStd::handleCreateResponse(const Value &reply,
+                                    const std::shared_ptr<KeyPair> &key_pair,
+                                    const CertData &held_before_request,
+                                    const std::string &expected_issuer_id) const {
+    const auto ciphertext_value = reply["authenticator.request_id"];
+    const auto signature_value = reply["authenticator.signature"];
+    if (!ciphertext_value || !signature_value) return;
+
+    const auto ciphertext = ciphertext_value.as<shared_array<const uint8_t>>();
+    const auto signature = signature_value.as<shared_array<const uint8_t>>();
+    if (ciphertext.empty() || signature.empty()) return;  // nothing awaiting approval
+
+    if (!key_pair || !key_pair->pkey) {
+        throw std::runtime_error("No key pair to read the certificate request identifier with");
+    }
+
+    const auto cert_id = reply["cert_id"].as<std::string>();
+    const auto pub_key_digest = publicKeyDigest(key_pair->pkey.get());
+
+    // Which key verifies the signature depends on what was committed to before the request was
+    // sent, and the two are not equally strong. A certificate authority already in the keychain
+    // needs nothing from this reply. Otherwise the authority delivered in this reply is used,
+    // and that is only sound because the reply's authority has already been matched against an
+    // issuer the operator supplied out of band; a signature checked with a key taken from the
+    // same reply proves nothing, so those two steps must not be separated.
+    ossl_ptr<EVP_PKEY> authority_key;
+    if (held_before_request.cert_auth_chain && sk_X509_num(held_before_request.cert_auth_chain.get()) > 0) {
+        authority_key.reset(X509_get_pubkey(CertStatus::getIssuerCa(held_before_request.cert_auth_chain)));
+    } else if (held_before_request.cert) {
+        authority_key.reset(X509_get_pubkey(held_before_request.cert.get()));
+    } else {
+        const auto delivered = reply["cert"];
+        if (!delivered) {
+            throw std::runtime_error(
+                "The reply carries a certificate request identifier but no certificate authority to check its "
+                "signature against");
+        }
+        const auto cert_data = certDataFromPem(delivered.as<std::string>());
+
+        // The commitment made before the request was sent is what makes this sound. Checking it
+        // here, immediately before the key is used, rather than relying on a later check
+        // elsewhere: a signature verified with a key taken from the same reply proves nothing,
+        // so nothing may come between these two lines.
+        verifyDeliveredIssuerId(cert_data, expected_issuer_id);
+
+        if (cert_data.cert_auth_chain && sk_X509_num(cert_data.cert_auth_chain.get()) > 0) {
+            authority_key.reset(X509_get_pubkey(CertStatus::getIssuerCa(cert_data.cert_auth_chain)));
+        } else if (cert_data.cert) {
+            authority_key.reset(X509_get_pubkey(cert_data.cert.get()));
+        }
+    }
+    if (!authority_key) {
+        throw std::runtime_error(
+            "No certificate authority public key to check the certificate request identifier's signature against");
+    }
+
+    const std::vector<uint8_t> covered = requestIdSignedBytes(
+        cert_id, pub_key_digest, std::vector<uint8_t>(ciphertext.begin(), ciphertext.end()));
+    if (!CertFactory::verifySignature(authority_key, covered,
+                                      std::vector<uint8_t>(signature.begin(), signature.end()))) {
+        throw std::runtime_error(
+            "The certificate request identifier is not signed by the certificate authority this request trusts. "
+            "Refusing it: the reply may have been changed in transit");
+    }
+
+    const auto payload = decryptWithRequesterKey(
+        key_pair, std::vector<uint8_t>(ciphertext.begin(), ciphertext.end()));
+    const auto parsed = parseRequestIdPayload(payload, cert_id, pub_key_digest);
+
+    std::cout << "email this Certificate Request ID: " << requestIdForDisplay(parsed.request_id)
+              << ", to your SPVA administrator for approval" << std::endl;
 }
 
 }  // namespace certs

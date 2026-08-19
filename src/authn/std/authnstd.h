@@ -61,6 +61,15 @@ class AuthNStd final : public Auth {
 
     bool verify(Value &ccr, time_t &authenticated_expiration_date) const override;
 
+    std::vector<Member> responseFields() const override;
+
+    void fillCreateResponse(const Value &ccr, Value &reply, const CreateResponseContext &context) const override;
+
+    void handleCreateResponse(const Value &reply,
+                              const std::shared_ptr<KeyPair> &key_pair,
+                              const CertData &held_before_request,
+                              const std::string &expected_issuer_id) const override;
+
     void fromEnv(std::unique_ptr<client::Config> &config) override { config.reset(new ConfigStd(ConfigStd::fromEnv())); }
 };
 

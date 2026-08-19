@@ -34,6 +34,26 @@ namespace certs {
 extern ::pvxs::logger auth;
 
 /**
+ * @brief What the certificate management service can hand an authenticator filling in a reply.
+ *
+ * Everything else an authenticator needs is already in the request or in the reply being built:
+ * the state, the serial number and the certificate identifier are all set before the hook runs.
+ * This carries only what is not, and only the service can construct one. The certificate
+ * database is deliberately absent: deciding what to record is the service's, so an authenticator
+ * built into a client tool never has to link it.
+ */
+struct CreateResponseContext {
+    /**
+     * The certificate request identifier recorded for this request, or empty when it has
+     * none. The service decides whether a request gets one; the authenticator only carries
+     * it back. Empty is the ordinary case: only a request awaiting approval has one.
+     */
+    std::string request_id;
+    /** The certificate authority private key, for signing what is returned. */
+    const ossl_ptr<EVP_PKEY> *cert_auth_pkey{nullptr};
+};
+
+/**
  * @class Auth
  * @brief Abstract class for authentication operations.
  *
@@ -99,9 +119,10 @@ class Auth {
      * @param ccr the certificate creation request being answered
      * @param reply the reply being built
      */
-    virtual void fillCreateResponse(const Value &ccr, Value &reply) const {
+    virtual void fillCreateResponse(const Value &ccr, Value &reply, const CreateResponseContext &context) const {
         (void)ccr;
         (void)reply;
+        (void)context;
     }
 
     /**
@@ -116,13 +137,18 @@ class Auth {
      * @param reply the reply received
      * @param key_pair the key pair used to make the request
      * @param held_before_request what the keychain held before the request was sent
+     * @param expected_issuer_id the issuer the caller committed to before sending the request,
+     *        so an authenticator that has to fall back on an authority delivered in the reply can
+     *        check it against that commitment first
      */
     virtual void handleCreateResponse(const Value &reply,
                                       const std::shared_ptr<KeyPair> &key_pair,
-                                      const CertData &held_before_request) const {
+                                      const CertData &held_before_request,
+                                      const std::string &expected_issuer_id) const {
         (void)reply;
         (void)key_pair;
         (void)held_before_request;
+        (void)expected_issuer_id;
     }
 
     /**
@@ -228,7 +254,8 @@ class Auth {
                                                   const std::string &issuer_id,
                                                   double timeout,
                                                   const std::shared_ptr<KeyPair> &key_pair = {},
-                                                  const CertData &held_before_request = {}) const;
+                                                  const CertData &held_before_request = {},
+                                                  const std::string &expected_issuer_id = {}) const;
 
     /**
      * @brief Update the definitions with the authenticator-specific definitions.
@@ -627,7 +654,8 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
                                                                               config.issuer_id,
                                                                               config.getRequestTimeout(),
                                                                               key_pair,
-                                                                              held_before_request);
+                                                                              held_before_request,
+                                                                              expected_issuer_id);
 
         // If the certificate was created successfully, write it to the keychain file
         if (!p12_pem_string.empty()) {
