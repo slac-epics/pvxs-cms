@@ -18,6 +18,7 @@
 #include "certstatus.h"
 #include "openssl.h"
 #include "security.h"
+#include "trustanchors.h"
 
 DEFINE_LOGGER(auth_log, "pvxs.auth.ccr");
 
@@ -71,20 +72,56 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     arg["path"] = create_pv;
     arg["query"].from(cert_creation_request->ccr);
 
-    auto config = client::Config::fromEnv();
-    config.tls_disabled = true;
-    auto client = config.build();
+    // Ask over TLS where the keychain already holds an authority to verify the answer against,
+    // and fall back to plain TCP where it does not.
+    //
+    // This is the step that turns a trust anchor into an identity, and a server that accepts TLS
+    // alone answers nothing else, so a holder on the far side of such a server can only ask this
+    // way. The request presents no identity of its own - the point of it is that there is not one
+    // yet - so the connection is anonymous whichever transport carries it, and the answer is
+    // still verified against the authority the keychain already holds. Remote verification is
+    // enabled so that a holder whose own standing cannot be established from where it stands is
+    // not held back by it.
+    //
+    // Plain TCP is kept as the fallback rather than dropped. A holder with no anchor at all has
+    // no other way to ask, and neither has one whose own certificate no longer stands, because a
+    // server refuses a TLS connection from a holder it can see has been revoked. Asking again in
+    // the clear is what lets such a holder be issued a replacement.
+    // Asked of what the keychain actually holds, not of whether a keychain was named. Every
+    // holder names one, including the ones that have never had a file there, so naming one says
+    // nothing about whether there is an authority to verify an answer against.
+    const auto holds_an_authority = !cms::cert::heldAnchorIds(held_before_request).empty();
+
+    const auto base_config = client::Config::fromEnv();
     Value value;
-    try {
-        value = client.rpc(create_pv, arg).exec()->wait(timeout);
-    } catch (const client::Timeout &) {
-        // Nothing answered. The name carries the authority being asked, so say which one:
-        // an authority that has been minted again has a different one, and a request naming
-        // the previous one reaches a name nothing serves.
-        throw std::runtime_error(SB() << "No certificate manager answered " << create_pv << " within "
-                                      << timeout << " seconds. Nothing serves that name, so either no "
-                                      << "certificate manager for this authority is running, or it cannot "
-                                      << "be reached from here.");
+    bool answered = false;
+    if (holds_an_authority && base_config.isTlsConfigured()) {
+        auto tls_config = base_config;
+        tls_config.enableRemoteVerification();
+        try {
+            auto tls_client = tls_config.build();
+            value = tls_client.rpc(create_pv, arg).exec()->wait(timeout);
+            answered = true;
+        } catch (const std::exception &) {
+            // No answer over TLS, or no usable keychain to offer one with. Ask in the clear.
+        }
+    }
+
+    if (!answered) {
+        auto config = base_config;
+        config.tls_disabled = true;
+        auto client = config.build();
+        try {
+            value = client.rpc(create_pv, arg).exec()->wait(timeout);
+        } catch (const client::Timeout &) {
+            // Nothing answered. The name carries the authority being asked, so say which one:
+            // an authority that has been minted again has a different one, and a request naming
+            // the previous one reaches a name nothing serves.
+            throw std::runtime_error(SB() << "No certificate manager answered " << create_pv << " within "
+                                          << timeout << " seconds. Nothing serves that name, so either no "
+                                          << "certificate manager for this authority is running, or it cannot "
+                                          << "be reached from here.");
+        }
     }
 
     std::string pem_string;
