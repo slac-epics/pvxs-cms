@@ -1,9 +1,9 @@
 # The simple laboratory: one segment, one certificate authority, no boundary to cross.
 #
-# The certificate manager mints its own self-signed authority the first time it starts and
-# issues every certificate under it directly, so there is nothing to mint beforehand and no
-# issuer id to carry around. With one certificate manager on the segment, the unqualified
-# CERT:CREATE is unambiguous, which is why nothing here sets EPICS_PVA_AUTH_ISSUER.
+# PVACMS mints its own self-signed authority the first time it starts and issues every
+# certificate under it directly, so there is nothing to mint beforehand and no issuer id to
+# carry around. With one PVACMS on the segment the unqualified CERT:CREATE is unambiguous, so
+# nothing here sets EPICS_PVA_AUTH_ISSUER.
 #
 # Picture: topology/topology-simple.svg
 
@@ -33,8 +33,8 @@ volumes:
 
 services:
 
-  # The one certificate manager, and the one authority. Its keychain is created on the first
-  # start, into the data volume, so it is the same authority on every later start.
+  # The one PVACMS, and the one authority. Its keychain is created on the first start, into
+  # the data volume, so it is the same authority on every later start.
   pvxs-lab-pvacms:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
@@ -83,7 +83,7 @@ services:
     depends_on: [pvxs-lab-pvacms]
 
   # A shell in the laboratory. Everything it needs is on the one segment, so it finds the
-  # certificate manager and both controllers by broadcast rather than by being told.
+  # PVACMS and both IOCs by broadcast rather than by being told.
   lab-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest

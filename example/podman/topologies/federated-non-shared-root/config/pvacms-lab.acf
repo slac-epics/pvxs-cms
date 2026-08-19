@@ -1,8 +1,8 @@
-# Who may administer the lab department's certificate manager.
+# Who may administer the lab department's PVACMS.
 #
-# The lab root signs an intermediate, and the certificate manager signs with the
-# intermediate, so the authority an administrator's certificate must come from is named
-# inside the root that vouches for it.
+# The lab root signs an intermediate, and PVACMS signs with the intermediate, so the
+# authority an administrator's certificate must come from is named inside the root that
+# vouches for it.
 
 AUTHORITY("EPICS Lab Root Certificate Authority") {
     AUTHORITY(CMS_AUTH, "EPICS Controls Intermediate CA")

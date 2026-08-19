@@ -4,7 +4,7 @@ test:spec ALLOW SPECIAL
 test:open ALLOW OPEN_WRITE
 CERT:CREATE:__LAB_ISSUER__(?::.*)? ALLOW CERT_CREATE
 CERT:STATUS:__LAB_ISSUER__(?::.*)? ALLOW CERT_STATUS
-# The two views that are open to everyone, named by issuer. See the machine learning
-# gateway's list for why the plain names and the awaiting-decision view are absent.
+# The two views that are open to everyone, named by issuer. See the ML gateway's pvlist for
+# why the plain names and the awaiting-decision view are absent.
 CERT:LIST:__LAB_ISSUER__:ALL ALLOW CERT_STATUS
 CERT:LIST:__LAB_ISSUER__:EXPIRING ALLOW CERT_STATUS

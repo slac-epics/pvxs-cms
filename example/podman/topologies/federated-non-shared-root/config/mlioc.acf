@@ -1,4 +1,4 @@
-# Machine learning department controller access control for the ml: variables.
+# ML department IOC access control for the ml: variables.
 #
 # The mirror of the lab's testioc.acf, with the departments the other way round. This
 # department signs with its root directly, so ML_CA is both the root and the issuing

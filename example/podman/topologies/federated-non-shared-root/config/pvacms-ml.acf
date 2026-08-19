@@ -1,9 +1,8 @@
-# Who may administer the machine learning department's certificate manager.
+# Who may administer the ML department's PVACMS.
 #
 # This department holds its own root and signs every certificate with it, so there is no
 # intermediate to name: the authority an administrator's certificate must come from is the
-# root itself. That is the whole difference from the lab department's file beside this one,
-# and neither root constrains the other, so the two are free to differ like this.
+# root itself. That is the whole difference from the lab department's file beside this one.
 
 AUTHORITY(CMS_AUTH, "EPICS ML Root Certificate Authority")
 
