@@ -210,8 +210,12 @@ cert_status_ptr<CmsStatusManager> CmsStatusManager::subscribe(const client::Cont
                            try {
                                const auto csm = weak_cert_status_manager.lock();
                                if (!csm) return;
-                               const auto update = s.pop();
-                               if (update) {
+                               // Drained, not read once. A subscription only asks to be woken
+                               // again once the reader has taken everything waiting for it, so
+                               // popping a single update and stopping means the next change is
+                               // queued without a wakeup and never seen. A certificate revoked
+                               // while a connection is up would go on being treated as good.
+                               while (const auto update = s.pop()) {
                                    try {
                                        auto status_update{PVACertificateStatus(update, trusted_store_ptr)};
                                        log_debug_printf(status, "Status subscription %s received: %s\n", s.name().c_str(), status_update.status.s.c_str());
