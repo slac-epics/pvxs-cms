@@ -1673,8 +1673,35 @@ void onGetStatus(const ConfigCms &config,
                 CertStatusFactory::getSerialNumber(sk_X509_value(cert_auth_chain.get(), i)));
         }
 
+        // The authorities above this certificate are asked separately from the certificate
+        // itself, so that what is reported can say which of the two is at fault.
+        //
+        // Folding them together and keeping the worst loses that: a holder whose own
+        // certificate stands perfectly well, but whose issuer has been revoked, was told
+        // REVOKED, the same word as a holder who had been revoked in its own right. That sends
+        // the holder looking at its own certificate, and asking for another one from the same
+        // authority, neither of which is the problem. AUTHORITY_REVOKED says the fault is above
+        // them, which is what tells a holder it is not theirs to fix and tells whoever runs the
+        // site which certificate to go and look at.
+        certstatus_t authority_status = UNKNOWN;
+        time_t authority_status_date = 0;
         for (const auto cert_auth_serial_number : cert_auth_serial_numbers) {
-            getWorstCertificateStatus(certs_db, cert_auth_serial_number, status, status_date);
+            getWorstCertificateStatus(certs_db, cert_auth_serial_number, authority_status, authority_status_date);
+        }
+
+        // A certificate revoked or expired in its own right keeps reporting that, because that
+        // is the fact its holder can act on. Otherwise an authority that has been revoked
+        // anywhere in the chain, at any depth, is reported as such.
+        if (status != REVOKED && status != EXPIRED &&
+            (authority_status == REVOKED || authority_status == AUTHORITY_REVOKED)) {
+            status = AUTHORITY_REVOKED;
+            status_date = authority_status_date;
+        } else if (authority_status != UNKNOWN && authority_status > status) {
+            // Anything else the chain reports that is worse than the holder's own standing,
+            // an expired authority for instance, is reported as it stands: there is no
+            // separate name for it, and the holder still may not use the certificate.
+            status = authority_status;
+            status_date = authority_status_date;
         }
 
         const auto now = timeNow();

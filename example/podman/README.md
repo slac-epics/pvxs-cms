@@ -65,7 +65,7 @@ inside a podman machine, or on Windows inside WSL2 (the Windows Subsystem for Li
 | **Gateways** | A gateway is the only path across a network boundary, enforced by network isolation rather than by configuration. A request that crosses is authorized twice: at the gateway against your certificate, and at the input/output controller (IOC) against the gateway's certificate. Parts 2, 3, and 4 |
 | **Federation** | Part 3 places two departments under one facility root, so every node trusts a certificate from either department and only the issuing department can revoke it. Part 4 gives each department its own root and stores both roots in every keychain, so trust comes from the trust anchor list rather than from a shared chain, and each gateway is addressed by its own name |
 | **Authorization by department** | Under a shared root, a rule names the organizational unit that the issuing department vouched for (Part 3). Under independent roots, a rule names the authority itself, because each root is a department (Part 4) |
-| **Authority revocation** | Revoking a department's intermediate authority, by that department's own administrator, stops that department and no other. The facility root has no status channel of its own, so it names a status responder, and every certificate beneath a revoked root reports `AUTHORITY_REVOKED` rather than claiming its own revocation. Part 3 |
+| **Authority revocation** | Revoking a department's intermediate authority, by that department's own administrator, stops that department and no other. The facility root has no status channel of its own, so it names a status responder. A revoked authority anywhere in the chain, at any depth, makes every certificate beneath it report `AUTHORITY_REVOKED` rather than claiming its own revocation, which says the fault is above the holder and where to go and look for it. Part 3 |
 
 ## The four laboratories
 
@@ -2097,17 +2097,24 @@ A holder is told at once, on the status process variable its certificate already
 
 ```sh
 run_in ml as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
-#   Status        : REVOKED
+#   Status        : AUTHORITY_REVOKED
 ```
 
-The word is `REVOKED`, the same one section 9's holder was given, not the
-`AUTHORITY_REVOKED` that section 10's revoked root produces. What a holder is given is
-the worst status found anywhere in its chain, and this holder's own certificate was
-never touched: it is the intermediate that signed it that was revoked, and revoked is
-the worse of the two. `AUTHORITY_REVOKED` is reserved for the facility root, whose
-status the department asks a responder about rather than reading it out of its own
-records. Either way, that certificate cannot be used, and asking that department for
-another one achieves nothing.
+The word is `AUTHORITY_REVOKED`, not the `REVOKED` that section 9's holder was given,
+and the difference is the whole point of having two words. This holder's own certificate
+was never touched. What was revoked is the intermediate that signed it, so the fault is
+above them and nothing they do to their own certificate will help: asking this department
+for another one gets a certificate signed by the same revoked authority.
+
+It says the same thing to whoever runs the site, from the other direction. `REVOKED`
+means look at that holder's certificate. `AUTHORITY_REVOKED` means look further up, and
+expect to find every holder under the same authority saying it too. It is reported for a
+revoked authority anywhere in the chain, at any depth, whether that is the department's
+intermediate as here or the facility root as in section 10.
+
+A holder's own revocation still outranks it. A certificate revoked or expired in its own
+right goes on saying so even when the authority above it has been revoked as well,
+because that is the fact its holder can act on.
 
 Its IOC stops offering the secure port and serves plain traffic instead: an IOC that
 cannot stand behind its certificate does not keep presenting it. Revoked is a settled
