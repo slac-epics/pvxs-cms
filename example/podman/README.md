@@ -181,6 +181,16 @@ swap space is available:
 JOBS=2 ./bootstrap.sh
 ```
 
+Rebuilding leaves the images it replaced behind, and each build of this chain is several
+gigabytes. Build it enough times and the next one stops with `no space left on device`,
+which reads as a broken build rather than a full disk. Reclaim the ones nothing refers
+to:
+
+```sh
+podman system df               # says how much is reclaimable
+podman image prune -f          # removes the images nothing refers to
+```
+
 If you built the images before pulling new source, rebuild them. The process variables
 and the access rules are baked into the images, so a pull on its own leaves an IOC
 serving the old set and the examples in this document timing out:
