@@ -26,6 +26,7 @@ inside a podman machine, or on Windows inside WSL2 (the Windows Subsystem for Li
 - [Carry the authority to the workstation](#carry-the-authority-to-the-workstation)
 - [Ask for an identity over TLS](#ask-for-an-identity-over-tls)
 - [6. Identity across a gateway](#6-identity-across-a-gateway)
+- [Revocation cuts a connection that is already up](#revocation-cuts-a-connection-that-is-already-up)
 
 **[Part 3 - federated, one facility root](#part-3---federated-one-facility-root)**
 - [Addressing and network layout](#addressing-and-network-layout)
@@ -1198,6 +1199,160 @@ IOC's rules can only name the gateway, so anything about *you* has to be said in
 gateway's own file, and the IOC has to be willing to accept whatever the gateway
 forwards. Granting an IOC variable to `AUTHORITY` with no user group, as `test:open`
 does, is how a rule says "and I accept it through the gateway too".
+
+## Revocation cuts a connection that is already up
+
+Everything so far revoked a certificate and then asked for something new. That shows a
+door being locked; it does not show what happens to whoever is already through it. A
+certificate is checked when a connection is made, and both ends go on watching it for as
+long as the connection lasts, so revoking one takes effect while traffic is flowing
+rather than at the next attempt.
+
+Seeing that needs two terminals, because a monitor runs until you stop it. Open a second
+terminal and source the helpers in both:
+
+```sh
+cd ~/slac/pvxs-cms/example/podman
+source ./helpers.sh
+```
+
+Each demonstration below follows the same shape. In the first terminal start a monitor
+and leave it running. In the second, revoke a certificate. Then watch the first. Stop
+each monitor with Ctrl-C before starting the next.
+
+### A holder inside the laboratory
+
+**Terminal 1**, watching a variable over TLS:
+
+```sh
+run_in lab as operator pvxmonitor test:aiExample
+#   test:aiExample Connected to 10.89.0.9:5076
+#   ... values arriving ...
+```
+
+**Terminal 2**, revoking the certificate that connection is using:
+
+```sh
+run_in lab-manager as admin pvxcert --review-issued --where "name:operator and state:VALID" --all --yes
+#         VALID -> REVOKED  (REVOKE)
+```
+
+**Terminal 1** reacts at once, and then reconnects without the certificate:
+
+```text
+test:aiExample Disconnected
+test:aiExample Connected to 10.89.0.9:5075
+```
+
+Two things happened. The secure connection was torn down, because the identity it was
+carrying is no longer good. Then the client came back on the plaintext port as nobody in
+particular, because the IOC still offers one and reading never needed a certificate. The
+values continue; the ability to write is gone.
+
+### A holder outside the boundary
+
+The same revocation, from outside, ends differently, because this boundary carries TLS
+and nothing else.
+
+**Terminal 1**:
+
+```sh
+run_in perimeter as guest pvxmonitor test:aiExample
+#   test:aiExample Connected to 10.89.4.2:5076
+```
+
+**Terminal 2**:
+
+```sh
+run_in lab-manager as admin pvxcert --review-issued --where "name:remote and state:VALID" --all --yes
+```
+
+**Terminal 1** stops, and stays stopped:
+
+```text
+test:aiExample Disconnected
+```
+
+There is no second line. Inside the laboratory a revoked holder falls back to being
+anonymous; here there is nothing to fall back to, so revoking the certificate removes the
+workstation's only way in. That is the whole point of closing the plaintext listener.
+
+> **Getting back in takes the same route as the first time.** A revoked certificate is
+> still a certificate, and a holder presenting one is refused before it can ask for
+> another, so `authnstd --force` has nothing to ask over. Put the authority back and
+> request under an unused name, exactly as in section 5:
+>
+> ```sh
+> podman cp trust_anchor.p12 \
+>     podman_internet-client_1:/home/guest/.config/pva/1.5/client.p12
+> podman exec --user root podman_internet-client_1 \
+>     chown guest /home/guest/.config/pva/1.5/client.p12
+> run_in perimeter as guest authnstd -u client -n remote2
+> run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+> ```
+
+### A server inside the laboratory
+
+The watching goes both ways. This time revoke the certificate of the IOC being watched
+rather than the holder watching it.
+
+**Terminal 1**, on a variable `tstioc` serves:
+
+```sh
+run_in lab as operator pvxmonitor tst:extra
+#   tst:extra Connected to 10.89.0.8:5076
+```
+
+**Terminal 2**:
+
+```sh
+run_in lab-manager as admin pvxcert --review-issued --where "name:tstioc and state:VALID" --all --yes
+```
+
+**Terminal 1**:
+
+```text
+tst:extra Disconnected
+tst:extra Connected to 10.89.0.8:5075
+```
+
+The client dropped the connection because the server it was talking to no longer holds a
+good certificate. What it reconnected to is the same IOC on its plaintext port, serving
+anonymously, which is all a server whose certificate has been revoked can still do.
+
+### A server on the far side of a gateway
+
+**Terminal 1**, from outside, watching a variable `testioc` serves:
+
+```sh
+run_in perimeter as guest pvxmonitor test:aiExample
+#   test:aiExample Connected to 10.89.4.2:5076
+```
+
+**Terminal 2**:
+
+```sh
+run_in lab-manager as admin pvxcert --review-issued --where "name:testioc and state:VALID" --all --yes
+```
+
+**Terminal 1**:
+
+```text
+test:aiExample Disconnected
+test:aiExample Connected to 10.89.4.2:5076
+```
+
+It came back, and to the same secure address, which is worth reading carefully. The
+workstation outside is not connected to the IOC; it is connected to the **gateway**, and
+the gateway's own certificate was not revoked. What broke was the gateway's connection to
+the IOC behind it, which took the workstation's subscription down with it. What came back
+is a secure connection to the gateway whose upstream is now an anonymous plaintext one.
+Being outside tells you that something changed; it does not tell you what, and the
+identity at the far end is no longer what it was.
+
+> **This section revokes four certificates.** The laboratory is not left as the
+> walkthrough found it, so start the next part from a clean one:
+> `reset_topology <topology>`.
 
 # Part 3 - federated, one facility root
 
