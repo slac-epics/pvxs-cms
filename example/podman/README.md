@@ -153,16 +153,25 @@ off scratch/fy26-four-topologies. -->
 
 ## Start a laboratory
 
-Two scripts do different jobs. `bootstrap.sh` builds the images, which is slow and runs
-once. `reset.sh` builds a laboratory from the images, which takes a minute or two and
-runs whenever you want a different laboratory or a clean one:
+Two things do different jobs. `bootstrap.sh` builds the images, which is slow and runs
+once. `reset_topology` builds a laboratory from the images, which takes a minute or two
+and runs whenever you want a different laboratory or a clean one:
 
 ```sh
 cd ~/slac/pvxs-cms/example/podman
+source ./helpers.sh                   # defines reset_topology, run_in, and the rest
 ./bootstrap.sh                        # builds the images; issues no certificates
-./reset.sh                            # lists the four laboratories and describes each
-./reset.sh federated-shared-root      # brings that laboratory up and verifies it
+reset_topology                        # lists the four laboratories and describes each
+reset_topology federated-shared-root  # brings it up, verifies it, and reads its authorities
 ```
+
+`reset_topology` is a shell function rather than a script, and it has to be, because it
+does two things that must not be separated: it runs `reset.sh` to build the laboratory,
+and it then reads that laboratory's authority identifiers into your shell. Minting an
+authority gives it a new identifier, and a shell still holding the old one goes on naming
+an authority the laboratory no longer has, so every request reaches a name nothing
+answers for. That reads as a broken laboratory when it is only a stale shell. Running
+`reset.sh` by hand leaves you to remember `lab_ids` afterwards; `reset_topology` does not.
 
 The image build compiles EPICS Base, pvxs, pvxs-cms, and p4p from source, which takes a
 while. On a machine with limited memory, reduce the compiler parallelism and make sure
@@ -177,7 +186,7 @@ and the access rules are baked into the images, so a pull on its own leaves an I
 serving the old set and the examples in this document timing out:
 
 ```sh
-git pull && JOBS=2 ./bootstrap.sh && ./reset.sh federated-shared-root
+git pull && JOBS=2 ./bootstrap.sh && reset_topology federated-shared-root
 ```
 
 Certificate authorities belong to a laboratory rather than to the images, so `reset.sh`
@@ -195,9 +204,10 @@ both facts matter to what is being demonstrated. Rather than repeating a long
 source ./helpers.sh
 ```
 
-This defines `run_in` and reads the laboratory's issuer identifiers into the shell:
-`$ROOT` where one authority issues everything, and `$LAB` and `$ML` where each
-department has its own.
+This defines `run_in` and `reset_topology`, and reads the laboratory's issuer identifiers
+into the shell: `$ROOT` where one authority issues everything, and `$LAB` and `$ML` where
+each department has its own. Sourcing it again is harmless and re-reads the identifiers,
+which is what `reset_topology` does for you after every reset.
 
 ```
 run_in <place> as <person> [without a certificate] [--show] <command...>
@@ -258,7 +268,7 @@ Nothing crosses a boundary because there is no boundary, so this laboratory show
 certificate does on its own.
 
 ```sh
-./reset.sh simple
+reset_topology simple
 ```
 
 [![The simple laboratory: one segment carrying a PVACMS, two IOCs and a workstation, and one self-signed authority beside it](topology/topology-simple.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple.svg)
@@ -275,7 +285,7 @@ it. That is the whole hierarchy: one authority, and the certificates it signs.
 An authority that PVACMS created itself has an identifier nobody chose, and no node may
 trust an authority it learned about over the same channel it is trying to secure. Before
 anyone can request a certificate, the identifier has to reach them another way.
-`./reset.sh` does this for you. It is worth doing by hand once, because it is what an
+`reset_topology` does this for you. It is worth doing by hand once, because it is what an
 operator does when distributing trust to a machine the laboratory does not manage.
 
 The authority is a keychain file that PVACMS wrote, and its identifier is that
@@ -864,7 +874,7 @@ issues its own certificates first, the boundary closes, and only then is a works
 outside set up from nothing.
 
 ```sh
-./reset.sh simple-with-gateway
+reset_topology simple-with-gateway
 ```
 
 [![The simple laboratory published at a facility address: a load balancer and a gateway in the perimeter network, the laboratory segment behind them, and a workstation outside](topology/topology-simple-with-gateway.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple-with-gateway.svg)
@@ -1187,7 +1197,7 @@ trusted everywhere. Revoking that root stops the whole facility, which is the la
 this part shows.
 
 ```sh
-./reset.sh federated-shared-root
+reset_topology federated-shared-root
 ```
 
 [![Two departments side by side, each with its own PVACMS and gateway, one facility root above them and a responder answering for it](topology/topology-federated-shared-root.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-shared-root.svg)
@@ -1400,7 +1410,7 @@ run_in lab-manager as idm bash -c \
 ```
 
 > **Every identifier printed in this document is an example.** Each laboratory creates
-> its own authorities, and creates new ones on `./reset.sh --authorities`, so yours are
+> its own authorities, and creates new ones on `reset_topology --authorities`, so yours are
 > different. Where a command has to carry one, it is written `${LAB}` or `${LAB_SKID}`,
 > which `lab_ids` fills in from the laboratory in front of you. Where a certificate has
 > to be named, take the identifier from the listing rather than from this document.
@@ -2113,7 +2123,7 @@ The laboratory's stand-in for creating a new root and issuing to everyone again 
 command, and it is the only thing here that works:
 
 ```sh
-./reset.sh --authorities federated-shared-root
+reset_topology --authorities federated-shared-root
 ```
 
 It creates new authorities as well as new certificates, so the issuer identifiers
@@ -2133,7 +2143,7 @@ Two departments under two separate roots. Trust comes from each keychain storing
 roots as trust anchors: one identity, many anchors.
 
 ```sh
-./reset.sh federated-non-shared-root
+reset_topology federated-non-shared-root
 ```
 
 [![Two departments side by side under two independent roots, with a keychain below them holding one identity and both roots as trust anchors](topology/topology-federated-non-shared-root.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-non-shared-root.svg)
@@ -2160,7 +2170,7 @@ diagram to open the raw file.
   department's issuer identifier and no other, so a request about a certificate reaches
   the department that issued it, wherever the request is made.
 - **An IOC is handed both roots rather than fetching them.** An IOC stands on its own
-  department's segment and reaches nothing beyond it. To configure trust, `./reset.sh`
+  department's segment and reaches nothing beyond it. To configure trust, `reset_topology`
   writes both roots into `certs/trust_anchors.p12`, and each IOC and gateway starts with
   that file as its keychain; the identity it is then issued is added to the anchors
   already there.
@@ -2737,7 +2747,7 @@ To run the demonstration again from the top, put the laboratory back to the stat
 in immediately after a build:
 
 ```sh
-./reset.sh federated-shared-root
+reset_topology federated-shared-root
 ```
 
 This discards every certificate the laboratory has issued and every keychain the
@@ -2766,7 +2776,7 @@ where [the baseline section](#baseline-behavior-without-certificates) starts.
 To create new certificate authorities as well, which changes the issuer identifiers:
 
 ```sh
-./reset.sh --authorities federated-shared-root
+reset_topology --authorities federated-shared-root
 ```
 
 This builds nothing: the images do not depend on which authorities exist, so there is
