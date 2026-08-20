@@ -108,7 +108,15 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      # Its own department by name rather than by broadcast. Naming them is what lets the
+      # peer department's gateway stand on this segment without being answered to a
+      # broadcast it was never meant to hear.
+      EPICS_PVA_AUTO_ADDR_LIST: "NO"
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+      # Only the ML department can say whether a certificate it issued still stands, and
+      # its gateway is the one thing here that can be asked. Read by the inner client
+      # alone, so it answers that question and is not a route to anything else.
+      EPICS_PVAS_STATUS_NAME_SERVERS: "pvxs-lab-ml-gateway:5075"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - testioc-config:/home/testioc/.config/pva/1.5
@@ -125,7 +133,15 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      # Its own department by name rather than by broadcast. Naming them is what lets the
+      # peer department's gateway stand on this segment without being answered to a
+      # broadcast it was never meant to hear.
+      EPICS_PVA_AUTO_ADDR_LIST: "NO"
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+      # Only the ML department can say whether a certificate it issued still stands, and
+      # its gateway is the one thing here that can be asked. Read by the inner client
+      # alone, so it answers that question and is not a route to anything else.
+      EPICS_PVAS_STATUS_NAME_SERVERS: "pvxs-lab-ml-gateway:5075"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - tstioc-config:/home/tstioc/.config/pva/1.5
@@ -141,13 +157,18 @@ services:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
     hostname: pvxs-lab-gateway
-    networks: [net-lab, net-internet]
+    # A leg in the peer department as well as its own and the outside. The ML department's
+    # servers have to ask somebody whether a certificate this department's authority issued
+    # still stands, and this is the only thing that can answer. They reach it here.
+    networks: [net-lab, net-internet, net-ml]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
-      GATEWAY_SERVE_SUBNET: "10.89.4."
+      # Outside, and the ML department. Never its own department, which reaches its services
+      # directly and would otherwise be answered twice for the same name.
+      GATEWAY_SERVE_SUBNET: "10.89.4. 10.89.1."
     volumes:
       - gateway-config:/home/gateway/.config/pva/1.5
       - ./config/gateway-lab.conf:/home/gateway/gateway.conf.in:ro,z
@@ -185,7 +206,10 @@ services:
     networks: [net-ml]
     env_file: [./issuer_ids.env]
     environment:
-      EPICS_PVA_AUTO_ADDR_LIST: "YES"
+      # As above, the other way round.
+      EPICS_PVA_AUTO_ADDR_LIST: "NO"
+      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
+      EPICS_PVAS_STATUS_NAME_SERVERS: "pvxs-lab-gateway:5075"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
     volumes:
       - ml-ioc-config:/home/mlioc/.config/pva/1.5
@@ -199,13 +223,16 @@ services:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/gateway:latest
     hostname: pvxs-lab-ml-gateway
-    networks: [net-ml, net-internet]
+    # As above, the other way round: a leg in the lab department, which asks it about
+    # certificates the ML authority issued.
+    networks: [net-ml, net-internet, net-lab]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
-      GATEWAY_SERVE_SUBNET: "10.89.4."
+      # Outside, and the lab department. Never its own, for the same reason.
+      GATEWAY_SERVE_SUBNET: "10.89.4. 10.89.0."
     volumes:
       - ml-gateway-config:/home/gateway/.config/pva/1.5
       - ./config/gateway-ml.conf:/home/gateway/gateway.conf.in:ro,z

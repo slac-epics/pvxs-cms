@@ -19,9 +19,14 @@ lab_client_l = fields('Role: client','Image: lab',
 lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-internet','Image: gateway',
  'eth0  net-lab        10.89.0.0/24   upstream side, to its department',
  'eth1  net-internet   10.89.4.0/24   server side, where it is asked',
+ 'eth2  net-ml         10.89.1.0/24   server side, where the ML department',
+ '                                    asks it about lab certificates',
  'Program: p4p pvagw, layer 7','Config: config/gateway-lab.conf',
- 'Serves on eth1 alone: "interface" pinned to its net-internet address',
+ 'Serves on eth1 and eth2, never on its own department: pinned by',
+ '    GATEWAY_SERVE_SUBNET, so its own side is not answered twice',
  'Reached directly at its own net-internet address, on 5075 and 5076',
+ 'EPICS_PVAS_STATUS_NAME_SERVERS: the peer gateway, read by the inner',
+ '    client alone, to ask after a certificate the peer authority issued',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'Presents: CN=gateway',
  'Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc','ACF: gateway.acf','pvlist: config/gateway-lab.pvlist')
@@ -45,9 +50,14 @@ pvacms_l = fields('Role: PVACMS','Image: idm','eth0  net-lab        10.89.0.0/24
 ml_gw_l = fields('Role: gateway (dual-homed), net-ml <-> net-internet','Image: gateway',
  'eth0  net-ml         10.89.1.0/24   upstream side, to its department',
  'eth1  net-internet   10.89.4.0/24   server side, where it is asked',
+ 'eth2  net-lab        10.89.0.0/24   server side, where the lab department',
+ '                                    asks it about ML certificates',
  'Program: p4p pvagw, layer 7','Config: config/gateway-ml.conf',
- 'Serves on eth1 alone: "interface" pinned to its net-internet address',
+ 'Serves on eth1 and eth2, never on its own department: pinned by',
+ '    GATEWAY_SERVE_SUBNET, so its own side is not answered twice',
  'Reached directly at its own net-internet address, on 5075 and 5076',
+ 'EPICS_PVAS_STATUS_NAME_SERVERS: the peer gateway, read by the inner',
+ '    client alone, to ask after a certificate the peer authority issued',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'Presents: CN=ml-gateway',
  'Upstream: pvxs-lab-ml, pvxs-lab-ml-ioc','ACF: gateway.acf','pvlist: config/gateway-ml.pvlist')
@@ -185,7 +195,12 @@ mlcmsacf_l = ['at /etc/pvacms/pvacms.acf','',
  '        RULE(1,WRITE) { UAG(CMS_ADMIN) AUTHORITY(CMS_AUTH)','            PROTOCOL(TLS) METHOD("x509") }','    }']
 
 def _router(dept, seg, cidr, far_gw, far_ports):
-    return fields('Role: routing firewall, layers 3 and 4','Image: router',
+    # Not an image: no container corresponds to this box, so what stands in for it goes
+    # where every other card names its image.
+    return fields('Role: routing firewall, layers 3 and 4',
+     '§Image: SIMULATED - by isolate=true on every network, and by the',
+     '§    extra interfaces drawn on the two gateways, each of which',
+     '§    stands in the other department as well as its own',
      f'eth0  {seg:<14} {cidr}',
      'eth1  net-internet   10.89.4.0/24',
      f'Carries every packet leaving the {dept} department, and carries',
@@ -194,9 +209,9 @@ def _router(dept, seg, cidr, far_gw, far_ports):
      'Routes on the destination subnet alone, layer 3. The port decides',
      '    only whether a packet is permitted at all, layer 4:',
      f'    {far_ports[0]}, {far_ports[1]} to {far_gw} on net-internet',
-     'Broadcast stays on the segment it was sent to, so a PVAccess',
-     '    search stays inside the department. Anything past it is',
-     '    reached by naming a server, which is unicast and routes.')
+     'Nothing here searches by broadcast: every service is named, which',
+     '    is what lets the peer gateway stand on this segment without',
+     '    answering a search that was never meant for it.')
 lab_router_l = _router('lab', 'net-lab', '10.89.0.0/24',
                        'pvxs-lab-ml-gateway', ('tcp/5075', 'tcp/5076'))
 ml_router_l = _router('ML', 'net-ml', '10.89.1.0/24',
@@ -237,8 +252,7 @@ chips = [('CA or certificate - a file, on no network', C['ca'][1]),
          ('IOC', C['ioc'][1]),
          ('gateway - proxies PVAccess between a zone', C['gateway'][1]),
          ('    and the network outside the facility', None),
-         ('router - forwards between segments, and', C['router'][1]),
-         ('    states which may reach which', None),
+         ('router - SIMULATED: no such container', C['router'][1]),
          ('client - workstation', C['client'][1]),
          ('ACF or pvlist - a file a component loads', C['file'][1])]
 samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, None),

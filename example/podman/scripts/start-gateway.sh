@@ -55,22 +55,36 @@ else
     cp /home/gateway/gateway.pvlist.in /home/gateway/gateway.pvlist
 fi
 
-# Which interface the gateway serves on.
+# Which interfaces the gateway serves on.
 #
-# Left to itself it binds every interface it has, which includes the department's own
-# segment. A workstation there searching by broadcast is then answered twice for the same
-# name, once by the IOC and once by the gateway forwarding to that IOC, and
-# every command it runs stops with 'Duplicate PV name'.
+# Left to itself it binds every interface it has, which includes its own department's segment.
+# A workstation there searching by broadcast is then answered twice for the same name, once by
+# the IOC and once by the gateway forwarding to that IOC, and every command it runs stops with
+# 'Duplicate PV name'. Its own department reaches its services directly and has no reason to
+# ask its own gateway for them.
 #
-# The address cannot be written into the configuration because podman assigns it at start, so
-# the subnet is named instead and the address is looked up here.
+# More than one subnet may be named, separated by spaces, and the gateway serves on the address
+# it holds on each. A gateway standing in the peer department's segment serves there so that
+# department's servers can ask it about a certificate this one's authority issued, which is the
+# question only this side can answer.
+#
+# The addresses cannot be written into the configuration because podman assigns them at start,
+# so the subnets are named instead and the addresses are looked up here.
 if [ -n "${GATEWAY_SERVE_SUBNET:-}" ]; then
-    serve_addr=$(ip -o -4 addr show \
-        | awk -v p="${GATEWAY_SERVE_SUBNET}" '$4 ~ "^"p {split($4,a,"/"); print a[1]; exit}')
-    [ -n "${serve_addr}" ] || {
-        echo "no interface on ${GATEWAY_SERVE_SUBNET} - is this container on that segment?" >&2; exit 1; }
-    echo "serving on ${serve_addr}, the ${GATEWAY_SERVE_SUBNET}0/24 segment, and on no other"
-    sed "s/__SERVE_ADDR__/${serve_addr}/g" /home/gateway/gateway.conf.in > /home/gateway/gateway.conf
+    serve_addrs=
+    for subnet in ${GATEWAY_SERVE_SUBNET}; do
+        addr=$(ip -o -4 addr show \
+            | awk -v p="${subnet}" '$4 ~ "^"p {split($4,a,"/"); print a[1]; exit}')
+        [ -n "${addr}" ] || {
+            echo "no interface on ${subnet} - is this container on that segment?" >&2; exit 1; }
+        if [ -z "${serve_addrs}" ]; then serve_addrs="\"${addr}\""
+        else serve_addrs="${serve_addrs}, \"${addr}\""; fi
+        echo "serving on ${addr}, the ${subnet}0/24 segment"
+    done
+    echo "and on no other"
+    # The placeholder stands where a quoted address goes, so the quotes come from here when
+    # there is more than one of them.
+    sed "s/\"__SERVE_ADDR__\"/${serve_addrs}/g" /home/gateway/gateway.conf.in > /home/gateway/gateway.conf
 else
     cp /home/gateway/gateway.conf.in /home/gateway/gateway.conf
 fi
