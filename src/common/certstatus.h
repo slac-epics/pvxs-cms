@@ -477,7 +477,12 @@ class CertStatusSubscriptionException final : public CertStatusException {
     explicit CertStatusSubscriptionException(const std::string& message) : CertStatusException(message) {}
 };
 
-// All certificate statuses
+// All certificate statuses.
+//
+// The position of a name in this list is its value on the wire, so a new one is appended and
+// never inserted: putting one in the middle silently changes what every status after it means
+// to anything built against an older copy of this list. Both repositories carry a copy, and
+// they have to be changed together for the same reason.
 #define CERT_STATUS_LIST   \
     X_IT(UNKNOWN)          \
     X_IT(VALID)            \
@@ -486,7 +491,8 @@ class CertStatusSubscriptionException final : public CertStatusException {
     X_IT(PENDING_RENEWAL)  \
     X_IT(EXPIRED)          \
     X_IT(REVOKED)          \
-    X_IT(AUTHORITY_REVOKED)
+    X_IT(AUTHORITY_REVOKED) \
+    X_IT(AUTHORITY_EXPIRED)
 
 // All OCSP certificate statuses
 #define OCSP_CERT_STATUS_LIST     \
@@ -1224,7 +1230,7 @@ struct CertificateStatus {
      */
     /** Whether the certificate itself, or the authority above it, denies its use. */
     bool isRevokedOrExpired() const noexcept {
-        return status == REVOKED || status == EXPIRED || status == AUTHORITY_REVOKED;
+        return status == REVOKED || status == EXPIRED || status == AUTHORITY_REVOKED || status == AUTHORITY_EXPIRED;
     }
 
      /**

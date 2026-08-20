@@ -324,7 +324,7 @@ struct Tester {
 }  // namespace
 
 MAIN(testtlsstatus) {
-    testPlan(114);
+    testPlan(124);
 
     // The layout itself, asserted against a literal. A round trip through format and
     // parse uses the same layout on both sides and passes whatever that layout is, so
@@ -335,6 +335,31 @@ MAIN(testtlsstatus) {
         testOk(fixed.s.size() == 23, "Rendered date is fixed width (%zu characters)", fixed.s.size());
         const CertDate round_tripped(fixed.s);
         testEq(round_tripped.t, fixed.t);
+    }
+
+    // The status values, asserted against their numbers rather than their names.
+    //
+    // A status travels as its position in this list, so inserting one renames every status
+    // after it for anything built against an older copy, silently and on the wire. Both this
+    // repository and pvxs carry a copy of the list and they have to agree. Pinning the two
+    // that were appended most recently is what makes an insertion fail here rather than in a
+    // laboratory some time later.
+    {
+        testEq(static_cast<int>(UNKNOWN), 0);
+        testEq(static_cast<int>(VALID), 1);
+        testEq(static_cast<int>(EXPIRED), 5);
+        testEq(static_cast<int>(REVOKED), 6);
+        testEq(static_cast<int>(AUTHORITY_REVOKED), 7);
+        testEq(static_cast<int>(AUTHORITY_EXPIRED), 8);
+
+        // Both of the authority statuses deny the certificate's use, the same as the holder's
+        // own two do, so anything asking whether a certificate may be used has to say no.
+        for (const auto denied : {REVOKED, EXPIRED, AUTHORITY_REVOKED, AUTHORITY_EXPIRED}) {
+            CertificateStatus status;
+            status.status = PVACertStatus(denied);
+            testTrue(status.isRevokedOrExpired())
+                << CERT_STATE(denied) << " denies the certificate's use";
+        }
     }
 
     // A certificate says who it is twice: in the subject key identifier extension, which whoever

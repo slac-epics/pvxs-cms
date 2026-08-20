@@ -1690,18 +1690,30 @@ void onGetStatus(const ConfigCms &config,
         }
 
         // A certificate revoked or expired in its own right keeps reporting that, because that
-        // is the fact its holder can act on. Otherwise an authority that has been revoked
-        // anywhere in the chain, at any depth, is reported as such.
-        if (status != REVOKED && status != EXPIRED &&
-            (authority_status == REVOKED || authority_status == AUTHORITY_REVOKED)) {
-            status = AUTHORITY_REVOKED;
-            status_date = authority_status_date;
-        } else if (authority_status != UNKNOWN && authority_status > status) {
-            // Anything else the chain reports that is worse than the holder's own standing,
-            // an expired authority for instance, is reported as it stands: there is no
-            // separate name for it, and the holder still may not use the certificate.
-            status = authority_status;
-            status_date = authority_status_date;
+        // is the fact its holder can act on. Otherwise an authority that has been revoked, or
+        // that has expired, anywhere in the chain and at any depth, is named as the authority's
+        // fault rather than the holder's, so that whoever reads it knows to look further up.
+        if (status != REVOKED && status != EXPIRED && authority_status != UNKNOWN) {
+            switch (authority_status) {
+                case REVOKED:
+                case AUTHORITY_REVOKED:
+                    status = AUTHORITY_REVOKED;
+                    status_date = authority_status_date;
+                    break;
+                case EXPIRED:
+                case AUTHORITY_EXPIRED:
+                    status = AUTHORITY_EXPIRED;
+                    status_date = authority_status_date;
+                    break;
+                default:
+                    // Anything else the chain reports that is worse than the holder's own
+                    // standing is reported as it stands.
+                    if (authority_status > status) {
+                        status = authority_status;
+                        status_date = authority_status_date;
+                    }
+                    break;
+            }
         }
 
         const auto now = timeNow();
