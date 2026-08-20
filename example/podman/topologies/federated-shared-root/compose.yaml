@@ -142,6 +142,12 @@ services:
     environment:
       EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
+      # Only the department that issued a certificate can say whether it still stands, and
+      # net-ml cannot be addressed from here. The facility address can, and its ML port
+      # reaches that department's gateway, which is the route a workstation here already
+      # takes to the other department. Read by the inner client alone, so it answers that one
+      # question and is not a general route into the other department.
+      EPICS_PVAS_STATUS_NAME_SERVERS: "facility:5175"
     volumes:
       - testioc-config:/home/testioc/.config/pva/1.5
       - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
@@ -157,6 +163,12 @@ services:
     environment:
       EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
+      # Only the department that issued a certificate can say whether it still stands, and
+      # net-ml cannot be addressed from here. The facility address can, and its ML port
+      # reaches that department's gateway, which is the route a workstation here already
+      # takes to the other department. Read by the inner client alone, so it answers that one
+      # question and is not a general route into the other department.
+      EPICS_PVAS_STATUS_NAME_SERVERS: "facility:5175"
     volumes:
       - tstioc-config:/home/tstioc/.config/pva/1.5
       - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
@@ -212,6 +224,8 @@ services:
     environment:
       EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
+      # As above, the other way round: the lab department answers for what it issued.
+      EPICS_PVAS_STATUS_NAME_SERVERS: "facility:5075"
     volumes:
       - ml-ioc-config:/home/mlioc/.config/pva/1.5
       - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
