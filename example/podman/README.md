@@ -65,7 +65,7 @@ inside a podman machine, or on Windows inside WSL2 (the Windows Subsystem for Li
 | **Gateways** | A gateway is the only path across a network boundary, enforced by network isolation rather than by configuration. A request that crosses is authorized twice: at the gateway against your certificate, and at the input/output controller (IOC) against the gateway's certificate. Parts 2, 3, and 4 |
 | **Federation** | Part 3 places two departments under one facility root, so every node trusts a certificate from either department and only the issuing department can revoke it. Part 4 gives each department its own root and stores both roots in every keychain, so trust comes from the trust anchor list rather than from a shared chain, and each gateway is addressed by its own name |
 | **Authorization by department** | Under a shared root, a rule names the organizational unit that the issuing department vouched for (Part 3). Under independent roots, a rule names the authority itself, because each root is a department (Part 4) |
-| **Authority revocation** | Revoking a department's intermediate authority, by that department's own administrator, stops that department and no other. The facility root has no status channel of its own, so it names a status responder. A revoked authority anywhere in the chain, at any depth, makes every certificate beneath it report `AUTHORITY_REVOKED` rather than claiming its own revocation, which says the fault is above the holder and where to go and look for it. Part 3 |
+| **Authority revocation** | Revoking a department's intermediate authority, by that department's own administrator, stops that department and no other. The facility root has no status channel of its own, so it names a status responder. A revoked authority anywhere in the chain, at any depth, makes every certificate beneath it report `AUTHORITY_REVOKED` rather than claiming its own revocation, which says the fault is above the holder and where to go and look for it. An expired authority reads `AUTHORITY_EXPIRED` in the same way, though no laboratory here shows it, because a certificate never outlives its signer. Part 3 |
 
 ## The four laboratories
 
@@ -2116,6 +2116,17 @@ A holder's own revocation still outranks it. A certificate revoked or expired in
 right goes on saying so even when the authority above it has been revoked as well,
 because that is the fact its holder can act on.
 
+An expired authority is reported the same way and for the same reason, as
+`AUTHORITY_EXPIRED`. It does not appear in these laboratories, and that is worth saying
+plainly rather than leaving to be discovered: a certificate is never given a life longer
+than the authority that signed it, so when an authority reaches its expiry date every
+holder beneath it reaches its own at the same moment, and each correctly reports the
+`EXPIRED` that is true of itself. What `AUTHORITY_EXPIRED` names is the case that
+clamping does not cover, an authority further up the chain than the one that did the
+signing having expired while the signer and its holders are all still within their own
+dates. It tells the holder the same thing `AUTHORITY_REVOKED` does, that nothing done to
+their own certificate will help, and it tells whoever runs the site to look further up.
+
 Its IOC stops offering the secure port and serves plain traffic instead: an IOC that
 cannot stand behind its certificate does not keep presenting it. Revoked is a settled
 answer, so there is nothing left to wait for. That is what separates this from an
@@ -2811,7 +2822,7 @@ The fields:
 | `issuer` | the issuing authority; naming another empties the result without a query |
 | `name` | the common name |
 | `org`, `unit`, `country` | the rest of the subject; a certificate with several units matches on any one |
-| `state` | `UNKNOWN`, `VALID`, `PENDING`, `PENDING_APPROVAL`, `PENDING_RENEWAL`, `EXPIRED`, `REVOKED`. `AUTHORITY_REVOKED` is not among them: it is read off the authority rather than recorded against a row, and naming it is refused with the list above |
+| `state` | `UNKNOWN`, `VALID`, `PENDING`, `PENDING_APPROVAL`, `PENDING_RENEWAL`, `EXPIRED`, `REVOKED`. `AUTHORITY_REVOKED` and `AUTHORITY_EXPIRED` are not among them: they are read off the authority rather than recorded against a row, and naming either is refused with the list above |
 | `type` | `CLIENT`, `SERVER`, `IOC`, `CERT_AUTH`, `ROOT_AUTH`, `UNKNOWN`, the word in the Type column |
 | `issued`, `expires`, `renew_by`, `changed` | a date, matching that whole day |
 | `issued_before`, `expires_before`, `renew_before`, `changed_before`, and the `_after` form of each | the same four, taking a date or a period. The `renew_by` pair drops the `by` |
