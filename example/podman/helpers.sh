@@ -89,7 +89,7 @@ _lab_container() {
     local name
     name=$(podman ps --filter "label=com.docker.compose.service=$1" --format '{{.Names}}' 2>/dev/null | head -1)
     if [ -z "${name}" ]; then
-        echo "run_in: nothing is running for '$1'. Start a laboratory with: ./reset.sh <topology>" >&2
+        echo "run_in: nothing is running for '$1'. Start a laboratory with: reset_topology <topology>" >&2
         return 1
     fi
     printf '%s' "${name}"
@@ -199,7 +199,7 @@ run_in() {
             *) topology=$(_lab_topology)
                echo "run_in: the ${topology} laboratory has no '${place}'." >&2
                echo "        It has: ${places}" >&2
-               echo "        Another topology does: ./reset.sh <topology>" >&2
+               echo "        Another topology does: reset_topology <topology>" >&2
                return 2 ;;
         esac
     fi
@@ -324,7 +324,7 @@ ${script}"
 lab_ids() {
     local env_file="${LAB_HELPERS_DIR:-.}/.env"
     if [ ! -r "${env_file}" ]; then
-        echo "no ${env_file} yet - run ./reset.sh <topology> first" >&2; return 1
+        echo "no ${env_file} yet - run reset_topology <topology> first" >&2; return 1
     fi
     # Two forms, wanted in different places. The short one names an authority in a process
     # variable name, such as CERT:LIST:${LAB}:ALL. The whole one is what establishes trust in
@@ -339,6 +339,27 @@ lab_ids() {
     export LAB ML LAB_SKID ML_SKID ROOT ROOT_SKID
     # Silent: this is also run when the file is sourced, and sourcing should say nothing.
     # Use lab_ids_show to see them.
+}
+
+# Brings a laboratory up and reads its authorities into this shell, in one step.
+#
+# Minting an authority gives it a new identifier, and a shell that read the old one goes on
+# naming an authority the laboratory no longer has. Every request then names something nothing
+# answers for, which reads as a broken laboratory rather than a stale shell. Running the two
+# together is the only way to be sure they agree, so the walkthrough says reset_topology and
+# never ./reset.sh.
+#
+#     reset_topology <topology>                 discard the certificates, keep the authorities
+#     reset_topology --authorities <topology>   mint new authorities as well
+reset_topology() {
+    local script="${LAB_HELPERS_DIR:-.}/reset.sh"
+    if [ ! -x "${script}" ]; then
+        echo "reset_topology: cannot run ${script}" >&2; return 1
+    fi
+    "${script}" "$@" || return $?
+    # Only reached when the laboratory came up, so a failure above leaves the old values alone
+    # rather than half-replacing them.
+    lab_ids
 }
 
 # Shows the authorities under the names a shell uses for them.
@@ -379,11 +400,11 @@ lab_ids_show() {
 # directory.
 _lab_authority_index() {
     local t; t=$(_lab_topology)
-    [ "${t}" = unknown ] && { echo "no laboratory is up - run ./reset.sh <topology> first" >&2; return 1; }
+    [ "${t}" = unknown ] && { echo "no laboratory is up - run reset_topology <topology> first" >&2; return 1; }
     local index="${LAB_HELPERS_DIR:-.}/topologies/${t}/ocsp/index.txt"
     if [ ! -r "${index}" ]; then
         echo "the ${t} laboratory has no facility root, so there is no responder to ask." >&2
-        echo "The federated-shared-root laboratory has one: ./reset.sh federated-shared-root" >&2
+        echo "The federated-shared-root laboratory has one: reset_topology federated-shared-root" >&2
         return 1
     fi
     printf '%s' "${index}"

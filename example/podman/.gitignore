@@ -19,3 +19,8 @@ ocsp/
 # Written by reset.sh: which of the four laboratories is up. helpers.sh reads it so that
 # run_in can tell "this laboratory has no gateway" from "the gateway is not running".
 .topology
+
+# Written here by Part 2 of the walkthrough, which copies the authority out of PVACMS to hand
+# to a workstation outside the boundary. It is a certificate, so nothing here is secret, but it
+# belongs to a laboratory rather than to this tree and is made again whenever it is needed.
+trust_anchor.p12

@@ -9,8 +9,8 @@
 # It ends by trying the things a demonstration depends on. If any of them fails, this exits
 # non-zero and says where to look, rather than handing back a laboratory that looks up.
 #
-#   ./reset.sh <topology>                discard the certificates, keep the authorities
-#   ./reset.sh --authorities <topology>  mint new authorities as well; the issuer ids change
+#   reset_topology <topology>                discard the certificates, keep the authorities
+#   reset_topology --authorities <topology>  mint new authorities as well; the issuer ids change
 #
 # The topology names, and what each one is, are in topologies/topologies.env. Whichever one
 # you name is the laboratory you get, and the walkthrough section of the same name is the one
@@ -22,7 +22,7 @@ cd "$(dirname "$0")"
 . topologies/topologies.env
 
 _usage() {
-    echo "usage: ./reset.sh [--authorities] <topology>" >&2
+    echo "usage: reset_topology [--authorities] <topology>" >&2
     echo >&2
     echo "topologies:" >&2
     local t var
@@ -39,16 +39,16 @@ for arg in "$@"; do
     case "${arg}" in
         --authorities) new_authorities=yes ;;
         -h|--help)     _usage ;;
-        -*)            echo "./reset.sh: no option '${arg}'" >&2; _usage ;;
-        *)             [ -z "${topology}" ] || { echo "./reset.sh: one topology at a time" >&2; _usage; }
+        -*)            echo "reset_topology: no option '${arg}'" >&2; _usage ;;
+        *)             [ -z "${topology}" ] || { echo "reset_topology: one topology at a time" >&2; _usage; }
                        topology="${arg}" ;;
     esac
 done
-[ -n "${topology}" ] || { echo "./reset.sh: name a topology" >&2; _usage; }
+[ -n "${topology}" ] || { echo "reset_topology: name a topology" >&2; _usage; }
 
 case " ${TOPOLOGY_NAMES} " in
     *" ${topology} "*) ;;
-    *) echo "./reset.sh: no topology called '${topology}'" >&2; _usage ;;
+    *) echo "reset_topology: no topology called '${topology}'" >&2; _usage ;;
 esac
 
 # podman-compose names everything it makes after the directory this file sits in. The name is
@@ -374,9 +374,11 @@ echo
 lab_ids_show
 echo
 if [ "${new_authorities}" = yes ]; then
-    # A shell that read the old ones still holds them, and nothing here can reach into it.
-    echo "These are new. A shell that already read the old ones still holds them, so in each"
-    echo "one that has, run:"
+    # The shell that ran reset_topology has them already, because reset_topology reads them as
+    # soon as this returns. Any other shell that read the old ones still holds them, and nothing
+    # here can reach into one of those.
+    echo "These are new. The shell you ran this from has them. Any other shell that read the"
+    echo "old ones still holds them, so in each of those run:"
     echo "    lab_ids"
     echo
 fi

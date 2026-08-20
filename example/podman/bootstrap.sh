@@ -1,9 +1,9 @@
 #!/bin/bash
 # Build the images the demonstration laboratories are made from.
 #
-# Run once, before the first ./reset.sh. The images are the same whichever laboratory you
+# Run once, before the first reset_topology. The images are the same whichever laboratory you
 # bring up; what differs between them is their certificate authorities, and those are minted
-# by ./reset.sh into the topology that owns them.
+# by reset_topology into the topology that owns them.
 #
 # JOBS controls how many compiler processes run at once. Each can take most of a
 # gigabyte, so on a machine with little memory set it low:
@@ -85,12 +85,13 @@ fi
 # use for this. Pulled here so that bringing a laboratory up needs no registry.
 echo "==> fetching the load balancer image"
 podman pull -q docker.io/library/haproxy:lts-alpine >/dev/null 2>&1 \
-    || echo "    could not fetch haproxy - ./reset.sh simple-with-gateway will need it" >&2
+    || echo "    could not fetch haproxy - reset_topology simple-with-gateway will need it" >&2
 
 echo
 echo "The images are built. Certificate authorities belong to a laboratory rather than to the"
 echo "images, so they are minted when you bring one up:"
 echo
-echo "    ./reset.sh <topology>"
+echo "    source ./helpers.sh"
+echo "    reset_topology <topology>"
 echo
-echo "./reset.sh with no name lists the four and says what each one is."
+echo "reset_topology with no name lists the four and says what each one is."
