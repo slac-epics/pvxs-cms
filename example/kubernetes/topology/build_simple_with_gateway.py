@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # The simple topology plus a gateway, as Kubernetes renders it: everything the simple
-# picture shows, plus a perimeter segment holding the one gateway pod behind two Services -
+# picture shows, plus an ingress zone holding the one gateway pod behind two Services -
 # its own name and 'facility', the name the outside knows - and an internet segment holding
 # a workstation that reaches the laboratory only through that gateway, over TLS alone.
 # Every coordinate is computed here. See topology_kit for the primitives.
@@ -47,7 +47,7 @@ tstioc_l = fields('Labels: app=tstioc zone=lab',
  'Claim: tstioc-config',
  'Serves: tst:ArrayData, tst:ColorMode,',
  '    and the rest of the image database')
-gateway_l = fields('Labels: app=gateway zone=perimeter',
+gateway_l = fields('Labels: app=gateway',
  'Image: gateway',
  'Program: p4p pvagw',
  'readOnly: false',
@@ -88,8 +88,16 @@ FILE_CARDS = [('ConfigMaps', cm_l),
               ('ConfigMap lab-issuer', issuer_l),
               ('PersistentVolumeClaims', pvc_l)]
 
+root_l = fields('Subject: CN=EPICS Root Certificate Authority',
+ 'SKID: ROOT_ISSUER_SKID', 'Issuer ID: ROOT_ISSUER',
+ 'Self-signed: it is its own issuer, and issues every',
+ '    certificate in the laboratory directly',
+ 'File: cert_auth.p12 on claim idm-data',
+ 'Mounted into: pvxs-lab-pvacms')
+
 # ---------------------------------------------------------------- legend content
 CHIPS = [('client workstation pod', C['client'][1]),
+         ('certificate authority - a file, mounted into a pod', C['ca'][1]),
          ('IOC pod', C['ioc'][1]),
          ('PVACMS pod - the certificate manager', C['pvacms'][1]),
          ('gateway pod - forwards PVAccess across the boundary', C['gateway'][1]),
@@ -152,14 +160,25 @@ lab_x = M
 # line that clears the workstation card in the first column.
 gw_cx = lab_x + ZP + cxs[1] + COLS[1]/2
 
-# The perimeter zone around the gateway. The facility Service stands at its right edge, so
+# The ingress zone around the gateway. The facility Service stands at its right edge, so
 # the drop from the workstation above enters clear of the zone's own title text.
-PZ_TITLE = 'perimeter - NetworkPolicy gateway-ingress'
+PZ_TITLE = 'NetworkPolicy gateway-ingress'
 gw_w = measure('pvxs-lab-gateway', gateway_l)[0]
 fac_w = measure('svc facility', svc_fac_l)[0]
 pz_w = int(max(fac_w + 2*ZP, gw_w + 2*ZP, 40 + len(PZ_TITLE)*9.0 + 30))
 pz_x = gw_cx - pz_w/2
 fac_cx = gw_cx
+
+# The legend stands at the top left, the authority at the top right, and the picture starts
+# below both.
+legend_x, legend_y = M, top_y
+root_w, root_h = measure('Root Certificate Authority', root_l)
+ca_w = root_w + 2*ZP
+ca_h = ZTITLE + 10 + root_h + 20
+band_h = max(lg_h, ca_h)
+ca_y = top_y + band_h - ca_h
+band_y = top_y + band_h + 20
+diagram_y = top_y + band_h + 44
 
 # The internet zone above, centred over the facility Service so the workstation's path in
 # is a straight drop.
@@ -168,7 +187,7 @@ ic_w, ic_h = measure('internet-client', inet_client_l)
 iz_w = int(max(ic_w + 2*ZP, 40 + len(IZ_TITLE)*9.0 + 16))
 iz_h = ZTITLE + 12 + ic_h + 20
 iz_x = max(M, fac_cx - iz_w/2)
-iz_y = top_y
+iz_y = diagram_y
 
 pz_y = iz_y + iz_h + 56
 svc_row_y = pz_y + ZTITLE + 36
@@ -185,7 +204,8 @@ files_total = sum(files_ws) + GAP*(len(files_ws) - 1)
 # The by-hand line runs down the right margin, outside every zone.
 nx = max(lab_x + W_lab, pz_x + pz_w, iz_x + iz_w) + 44
 
-CANVAS_W = int(max(nx, M + files_total, M + lg_w) + M)
+CANVAS_W = int(max(nx, M + files_total, M + lg_w + 40 + ca_w) + M)
+ca_x = CANVAS_W - M - ca_w            # right edge, clear of the legend beside it
 CANVAS_H = 0                          # set once the rows are measured
 
 SEL = C['lb'][1]                      # the colour a Service arrow is drawn in
@@ -212,8 +232,7 @@ def build(cv):
     zone_h = (pod_y - zone_y) + h_pods + ZP
     files_y = zone_y + zone_h + 40
     files_h = max(measure(t, l)[1] for t, l in FILE_CARDS)
-    legend_x, legend_y = M, files_y + files_h + 44
-    CANVAS_H = legend_y + lg_h + M
+    CANVAS_H = files_y + files_h + M
 
     LAB_TITLE = 'lab segment - NetworkPolicy lab-segment-ingress'
     assert gw_cx > lab_x + 40 + len(LAB_TITLE)*9.0 + 8, 'gateway drop crosses the lab title'
@@ -288,6 +307,17 @@ def build(cv):
     for title, lines in FILE_CARDS:
         c = cv.card(fx, files_y, title, lines, 'file', 'file')
         fx = c['x'] + c['w'] + GAP
+
+    # --- the authority, and the line down to the pod that holds it
+    cv.zone(ca_x, ca_y, ca_w, ca_h, 'Certificate Authority', 'zone_ca')
+    rootc = cv.card(ca_x + ZP, ca_y + ZTITLE + 10, 'Root Certificate Authority',
+                    root_l, 'ca', 'ca')
+    pmid = pv['top'] + pv['h']/2
+    cv.hv([(rootc['cx'], rootc['bot']), (rootc['cx'], band_y), (nx, band_y), (nx, pmid),
+           (pv['x'] + pv['w'] + 3, pmid)], C['cert'], 2, dash='6 5', marker=True)
+    cv.emit(f'<text x="{nx-8}" y="{band_y+14}" text-anchor="end" '
+            f'font-family="Menlo,Consolas,monospace" font-size="10" fill="{C["cert"]}">'
+            f'held by, and signs every certificate directly</text>')
 
     # --- legend. Two columns: the swatches and line kinds on the left, the notation and
     # --- the abbreviations on the right.

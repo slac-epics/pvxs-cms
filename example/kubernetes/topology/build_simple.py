@@ -49,6 +49,14 @@ tstioc_l = fields('Labels: app=tstioc zone=lab',
  'Serves: tst:ArrayData, tst:ColorMode,',
  '    and the rest of the image database')
 
+root_l = fields('Subject: CN=EPICS Root Certificate Authority',
+ 'SKID: ROOT_ISSUER_SKID', 'Issuer ID: ROOT_ISSUER',
+ 'Self-signed: it is its own issuer, and issues every',
+ '    certificate in the laboratory directly',
+ 'File: cert_auth.p12 on claim idm-data',
+ 'Mounted into: pvxs-lab-pvacms')
+
+
 def svc_l(app):
     return fields('ClusterIP', '5075/TCP 5076/TCP 5076/UDP', f'selects app={app}')
 
@@ -70,6 +78,7 @@ FILE_CARDS = [('ConfigMaps', cm_l),
 
 # ---------------------------------------------------------------- legend content
 CHIPS = [('client workstation pod', C['client'][1]),
+         ('certificate authority - a file, mounted into a pod', C['ca'][1]),
          ('IOC pod', C['ioc'][1]),
          ('PVACMS pod - the certificate manager', C['pvacms'][1]),
          ('Service - a stable name and ports in front of a pod', C['lb'][1]),
@@ -119,10 +128,20 @@ W_lab = cxs[-1] + COLS[-1] + 2*ZP
 lab_x = M
 zone_y = legend_y + lg_h + 44
 
+# The authority sits in the top band, right of the legend and above the certificate manager
+# it is mounted into.
+root_w, root_h = measure('Root Certificate Authority', root_l)
+ca_w = root_w + 2*ZP
+ca_h = ZTITLE + 10 + root_h + 20
+ca_y = legend_y + lg_h - ca_h
+band_y = legend_y + lg_h + 20         # free track between the band and the zone
+
 files_ws = [measure(t, l)[0] for t, l in FILE_CARDS]
 files_total = sum(files_ws) + GAP*(len(files_ws) - 1)
 
-CANVAS_W = max(lab_x + W_lab, M + files_total, legend_x + lg_w) + M
+CANVAS_W = max(lab_x + W_lab + 70, M + files_total,
+               legend_x + lg_w + 40 + ca_w) + M
+ca_x = CANVAS_W - M - ca_w            # right edge, clear of the legend beside it
 CANVAS_H = 0                          # set once the rows are measured
 
 SEL = C['lb'][1]                      # the colour a Service arrow is drawn in
@@ -185,6 +204,18 @@ def build(cv):
     # --- each Service selects its pod
     for s, p in ((s1, t1), (s2, t2), (s3, pv)):
         sel_arrow(cv, s['cx'], s['bot'], p['top'])
+
+    # --- the authority, and the line down to the pod that holds it
+    cv.zone(ca_x, ca_y, ca_w, ca_h, 'Certificate Authority', 'zone_ca')
+    rootc = cv.card(ca_x + ZP, ca_y + ZTITLE + 10, 'Root Certificate Authority',
+                    root_l, 'ca', 'ca')
+    nx = lab_x + W_lab + 34
+    pmid = pv['top'] + pv['h']/2
+    cv.hv([(rootc['cx'], rootc['bot']), (rootc['cx'], band_y), (nx, band_y), (nx, pmid),
+           (pv['x'] + pv['w'] + 3, pmid)], C['cert'], 2, dash='6 5', marker=True)
+    cv.emit(f'<text x="{nx-8}" y="{band_y+14}" text-anchor="end" '
+            f'font-family="Menlo,Consolas,monospace" font-size="10" fill="{C["cert"]}">'
+            f'held by, and signs every certificate directly</text>')
 
     # --- the cluster objects that carry no traffic
     fx = M

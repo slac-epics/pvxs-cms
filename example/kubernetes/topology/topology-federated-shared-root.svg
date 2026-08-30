@@ -1,425 +1,474 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1776 2965" width="1776" height="2965" font-synthesis="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1776 3381" width="1776" height="3381" font-synthesis="none">
 <!-- Secure PVAccess demonstration laboratory, federated topology with one facility root, on Kubernetes - hand-drawn flat-design infographic. -->
 <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8E24AA"/></marker></defs>
-<rect x="0" y="0" width="1776" height="2965" fill="#FAFAFA"/>
+<rect x="0" y="0" width="1776" height="3381" fill="#FAFAFA"/>
 <text x="40" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="#263238">Secure PVAccess demonstration laboratory</text>
 <text x="40" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated-shared-root: two departments under one facility root - example/kubernetes</text>
 <text x="40" y="82" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B">Cluster: kind, name spva-lab, namespace spva-lab. Cilium is the network plugin.</text>
 <text x="40" y="97" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B">The segments below are NetworkPolicy, enforced by Cilium; the default CNI of kind does not enforce policy at all.</text>
-<rect x="70" y="1155" width="898" height="616" rx="10" fill="#E8EAF6" stroke="#3949AB" stroke-width="1.6"/>
-<path d="M 70 1165 a10 10 0 0 1 10 -10 h878 a10 10 0 0 1 10 10 v34 h-898 z" fill="#3949AB" fill-opacity="0.92"/>
-<circle cx="87" cy="1182" r="2.6" fill="white"/><circle cx="97" cy="1182" r="2.6" fill="white"/><circle cx="92" cy="1172" r="2.6" fill="white"/><path d="M 92 1172 L 87 1182 M 92 1172 L 97 1182 M 87 1182 H 97" stroke="white" stroke-width="1.4"/>
-<text x="110" y="1183" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">lab segment - NetworkPolicy lab-segment-ingress</text>
-<rect x="1040" y="1155" width="626" height="616" rx="10" fill="#E0F2F1" stroke="#00897B" stroke-width="1.6"/>
-<path d="M 1040 1165 a10 10 0 0 1 10 -10 h606 a10 10 0 0 1 10 10 v34 h-626 z" fill="#00897B" fill-opacity="0.92"/>
-<circle cx="1057" cy="1182" r="2.6" fill="white"/><circle cx="1067" cy="1182" r="2.6" fill="white"/><circle cx="1062" cy="1172" r="2.6" fill="white"/><path d="M 1062 1172 L 1057 1182 M 1062 1172 L 1067 1182 M 1057 1182 H 1067" stroke="white" stroke-width="1.4"/>
-<text x="1080" y="1183" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">ML segment - NetworkPolicy ml-segment-ingress</text>
-<text x="96" y="1219" font-family="Menlo,Consolas,monospace" font-size="11" fill="#3949AB">ingress: zone=lab, app=gateway, app=facility</text>
-<text x="1066" y="1219" font-family="Menlo,Consolas,monospace" font-size="11" fill="#00897B">ingress: zone=ml, app=ml-gateway, app=facility</text>
-<rect x="839.75" y="124" width="348" height="195" rx="10" fill="#EDE7F6" stroke="#6A1B9A" stroke-width="1.6"/>
-<path d="M 839.75 134 a10 10 0 0 1 10 -10 h328 a10 10 0 0 1 10 10 v34 h-348 z" fill="#6A1B9A" fill-opacity="0.92"/>
-<circle cx="856.75" cy="151" r="2.6" fill="white"/><circle cx="866.75" cy="151" r="2.6" fill="white"/><circle cx="861.75" cy="141" r="2.6" fill="white"/><path d="M 861.75 141 L 856.75 151 M 861.75 141 L 866.75 151 M 856.75 151 H 866.75" stroke="white" stroke-width="1.4"/>
-<text x="879.75" y="152" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">internet</text>
-<rect x="713.75" y="375" width="600" height="219" rx="10" fill="#F3E5F5" stroke="#8E24AA" stroke-width="1.6"/>
-<path d="M 713.75 385 a10 10 0 0 1 10 -10 h580 a10 10 0 0 1 10 10 v34 h-600 z" fill="#8E24AA" fill-opacity="0.92"/>
-<circle cx="730.75" cy="402" r="2.6" fill="white"/><circle cx="740.75" cy="402" r="2.6" fill="white"/><circle cx="735.75" cy="392" r="2.6" fill="white"/><path d="M 735.75 392 L 730.75 402 M 735.75 392 L 740.75 402 M 730.75 402 H 740.75" stroke="white" stroke-width="1.4"/>
-<text x="753.75" y="403" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">facility - NetworkPolicy facility-ingress</text>
-<rect x="60" y="658" width="1616" height="433" rx="10" fill="#FFF8E1" stroke="#FFB300" stroke-width="1.6"/>
-<path d="M 60 668 a10 10 0 0 1 10 -10 h1596 a10 10 0 0 1 10 10 v34 h-1616 z" fill="#FFB300" fill-opacity="0.92"/>
-<circle cx="77" cy="685" r="2.6" fill="white"/><circle cx="87" cy="685" r="2.6" fill="white"/><circle cx="82" cy="675" r="2.6" fill="white"/><path d="M 82 675 L 77 685 M 82 675 L 87 685 M 77 685 H 87" stroke="white" stroke-width="1.4"/>
-<text x="100" y="686" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">perimeter - NetworkPolicies gateway-ingress and ml-gateway-ingress</text>
-<text x="86" y="724" font-family="Menlo,Consolas,monospace" font-size="11" fill="#FFB300">ingress: app=facility, and the peer gateway</text>
-<rect x="833.0" y="1841" width="342" height="421" rx="10" fill="#EDE7F6" stroke="#6A1B9A" stroke-width="1.6"/>
-<path d="M 833.0 1851 a10 10 0 0 1 10 -10 h322 a10 10 0 0 1 10 10 v34 h-342 z" fill="#6A1B9A" fill-opacity="0.92"/>
-<circle cx="850.0" cy="1868" r="2.6" fill="white"/><circle cx="860.0" cy="1868" r="2.6" fill="white"/><circle cx="855.0" cy="1858" r="2.6" fill="white"/><path d="M 855.0 1858 L 850.0 1868 M 855.0 1858 L 860.0 1868 M 850.0 1868 H 860.0" stroke="white" stroke-width="1.4"/>
-<text x="873.0" y="1869" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">facility root status</text>
-<text x="859.0" y="1905" font-family="Menlo,Consolas,monospace" font-size="11" fill="#6A1B9A">ingress: zones lab and ml, port 8888</text>
-<path d="M 96 1416 L 942 1416" fill="none" stroke="#3949AB" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 1066 1416 L 1640 1416" fill="none" stroke="#00897B" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-<g><rect x="96.0" y="1233" width="270" height="149" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.4"/>
-<path d="M 96.0 1241 a8 8 0 0 1 8 -8 h254 a8 8 0 0 1 8 8 v22 h-270 z" fill="#546E7A"/>
-<rect x="105.0" y="1242" width="16" height="10" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="113.0" y1="1252" x2="113.0" y2="1255" stroke="white" stroke-width="1.8"/><line x1="109.0" y1="1255.5" x2="117.0" y2="1255.5" stroke="white" stroke-width="1.8"/>
-<text x="128.0" y="1253" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">lab-client</text>
-<text x="108.0" y="1282" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=lab-client zone=lab</text>
-<text x="108.0" y="1297" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: lab</text>
-<text x="108.0" y="1312" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Logins: guest, operator</text>
-<text x="108.0" y="1327" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_NAME_SERVERS: facility:5175</text>
-<text x="108.0" y="1342" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_ADDR_LIST: pvxs-lab-pvacms</text>
-<text x="108.0" y="1357" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    pvxs-lab-testioc pvxs-lab-tstioc</text>
-<text x="108.0" y="1372" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: lab-client-config</text>
+<rect x="70" y="2041" width="898" height="616" rx="10" fill="#E8EAF6" stroke="#3949AB" stroke-width="1.6"/>
+<path d="M 70 2051 a10 10 0 0 1 10 -10 h878 a10 10 0 0 1 10 10 v34 h-898 z" fill="#3949AB" fill-opacity="0.92"/>
+<circle cx="87" cy="2068" r="2.6" fill="white"/><circle cx="97" cy="2068" r="2.6" fill="white"/><circle cx="92" cy="2058" r="2.6" fill="white"/><path d="M 92 2058 L 87 2068 M 92 2058 L 97 2068 M 87 2068 H 97" stroke="white" stroke-width="1.4"/>
+<text x="110" y="2069" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">lab segment - NetworkPolicy lab-segment-ingress</text>
+<rect x="1040" y="2041" width="626" height="616" rx="10" fill="#E0F2F1" stroke="#00897B" stroke-width="1.6"/>
+<path d="M 1040 2051 a10 10 0 0 1 10 -10 h606 a10 10 0 0 1 10 10 v34 h-626 z" fill="#00897B" fill-opacity="0.92"/>
+<circle cx="1057" cy="2068" r="2.6" fill="white"/><circle cx="1067" cy="2068" r="2.6" fill="white"/><circle cx="1062" cy="2058" r="2.6" fill="white"/><path d="M 1062 2058 L 1057 2068 M 1062 2058 L 1067 2068 M 1057 2068 H 1067" stroke="white" stroke-width="1.4"/>
+<text x="1080" y="2069" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">ML segment - NetworkPolicy ml-segment-ingress</text>
+<text x="96" y="2105" font-family="Menlo,Consolas,monospace" font-size="11" fill="#3949AB">ingress: zone=lab, app=gateway, app=facility</text>
+<text x="1066" y="2105" font-family="Menlo,Consolas,monospace" font-size="11" fill="#00897B">ingress: zone=ml, app=ml-gateway, app=facility</text>
+<rect x="839.75" y="1010" width="348" height="195" rx="10" fill="#EDE7F6" stroke="#6A1B9A" stroke-width="1.6"/>
+<path d="M 839.75 1020 a10 10 0 0 1 10 -10 h328 a10 10 0 0 1 10 10 v34 h-348 z" fill="#6A1B9A" fill-opacity="0.92"/>
+<circle cx="856.75" cy="1037" r="2.6" fill="white"/><circle cx="866.75" cy="1037" r="2.6" fill="white"/><circle cx="861.75" cy="1027" r="2.6" fill="white"/><path d="M 861.75 1027 L 856.75 1037 M 861.75 1027 L 866.75 1037 M 856.75 1037 H 866.75" stroke="white" stroke-width="1.4"/>
+<text x="879.75" y="1038" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">internet</text>
+<rect x="713.75" y="1261" width="600" height="219" rx="10" fill="#F3E5F5" stroke="#8E24AA" stroke-width="1.6"/>
+<path d="M 713.75 1271 a10 10 0 0 1 10 -10 h580 a10 10 0 0 1 10 10 v34 h-600 z" fill="#8E24AA" fill-opacity="0.92"/>
+<circle cx="730.75" cy="1288" r="2.6" fill="white"/><circle cx="740.75" cy="1288" r="2.6" fill="white"/><circle cx="735.75" cy="1278" r="2.6" fill="white"/><path d="M 735.75 1278 L 730.75 1288 M 735.75 1278 L 740.75 1288 M 730.75 1288 H 740.75" stroke="white" stroke-width="1.4"/>
+<text x="753.75" y="1289" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">facility - NetworkPolicy facility-ingress</text>
+<rect x="60" y="1544" width="1616" height="433" rx="10" fill="#FFF8E1" stroke="#FFB300" stroke-width="1.6"/>
+<path d="M 60 1554 a10 10 0 0 1 10 -10 h1596 a10 10 0 0 1 10 10 v34 h-1616 z" fill="#FFB300" fill-opacity="0.92"/>
+<circle cx="77" cy="1571" r="2.6" fill="white"/><circle cx="87" cy="1571" r="2.6" fill="white"/><circle cx="82" cy="1561" r="2.6" fill="white"/><path d="M 82 1561 L 77 1571 M 82 1561 L 87 1571 M 77 1571 H 87" stroke="white" stroke-width="1.4"/>
+<text x="100" y="1572" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">NetworkPolicies gateway-ingress and ml-gateway-ingress</text>
+<text x="86" y="1610" font-family="Menlo,Consolas,monospace" font-size="11" fill="#FFB300">ingress: app=facility, and the peer gateway</text>
+<rect x="833.0" y="2727" width="342" height="421" rx="10" fill="#EDE7F6" stroke="#6A1B9A" stroke-width="1.6"/>
+<path d="M 833.0 2737 a10 10 0 0 1 10 -10 h322 a10 10 0 0 1 10 10 v34 h-342 z" fill="#6A1B9A" fill-opacity="0.92"/>
+<circle cx="850.0" cy="2754" r="2.6" fill="white"/><circle cx="860.0" cy="2754" r="2.6" fill="white"/><circle cx="855.0" cy="2744" r="2.6" fill="white"/><path d="M 855.0 2744 L 850.0 2754 M 855.0 2744 L 860.0 2754 M 850.0 2754 H 860.0" stroke="white" stroke-width="1.4"/>
+<text x="873.0" y="2755" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">facility root status</text>
+<text x="859.0" y="2791" font-family="Menlo,Consolas,monospace" font-size="11" fill="#6A1B9A">ingress: zones lab and ml, port 8888</text>
+<path d="M 96 2302 L 942 2302" fill="none" stroke="#3949AB" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1066 2302 L 1640 2302" fill="none" stroke="#00897B" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<g><rect x="96.0" y="2119" width="270" height="149" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.4"/>
+<path d="M 96.0 2127 a8 8 0 0 1 8 -8 h254 a8 8 0 0 1 8 8 v22 h-270 z" fill="#546E7A"/>
+<rect x="105.0" y="2128" width="16" height="10" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="113.0" y1="2138" x2="113.0" y2="2141" stroke="white" stroke-width="1.8"/><line x1="109.0" y1="2141.5" x2="117.0" y2="2141.5" stroke="white" stroke-width="1.8"/>
+<text x="128.0" y="2139" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">lab-client</text>
+<text x="108.0" y="2168" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=lab-client zone=lab</text>
+<text x="108.0" y="2183" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: lab</text>
+<text x="108.0" y="2198" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Logins: guest, operator</text>
+<text x="108.0" y="2213" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_NAME_SERVERS: facility:5175</text>
+<text x="108.0" y="2228" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_ADDR_LIST: pvxs-lab-pvacms</text>
+<text x="108.0" y="2243" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    pvxs-lab-testioc pvxs-lab-tstioc</text>
+<text x="108.0" y="2258" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: lab-client-config</text>
 </g>
-<g><rect x="119.0" y="1448" width="224" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 119.0 1456 a8 8 0 0 1 8 -8 h208 a8 8 0 0 1 8 8 v22 h-224 z" fill="#5D4037"/>
-<line x1="130.0" y1="1463" x2="135.0" y2="1463" stroke="white" stroke-width="1.8"/><path d="M 135.0 1463 L 142.0 1457" stroke="white" stroke-width="1.5" fill="none"/><path d="M 135.0 1463 L 142.0 1463" stroke="white" stroke-width="1.5" fill="none"/><path d="M 135.0 1463 L 142.0 1469" stroke="white" stroke-width="1.5" fill="none"/><circle cx="135.0" cy="1463" r="2" fill="white"/>
-<text x="151.0" y="1468" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-testioc</text>
-<text x="131.0" y="1497" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
-<text x="131.0" y="1512" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
-<text x="131.0" y="1527" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=testioc</text>
+<g><rect x="119.0" y="2334" width="224" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 119.0 2342 a8 8 0 0 1 8 -8 h208 a8 8 0 0 1 8 8 v22 h-224 z" fill="#5D4037"/>
+<line x1="130.0" y1="2349" x2="135.0" y2="2349" stroke="white" stroke-width="1.8"/><path d="M 135.0 2349 L 142.0 2343" stroke="white" stroke-width="1.5" fill="none"/><path d="M 135.0 2349 L 142.0 2349" stroke="white" stroke-width="1.5" fill="none"/><path d="M 135.0 2349 L 142.0 2355" stroke="white" stroke-width="1.5" fill="none"/><circle cx="135.0" cy="2349" r="2" fill="white"/>
+<text x="151.0" y="2354" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-testioc</text>
+<text x="131.0" y="2383" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
+<text x="131.0" y="2398" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
+<text x="131.0" y="2413" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=testioc</text>
 </g>
-<g><rect x="411.0" y="1448" width="216" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 411.0 1456 a8 8 0 0 1 8 -8 h200 a8 8 0 0 1 8 8 v22 h-216 z" fill="#5D4037"/>
-<line x1="422.0" y1="1463" x2="427.0" y2="1463" stroke="white" stroke-width="1.8"/><path d="M 427.0 1463 L 434.0 1457" stroke="white" stroke-width="1.5" fill="none"/><path d="M 427.0 1463 L 434.0 1463" stroke="white" stroke-width="1.5" fill="none"/><path d="M 427.0 1463 L 434.0 1469" stroke="white" stroke-width="1.5" fill="none"/><circle cx="427.0" cy="1463" r="2" fill="white"/>
-<text x="443.0" y="1468" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-tstioc</text>
-<text x="423.0" y="1497" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
-<text x="423.0" y="1512" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
-<text x="423.0" y="1527" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=tstioc</text>
+<g><rect x="411.0" y="2334" width="216" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 411.0 2342 a8 8 0 0 1 8 -8 h200 a8 8 0 0 1 8 8 v22 h-216 z" fill="#5D4037"/>
+<line x1="422.0" y1="2349" x2="427.0" y2="2349" stroke="white" stroke-width="1.8"/><path d="M 427.0 2349 L 434.0 2343" stroke="white" stroke-width="1.5" fill="none"/><path d="M 427.0 2349 L 434.0 2349" stroke="white" stroke-width="1.5" fill="none"/><path d="M 427.0 2349 L 434.0 2355" stroke="white" stroke-width="1.5" fill="none"/><circle cx="427.0" cy="2349" r="2" fill="white"/>
+<text x="443.0" y="2354" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-tstioc</text>
+<text x="423.0" y="2383" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
+<text x="423.0" y="2398" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
+<text x="423.0" y="2413" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=tstioc</text>
 </g>
-<g><rect x="699.0" y="1448" width="216" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 699.0 1456 a8 8 0 0 1 8 -8 h200 a8 8 0 0 1 8 8 v22 h-216 z" fill="#5D4037"/>
-<line x1="710.0" y1="1463" x2="715.0" y2="1463" stroke="white" stroke-width="1.8"/><path d="M 715.0 1463 L 722.0 1457" stroke="white" stroke-width="1.5" fill="none"/><path d="M 715.0 1463 L 722.0 1463" stroke="white" stroke-width="1.5" fill="none"/><path d="M 715.0 1463 L 722.0 1469" stroke="white" stroke-width="1.5" fill="none"/><circle cx="715.0" cy="1463" r="2" fill="white"/>
-<text x="731.0" y="1468" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-pvacms</text>
-<text x="711.0" y="1497" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
-<text x="711.0" y="1512" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
-<text x="711.0" y="1527" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=pvacms</text>
+<g><rect x="699.0" y="2334" width="216" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 699.0 2342 a8 8 0 0 1 8 -8 h200 a8 8 0 0 1 8 8 v22 h-216 z" fill="#5D4037"/>
+<line x1="710.0" y1="2349" x2="715.0" y2="2349" stroke="white" stroke-width="1.8"/><path d="M 715.0 2349 L 722.0 2343" stroke="white" stroke-width="1.5" fill="none"/><path d="M 715.0 2349 L 722.0 2349" stroke="white" stroke-width="1.5" fill="none"/><path d="M 715.0 2349 L 722.0 2355" stroke="white" stroke-width="1.5" fill="none"/><circle cx="715.0" cy="2349" r="2" fill="white"/>
+<text x="731.0" y="2354" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-pvacms</text>
+<text x="711.0" y="2383" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
+<text x="711.0" y="2398" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
+<text x="711.0" y="2413" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=pvacms</text>
 </g>
-<g><rect x="106.0" y="1581" width="250" height="149" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
-<path d="M 106.0 1589 a8 8 0 0 1 8 -8 h234 a8 8 0 0 1 8 8 v22 h-250 z" fill="#43A047"/>
-<rect x="117.0" y="1590" width="12" height="12" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="120.0" y1="1588" x2="120.0" y2="1590" stroke="white" stroke-width="1.4"/><line x1="120.0" y1="1602" x2="120.0" y2="1604" stroke="white" stroke-width="1.4"/><line x1="123.0" y1="1588" x2="123.0" y2="1590" stroke="white" stroke-width="1.4"/><line x1="123.0" y1="1602" x2="123.0" y2="1604" stroke="white" stroke-width="1.4"/><line x1="126.0" y1="1588" x2="126.0" y2="1590" stroke="white" stroke-width="1.4"/><line x1="126.0" y1="1602" x2="126.0" y2="1604" stroke="white" stroke-width="1.4"/>
-<text x="138.0" y="1601" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-testioc</text>
-<text x="118.0" y="1630" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=testioc zone=lab</text>
-<text x="118.0" y="1645" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: testioc</text>
-<text x="118.0" y="1660" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVAS_STATUS_NAME_SERVERS:</text>
-<text x="118.0" y="1675" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5175</text>
-<text x="118.0" y="1690" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: testioc-config</text>
-<text x="118.0" y="1705" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves: test:aiExample, test:spec,</text>
-<text x="118.0" y="1720" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    test:open, and the rest</text>
+<g><rect x="106.0" y="2467" width="250" height="149" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
+<path d="M 106.0 2475 a8 8 0 0 1 8 -8 h234 a8 8 0 0 1 8 8 v22 h-250 z" fill="#43A047"/>
+<rect x="117.0" y="2476" width="12" height="12" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="120.0" y1="2474" x2="120.0" y2="2476" stroke="white" stroke-width="1.4"/><line x1="120.0" y1="2488" x2="120.0" y2="2490" stroke="white" stroke-width="1.4"/><line x1="123.0" y1="2474" x2="123.0" y2="2476" stroke="white" stroke-width="1.4"/><line x1="123.0" y1="2488" x2="123.0" y2="2490" stroke="white" stroke-width="1.4"/><line x1="126.0" y1="2474" x2="126.0" y2="2476" stroke="white" stroke-width="1.4"/><line x1="126.0" y1="2488" x2="126.0" y2="2490" stroke="white" stroke-width="1.4"/>
+<text x="138.0" y="2487" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-testioc</text>
+<text x="118.0" y="2516" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=testioc zone=lab</text>
+<text x="118.0" y="2531" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: testioc</text>
+<text x="118.0" y="2546" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVAS_STATUS_NAME_SERVERS:</text>
+<text x="118.0" y="2561" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5175</text>
+<text x="118.0" y="2576" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: testioc-config</text>
+<text x="118.0" y="2591" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves: test:aiExample, test:spec,</text>
+<text x="118.0" y="2606" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    test:open, and the rest</text>
 </g>
-<g><rect x="394.0" y="1581" width="250" height="134" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
-<path d="M 394.0 1589 a8 8 0 0 1 8 -8 h234 a8 8 0 0 1 8 8 v22 h-250 z" fill="#43A047"/>
-<rect x="405.0" y="1590" width="12" height="12" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="408.0" y1="1588" x2="408.0" y2="1590" stroke="white" stroke-width="1.4"/><line x1="408.0" y1="1602" x2="408.0" y2="1604" stroke="white" stroke-width="1.4"/><line x1="411.0" y1="1588" x2="411.0" y2="1590" stroke="white" stroke-width="1.4"/><line x1="411.0" y1="1602" x2="411.0" y2="1604" stroke="white" stroke-width="1.4"/><line x1="414.0" y1="1588" x2="414.0" y2="1590" stroke="white" stroke-width="1.4"/><line x1="414.0" y1="1602" x2="414.0" y2="1604" stroke="white" stroke-width="1.4"/>
-<text x="426.0" y="1601" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-tstioc</text>
-<text x="406.0" y="1630" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=tstioc zone=lab</text>
-<text x="406.0" y="1645" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: tstioc</text>
-<text x="406.0" y="1660" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVAS_STATUS_NAME_SERVERS:</text>
-<text x="406.0" y="1675" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5175</text>
-<text x="406.0" y="1690" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: tstioc-config</text>
-<text x="406.0" y="1705" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves: tst:ArrayData and the rest</text>
+<g><rect x="394.0" y="2467" width="250" height="134" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
+<path d="M 394.0 2475 a8 8 0 0 1 8 -8 h234 a8 8 0 0 1 8 8 v22 h-250 z" fill="#43A047"/>
+<rect x="405.0" y="2476" width="12" height="12" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="408.0" y1="2474" x2="408.0" y2="2476" stroke="white" stroke-width="1.4"/><line x1="408.0" y1="2488" x2="408.0" y2="2490" stroke="white" stroke-width="1.4"/><line x1="411.0" y1="2474" x2="411.0" y2="2476" stroke="white" stroke-width="1.4"/><line x1="411.0" y1="2488" x2="411.0" y2="2490" stroke="white" stroke-width="1.4"/><line x1="414.0" y1="2474" x2="414.0" y2="2476" stroke="white" stroke-width="1.4"/><line x1="414.0" y1="2488" x2="414.0" y2="2490" stroke="white" stroke-width="1.4"/>
+<text x="426.0" y="2487" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-tstioc</text>
+<text x="406.0" y="2516" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=tstioc zone=lab</text>
+<text x="406.0" y="2531" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: tstioc</text>
+<text x="406.0" y="2546" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVAS_STATUS_NAME_SERVERS:</text>
+<text x="406.0" y="2561" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5175</text>
+<text x="406.0" y="2576" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: tstioc-config</text>
+<text x="406.0" y="2591" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves: tst:ArrayData and the rest</text>
 </g>
-<g><rect x="672.0" y="1581" width="270" height="164" rx="8" fill="#E3F2FD" stroke="#1E88E5" stroke-width="1.4"/>
-<path d="M 672.0 1589 a8 8 0 0 1 8 -8 h254 a8 8 0 0 1 8 8 v22 h-270 z" fill="#1E88E5"/>
-<circle cx="687.0" cy="1594" r="4.2" fill="none" stroke="white" stroke-width="1.8"/><path d="M 690.0 1597 l6 6 m-2.5 -1 l2 -2 m-4.5 0 l1.6 -1.6" stroke="white" stroke-width="1.8" fill="none"/>
-<text x="704.0" y="1601" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-pvacms</text>
-<text x="684.0" y="1630" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=pvacms zone=lab</text>
-<text x="684.0" y="1645" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm</text>
-<text x="684.0" y="1660" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Signs with the lab intermediate,</text>
-<text x="684.0" y="1675" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    from Secret lab-intermediate</text>
-<text x="684.0" y="1690" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Access file pvacms-lab.acf</text>
-<text x="684.0" y="1705" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claims: idm-config, idm-data</text>
-<text x="684.0" y="1720" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves CERT:CREATE, CERT:LIST,</text>
-<text x="684.0" y="1735" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    CERT:STATUS:&lt;lab issuer&gt;:&lt;serial&gt;</text>
+<g><rect x="672.0" y="2467" width="270" height="164" rx="8" fill="#E3F2FD" stroke="#1E88E5" stroke-width="1.4"/>
+<path d="M 672.0 2475 a8 8 0 0 1 8 -8 h254 a8 8 0 0 1 8 8 v22 h-270 z" fill="#1E88E5"/>
+<circle cx="687.0" cy="2480" r="4.2" fill="none" stroke="white" stroke-width="1.8"/><path d="M 690.0 2483 l6 6 m-2.5 -1 l2 -2 m-4.5 0 l1.6 -1.6" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="704.0" y="2487" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-pvacms</text>
+<text x="684.0" y="2516" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=pvacms zone=lab</text>
+<text x="684.0" y="2531" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm</text>
+<text x="684.0" y="2546" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Signs with the lab intermediate,</text>
+<text x="684.0" y="2561" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    from Secret lab-intermediate</text>
+<text x="684.0" y="2576" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Access file pvacms-lab.acf</text>
+<text x="684.0" y="2591" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claims: idm-config, idm-data</text>
+<text x="684.0" y="2606" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves CERT:CREATE, CERT:LIST,</text>
+<text x="684.0" y="2621" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    CERT:STATUS:&lt;lab issuer&gt;:&lt;serial&gt;</text>
 </g>
-<g><rect x="1066.0" y="1233" width="283" height="149" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.4"/>
-<path d="M 1066.0 1241 a8 8 0 0 1 8 -8 h267 a8 8 0 0 1 8 8 v22 h-283 z" fill="#546E7A"/>
-<rect x="1075.0" y="1242" width="16" height="10" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="1083.0" y1="1252" x2="1083.0" y2="1255" stroke="white" stroke-width="1.8"/><line x1="1079.0" y1="1255.5" x2="1087.0" y2="1255.5" stroke="white" stroke-width="1.8"/>
-<text x="1098.0" y="1253" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">ml-client</text>
-<text x="1078.0" y="1282" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=ml-client zone=ml</text>
-<text x="1078.0" y="1297" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: lab</text>
-<text x="1078.0" y="1312" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Logins: guest, operator</text>
-<text x="1078.0" y="1327" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_NAME_SERVERS: facility:5075</text>
-<text x="1078.0" y="1342" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_ADDR_LIST: pvxs-lab-ml-pvacms</text>
-<text x="1078.0" y="1357" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    pvxs-lab-ml-ioc</text>
-<text x="1078.0" y="1372" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: ml-client-config</text>
+<g><rect x="1066.0" y="2119" width="283" height="149" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.4"/>
+<path d="M 1066.0 2127 a8 8 0 0 1 8 -8 h267 a8 8 0 0 1 8 8 v22 h-283 z" fill="#546E7A"/>
+<rect x="1075.0" y="2128" width="16" height="10" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="1083.0" y1="2138" x2="1083.0" y2="2141" stroke="white" stroke-width="1.8"/><line x1="1079.0" y1="2141.5" x2="1087.0" y2="2141.5" stroke="white" stroke-width="1.8"/>
+<text x="1098.0" y="2139" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">ml-client</text>
+<text x="1078.0" y="2168" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=ml-client zone=ml</text>
+<text x="1078.0" y="2183" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: lab</text>
+<text x="1078.0" y="2198" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Logins: guest, operator</text>
+<text x="1078.0" y="2213" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_NAME_SERVERS: facility:5075</text>
+<text x="1078.0" y="2228" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_ADDR_LIST: pvxs-lab-ml-pvacms</text>
+<text x="1078.0" y="2243" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    pvxs-lab-ml-ioc</text>
+<text x="1078.0" y="2258" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: ml-client-config</text>
 </g>
-<g><rect x="1099.5" y="1448" width="216" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 1099.5 1456 a8 8 0 0 1 8 -8 h200 a8 8 0 0 1 8 8 v22 h-216 z" fill="#5D4037"/>
-<line x1="1110.5" y1="1463" x2="1115.5" y2="1463" stroke="white" stroke-width="1.8"/><path d="M 1115.5 1463 L 1122.5 1457" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1115.5 1463 L 1122.5 1463" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1115.5 1463 L 1122.5 1469" stroke="white" stroke-width="1.5" fill="none"/><circle cx="1115.5" cy="1463" r="2" fill="white"/>
-<text x="1131.5" y="1468" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-ml-ioc</text>
-<text x="1111.5" y="1497" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
-<text x="1111.5" y="1512" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
-<text x="1111.5" y="1527" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=ml-ioc</text>
+<g><rect x="1099.5" y="2334" width="216" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 1099.5 2342 a8 8 0 0 1 8 -8 h200 a8 8 0 0 1 8 8 v22 h-216 z" fill="#5D4037"/>
+<line x1="1110.5" y1="2349" x2="1115.5" y2="2349" stroke="white" stroke-width="1.8"/><path d="M 1115.5 2349 L 1122.5 2343" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1115.5 2349 L 1122.5 2349" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1115.5 2349 L 1122.5 2355" stroke="white" stroke-width="1.5" fill="none"/><circle cx="1115.5" cy="2349" r="2" fill="white"/>
+<text x="1131.5" y="2354" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-ml-ioc</text>
+<text x="1111.5" y="2383" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
+<text x="1111.5" y="2398" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
+<text x="1111.5" y="2413" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=ml-ioc</text>
 </g>
-<g><rect x="1389.5" y="1448" width="238" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 1389.5 1456 a8 8 0 0 1 8 -8 h222 a8 8 0 0 1 8 8 v22 h-238 z" fill="#5D4037"/>
-<line x1="1400.5" y1="1463" x2="1405.5" y2="1463" stroke="white" stroke-width="1.8"/><path d="M 1405.5 1463 L 1412.5 1457" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1405.5 1463 L 1412.5 1463" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1405.5 1463 L 1412.5 1469" stroke="white" stroke-width="1.5" fill="none"/><circle cx="1405.5" cy="1463" r="2" fill="white"/>
-<text x="1421.5" y="1468" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-ml-pvacms</text>
-<text x="1401.5" y="1497" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
-<text x="1401.5" y="1512" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
-<text x="1401.5" y="1527" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=ml</text>
+<g><rect x="1389.5" y="2334" width="238" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 1389.5 2342 a8 8 0 0 1 8 -8 h222 a8 8 0 0 1 8 8 v22 h-238 z" fill="#5D4037"/>
+<line x1="1400.5" y1="2349" x2="1405.5" y2="2349" stroke="white" stroke-width="1.8"/><path d="M 1405.5 2349 L 1412.5 2343" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1405.5 2349 L 1412.5 2349" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1405.5 2349 L 1412.5 2355" stroke="white" stroke-width="1.5" fill="none"/><circle cx="1405.5" cy="2349" r="2" fill="white"/>
+<text x="1421.5" y="2354" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-ml-pvacms</text>
+<text x="1401.5" y="2383" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
+<text x="1401.5" y="2398" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
+<text x="1401.5" y="2413" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=ml</text>
 </g>
-<g><rect x="1086.0" y="1581" width="243" height="134" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
-<path d="M 1086.0 1589 a8 8 0 0 1 8 -8 h227 a8 8 0 0 1 8 8 v22 h-243 z" fill="#43A047"/>
-<rect x="1097.0" y="1590" width="12" height="12" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="1100.0" y1="1588" x2="1100.0" y2="1590" stroke="white" stroke-width="1.4"/><line x1="1100.0" y1="1602" x2="1100.0" y2="1604" stroke="white" stroke-width="1.4"/><line x1="1103.0" y1="1588" x2="1103.0" y2="1590" stroke="white" stroke-width="1.4"/><line x1="1103.0" y1="1602" x2="1103.0" y2="1604" stroke="white" stroke-width="1.4"/><line x1="1106.0" y1="1588" x2="1106.0" y2="1590" stroke="white" stroke-width="1.4"/><line x1="1106.0" y1="1602" x2="1106.0" y2="1604" stroke="white" stroke-width="1.4"/>
-<text x="1118.0" y="1601" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-ml-ioc</text>
-<text x="1098.0" y="1630" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=ml-ioc zone=ml</text>
-<text x="1098.0" y="1645" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: ml-ioc</text>
-<text x="1098.0" y="1660" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVAS_STATUS_NAME_SERVERS:</text>
-<text x="1098.0" y="1675" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5075</text>
-<text x="1098.0" y="1690" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: ml-ioc-config</text>
-<text x="1098.0" y="1705" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves: ml:aiExample and the rest</text>
+<g><rect x="1086.0" y="2467" width="243" height="134" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
+<path d="M 1086.0 2475 a8 8 0 0 1 8 -8 h227 a8 8 0 0 1 8 8 v22 h-243 z" fill="#43A047"/>
+<rect x="1097.0" y="2476" width="12" height="12" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="1100.0" y1="2474" x2="1100.0" y2="2476" stroke="white" stroke-width="1.4"/><line x1="1100.0" y1="2488" x2="1100.0" y2="2490" stroke="white" stroke-width="1.4"/><line x1="1103.0" y1="2474" x2="1103.0" y2="2476" stroke="white" stroke-width="1.4"/><line x1="1103.0" y1="2488" x2="1103.0" y2="2490" stroke="white" stroke-width="1.4"/><line x1="1106.0" y1="2474" x2="1106.0" y2="2476" stroke="white" stroke-width="1.4"/><line x1="1106.0" y1="2488" x2="1106.0" y2="2490" stroke="white" stroke-width="1.4"/>
+<text x="1118.0" y="2487" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-ml-ioc</text>
+<text x="1098.0" y="2516" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=ml-ioc zone=ml</text>
+<text x="1098.0" y="2531" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: ml-ioc</text>
+<text x="1098.0" y="2546" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVAS_STATUS_NAME_SERVERS:</text>
+<text x="1098.0" y="2561" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5075</text>
+<text x="1098.0" y="2576" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: ml-ioc-config</text>
+<text x="1098.0" y="2591" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves: ml:aiExample and the rest</text>
 </g>
-<g><rect x="1377.0" y="1581" width="263" height="164" rx="8" fill="#E3F2FD" stroke="#1E88E5" stroke-width="1.4"/>
-<path d="M 1377.0 1589 a8 8 0 0 1 8 -8 h247 a8 8 0 0 1 8 8 v22 h-263 z" fill="#1E88E5"/>
-<circle cx="1392.0" cy="1594" r="4.2" fill="none" stroke="white" stroke-width="1.8"/><path d="M 1395.0 1597 l6 6 m-2.5 -1 l2 -2 m-4.5 0 l1.6 -1.6" stroke="white" stroke-width="1.8" fill="none"/>
-<text x="1409.0" y="1601" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-ml-pvacms</text>
-<text x="1389.0" y="1630" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=ml zone=ml</text>
-<text x="1389.0" y="1645" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: ml</text>
-<text x="1389.0" y="1660" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Signs with the ML intermediate,</text>
-<text x="1389.0" y="1675" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    from Secret ml-intermediate</text>
-<text x="1389.0" y="1690" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Access file pvacms-ml.acf</text>
-<text x="1389.0" y="1705" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claims: ml-config, ml-data</text>
-<text x="1389.0" y="1720" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves CERT:CREATE, CERT:LIST,</text>
-<text x="1389.0" y="1735" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    CERT:STATUS:&lt;ml issuer&gt;:&lt;serial&gt;</text>
+<g><rect x="1377.0" y="2467" width="263" height="164" rx="8" fill="#E3F2FD" stroke="#1E88E5" stroke-width="1.4"/>
+<path d="M 1377.0 2475 a8 8 0 0 1 8 -8 h247 a8 8 0 0 1 8 8 v22 h-263 z" fill="#1E88E5"/>
+<circle cx="1392.0" cy="2480" r="4.2" fill="none" stroke="white" stroke-width="1.8"/><path d="M 1395.0 2483 l6 6 m-2.5 -1 l2 -2 m-4.5 0 l1.6 -1.6" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="1409.0" y="2487" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-ml-pvacms</text>
+<text x="1389.0" y="2516" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=ml zone=ml</text>
+<text x="1389.0" y="2531" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: ml</text>
+<text x="1389.0" y="2546" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Signs with the ML intermediate,</text>
+<text x="1389.0" y="2561" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    from Secret ml-intermediate</text>
+<text x="1389.0" y="2576" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Access file pvacms-ml.acf</text>
+<text x="1389.0" y="2591" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claims: ml-config, ml-data</text>
+<text x="1389.0" y="2606" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves CERT:CREATE, CERT:LIST,</text>
+<text x="1389.0" y="2621" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    CERT:STATUS:&lt;ml issuer&gt;:&lt;serial&gt;</text>
 </g>
-<path d="M 231.0 1382 L 231.0 1416" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="231.0" cy="1416" r="4" fill="#3949AB"/>
-<path d="M 1207.5 1382 L 1207.5 1416" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="1207.5" cy="1416" r="4" fill="#00897B"/>
-<path d="M 231.0 1416 L 231.0 1448" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="231.0" cy="1416" r="4" fill="#3949AB"/>
-<path d="M 519.0 1416 L 519.0 1448" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="519.0" cy="1416" r="4" fill="#3949AB"/>
-<path d="M 807.0 1416 L 807.0 1448" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="807.0" cy="1416" r="4" fill="#3949AB"/>
-<path d="M 1207.5 1416 L 1207.5 1448" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="1207.5" cy="1416" r="4" fill="#00897B"/>
-<path d="M 1508.5 1416 L 1508.5 1448" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="1508.5" cy="1416" r="4" fill="#00897B"/>
-<path d="M 231.0 1537 L 231.0 1575" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 226.5 1573 L 235.5 1573 L 231.0 1580 z" fill="#5D4037"/>
-<g><rect x="249.3" y="1550.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="277.0" y="1562.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
-<path d="M 519.0 1537 L 519.0 1575" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 514.5 1573 L 523.5 1573 L 519.0 1580 z" fill="#5D4037"/>
-<g><rect x="537.3" y="1550.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="565.0" y="1562.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
-<path d="M 807.0 1537 L 807.0 1575" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 802.5 1573 L 811.5 1573 L 807.0 1580 z" fill="#5D4037"/>
-<g><rect x="825.3" y="1550.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="853.0" y="1562.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
-<path d="M 1207.5 1537 L 1207.5 1575" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 1203.0 1573 L 1212.0 1573 L 1207.5 1580 z" fill="#5D4037"/>
-<g><rect x="1225.8" y="1550.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="1253.5" y="1562.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
-<path d="M 1508.5 1537 L 1508.5 1575" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 1504.0 1573 L 1513.0 1573 L 1508.5 1580 z" fill="#5D4037"/>
-<g><rect x="1526.8" y="1550.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="1554.5" y="1562.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
-<g><rect x="739.75" y="449" width="250" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 739.75 457 a8 8 0 0 1 8 -8 h234 a8 8 0 0 1 8 8 v22 h-250 z" fill="#5D4037"/>
-<line x1="750.75" y1="464" x2="755.75" y2="464" stroke="white" stroke-width="1.8"/><path d="M 755.75 464 L 762.75 458" stroke="white" stroke-width="1.5" fill="none"/><path d="M 755.75 464 L 762.75 464" stroke="white" stroke-width="1.5" fill="none"/><path d="M 755.75 464 L 762.75 470" stroke="white" stroke-width="1.5" fill="none"/><circle cx="755.75" cy="464" r="2" fill="white"/>
-<text x="771.75" y="469" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc facility</text>
-<text x="751.75" y="498" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP  5075 5076 5175 5176/TCP</text>
-<text x="751.75" y="513" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=facility</text>
-<text x="751.75" y="528" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">the port chooses the department</text>
+<path d="M 231.0 2268 L 231.0 2302" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="231.0" cy="2302" r="4" fill="#3949AB"/>
+<path d="M 1207.5 2268 L 1207.5 2302" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1207.5" cy="2302" r="4" fill="#00897B"/>
+<path d="M 231.0 2302 L 231.0 2334" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="231.0" cy="2302" r="4" fill="#3949AB"/>
+<path d="M 519.0 2302 L 519.0 2334" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="519.0" cy="2302" r="4" fill="#3949AB"/>
+<path d="M 807.0 2302 L 807.0 2334" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="807.0" cy="2302" r="4" fill="#3949AB"/>
+<path d="M 1207.5 2302 L 1207.5 2334" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1207.5" cy="2302" r="4" fill="#00897B"/>
+<path d="M 1508.5 2302 L 1508.5 2334" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1508.5" cy="2302" r="4" fill="#00897B"/>
+<path d="M 231.0 2423 L 231.0 2461" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 226.5 2459 L 235.5 2459 L 231.0 2466 z" fill="#5D4037"/>
+<g><rect x="249.3" y="2436.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="277.0" y="2448.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
+<path d="M 519.0 2423 L 519.0 2461" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 514.5 2459 L 523.5 2459 L 519.0 2466 z" fill="#5D4037"/>
+<g><rect x="537.3" y="2436.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="565.0" y="2448.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
+<path d="M 807.0 2423 L 807.0 2461" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 802.5 2459 L 811.5 2459 L 807.0 2466 z" fill="#5D4037"/>
+<g><rect x="825.3" y="2436.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="853.0" y="2448.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
+<path d="M 1207.5 2423 L 1207.5 2461" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1203.0 2459 L 1212.0 2459 L 1207.5 2466 z" fill="#5D4037"/>
+<g><rect x="1225.8" y="2436.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="1253.5" y="2448.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
+<path d="M 1508.5 2423 L 1508.5 2461" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1504.0 2459 L 1513.0 2459 L 1508.5 2466 z" fill="#5D4037"/>
+<g><rect x="1526.8" y="2436.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="1554.5" y="2448.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
+<g><rect x="739.75" y="1335" width="250" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 739.75 1343 a8 8 0 0 1 8 -8 h234 a8 8 0 0 1 8 8 v22 h-250 z" fill="#5D4037"/>
+<line x1="750.75" y1="1350" x2="755.75" y2="1350" stroke="white" stroke-width="1.8"/><path d="M 755.75 1350 L 762.75 1344" stroke="white" stroke-width="1.5" fill="none"/><path d="M 755.75 1350 L 762.75 1350" stroke="white" stroke-width="1.5" fill="none"/><path d="M 755.75 1350 L 762.75 1356" stroke="white" stroke-width="1.5" fill="none"/><circle cx="755.75" cy="1350" r="2" fill="white"/>
+<text x="771.75" y="1355" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc facility</text>
+<text x="751.75" y="1384" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP  5075 5076 5175 5176/TCP</text>
+<text x="751.75" y="1399" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=facility</text>
+<text x="751.75" y="1414" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">the port chooses the department</text>
 </g>
-<g><rect x="1017.75" y="449" width="270" height="119" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 1017.75 457 a8 8 0 0 1 8 -8 h254 a8 8 0 0 1 8 8 v22 h-270 z" fill="#5D4037"/>
-<line x1="1027.75" y1="459" x2="1041.75" y2="459" stroke="white" stroke-width="1.5"/><line x1="1027.75" y1="464" x2="1041.75" y2="464" stroke="white" stroke-width="1.5"/><line x1="1027.75" y1="469" x2="1041.75" y2="469" stroke="white" stroke-width="1.5"/><line x1="1030.75" y1="459" x2="1030.75" y2="464" stroke="white" stroke-width="1.5"/><line x1="1038.75" y1="459" x2="1038.75" y2="464" stroke="white" stroke-width="1.5"/><line x1="1036.75" y1="464" x2="1036.75" y2="469" stroke="white" stroke-width="1.5"/><line x1="1044.75" y1="464" x2="1044.75" y2="469" stroke="white" stroke-width="1.5"/>
-<text x="1049.75" y="469" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-facility-lb</text>
-<text x="1029.75" y="498" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=facility zone=facility</text>
-<text x="1029.75" y="513" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: haproxy, four frontends</text>
-<text x="1029.75" y="528" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">A port is never translated: a server</text>
-<text x="1029.75" y="543" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">names its own port in a search reply,</text>
-<text x="1029.75" y="558" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">and the client dials that port next</text>
+<g><rect x="1017.75" y="1335" width="270" height="119" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 1017.75 1343 a8 8 0 0 1 8 -8 h254 a8 8 0 0 1 8 8 v22 h-270 z" fill="#5D4037"/>
+<line x1="1027.75" y1="1345" x2="1041.75" y2="1345" stroke="white" stroke-width="1.5"/><line x1="1027.75" y1="1350" x2="1041.75" y2="1350" stroke="white" stroke-width="1.5"/><line x1="1027.75" y1="1355" x2="1041.75" y2="1355" stroke="white" stroke-width="1.5"/><line x1="1030.75" y1="1345" x2="1030.75" y2="1350" stroke="white" stroke-width="1.5"/><line x1="1038.75" y1="1345" x2="1038.75" y2="1350" stroke="white" stroke-width="1.5"/><line x1="1036.75" y1="1350" x2="1036.75" y2="1355" stroke="white" stroke-width="1.5"/><line x1="1044.75" y1="1350" x2="1044.75" y2="1355" stroke="white" stroke-width="1.5"/>
+<text x="1049.75" y="1355" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-facility-lb</text>
+<text x="1029.75" y="1384" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=facility zone=facility</text>
+<text x="1029.75" y="1399" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: haproxy, four frontends</text>
+<text x="1029.75" y="1414" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">A port is never translated: a server</text>
+<text x="1029.75" y="1429" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">names its own port in a search reply,</text>
+<text x="1029.75" y="1444" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">and the client dials that port next</text>
 </g>
-<g><rect x="935.75" y="426" width="136.0" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="1003.75" y="438.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects app=facility</text></g>
-<g><rect x="865.75" y="180" width="296" height="119" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.4"/>
-<path d="M 865.75 188 a8 8 0 0 1 8 -8 h280 a8 8 0 0 1 8 8 v22 h-296 z" fill="#546E7A"/>
-<rect x="874.75" y="189" width="16" height="10" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="882.75" y1="199" x2="882.75" y2="202" stroke="white" stroke-width="1.8"/><line x1="878.75" y1="202.5" x2="886.75" y2="202.5" stroke="white" stroke-width="1.8"/>
-<text x="897.75" y="200" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">internet-client</text>
-<text x="877.75" y="229" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=internet-client zone=internet</text>
-<text x="877.75" y="244" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: internet</text>
-<text x="877.75" y="259" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Logins: guest, operator</text>
-<text x="877.75" y="274" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_NAME_SERVERS:</text>
-<text x="877.75" y="289" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5075 facility:5175</text>
+<g><rect x="935.75" y="1312" width="136.0" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="1003.75" y="1324.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects app=facility</text></g>
+<g><rect x="865.75" y="1066" width="296" height="119" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.4"/>
+<path d="M 865.75 1074 a8 8 0 0 1 8 -8 h280 a8 8 0 0 1 8 8 v22 h-296 z" fill="#546E7A"/>
+<rect x="874.75" y="1075" width="16" height="10" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="882.75" y1="1085" x2="882.75" y2="1088" stroke="white" stroke-width="1.8"/><line x1="878.75" y1="1088.5" x2="886.75" y2="1088.5" stroke="white" stroke-width="1.8"/>
+<text x="897.75" y="1086" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">internet-client</text>
+<text x="877.75" y="1115" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=internet-client zone=internet</text>
+<text x="877.75" y="1130" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: internet</text>
+<text x="877.75" y="1145" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Logins: guest, operator</text>
+<text x="877.75" y="1160" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_NAME_SERVERS:</text>
+<text x="877.75" y="1175" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    facility:5075 facility:5175</text>
 </g>
-<path d="M 1013.75 299 L 1013.75 443" fill="none" stroke="#455A64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 1009.25 441 L 1018.25 441 L 1013.75 448 z" fill="#455A64"/>
-<g><rect x="924.05" y="328.0" width="179.4" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="1013.75" y="340.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">facility:5075 facility:5175</text></g>
-<g><rect x="407.0" y="738" width="224" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 407.0 746 a8 8 0 0 1 8 -8 h208 a8 8 0 0 1 8 8 v22 h-224 z" fill="#5D4037"/>
-<line x1="418.0" y1="753" x2="423.0" y2="753" stroke="white" stroke-width="1.8"/><path d="M 423.0 753 L 430.0 747" stroke="white" stroke-width="1.5" fill="none"/><path d="M 423.0 753 L 430.0 753" stroke="white" stroke-width="1.5" fill="none"/><path d="M 423.0 753 L 430.0 759" stroke="white" stroke-width="1.5" fill="none"/><circle cx="423.0" cy="753" r="2" fill="white"/>
-<text x="439.0" y="758" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-gateway</text>
-<text x="419.0" y="787" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
-<text x="419.0" y="802" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
-<text x="419.0" y="817" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=gateway</text>
+<path d="M 1013.75 1185 L 1013.75 1329" fill="none" stroke="#455A64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1009.25 1327 L 1018.25 1327 L 1013.75 1334 z" fill="#455A64"/>
+<g><rect x="924.05" y="1214.0" width="179.4" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="1013.75" y="1226.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">facility:5075 facility:5175</text></g>
+<g><rect x="407.0" y="1624" width="224" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 407.0 1632 a8 8 0 0 1 8 -8 h208 a8 8 0 0 1 8 8 v22 h-224 z" fill="#5D4037"/>
+<line x1="418.0" y1="1639" x2="423.0" y2="1639" stroke="white" stroke-width="1.8"/><path d="M 423.0 1639 L 430.0 1633" stroke="white" stroke-width="1.5" fill="none"/><path d="M 423.0 1639 L 430.0 1639" stroke="white" stroke-width="1.5" fill="none"/><path d="M 423.0 1639 L 430.0 1645" stroke="white" stroke-width="1.5" fill="none"/><circle cx="423.0" cy="1639" r="2" fill="white"/>
+<text x="439.0" y="1644" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-gateway</text>
+<text x="419.0" y="1673" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
+<text x="419.0" y="1688" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075/TCP 5076/TCP 5076/UDP</text>
+<text x="419.0" y="1703" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=gateway</text>
 </g>
-<g><rect x="1385.5" y="738" width="246" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 1385.5 746 a8 8 0 0 1 8 -8 h230 a8 8 0 0 1 8 8 v22 h-246 z" fill="#5D4037"/>
-<line x1="1396.5" y1="753" x2="1401.5" y2="753" stroke="white" stroke-width="1.8"/><path d="M 1401.5 753 L 1408.5 747" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1401.5 753 L 1408.5 753" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1401.5 753 L 1408.5 759" stroke="white" stroke-width="1.5" fill="none"/><circle cx="1401.5" cy="753" r="2" fill="white"/>
-<text x="1417.5" y="758" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-ml-gateway</text>
-<text x="1397.5" y="787" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
-<text x="1397.5" y="802" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5175/TCP 5176/TCP 5176/UDP</text>
-<text x="1397.5" y="817" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=ml-gateway</text>
+<g><rect x="1385.5" y="1624" width="246" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 1385.5 1632 a8 8 0 0 1 8 -8 h230 a8 8 0 0 1 8 8 v22 h-246 z" fill="#5D4037"/>
+<line x1="1396.5" y1="1639" x2="1401.5" y2="1639" stroke="white" stroke-width="1.8"/><path d="M 1401.5 1639 L 1408.5 1633" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1401.5 1639 L 1408.5 1639" stroke="white" stroke-width="1.5" fill="none"/><path d="M 1401.5 1639 L 1408.5 1645" stroke="white" stroke-width="1.5" fill="none"/><circle cx="1401.5" cy="1639" r="2" fill="white"/>
+<text x="1417.5" y="1644" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-ml-gateway</text>
+<text x="1397.5" y="1673" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
+<text x="1397.5" y="1688" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5175/TCP 5176/TCP 5176/UDP</text>
+<text x="1397.5" y="1703" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=ml-gateway</text>
 </g>
-<g><rect x="381.0" y="871" width="276" height="194" rx="8" fill="#FFF3E0" stroke="#FB8C00" stroke-width="1.4"/>
-<path d="M 381.0 879 a8 8 0 0 1 8 -8 h260 a8 8 0 0 1 8 8 v22 h-276 z" fill="#FB8C00"/>
-<path d="M 390.0 884 h9 m-3 -3 l3 3 l-3 3" stroke="white" stroke-width="1.8" fill="none"/><path d="M 406.0 890 h-9 m3 -3 l-3 3 l3 3" stroke="white" stroke-width="1.8" fill="none"/>
-<text x="413.0" y="891" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-gateway</text>
-<text x="393.0" y="920" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=gateway zone=perimeter</text>
-<text x="393.0" y="935" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: gateway   Program: p4p pvagw</text>
-<text x="393.0" y="950" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves 5075/TCP and 5076/TCP TLS</text>
-<text x="393.0" y="965" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Upstream: the lab services</text>
-<text x="393.0" y="980" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway-lab.conf carries</text>
-<text x="393.0" y="995" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    EPICS_PVAS_STATUS_NAME_SERVERS:</text>
-<text x="393.0" y="1010" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    pvxs-lab-ml-gateway:5175 - read by</text>
-<text x="393.0" y="1025" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    the inner client alone, so nothing</text>
-<text x="393.0" y="1040" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    else is given the route</text>
-<text x="393.0" y="1055" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: gateway-config</text>
+<g><rect x="381.0" y="1757" width="276" height="194" rx="8" fill="#FFF3E0" stroke="#FB8C00" stroke-width="1.4"/>
+<path d="M 381.0 1765 a8 8 0 0 1 8 -8 h260 a8 8 0 0 1 8 8 v22 h-276 z" fill="#FB8C00"/>
+<path d="M 390.0 1770 h9 m-3 -3 l3 3 l-3 3" stroke="white" stroke-width="1.8" fill="none"/><path d="M 406.0 1776 h-9 m3 -3 l-3 3 l3 3" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="413.0" y="1777" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-gateway</text>
+<text x="393.0" y="1806" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=gateway</text>
+<text x="393.0" y="1821" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: gateway   Program: p4p pvagw</text>
+<text x="393.0" y="1836" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves 5075/TCP and 5076/TCP TLS</text>
+<text x="393.0" y="1851" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Upstream: the lab services</text>
+<text x="393.0" y="1866" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway-lab.conf carries</text>
+<text x="393.0" y="1881" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    EPICS_PVAS_STATUS_NAME_SERVERS:</text>
+<text x="393.0" y="1896" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    pvxs-lab-ml-gateway:5175 - read by</text>
+<text x="393.0" y="1911" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    the inner client alone, so nothing</text>
+<text x="393.0" y="1926" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    else is given the route</text>
+<text x="393.0" y="1941" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: gateway-config</text>
 </g>
-<g><rect x="1373.5" y="871" width="270" height="164" rx="8" fill="#FFF3E0" stroke="#FB8C00" stroke-width="1.4"/>
-<path d="M 1373.5 879 a8 8 0 0 1 8 -8 h254 a8 8 0 0 1 8 8 v22 h-270 z" fill="#FB8C00"/>
-<path d="M 1382.5 884 h9 m-3 -3 l3 3 l-3 3" stroke="white" stroke-width="1.8" fill="none"/><path d="M 1398.5 890 h-9 m3 -3 l-3 3 l3 3" stroke="white" stroke-width="1.8" fill="none"/>
-<text x="1405.5" y="891" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-ml-gateway</text>
-<text x="1385.5" y="920" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=ml-gateway zone=perimeter</text>
-<text x="1385.5" y="935" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: gateway   Program: p4p pvagw</text>
-<text x="1385.5" y="950" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves 5175/TCP and 5176/TCP TLS</text>
-<text x="1385.5" y="965" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Upstream: the ML services</text>
-<text x="1385.5" y="980" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway-ml.conf carries</text>
-<text x="1385.5" y="995" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    EPICS_PVAS_STATUS_NAME_SERVERS:</text>
-<text x="1385.5" y="1010" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    pvxs-lab-gateway:5075</text>
-<text x="1385.5" y="1025" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: ml-gateway-config</text>
+<g><rect x="1380.5" y="1757" width="256" height="164" rx="8" fill="#FFF3E0" stroke="#FB8C00" stroke-width="1.4"/>
+<path d="M 1380.5 1765 a8 8 0 0 1 8 -8 h240 a8 8 0 0 1 8 8 v22 h-256 z" fill="#FB8C00"/>
+<path d="M 1389.5 1770 h9 m-3 -3 l3 3 l-3 3" stroke="white" stroke-width="1.8" fill="none"/><path d="M 1405.5 1776 h-9 m3 -3 l-3 3 l3 3" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="1412.5" y="1777" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-ml-gateway</text>
+<text x="1392.5" y="1806" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=ml-gateway</text>
+<text x="1392.5" y="1821" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: gateway   Program: p4p pvagw</text>
+<text x="1392.5" y="1836" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves 5175/TCP and 5176/TCP TLS</text>
+<text x="1392.5" y="1851" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Upstream: the ML services</text>
+<text x="1392.5" y="1866" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway-ml.conf carries</text>
+<text x="1392.5" y="1881" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    EPICS_PVAS_STATUS_NAME_SERVERS:</text>
+<text x="1392.5" y="1896" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    pvxs-lab-gateway:5075</text>
+<text x="1392.5" y="1911" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Claim: ml-gateway-config</text>
 </g>
-<path d="M 519.0 827 L 519.0 865" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 514.5 863 L 523.5 863 L 519.0 870 z" fill="#5D4037"/>
-<g><rect x="537.3" y="840.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="565.0" y="852.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
-<path d="M 1508.5 827 L 1508.5 865" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 1504.0 863 L 1513.0 863 L 1508.5 870 z" fill="#5D4037"/>
-<g><rect x="1526.8" y="840.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="1554.5" y="852.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
-<path d="M 519.0 594 L 519.0 732" fill="none" stroke="#455A64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 514.5 730 L 523.5 730 L 519.0 737 z" fill="#455A64"/>
-<g><rect x="466.5" y="613" width="105.0" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="519.0" y="625.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">ports 5075 5076</text></g>
-<path d="M 1508.5 594 L 1508.5 732" fill="none" stroke="#455A64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 1504.0 730 L 1513.0 730 L 1508.5 737 z" fill="#455A64"/>
-<g><rect x="1456.0" y="613" width="105.0" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="1508.5" y="625.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">ports 5175 5176</text></g>
-<path d="M 519.0 1065 L 519.0 1416" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="519.0" cy="1416" r="4" fill="#3949AB"/>
-<g><rect x="478.9" y="1114.0" width="80.2" height="18" rx="9" fill="white" stroke="#3949AB" stroke-width="1.2"/><text x="519.0" y="1126.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#3949AB">client side</text></g>
-<path d="M 1508.5 1035 L 1508.5 1416" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="1508.5" cy="1416" r="4" fill="#00897B"/>
-<g><rect x="1468.4" y="1114.0" width="80.2" height="18" rx="9" fill="white" stroke="#00897B" stroke-width="1.2"/><text x="1508.5" y="1126.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#00897B">client side</text></g>
-<path d="M 657.0 968.0 L 1373.5 968.0" fill="none" stroke="#D81B60" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-<g><rect x="937.95" y="943.0" width="154.6" height="18" rx="9" fill="white" stroke="#D81B60" stroke-width="1.2"/><text x="1015.25" y="955.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#D81B60">peer certificate status</text></g>
-<path d="M 96.0 1257 L 48 1257 L 48 484.5 L 713.75 484.5" fill="none" stroke="#455A64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-<g><rect x="-60.3" y="1120" width="216.6" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="48" y="1132.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">facility:5175 - the ML department</text></g>
-<path d="M 1349.0 1257 L 1688 1257 L 1688 484.5 L 1313.75 484.5" fill="none" stroke="#455A64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-<g><rect x="1576.6" y="1120" width="222.8" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="1688" y="1132.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">facility:5075 - the lab department</text></g>
-<g><rect x="859.0" y="1913" width="290" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 859.0 1921 a8 8 0 0 1 8 -8 h274 a8 8 0 0 1 8 8 v22 h-290 z" fill="#5D4037"/>
-<line x1="870.0" y1="1928" x2="875.0" y2="1928" stroke="white" stroke-width="1.8"/><path d="M 875.0 1928 L 882.0 1922" stroke="white" stroke-width="1.5" fill="none"/><path d="M 875.0 1928 L 882.0 1928" stroke="white" stroke-width="1.5" fill="none"/><path d="M 875.0 1928 L 882.0 1934" stroke="white" stroke-width="1.5" fill="none"/><circle cx="875.0" cy="1928" r="2" fill="white"/>
-<text x="891.0" y="1933" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-authority-status</text>
-<text x="871.0" y="1962" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
-<text x="871.0" y="1977" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">8888/TCP</text>
-<text x="871.0" y="1992" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=authority-status</text>
+<path d="M 519.0 1713 L 519.0 1751" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 514.5 1749 L 523.5 1749 L 519.0 1756 z" fill="#5D4037"/>
+<g><rect x="537.3" y="1726.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="565.0" y="1738.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
+<path d="M 1508.5 1713 L 1508.5 1751" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1504.0 1749 L 1513.0 1749 L 1508.5 1756 z" fill="#5D4037"/>
+<g><rect x="1526.8" y="1726.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="1554.5" y="1738.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
+<path d="M 864.75 1424 L 864.75 1502 L 519.0 1502 L 519.0 1618" fill="none" stroke="#455A64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 514.5 1616 L 523.5 1616 L 519.0 1623 z" fill="#455A64"/>
+<g><rect x="466.5" y="1519" width="105.0" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="519.0" y="1531.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">ports 5075 5076</text></g>
+<path d="M 864.75 1424 L 864.75 1502 L 1508.5 1502 L 1508.5 1618" fill="none" stroke="#455A64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1504.0 1616 L 1513.0 1616 L 1508.5 1623 z" fill="#455A64"/>
+<g><rect x="1456.0" y="1519" width="105.0" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="1508.5" y="1531.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">ports 5175 5176</text></g>
+<path d="M 519.0 1951 L 519.0 2302" fill="none" stroke="#3949AB" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="519.0" cy="2302" r="4" fill="#3949AB"/>
+<g><rect x="478.9" y="2000.0" width="80.2" height="18" rx="9" fill="white" stroke="#3949AB" stroke-width="1.2"/><text x="519.0" y="2012.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#3949AB">client side</text></g>
+<path d="M 1508.5 1921 L 1508.5 2302" fill="none" stroke="#00897B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1508.5" cy="2302" r="4" fill="#00897B"/>
+<g><rect x="1468.4" y="2000.0" width="80.2" height="18" rx="9" fill="white" stroke="#00897B" stroke-width="1.2"/><text x="1508.5" y="2012.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#00897B">client side</text></g>
+<path d="M 657.0 1854.0 L 1380.5 1854.0" fill="none" stroke="#D81B60" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<g><rect x="941.45" y="1829.0" width="154.6" height="18" rx="9" fill="white" stroke="#D81B60" stroke-width="1.2"/><text x="1018.75" y="1841.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#D81B60">peer certificate status</text></g>
+<path d="M 96.0 2143 L 48 2143 L 48 1370.5 L 713.75 1370.5" fill="none" stroke="#455A64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<g><rect x="-60.3" y="2006" width="216.6" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="48" y="2018.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">facility:5175 - the ML department</text></g>
+<path d="M 1349.0 2143 L 1688 2143 L 1688 1370.5 L 1313.75 1370.5" fill="none" stroke="#455A64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<g><rect x="1576.6" y="2006" width="222.8" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="1688" y="2018.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">facility:5075 - the lab department</text></g>
+<g><rect x="859.0" y="2799" width="290" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 859.0 2807 a8 8 0 0 1 8 -8 h274 a8 8 0 0 1 8 8 v22 h-290 z" fill="#5D4037"/>
+<line x1="870.0" y1="2814" x2="875.0" y2="2814" stroke="white" stroke-width="1.8"/><path d="M 875.0 2814 L 882.0 2808" stroke="white" stroke-width="1.5" fill="none"/><path d="M 875.0 2814 L 882.0 2814" stroke="white" stroke-width="1.5" fill="none"/><path d="M 875.0 2814 L 882.0 2820" stroke="white" stroke-width="1.5" fill="none"/><circle cx="875.0" cy="2814" r="2" fill="white"/>
+<text x="891.0" y="2819" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-authority-status</text>
+<text x="871.0" y="2848" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
+<text x="871.0" y="2863" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">8888/TCP</text>
+<text x="871.0" y="2878" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=authority-status</text>
 </g>
-<g><rect x="869.0" y="2042" width="270" height="194" rx="8" fill="#FFEBEE" stroke="#E53935" stroke-width="1.4"/>
-<path d="M 869.0 2050 a8 8 0 0 1 8 -8 h254 a8 8 0 0 1 8 8 v22 h-270 z" fill="#E53935"/>
-<circle cx="886.0" cy="2057" r="7" fill="none" stroke="white" stroke-width="1.8"/><path d="M 880.5 2057 h3 l1.6 -3.6 l2.4 7 l1.6 -3.4 h2.4" stroke="white" stroke-width="1.6" fill="none"/>
-<text x="901.0" y="2062" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-authority-status</text>
-<text x="881.0" y="2091" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=authority-status</text>
-<text x="881.0" y="2106" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm - runs only openssl ocsp</text>
-<text x="881.0" y="2121" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Secret ocsp-material: ca.pem,</text>
-<text x="881.0" y="2136" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    signer.pem, signer.key</text>
-<text x="881.0" y="2151" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Index seeded ONCE from ConfigMap</text>
-<text x="881.0" y="2166" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ocsp-index-seed onto claim</text>
-<text x="881.0" y="2181" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ocsp-state, so a revocation</text>
-<text x="881.0" y="2196" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    survives the responder restarting</text>
-<text x="881.0" y="2211" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Liveness: an exec openssl ocsp</text>
-<text x="881.0" y="2226" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    question, not a TCP probe</text>
+<g><rect x="869.0" y="2928" width="270" height="194" rx="8" fill="#FFEBEE" stroke="#E53935" stroke-width="1.4"/>
+<path d="M 869.0 2936 a8 8 0 0 1 8 -8 h254 a8 8 0 0 1 8 8 v22 h-270 z" fill="#E53935"/>
+<circle cx="886.0" cy="2943" r="7" fill="none" stroke="white" stroke-width="1.8"/><path d="M 880.5 2943 h3 l1.6 -3.6 l2.4 7 l1.6 -3.4 h2.4" stroke="white" stroke-width="1.6" fill="none"/>
+<text x="901.0" y="2948" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-authority-status</text>
+<text x="881.0" y="2977" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=authority-status</text>
+<text x="881.0" y="2992" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm - runs only openssl ocsp</text>
+<text x="881.0" y="3007" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Secret ocsp-material: ca.pem,</text>
+<text x="881.0" y="3022" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    signer.pem, signer.key</text>
+<text x="881.0" y="3037" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Index seeded ONCE from ConfigMap</text>
+<text x="881.0" y="3052" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ocsp-index-seed onto claim</text>
+<text x="881.0" y="3067" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ocsp-state, so a revocation</text>
+<text x="881.0" y="3082" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    survives the responder restarting</text>
+<text x="881.0" y="3097" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Liveness: an exec openssl ocsp</text>
+<text x="881.0" y="3112" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    question, not a TCP probe</text>
 </g>
-<path d="M 1004.0 2002 L 1004.0 2036" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 999.5 2034 L 1008.5 2034 L 1004.0 2041 z" fill="#5D4037"/>
-<g><rect x="1022.3" y="2013.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="1050.0" y="2025.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
-<path d="M 807.0 1745 L 807.0 1805 L 1004.0 1805" fill="none" stroke="#8E24AA" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 1508.5 1745 L 1508.5 1805 L 1004.0 1805" fill="none" stroke="#8E24AA" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 1004.0 1805 L 1004.0 1841" fill="none" stroke="#8E24AA" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<g><rect x="895.7" y="1780" width="216.6" height="18" rx="9" fill="white" stroke="#8E24AA" stroke-width="1.2"/><text x="1004.0" y="1792.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">is the root still good? OCSP 8888</text></g>
-<g><rect x="40" y="1841" width="323" height="194" rx="8" fill="#EDE7F6" stroke="#5E35B1" stroke-width="1.4"/>
-<path d="M 40 1849 a8 8 0 0 1 8 -8 h307 a8 8 0 0 1 8 8 v22 h-323 z" fill="#5E35B1"/>
-<path d="M 57 1848 l7 3 v5 c0 4 -3.5 7 -7 8 c-3.5 -1 -7 -4 -7 -8 v-5 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 54 1855.5 l2.2 2.2 l4 -4" stroke="white" stroke-width="1.8" fill="none"/>
-<text x="72" y="1861" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">Job ca-keygen</text>
-<text x="52" y="1890" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">pre-install hook, runs before anything</text>
-<text x="52" y="1905" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">probe: skips when lab-issuer-ids exists -</text>
-<text x="52" y="1920" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    authorities are minted once per</text>
-<text x="52" y="1935" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    laboratory, not once per helm operation</text>
-<text x="52" y="1950" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">mint: gen_lab_certs -R root -L lab -M ml</text>
-<text x="52" y="1965" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    -S http://pvxs-lab-authority-status:8888</text>
-<text x="52" y="1980" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    - the responder name is minted INTO</text>
-<text x="52" y="1995" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    the root; changing it means minting again</text>
-<text x="52" y="2010" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">package: writes the Secrets and ConfigMaps;</text>
-<text x="52" y="2025" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    the root key is never packaged</text>
+<path d="M 1004.0 2888 L 1004.0 2922" fill="none" stroke="#5D4037" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 999.5 2920 L 1008.5 2920 L 1004.0 2927 z" fill="#5D4037"/>
+<g><rect x="1022.3" y="2899.0" width="55.4" height="18" rx="9" fill="white" stroke="#5D4037" stroke-width="1.2"/><text x="1050.0" y="2911.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#5D4037">selects</text></g>
+<path d="M 807.0 2631 L 807.0 2691 L 1004.0 2691" fill="none" stroke="#8E24AA" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1508.5 2631 L 1508.5 2691 L 1004.0 2691" fill="none" stroke="#8E24AA" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1004.0 2691 L 1004.0 2727" fill="none" stroke="#8E24AA" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<g><rect x="895.7" y="2666" width="216.6" height="18" rx="9" fill="white" stroke="#8E24AA" stroke-width="1.2"/><text x="1004.0" y="2678.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">is the root still good? OCSP 8888</text></g>
+<g><rect x="40" y="2727" width="323" height="194" rx="8" fill="#EDE7F6" stroke="#5E35B1" stroke-width="1.4"/>
+<path d="M 40 2735 a8 8 0 0 1 8 -8 h307 a8 8 0 0 1 8 8 v22 h-323 z" fill="#5E35B1"/>
+<path d="M 57 2734 l7 3 v5 c0 4 -3.5 7 -7 8 c-3.5 -1 -7 -4 -7 -8 v-5 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 54 2741.5 l2.2 2.2 l4 -4" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="72" y="2747" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">Job ca-keygen</text>
+<text x="52" y="2776" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">pre-install hook, runs before anything</text>
+<text x="52" y="2791" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">probe: skips when lab-issuer-ids exists -</text>
+<text x="52" y="2806" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    authorities are minted once per</text>
+<text x="52" y="2821" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    laboratory, not once per helm operation</text>
+<text x="52" y="2836" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">mint: gen_lab_certs -R root -L lab -M ml</text>
+<text x="52" y="2851" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    -S http://pvxs-lab-authority-status:8888</text>
+<text x="52" y="2866" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    - the responder name is minted INTO</text>
+<text x="52" y="2881" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    the root; changing it means minting again</text>
+<text x="52" y="2896" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">package: writes the Secrets and ConfigMaps;</text>
+<text x="52" y="2911" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    the root key is never packaged</text>
 </g>
-<g><rect x="40" y="2306" width="309" height="134" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
-<path d="M 40 2314 a8 8 0 0 1 8 -8 h293 a8 8 0 0 1 8 8 v22 h-309 z" fill="#9E9D24"/>
-<path d="M 51 2313 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 59 2313 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
-<text x="72" y="2326" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">Secrets and ConfigMaps</text>
-<text x="52" y="2355" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Secrets: lab-intermediate, ml-intermediate,</text>
-<text x="52" y="2370" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ocsp-material</text>
-<text x="52" y="2385" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ConfigMaps: lab-issuer-ids (LAB_ISSUER,</text>
-<text x="52" y="2400" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ML_ISSUER and both SKIDs),</text>
-<text x="52" y="2415" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ocsp-index-seed, lab-scripts, lab-acf,</text>
-<text x="52" y="2430" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    gateway-config</text>
+<g><rect x="40" y="3192" width="309" height="134" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
+<path d="M 40 3200 a8 8 0 0 1 8 -8 h293 a8 8 0 0 1 8 8 v22 h-309 z" fill="#9E9D24"/>
+<path d="M 51 3199 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 59 3199 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
+<text x="72" y="3212" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">Secrets and ConfigMaps</text>
+<text x="52" y="3241" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Secrets: lab-intermediate, ml-intermediate,</text>
+<text x="52" y="3256" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ocsp-material</text>
+<text x="52" y="3271" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ConfigMaps: lab-issuer-ids (LAB_ISSUER,</text>
+<text x="52" y="3286" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ML_ISSUER and both SKIDs),</text>
+<text x="52" y="3301" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    ocsp-index-seed, lab-scripts, lab-acf,</text>
+<text x="52" y="3316" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    gateway-config</text>
 </g>
-<g><rect x="377" y="2306" width="303" height="149" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
-<path d="M 377 2314 a8 8 0 0 1 8 -8 h287 a8 8 0 0 1 8 8 v22 h-303 z" fill="#9E9D24"/>
-<path d="M 388 2313 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 396 2313 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
-<text x="409" y="2326" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">PersistentVolumeClaims</text>
-<text x="389" y="2355" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">idm-config idm-data ml-config ml-data</text>
-<text x="389" y="2370" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">testioc-config tstioc-config ml-ioc-config</text>
-<text x="389" y="2385" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway-config ml-gateway-config</text>
-<text x="389" y="2400" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">lab-client-config ml-client-config</text>
-<text x="389" y="2415" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">internet-client-config ocsp-state</text>
-<text x="389" y="2430" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Keychains and databases outlive their</text>
-<text x="389" y="2445" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">pods, so a restart is the same holder</text>
+<g><rect x="377" y="3192" width="303" height="149" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
+<path d="M 377 3200 a8 8 0 0 1 8 -8 h287 a8 8 0 0 1 8 8 v22 h-303 z" fill="#9E9D24"/>
+<path d="M 388 3199 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 396 3199 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
+<text x="409" y="3212" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">PersistentVolumeClaims</text>
+<text x="389" y="3241" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">idm-config idm-data ml-config ml-data</text>
+<text x="389" y="3256" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">testioc-config tstioc-config ml-ioc-config</text>
+<text x="389" y="3271" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway-config ml-gateway-config</text>
+<text x="389" y="3286" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">lab-client-config ml-client-config</text>
+<text x="389" y="3301" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">internet-client-config ocsp-state</text>
+<text x="389" y="3316" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Keychains and databases outlive their</text>
+<text x="389" y="3331" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">pods, so a restart is the same holder</text>
 </g>
-<g><rect x="708" y="2306" width="298" height="89" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
-<path d="M 708 2314 a8 8 0 0 1 8 -8 h282 a8 8 0 0 1 8 8 v22 h-298 z" fill="#9E9D24"/>
-<path d="M 719 2313 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 727 2313 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
-<text x="740" y="2326" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">NetworkPolicy facility-ingress</text>
-<text x="720" y="2355" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">zone=lab may reach 5175, 5176 only</text>
-<text x="720" y="2370" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">zone=ml may reach 5075, 5076 only</text>
-<text x="720" y="2385" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">zone=internet may reach all four</text>
+<g><rect x="708" y="3192" width="298" height="89" rx="8" fill="#FFFDE7" stroke="#9E9D24" stroke-width="1.4"/>
+<path d="M 708 3200 a8 8 0 0 1 8 -8 h282 a8 8 0 0 1 8 8 v22 h-298 z" fill="#9E9D24"/>
+<path d="M 719 3199 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 727 3199 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
+<text x="740" y="3212" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">NetworkPolicy facility-ingress</text>
+<text x="720" y="3241" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">zone=lab may reach 5175, 5176 only</text>
+<text x="720" y="3256" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">zone=ml may reach 5075, 5076 only</text>
+<text x="720" y="3271" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">zone=internet may reach all four</text>
 </g>
-<path d="M 201.5 2035 L 201.5 2288 L 194.5 2288 L 194.5 2304" fill="none" stroke="#9E9E9E" stroke-width="1.8" stroke-dasharray="6 5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M 190.0 2302 L 199.0 2302 L 194.5 2309 z" fill="#9E9E9E"/>
-<rect x="40" y="2499" width="756" height="426" rx="10" fill="white" stroke="#B0BEC5" stroke-width="1.4"/>
-<path d="M 40 2509 a10 10 0 0 1 10 -10 h736 a10 10 0 0 1 10 10 v20 h-756 z" fill="#455A64"/>
-<text x="54" y="2519" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" font-weight="bold" fill="white">Legend</text>
-<line x1="416.0" y1="2537" x2="416.0" y2="2915" stroke="#CFD8DC" stroke-width="1"/>
-<rect x="54" y="2539" width="14" height="14" rx="3" fill="#546E7A"/>
-<text x="78" y="2550" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">client workstation pod</text>
-<rect x="54" y="2563" width="14" height="14" rx="3" fill="#43A047"/>
-<text x="78" y="2574" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC pod</text>
-<rect x="54" y="2587" width="14" height="14" rx="3" fill="#1E88E5"/>
-<text x="78" y="2598" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS pod - the certificate manager</text>
-<rect x="54" y="2611" width="14" height="14" rx="3" fill="#FB8C00"/>
-<text x="78" y="2622" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway pod</text>
-<rect x="54" y="2635" width="14" height="14" rx="3" fill="#E53935"/>
-<text x="78" y="2646" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">responder pod - answers for the root</text>
-<rect x="54" y="2659" width="14" height="14" rx="3" fill="#5E35B1"/>
-<text x="78" y="2670" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">minting Job - runs once per laboratory</text>
-<rect x="54" y="2683" width="14" height="14" rx="3" fill="#5D4037"/>
-<text x="78" y="2694" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Service - a stable name in front of a pod</text>
-<rect x="54" y="2707" width="14" height="14" rx="3" fill="#9E9D24"/>
-<text x="78" y="2718" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">cluster objects and notes</text>
-<line x1="54" y1="2747" x2="94" y2="2747" stroke="#5D4037" stroke-width="2"/>
-<text x="104" y="2751" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Service selects pod</text>
-<line x1="54" y1="2771" x2="94" y2="2771" stroke="#3949AB" stroke-width="4"/>
-<text x="104" y="2775" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVA search and data, lab segment</text>
-<line x1="54" y1="2795" x2="94" y2="2795" stroke="#00897B" stroke-width="4"/>
-<text x="104" y="2799" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVA search and data, ML segment</text>
-<line x1="54" y1="2819" x2="94" y2="2819" stroke="#455A64" stroke-width="2.5"/>
-<text x="104" y="2823" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a department reaching its peer</text>
-<line x1="54" y1="2843" x2="94" y2="2843" stroke="#D81B60" stroke-width="2.5"/>
-<text x="104" y="2847" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">peer certificate status, gateway to gateway</text>
-<line x1="54" y1="2867" x2="94" y2="2867" stroke="#8E24AA" stroke-width="2"/>
-<text x="104" y="2871" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">is the root still good? OCSP 8888</text>
-<line x1="54" y1="2891" x2="94" y2="2891" stroke="#9E9E9E" stroke-width="1.8" stroke-dasharray="6 5"/>
-<text x="104" y="2895" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">written by the Job</text>
-<text x="433" y="2549" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Notation</text>
-<text x="433" y="2564" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075, 5076 : the lab department, plain and TLS</text>
-<text x="433" y="2579" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5175, 5176 : the ML department, plain and TLS</text>
-<text x="433" y="2594" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">facility   : the Service in front of haproxy;</text>
-<text x="433" y="2609" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">             the port chooses the department</text>
-<text x="433" y="2624" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">app=, zone= : pod labels. A Service picks by app,</text>
-<text x="433" y="2639" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">             a NetworkPolicy admits by zone</text>
-<text x="433" y="2654" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
-<text x="433" y="2669" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Only the department that issued a certificate can</text>
-<text x="433" y="2684" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">report on its status, so every status route crosses</text>
-<text x="433" y="2699" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">to the peer: an IOC asks through the facility, a</text>
-<text x="433" y="2714" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway asks the peer gateway directly.</text>
-<text x="433" y="2739" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Abbreviations</text>
-<text x="433" y="2754" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS : certificate manager</text>
-<text x="433" y="2769" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC    : input output controller</text>
-<text x="433" y="2784" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP   : online certificate status protocol,</text>
-<text x="433" y="2799" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">         how the root is answered for</text>
-<text x="433" y="2814" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">SKID   : subject key identifier</text>
-<text x="433" y="2839" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">The root has no status process variable of its own.</text>
-<text x="433" y="2854" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">The responder it names is the only way its</text>
-<text x="433" y="2869" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">revocation reaches anything issued beneath it.</text>
+<path d="M 201.5 2921 L 201.5 3174 L 194.5 3174 L 194.5 3190" fill="none" stroke="#9E9E9E" stroke-width="1.8" stroke-dasharray="6 5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 190.0 3188 L 199.0 3188 L 194.5 3195 z" fill="#9E9E9E"/>
+<rect x="40" y="608" width="990" height="358" rx="10" fill="#F3E5F5" stroke="#8E24AA" stroke-width="1.6"/>
+<path d="M 40 618 a10 10 0 0 1 10 -10 h970 a10 10 0 0 1 10 10 v34 h-990 z" fill="#8E24AA" fill-opacity="0.92"/>
+<circle cx="57" cy="635" r="2.6" fill="white"/><circle cx="67" cy="635" r="2.6" fill="white"/><circle cx="62" cy="625" r="2.6" fill="white"/><path d="M 62 625 L 57 635 M 62 625 L 67 635 M 57 635 H 67" stroke="white" stroke-width="1.4"/>
+<text x="80" y="636" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">Certificate Authorities</text>
+<g><rect x="377.0" y="662" width="316" height="119" rx="8" fill="#EDE7F6" stroke="#5E35B1" stroke-width="1.4"/>
+<path d="M 377.0 670 a8 8 0 0 1 8 -8 h300 a8 8 0 0 1 8 8 v22 h-316 z" fill="#5E35B1"/>
+<path d="M 394.0 669 l7 3 v5 c0 4 -3.5 7 -7 8 c-3.5 -1 -7 -4 -7 -8 v-5 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 391.0 676.5 l2.2 2.2 l4 -4" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="409.0" y="682" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">Root Certificate Authority</text>
+<text x="389.0" y="711" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Subject: CN=EPICS Root Certificate Authority</text>
+<text x="389.0" y="726" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP: pvxs-lab-authority-status:8888</text>
+<text x="389.0" y="741" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    (named in the AIA extension)</text>
+<text x="389.0" y="756" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Minted by Job ca-keygen, kept in the</text>
+<text x="389.0" y="771" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    Secrets below</text>
+</g>
+<g><rect x="66.0" y="827" width="303" height="119" rx="8" fill="#EDE7F6" stroke="#5E35B1" stroke-width="1.4"/>
+<path d="M 66.0 835 a8 8 0 0 1 8 -8 h287 a8 8 0 0 1 8 8 v22 h-303 z" fill="#5E35B1"/>
+<path d="M 83.0 834 l7 3 v5 c0 4 -3.5 7 -7 8 c-3.5 -1 -7 -4 -7 -8 v-5 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 80.0 841.5 l2.2 2.2 l4 -4" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="98.0" y="847" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">Lab Intermediate CA</text>
+<text x="78.0" y="876" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Subject: CN=EPICS Controls Intermediate CA</text>
+<text x="78.0" y="891" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">SKID: LAB_ISSUER_SKID</text>
+<text x="78.0" y="906" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Issuer ID: LAB_ISSUER</text>
+<text x="78.0" y="921" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Secret lab-intermediate</text>
+<text x="78.0" y="936" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Mounted into: pvxs-lab-pvacms</text>
+</g>
+<g><rect x="397.0" y="827" width="263" height="119" rx="8" fill="#EDE7F6" stroke="#5E35B1" stroke-width="1.4"/>
+<path d="M 397.0 835 a8 8 0 0 1 8 -8 h247 a8 8 0 0 1 8 8 v22 h-263 z" fill="#5E35B1"/>
+<path d="M 414.0 834 l7 3 v5 c0 4 -3.5 7 -7 8 c-3.5 -1 -7 -4 -7 -8 v-5 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 411.0 841.5 l2.2 2.2 l4 -4" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="429.0" y="847" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">ML Intermediate CA</text>
+<text x="409.0" y="876" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Subject: CN=EPICS ML Intermediate CA</text>
+<text x="409.0" y="891" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">SKID: ML_ISSUER_SKID</text>
+<text x="409.0" y="906" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Issuer ID: ML_ISSUER</text>
+<text x="409.0" y="921" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Secret ml-intermediate</text>
+<text x="409.0" y="936" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Mounted into: pvxs-lab-ml-pvacms</text>
+</g>
+<g><rect x="688.0" y="827" width="316" height="89" rx="8" fill="#EDE7F6" stroke="#5E35B1" stroke-width="1.4"/>
+<path d="M 688.0 835 a8 8 0 0 1 8 -8 h300 a8 8 0 0 1 8 8 v22 h-316 z" fill="#5E35B1"/>
+<path d="M 705.0 834 l7 3 v5 c0 4 -3.5 7 -7 8 c-3.5 -1 -7 -4 -7 -8 v-5 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 702.0 841.5 l2.2 2.2 l4 -4" stroke="white" stroke-width="1.8" fill="none"/>
+<text x="720.0" y="847" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">OCSP Signing Cert</text>
+<text x="700.0" y="876" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Subject: CN=EPICS Root Certificate Authority</text>
+<text x="700.0" y="891" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    OCSP Responder</text>
+<text x="700.0" y="906" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Secret ocsp-material</text>
+</g>
+<path d="M 535.0 781 L 535.0 797 L 217.5 797 L 217.5 824" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 535.0 781 L 535.0 797 L 528.5 797 L 528.5 824" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 535.0 781 L 535.0 797 L 846.0 797 L 846.0 824" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 846.0 916 L 846.0 984 L 1720 984 L 1720 2952 L 1142.0 2952" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="1712" y="980" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8E24AA">signs the status answers</text>
+<rect x="40" y="124" width="777" height="450" rx="10" fill="white" stroke="#B0BEC5" stroke-width="1.4"/>
+<path d="M 40 134 a10 10 0 0 1 10 -10 h757 a10 10 0 0 1 10 10 v20 h-777 z" fill="#455A64"/>
+<text x="54" y="144" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" font-weight="bold" fill="white">Legend</text>
+<line x1="437.0" y1="162" x2="437.0" y2="564" stroke="#CFD8DC" stroke-width="1"/>
+<rect x="54" y="164" width="14" height="14" rx="3" fill="#546E7A"/>
+<text x="78" y="175" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">client workstation pod</text>
+<rect x="54" y="188" width="14" height="14" rx="3" fill="#43A047"/>
+<text x="78" y="199" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC pod</text>
+<rect x="54" y="212" width="14" height="14" rx="3" fill="#1E88E5"/>
+<text x="78" y="223" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS pod - the certificate manager</text>
+<rect x="54" y="236" width="14" height="14" rx="3" fill="#5E35B1"/>
+<text x="78" y="247" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">certificate authority - a file, mounted into a pod</text>
+<rect x="54" y="260" width="14" height="14" rx="3" fill="#FB8C00"/>
+<text x="78" y="271" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway pod</text>
+<rect x="54" y="284" width="14" height="14" rx="3" fill="#E53935"/>
+<text x="78" y="295" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">responder pod - answers for the root</text>
+<rect x="54" y="308" width="14" height="14" rx="3" fill="#5E35B1"/>
+<text x="78" y="319" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">minting Job - runs once per laboratory</text>
+<rect x="54" y="332" width="14" height="14" rx="3" fill="#5D4037"/>
+<text x="78" y="343" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Service - a stable name in front of a pod</text>
+<rect x="54" y="356" width="14" height="14" rx="3" fill="#9E9D24"/>
+<text x="78" y="367" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">cluster objects and notes</text>
+<line x1="54" y1="396" x2="94" y2="396" stroke="#5D4037" stroke-width="2"/>
+<text x="104" y="400" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Service selects pod</text>
+<line x1="54" y1="420" x2="94" y2="420" stroke="#3949AB" stroke-width="4"/>
+<text x="104" y="424" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVA search and data, lab segment</text>
+<line x1="54" y1="444" x2="94" y2="444" stroke="#00897B" stroke-width="4"/>
+<text x="104" y="448" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVA search and data, ML segment</text>
+<line x1="54" y1="468" x2="94" y2="468" stroke="#455A64" stroke-width="2.5"/>
+<text x="104" y="472" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a department reaching its peer</text>
+<line x1="54" y1="492" x2="94" y2="492" stroke="#D81B60" stroke-width="2.5"/>
+<text x="104" y="496" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">peer certificate status, gateway to gateway</text>
+<line x1="54" y1="516" x2="94" y2="516" stroke="#8E24AA" stroke-width="2"/>
+<text x="104" y="520" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">is the root still good? OCSP 8888</text>
+<line x1="54" y1="540" x2="94" y2="540" stroke="#9E9E9E" stroke-width="1.8" stroke-dasharray="6 5"/>
+<text x="104" y="544" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">written by the Job</text>
+<text x="454" y="174" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Notation</text>
+<text x="454" y="189" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5075, 5076 : the lab department, plain and TLS</text>
+<text x="454" y="204" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">5175, 5176 : the ML department, plain and TLS</text>
+<text x="454" y="219" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">facility   : the Service in front of haproxy;</text>
+<text x="454" y="234" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">             the port chooses the department</text>
+<text x="454" y="249" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">app=, zone= : pod labels. A Service picks by app,</text>
+<text x="454" y="264" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">             a NetworkPolicy admits by zone</text>
+<text x="454" y="279" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve"></text>
+<text x="454" y="294" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Only the department that issued a certificate can</text>
+<text x="454" y="309" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">report on its status, so every status route crosses</text>
+<text x="454" y="324" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">to the peer: an IOC asks through the facility, a</text>
+<text x="454" y="339" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">gateway asks the peer gateway directly.</text>
+<text x="454" y="364" font-family="Menlo,Consolas,monospace" font-size="11" font-weight="bold" fill="#263238" xml:space="preserve">Abbreviations</text>
+<text x="454" y="379" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">PVACMS : certificate manager</text>
+<text x="454" y="394" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">IOC    : input output controller</text>
+<text x="454" y="409" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP   : online certificate status protocol,</text>
+<text x="454" y="424" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">         how the root is answered for</text>
+<text x="454" y="439" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">SKID   : subject key identifier</text>
+<text x="454" y="464" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">The root has no status process variable of its own.</text>
+<text x="454" y="479" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">The responder it names is the only way its</text>
+<text x="454" y="494" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B" xml:space="preserve">revocation reaches anything issued beneath it.</text>
 </svg>

@@ -17,7 +17,7 @@ spec:
     matchLabels: {app: gateway}
   template:
     metadata:
-      labels: {app: gateway, zone: perimeter}
+      labels: {app: gateway}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
     spec:

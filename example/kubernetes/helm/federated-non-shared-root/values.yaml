@@ -7,7 +7,7 @@
 #   and turns automatic discovery off, so it ports across unchanged.
 #
 #   The gateway not answering its own department. podman pins each gateway's listening
-#   interface to the perimeter address. A pod holds one address, so a NetworkPolicy stops the
+#   A NetworkPolicy stops the
 #   department reaching its gateway instead.
 #
 #   Serving on some interfaces and not others. In podman each gateway stands on three segments

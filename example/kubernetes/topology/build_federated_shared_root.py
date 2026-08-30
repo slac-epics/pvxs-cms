@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # The federated laboratory under one facility root, as Kubernetes renders it: two department
-# segments each holding a certificate manager, IOCs and a workstation; a perimeter holding the
+# segments each holding a certificate manager, IOCs and a workstation; an ingress zone holding the
 # two gateways; the facility load balancer whose port chooses the department; a responder that
 # answers for the root; and the pre-install Job that mints the whole hierarchy exactly once.
 # Every coordinate is computed here. See topology_kit for the primitives.
@@ -61,7 +61,7 @@ ml_ioc_l = fields('Labels: app=ml-ioc zone=ml',
  '    facility:5075',
  'Claim: ml-ioc-config',
  'Serves: ml:aiExample and the rest')
-gw_lab_l = fields('Labels: app=gateway zone=perimeter',
+gw_lab_l = fields('Labels: app=gateway',
  'Image: gateway   Program: p4p pvagw',
  'Serves 5075/TCP and 5076/TCP TLS',
  'Upstream: the lab services',
@@ -71,7 +71,7 @@ gw_lab_l = fields('Labels: app=gateway zone=perimeter',
  '    the inner client alone, so nothing',
  '    else is given the route',
  'Claim: gateway-config')
-gw_ml_l = fields('Labels: app=ml-gateway zone=perimeter',
+gw_ml_l = fields('Labels: app=ml-gateway',
  'Image: gateway   Program: p4p pvagw',
  'Serves 5175/TCP and 5176/TCP TLS',
  'Upstream: the ML services',
@@ -145,10 +145,28 @@ FILE_CARDS = [('Secrets and ConfigMaps', secrets_l),
               ('PersistentVolumeClaims', pvc_l),
               ('NetworkPolicy facility-ingress', facpol_l)]
 
+root_l = fields('Subject: CN=EPICS Root Certificate Authority',
+ 'OCSP: pvxs-lab-authority-status:8888',
+ '    (named in the AIA extension)',
+ 'Minted by Job ca-keygen, kept in the',
+ '    Secrets below')
+labca_l = fields('Subject: CN=EPICS Controls Intermediate CA',
+ 'SKID: LAB_ISSUER_SKID', 'Issuer ID: LAB_ISSUER',
+ 'Secret lab-intermediate',
+ 'Mounted into: pvxs-lab-pvacms')
+mlca_l = fields('Subject: CN=EPICS ML Intermediate CA',
+ 'SKID: ML_ISSUER_SKID', 'Issuer ID: ML_ISSUER',
+ 'Secret ml-intermediate',
+ 'Mounted into: pvxs-lab-ml-pvacms')
+signer_l = fields('Subject: CN=EPICS Root Certificate Authority',
+ '    OCSP Responder',
+ 'Secret ocsp-material')
+
 # ---------------------------------------------------------------- legend content
 CHIPS = [('client workstation pod', C['client'][1]),
          ('IOC pod', C['ioc'][1]),
          ('PVACMS pod - the certificate manager', C['pvacms'][1]),
+         ('certificate authority - a file, mounted into a pod', C['ca'][1]),
          ('gateway pod', C['gateway'][1]),
          ('responder pod - answers for the root', C['ocsp'][1]),
          ('minting Job - runs once per laboratory', C['ca'][1]),
@@ -214,7 +232,7 @@ DEPT_GAP = 72
 lab_x = M + 30                       # margin for the lab client's path up to the facility
 ml_x = lab_x + W_lab + DEPT_GAP
 
-# The perimeter spans both departments; each gateway hangs over its own department.
+# The ingress zone spans both departments; each gateway hangs over its own department.
 gwl_w = measure('pvxs-lab-gateway', gw_lab_l)[0]
 gwm_w = measure('pvxs-lab-ml-gateway', gw_ml_l)[0]
 svc_gwl_w = measure('svc pvxs-lab-gateway', svc_gwl_l)[0]
@@ -224,7 +242,7 @@ gwm_cx = ml_x + ZP + mxs[1] + MCOLS[1]/2           # over the ML manager column
 pz_x = lab_x - 10
 pz_w = (ml_x + W_ml + 10) - pz_x
 
-# The facility above the perimeter, the internet above the facility.
+# The facility above the gateways, the internet above the facility.
 fac_w = measure('pvxs-facility-lb', fac_l)[0]
 svc_fac_w = measure('svc facility', svc_fac_l)[0]
 fac_cx = (gwl_cx + gwm_cx)/2
@@ -233,7 +251,19 @@ IZ_TITLE = 'internet'
 iz_w = int(max(inet_w + 2*ZP, 40 + len(IZ_TITLE)*9.0 + 16))
 iz_h = ZTITLE + 12 + inet_h + 20
 iz_x = fac_cx - iz_w/2
-iz_y = top_y
+legend_x, legend_y = M, top_y
+ca_kids = [('Lab Intermediate CA', labca_l), ('ML Intermediate CA', mlca_l),
+           ('OCSP Signing Cert', signer_l)]
+ca_kid_ws = [measure(t, l)[0] for t, l in ca_kids]
+root_w, root_h = measure('Root Certificate Authority', root_l)
+kids_w = sum(ca_kid_ws) + GAP*(len(ca_kid_ws) - 1)
+kids_h = max(measure(t, l)[1] for t, l in ca_kids)
+ca_w = max(kids_w, root_w) + 2*ZP
+ca_h = ZTITLE + 10 + root_h + 46 + kids_h + 20
+ca_x = M
+ca_y = legend_y + lg_h + 34
+band_y = ca_y + ca_h + 18
+iz_y = ca_y + ca_h + 44
 
 FZ_TITLE = 'facility - NetworkPolicy facility-ingress'
 fz_h = ZTITLE + 30 + max(measure('svc facility', svc_fac_l)[1], measure('pvxs-facility-lb', fac_l)[1]) + ZP
@@ -241,7 +271,7 @@ fz_w = int(max(svc_fac_w + GAP + fac_w + 2*ZP, 40 + len(FZ_TITLE)*9.0 + 16))
 fz_x = fac_cx - fz_w/2
 fz_y = iz_y + iz_h + 56
 
-PZ_TITLE = 'perimeter - NetworkPolicies gateway-ingress and ml-gateway-ingress'
+PZ_TITLE = 'NetworkPolicies gateway-ingress and ml-gateway-ingress'
 pz_y = fz_y + fz_h + 64
 svcgw_y = pz_y + ZTITLE + 36
 svcgw_h = max(measure('svc pvxs-lab-gateway', svc_gwl_l)[1],
@@ -260,7 +290,7 @@ job_w = measure('Job ca-keygen', job_l)[0]
 files_ws = [measure(t, l)[0] for t, l in FILE_CARDS]
 files_total = sum(files_ws) + GAP*(len(files_ws) - 1)
 
-CANVAS_W = int(max(ml_x + W_ml + 70, M + files_total, M + lg_w,
+CANVAS_W = int(max(ml_x + W_ml + 70, M + files_total, M + lg_w, M + ca_w,
                    M + job_w + GAP + resp_w + GAP + svc_resp_w) + M)
 CANVAS_H = 0
 
@@ -301,8 +331,7 @@ def build(cv):
 
     files_y = rz_y + rz_h + 44
     files_h = max(measure(t, l)[1] for t, l in FILE_CARDS)
-    legend_y = files_y + files_h + 44
-    CANVAS_H = legend_y + lg_h + M
+    CANVAS_H = files_y + files_h + M
 
     # --- zones
     LZ_TITLE = 'lab segment - NetworkPolicy lab-segment-ingress'
@@ -380,11 +409,13 @@ def build(cv):
     sel_arrow(cv, sgm['cx'], sgm['bot'], gwm['top'])
 
     # --- the facility chooses a department by port
+    fan_y = fz_y + fz_h + 22
     for tgt, label in ((sgl, 'ports 5075 5076'), (sgm, 'ports 5175 5176')):
         x = tgt['cx']
-        cv.hv([(x, fz_y + fz_h), (x, tgt['top'] - 6)], C['bus_inet'], 2.5)
+        cv.hv([(sf['cx'], sf['bot']), (sf['cx'], fan_y), (x, fan_y), (x, tgt['top'] - 6)],
+              C['bus_inet'], 2.5)
         head_down(cv, x, tgt['top'], C['bus_inet'])
-        cv.pill(x, fz_y + fz_h + 28, label, C['bus_inet'])
+        cv.pill(x, fan_y + 26, label, C['bus_inet'])
 
     # --- each gateway is a client to its own department
     for g, colr in ((gwl, C['bus_lab']), (gwm, C['bus_ml'])):
@@ -392,7 +423,7 @@ def build(cv):
         cv.dot(g['cx'], bus_y, colr)
         cv.pill(g['cx'], (pz_y + pz_h + zone_y)/2, 'client side', colr)
 
-    # --- the one thing that crosses the perimeter sideways: peer certificate status
+    # --- the one thing that crosses sideways: peer certificate status
     ymid = gw_y + gw_h/2
     cv.hv([(gwl['x'] + gwl['w'], ymid), (gwm['x'], ymid)], C['peer'], 2.5)
     cv.pill((gwl['x'] + gwl['w'] + gwm['x'])/2, ymid - 16, 'peer certificate status', C['peer'])
@@ -434,6 +465,29 @@ def build(cv):
     cv.hv([(jb['cx'], jb['bot']), (jb['cx'], files_y - 18), (sec['cx'], files_y - 18),
            (sec['cx'], sec['top'] - 2)], C['filedrop'], 1.8, dash='6 5')
     head_down(cv, sec['cx'], sec['top'] + 4, C['filedrop'])
+
+    # --- the authorities
+    cv.zone(ca_x, ca_y, ca_w, ca_h, 'Certificate Authorities', 'zone_ca')
+    rootc = cv.card(ca_x + (ca_w - root_w)/2, ca_y + ZTITLE + 10,
+                    'Root Certificate Authority', root_l, 'ca', 'ca')
+    cax = ca_x + (ca_w - kids_w)/2
+    kids = []
+    for (title, lines), w in zip(ca_kids, ca_kid_ws):
+        kids.append(cv.card(cax, rootc['bot'] + 46, title, lines, 'ca', 'ca'))
+        cax += w + GAP
+    # the root signs each of them
+    for kid in kids:
+        cv.hv([(rootc['cx'], rootc['bot']), (rootc['cx'], rootc['bot'] + 16),
+               (kid['cx'], rootc['bot'] + 16), (kid['cx'], kid['top'] - 3)],
+              C['cert'], 2, dash='6 5', marker=True)
+    # the responder holds the signing certificate
+    sx = CANVAS_W - M - 16
+    cv.hv([(kids[2]['cx'], kids[2]['bot']), (kids[2]['cx'], ca_y + ca_h + 18),
+           (sx, ca_y + ca_h + 18), (sx, rsp['top'] + 24), (rsp['x'] + rsp['w'] + 3, rsp['top'] + 24)],
+          C['cert'], 2, dash='6 5', marker=True)
+    cv.emit(f'<text x="{sx-8}" y="{ca_y+ca_h+14}" text-anchor="end" '
+            f'font-family="Menlo,Consolas,monospace" font-size="10" fill="{C["cert"]}">'
+            f'signs the status answers</text>')
 
     # --- legend
     lx0, ly = M, legend_y
