@@ -97,7 +97,9 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     bool answered = false;
     if (holds_an_authority && base_config.isTlsConfigured()) {
         auto tls_config = base_config;
-        tls_config.enableRemoteVerification();
+        // This request is made where the holder cannot reach the certificate manager to
+        // establish its own standing, which is the whole reason it is asking.
+        tls_config.disableOwnCertStatusCheck();
         try {
             auto tls_client = tls_config.build();
             value = tls_client.rpc(create_pv, arg).exec()->wait(timeout);

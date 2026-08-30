@@ -1,6 +1,0 @@
-apiVersion: v2
-name: pvxs-lab
-description: PVXS lab stack (krb5, pvacms, testioc, tstioc, pvagw)
-type: application
-version: 0.1.0
-appVersion: "latest"
