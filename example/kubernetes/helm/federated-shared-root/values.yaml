@@ -1,0 +1,67 @@
+# The federated-shared-root laboratory: two departments under one facility root.
+#
+# Ported from example/podman/topologies/federated-shared-root. Where the two differ, the
+# difference is marked THE DIFFERENCE at the point it applies. There are three:
+#
+#   Discovery. A department in podman finds its own IOCs by broadcast. A pod network has no
+#   broadcast domain, so each department is given an explicit list of its own IOC services.
+#
+#   The gateway not answering its own department. podman pins each gateway's listening
+#   interface to the perimeter address. A pod holds one address, so a NetworkPolicy stops the
+#   department reaching its gateway instead.
+#
+#   Which facility port a department may use. In podman nothing stops a lab workstation
+#   naming facility:5075 and so reaching its own gateway the long way round; only the
+#   configured value keeps it honest. Here the policy on the load balancer allows a department
+#   the PEER department's ports and not its own, so the rule is enforced rather than observed.
+
+namespace: spva-lab
+
+dockerRegistry: localhost
+dockerUsername: spva
+imageTag: latest
+imagePullPolicy: IfNotPresent
+
+images:
+  idm: idm
+  ml: ml
+  testioc: testioc
+  tstioc: tstioc
+  mlIoc: ml-ioc
+  lab: lab
+  gateway: gateway
+  internet: internet
+  haproxy: docker.io/library/haproxy:lts-alpine
+  kubectl: docker.io/bitnami/kubectl:latest
+
+# The port chooses the department, and the number is never translated. A PVAccess server names
+# its own port in a search reply and the client dials that port next, so a Service that mapped
+# one would send the client to the other department.
+ports:
+  # What every certificate manager and IOC listens on, in BOTH departments. The odd-hundreds
+  # numbering below belongs to the gateways and the facility frontends, not to a department:
+  # an ML IOC serves 5075 inside net-ml exactly as a lab IOC does inside net-lab.
+  pvaTcp: 5075
+  pvaTls: 5076
+  # The gateways, and so the facility ports that reach them. The port chooses the department.
+  labTcp: 5075
+  labTls: 5076
+  mlTcp: 5175
+  mlTls: 5176
+  ocsp: 8888
+
+# The three names the authorities are minted with. The access security files name the same
+# three, from here, so a rule and a certificate cannot drift apart.
+certAuthorities:
+  root: EPICS Root Certificate Authority
+  labIntermediate: EPICS Controls Intermediate CA
+  mlIntermediate: EPICS ML Intermediate CA
+
+# The facility root has no status process variable of its own, so it names a responder in its
+# certificate. That name is minted INTO the root, so changing it means minting again.
+responder:
+  serviceName: pvxs-lab-authority-status
+
+persistence:
+  storageClass: ""
+  size: 128Mi

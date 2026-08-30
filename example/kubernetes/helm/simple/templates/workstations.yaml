@@ -1,0 +1,35 @@
+{{/*
+The workstation. It has no Service: nothing addresses it, it is a place a person sits.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: lab-client}
+  template:
+    metadata:
+      labels: {app: lab-client, zone: lab}
+    spec:
+      securityContext:
+        # Root, so that krun_in can become a person by name with 'su -'. The podman
+        # laboratory uses 'podman exec --user', which kubectl has no equivalent of.
+        runAsUser: 0
+        fsGroup: 0
+      containers:
+        - name: lab-client
+          image: {{ include "lab.image" (dict "Values" .Values "role" "lab") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/local/bin/start-shell", "guest", "operator"]
+          env:
+{{ include "lab.zoneEnv" . | indent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /home/guest/.config/pva/1.5}
+{{ include "lab.scriptsMount" . | indent 12 }}
+{{ include "lab.issuerMount" . | indent 12 }}
+      volumes:
+        - {name: config, persistentVolumeClaim: {claimName: lab-client-config}}
+{{ include "lab.scriptsVolume" . | indent 8 }}
+{{ include "lab.issuerVolume" . | indent 8 }}

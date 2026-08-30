@@ -1,0 +1,59 @@
+{{/* The start scripts and access security files, verbatim from the podman topology. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: lab-scripts}
+data:
+{{- range $path, $_ := .Files.Glob "files/start-*.sh" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: lab-acf}
+data:
+  pvacms-lab.acf: |
+{{ .Files.Get "files/pvacms-lab.acf" | indent 4 }}
+  pvacms-ml.acf: |
+{{ .Files.Get "files/pvacms-ml.acf" | indent 4 }}
+  gateway.acf: |
+{{ .Files.Get "files/gateway.acf" | indent 4 }}
+  testioc.acf: |
+{{ .Files.Get "files/testioc.acf" | indent 4 }}
+  tstioc.acf: |
+{{ .Files.Get "files/tstioc.acf" | indent 4 }}
+  mlioc.acf: |
+{{ .Files.Get "files/mlioc.acf" | indent 4 }}
+---
+{{/* Each gateway's configuration and its list of names that may cross. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: gateway-config}
+data:
+  gateway-lab.conf: |
+{{ .Files.Get "files/gateway-lab.conf" | indent 4 }}
+  gateway-ml.conf: |
+{{ .Files.Get "files/gateway-ml.conf" | indent 4 }}
+  gateway-lab.pvlist: |
+{{ .Files.Get "files/gateway-lab.pvlist" | indent 4 }}
+  gateway-ml.pvlist: |
+{{ .Files.Get "files/gateway-ml.pvlist" | indent 4 }}
+---
+{{/* The load balancer, which is what makes one name mean two departments. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: facility-config}
+data:
+  haproxy.cfg: |
+{{ .Files.Get "files/haproxy.cfg" | indent 4 }}
+---
+{{/* The responder runs the certificate manager's image with its supervisor replaced, so that
+     nothing but the responder starts. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: responder-config}
+data:
+  supervisord.conf: |
+{{ .Files.Get "files/ocsp-only-supervisord.conf" | indent 4 }}
+  ocsp.conf: |
+{{ .Files.Get "files/ocsp-supervisor.conf" | indent 4 }}

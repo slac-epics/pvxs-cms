@@ -1,0 +1,2 @@
+# cmd.exe requires carriage-return line endings; keep them whatever the checkout.
+*.bat text eol=crlf

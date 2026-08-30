@@ -1,0 +1,50 @@
+# Access control for the laboratory's first IOC.
+#
+# One authority issues every certificate here, so a rule that names it says only "holds a
+# certificate this laboratory issued". What tells one holder from another is the user access
+# group their common name falls in.
+#
+# Policy:
+#   READ            open to everyone, with or without a certificate
+#   WRITE (default) operators and guests, holding a certificate
+#   test:spec       operators only
+#   test:open       any certificate at all
+
+AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority")
+
+UAG(OPERATORS) {
+    "operator"
+}
+
+UAG(GUESTS) {
+    "guest"
+}
+
+ASG(SPECIAL) {
+    RULE(1,READ)
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(OPERATORS)
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
+
+ASG(OPEN) {
+    RULE(1,READ)
+    RULE(1,WRITE,TRAPWRITE) {
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
+
+ASG(DEFAULT) {
+    RULE(1,READ)
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(OPERATORS,GUESTS)
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}

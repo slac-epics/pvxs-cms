@@ -1,0 +1,71 @@
+{{/*
+The two gateways. Each is a client to its own department and a server on the boundary, and the
+only thing either of them may reach in the other department is the peer gateway, which is where
+EPICS_PVAS_STATUS_NAME_SERVERS in its configuration points.
+*/}}
+{{- $gws := list
+  (dict "name" "pvxs-lab-gateway"    "app" "gateway"    "zone" "lab" "conf" "gateway-lab.conf" "pvlist" "gateway-lab.pvlist" "arg" "LAB_ISSUER" "skid" "LAB_ISSUER_SKID" "pvc" "gateway-config"    "addr" "lab" "tcp" .Values.ports.labTcp "tls" .Values.ports.labTls)
+  (dict "name" "pvxs-lab-ml-gateway" "app" "ml-gateway" "zone" "ml"  "conf" "gateway-ml.conf"  "pvlist" "gateway-ml.pvlist"  "arg" "ML_ISSUER"  "skid" "ML_ISSUER_SKID"  "pvc" "ml-gateway-config" "addr" "ml"  "tcp" .Values.ports.mlTcp  "tls" .Values.ports.mlTls) }}
+{{- range $g := $gws }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: {{ $g.name }}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: {{ $g.app }}}}
+  template:
+    metadata:
+      labels: {app: {{ $g.app }}, zone: perimeter}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") $ | sha256sum }}
+    spec:
+      securityContext: {runAsUser: 0, fsGroup: 0}
+      containers:
+        - name: gateway
+          image: {{ include "lab.image" (dict "Values" $.Values "role" "gateway") }}
+          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          # The argument names this department's issuer, which the script substitutes into the
+          # list of names that may cross and writes to /etc/epics/issuer for any login shell.
+          command: ["/usr/local/bin/start-gateway", "{{ $g.arg }}"]
+          env:
+{{- if eq $g.zone "lab" }}
+{{ include "lab.labZoneEnv" $ | indent 12 }}
+{{- else }}
+{{ include "lab.mlZoneEnv" $ | indent 12 }}
+{{- end }}
+{{ include "lab.issuerEnv" $ | indent 12 }}
+            - name: EPICS_PVA_AUTH_ISSUER
+              valueFrom: {configMapKeyRef: {name: lab-issuer-ids, key: {{ $g.skid }}}}
+          ports:
+            - {containerPort: {{ $g.tcp }}, protocol: TCP}
+            - {containerPort: {{ $g.tls }}, protocol: TCP}
+            - {containerPort: {{ $g.tls }}, protocol: UDP}
+          volumeMounts:
+            - {name: config, mountPath: /home/gateway/.config/pva/1.5}
+            - {name: anchors, mountPath: /certs/trust_anchors.p12, subPath: trust_anchors.p12}
+            - {name: gw, mountPath: /home/gateway/gateway.conf.in, subPath: {{ $g.conf }}}
+            - {name: gw, mountPath: /home/gateway/gateway.pvlist.in, subPath: {{ $g.pvlist }}}
+            # Over the baked one, which names the shared root of Part 3. This laboratory has
+            # two roots of its own, and a rule naming an authority that does not exist matches
+            # no holder, so every write would be refused with nothing looking wrong.
+            - {name: acf, mountPath: /home/gateway/gateway.acf, subPath: gateway.acf}
+{{ include "lab.scriptsMount" $ | indent 12 }}
+      volumes:
+        - {name: config, persistentVolumeClaim: {claimName: {{ $g.pvc }}}}
+        - {name: anchors, secret: {secretName: trust-anchors}}
+        - {name: gw, configMap: {name: gateway-config}}
+        - {name: acf, configMap: {name: lab-acf}}
+{{ include "lab.scriptsVolume" $ | indent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ $g.name }}}
+spec:
+  type: ClusterIP
+  selector: {app: {{ $g.app }}}
+  ports:
+    - {name: pva-tcp, port: {{ $g.tcp }}, targetPort: {{ $g.tcp }}, protocol: TCP}
+    - {name: pva-tls, port: {{ $g.tls }}, targetPort: {{ $g.tls }}, protocol: TCP}
+    - {name: pva-udp, port: {{ $g.tls }}, targetPort: {{ $g.tls }}, protocol: UDP}
+{{- end }}

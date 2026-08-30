@@ -170,7 +170,7 @@ services:
       # what is presented to it and refuses a holder that does not stand, so the check is made
       # where the connection is accepted rather than here. It applies to this pvas:// name server
       # and nothing else.
-      EPICS_PVA_TLS_OPTIONS: "remote_verification"
+      EPICS_PVA_TLS_OPTIONS: "no_own_cert_status_check"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - internet-client-config:/home/guest/.config/pva/1.5
