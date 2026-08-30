@@ -1,11 +1,11 @@
 # Kubernetes: Secure PVAccess demonstration laboratories
 
-Four self-contained laboratories that demonstrate Secure PVAccess: certificates requested,
-approved, presented, checked, and revoked, between real IOCs, certificate managers,
-gateways, and workstations, all running as Kubernetes objects in one local cluster.
+Four self-contained laboratories that demonstrate Secure PVAccess: 
+- certificates: *requested*, *approved*, *presented*, *verified*, and *revoked* 
+- between: *IOC*s, *PVACMS*s, *gateways*, and *workstations*
+- running as:  *Kubernetes objects* in one local cluster.
 
-These are the same four laboratories as [`example/podman`](../podman/README.md), rendered
-in Kubernetes. The walkthroughs run the same commands with a `k` in front.
+These are the same four laboratories as [`example/podman`](../podman/README.md), rendered in Kubernetes.
 
 ## The four laboratories
 
@@ -16,55 +16,92 @@ in Kubernetes. The walkthroughs run the same commands with a `k` in front.
 | 3    | `federated-shared-root`     | Two departments under one facility root; revocation of a department's authority, and of the root itself    |
 | 4    | `federated-non-shared-root` | Two departments under two independent roots that share nothing; establishing trust with multiple roots     |
 
-Each part has a diagram of its Kubernetes objects, in [`topology/`](topology/):
-pods, Services, NetworkPolicies, PersistentVolumeClaims, Secrets and ConfigMaps, and the
-minting Job where one exists.
+## Installation
 
-- [Part 1: `topology/topology-simple.svg`](topology/topology-simple.svg)
-- [Part 2: `topology/topology-simple-with-gateway.svg`](topology/topology-simple-with-gateway.svg)
-- [Part 3: `topology/topology-federated-shared-root.svg`](topology/topology-federated-shared-root.svg)
-- [Part 4: `topology/topology-federated-non-shared-root.svg`](topology/topology-federated-non-shared-root.svg)
+1. Install `kind`, `helm`, and `kubectl`, and a container runtime
 
-## Prerequisites
+*Linux*
+   ```sh
+   sudo dnf install -y helm kubernetes-client                                # Fedora, RHEL: kubectl is kubernetes-client
+   sudo snap install helm --classic && sudo snap install kubectl --classic   # Debian, Ubuntu
+   curl -Lo kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64 \
+       && chmod +x kind && sudo mv kind /usr/local/bin/                      # any Linux; -arm64 on arm
+   ```
 
-- The laboratory images, built by the podman example: run
-  [`../podman/bootstrap.sh`](../podman/bootstrap.sh) first. The cluster has no access to
-  the host image store, so `kload_images` carries them in.
-- `kind`, `helm`, `kubectl`, and either Docker Desktop or podman. Docker is preferred
-  when a real Docker daemon is running; podman is the fallback, using kind's experimental
-  provider. `helpers.sh` picks the runtime itself and is not fooled by a `docker` command
-  that is really a symlink to podman.
-- If `KIND_EXPERIMENTAL_PROVIDER` is exported in your shell from earlier work, unset it.
-  It overrides the runtime detection.
+*MacOS*
 
-## Bring the cluster up
+Use Docker Desktop on macOS, but install kind and helm
 
-Source the helpers, create the cluster, and load the images:
+   ```sh
+   brew install kind helm kubectl                               # macOS
+   ```
+
+	   Note: If Docker is absent podman can serve as the runtime: install it as the podman
+	   README describes, and the helpers will fall back to it automatically.
+
+2. On Linux with the cluster on podman, allow containers to outlive your login
+   session. The cluster is itself a rootless container, and without this it is
+   killed when you log out or your connection drops:
+   ```sh
+   loginctl enable-linger "$USER"
+   ```
+
+3. Get the source. The four repositories must be checked out as siblings, and the
+   directory names must match the ones shown, because the image builds reference them
+   by name:
+
+   ```sh
+   mkdir -p ~/spva && cd ~/spva
+   B=scratch/fy26-four-topologies
+   git clone -b $B --recurse-submodules https://github.com/spva-epics/pvxs-cms.git       pvxs-cms
+   git clone -b $B --recurse-submodules https://github.com/spva-epics/pvxs-tls.git       pvxs
+   git clone -b $B --recurse-submodules https://github.com/spva-epics/epics-base-tls.git epics-base
+   git clone -b $B --recurse-submodules https://github.com/spva-epics/p4p-tls.git        p4p
+   ```
+
+4. Create the cluster:
+
+   ```sh
+   cd pvxs-cms/example/kubernetes
+   . ./helpers.sh
+   kind_create
+   ```
+
+   `kind_create` builds a one-node cluster named `spva-lab` with the default network
+   plugin turned off, then installs Cilium.  
+   
+	   The segments in every laboratory are NetworkPolicy mediated, and the default 
+	   CNI plugin of `kind` does not enforce policy at all so we need to use Cilium or 
+	   Calico that does.
+
+5. Build the images.  The build compiles EPICS Base, pvxs, and pvxs-cms from the
+   sibling checkouts, so the first run takes a while. `JOBS` limits compiler
+   processes; each can take most of a gigabyte:
+
+   ```sh
+   kbuild_images                # JOBS=2 kbuild_images on a machine with little memory
+   ```
+
+6. Load the images into the cluster, which has no access to the runtime's image
+   store:
+
+   ```sh
+   kload_images
+   ```
+
+   With the cluster on Docker, the two images that are pulled rather than built
+   (haproxy and kubectl) are fetched by the cluster on first use instead.
+
+## Start a topology scenario
+
+- `kreset_topology` resets and builds a laboratory from the images & reads that laboratory's authority identifiers into your shell.
+
 
 ```sh
-cd pvxs-cms/example/kubernetes
-export DOCKER_REGISTRY=docker.io DOCKER_USERNAME=georgeleveln   # as used at image build
-. ./helpers.sh
-kind_create
-kload_images
+kreset_topology                        # lists the four laboratories and describes each
+kreset_topology federated-shared-root  # brings it up, verifies it, and reads its authorities
 ```
 
-`kind_create` builds a one-node `kind` cluster named `spva-lab` with the default network
-plugin turned off, then installs Cilium with Hubble enabled. Hubble is worth having: it
-shows every flow with pod identity, which is how you see in one command that a client
-went straight to a pod rather than through the Service in front of it.
-
-Then build a laboratory:
-
-```sh
-kreset_topology simple-with-gateway
-```
-
-`kreset_topology` with no argument lists the four laboratories and builds nothing. Every
-reset destroys whatever laboratory was up, claims and authorities included, and checks
-the new one before handing it to you. The checks are the acceptance criteria, not a
-smoke test; the last one for Part 2 is a negative, and a laboratory that passes the
-others while failing it has an open boundary.
 
 To take a laboratory away and build nothing in its place:
 
@@ -73,77 +110,119 @@ kreset_topology clear             # the laboratory; the cluster stays
 kreset_topology clear --cluster   # the cluster too
 ```
 
-The podman and Kubernetes laboratories share one podman machine but are entirely
-separate instances: separate containers, separate networks, separate certificate
-authorities. `reset_topology clear` over in the podman directory takes that one away;
-neither clear can see the other's laboratory.
+## Certificate Authorities
 
-## The commands
+Certificate authorities are created in `topologies/<name>/`.
 
-The commands take the same words in the same order as the podman helpers, with a `k` in
-front.
+Environment variables set automatically but `reset_topology`
+- `$LAB`  `$LAB_SKID` - lab issuer ID and lab issuer SKID (Lab CA)
+- `$ML`  `$ML_SKID` - lab issuer ID and lab issuer SKID (ML CA)
+- `$ROOT` `ROOT_SKID` - If lab is an intermediate CA then this is its Root CA's ID and SKID 
 
-### `krun_in`: run something, somewhere, as someone
+### Run commands
+Use `krun_in` to run commands in a particular place as a particular user with or without a certificate.
 
 ```
 krun_in <place> as <person> [without a certificate] [--show] <command...>
 ```
 
-Places: `lab`, `ml`, `internet` (also accepted as `internet`), `lab-pvacms`,
-`ml-pvacms`, `testioc`, `tstioc`, `ml-ioc`, `gateway`, `ml-gateway`. People: `guest`
-and `operator` at workstations, `admin` on a certificate manager, and each service as
-itself. A place that exists but not in the laboratory currently up is refused with a
-message saying which laboratory is up and what it does have.
+| Place                         | Description                                                     |
+| ----------------------------- | --------------------------------------------------------------- |
+| `lab`, `ml`                   | a workstation inside a department                               |
+| `internet`                    | a workstation on the internet, reachable only across a boundary |
+| `lab-pvacms`, `ml-pvacms`     | a department's PVACMS                                           |
+| `testioc`, `tstioc`, `ml-ioc` | an IOC                                                          |
+| `gateway`, `ml-gateway`       | a department's boundary gateway                                 |
 
-`without a certificate` runs the same person presenting nothing. `--show` prints the
-`kubectl` command that would run, without running it.
+| People       | Available Places          |
+| ------------ | ------------------------- |
+| `admin`      | `lab-pvacms`, `ml-pvacms` |
+| `operator`   | `lab`, `ml`, `internet`   |
+| `guest`      | `lab`, `ml`, `internet`   |
+| `testioc`    | `testioc`                 |
+| `tstioc`     | `tstioc`                  |
+| `ml-ioc`     | `ml-ioc`                  |
+| `gateway`    | `gateway`                 |
+| `ml-gateway` | `ml-gateway`              |
 
-Two Kubernetes notes, both invisible in ordinary use:
-
-- `kubectl exec` has no equivalent of `podman exec --user`, so a person is become with
-  `su -`, which is a login shell and discards the pod's environment. `krun_in` writes
-  the pod's `EPICS_PVA` settings out before the `su` and reads them back after the login
-  profile has had its say, so the pod's addressing always wins.
-- The login profiles name the federated laboratory's hosts. `krun_in` unsets and
-  restores all four `EPICS_PVA` addressing variables so a setting this laboratory does
-  not make cannot survive from the profile.
-
-### `krestart`: three different things called a restart
+- `without a certificate` runs the same person presenting nothing.
+- `--show` prints the `kubectl` command that would run, without running it.
 
 ```sh
-krestart testioc            # the softIoc alone, inside the running pod
-krestart testioc pod        # delete the pod; the Deployment replaces it
-krestart testioc service    # roll the Deployment behind the Service
+krun_in internet as guest without a certificate --show pvxmonitor tst:ArrayData                                                                                                                                                 # kubectl -n spva-lab exec -it deploy/internet-client -- su - guest -c '
+# source ~/.guest_bashrc 2>/dev/null
+# unset EPICS_PVA_ADDR_LIST EPICS_PVA_AUTO_ADDR_LIST EPICS_PVA_NAME_SERVERS EPICS_PVA_TLS_OPTIONS
+# [ -r /tmp/.pva-pod-env ] && . /tmp/.pva-pod-env
+# export EPICS_PVA_TLS_KEYCHAIN=${HOME}/.config/pva/1.5/client.p12
+# export EPICS_PVA_TLS_KEYCHAIN=
+
+# export PVXS_LOG=${PVXS_LOG:-none}
+# pvxmonitor tst:ArrayData '
 ```
 
-The Service keeps its address through all three, and keychains live on
-PersistentVolumeClaims, so the replacement pod is the same certificate holder as the old
-one. A pod restart is a restart, not a revocation.
+With no command, `krun_in` opens a shell as the given user in that place.
 
-### `kgo_tls`: everything the walkthrough does by hand, in order
+```sh
+krun_in lab-pvacms as admin
+#   [admin@lab-pvacms] > pvxcert -l
+#   [admin@lab-pvacms] > exit
+```
 
-Issues certificates for every place in the laboratory that is up, approves them on the
-manager that issued them, restarts what now holds one, carries the trust anchor to the
-outside workstation where the laboratory has one, and proves the boundary opens. The
-order is not a preference: IOCs before the gateway, because a gateway with the plaintext
-listener closed serves nothing at all until it holds a certificate, and the outside
-workstation last, because it cannot ask for anything until the anchor has been carried
-across.
+Simulation status.
+- `klab_status` shows what is running.
 
-### `kcarry_anchor`: the authority, carried across by hand
+### Controlling the OCSP responder
+- `kocsp_responder` reports what facility root's OCSP responder is reporting about the root certificate status
+- `kocsp_responder unreachable` makes the OCSP responder unreachable
+- `kocsp_responder reachable` restores reachability of the OCSP responder
+- `kocsp_responder revoke root` reports that the facility's root certificate has been revoked
 
-Copies the certificate manager's `trust_anchor.p12` to the outside workstation's users,
-never over an existing identity. Carrying it by hand is the point of Part 2's opening,
-so no chart mounts it anywhere.
+### Restarting IOCs, k8s Pods, and k8s Services
 
-### `kauthority_says`, `kauthority_revoke`, `kauthority_restore`
+```sh
+krestart testioc            # restart the softIoc alone, inside the running pod
+krestart testioc pod        # delete the pod; the Deployment replaces it
+krestart testioc service    # restart the Deployment behind the Service
+```
 
-Part 3 only. The facility root has no status process variable of its own; a responder
-answers for it from one line in an index file on the `ocsp-state` claim. Revoking the
-root is a rewrite of that line plus a responder restart, and restoring it is the same
-edit backwards. Restore is a laboratory convenience, not a recovery.
+	The K8s Service always keeps its address.   
+	The keychains are stored on k8s PVCs (Persistent Volume Claims) which survive Pod restarts.
+
+### Everything, Everywhere, All at once!
+
+```sh
+kgo_tls                     # copy trust anchors to everything outside the lab
+                            # issue and approve certificates everywhere PVs are served
+                            # restart IOCs and gateways to make them take effect all at once
+kcopy_anchor                # physically copy the trust anchor to the internet zone workstation
+```
+ 
+---
+
+## General configuration
+
+| What                   | Where                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Workstation keychain   | `/home/<user>/.config/pva/1.5/client.p12`                                                                                       |
+| IOC keychain           | `/home/<svc>/.config/pva/1.5/server.p12`                                                                                        |
+| Gateway keychain       | `/home/gateway/.config/pva/1.5/gateway.p12`                                                                                     |
+| Administrator keychain | `/home/idm/.config/pva/1.5/admin.p12`                                                                                           |
+| CA keychain            | `/etc/pvacms/cert_auth.p12` when installed at start; beside the database when PVACMS mints its own                              |
+| Trust anchor           | `trust_anchor.p12`, beside the CA keychain                                                                                      |
+| Certificate database   | `/home/idm/.local/share/pva/1.5/certs.db`, on a PersistentVolumeClaim                                                           |
+| Issuer id              | `/etc/epics/issuer`                                                                                                             |
+| PVACMS access file     | `/etc/pvacms/pvacms.acf`                                                                                                        |
+| Ports                  | `5075/TCP` plaintext, `5076/TCP` TLS, `5076/UDP` search (`5175`/`5176` at the facility Service for the ML department in Part 3) |
+| Namespace              | `spva-lab`                                                                                                                      |
+| Addresses              | Specified as Service names ; a Service name resolves inside the cluster, so `EPICS_PVA(S)_ADDR_LIST` names Services             |
 
 ## Part 1: simple
+
+| Place                | Conf                       | Value                                              | Description                            |
+| -------------------- | -------------------------- | -------------------------------------------------- | -------------------------------------- |
+| lab workstation, IOC | `EPICS_PVA_AUTO_ADDR_LIST` | `NO`                                               | finds IOCs by `EPICS_PVA(S)_ADDR_LIST` |
+|                      | `EPICS_PVA_ADDR_LIST`      | `pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc` |                                        |
+
 
 Diagram: [`topology/topology-simple.svg`](topology/topology-simple.svg)
 
@@ -155,8 +234,8 @@ kreset_topology simple
 ```
 
 ```
-The simple laboratory is up with no certificates issued:
-    one lab, two IOCs, one pvacms
+The simple laboratory is up:
+    one laboratory with two IOCs and its own PVACMS,
 
 ```
 
@@ -206,6 +285,16 @@ certificates from an authority named by that file.
 
 ## Part 2: simple, with a gateway
 
+| Place           | Conf                       | Value                                              | Description                                   |
+| --------------- | -------------------------- | -------------------------------------------------- | --------------------------------------------- |
+| internet        | `EPICS_PVA_AUTO_ADDR_LIST` | `NO`                                               |                                               |
+|                 | `EPICS_PVA_NAME_SERVERS`   | `pvas://facility:5076`                             | ingress TLS scheme port-mapped to lab gateway |
+|                 | `EPICS_PVA_TLS_OPTIONS`    | `no_own_cert_status_check`                         | disable checking own cert status              |
+| lab workstation | `EPICS_PVA_ADDR_LIST`      | `pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc` |                                               |
+| IOC             | `EPICS_PVA_ADDR_LIST`      | `pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc` |                                               |
+| gateway         | conf                       | `EPICS_PVAS_SERVER_PORT: NO`                       | gateway allows only TLS traffic               |
+|                 | pvlist                     | unqualified `test:`, `tst:`, `CERT:` names         |                                               |
+
 Diagram: [`topology/topology-simple-with-gateway.svg`](topology/topology-simple-with-gateway.svg)
 
 Part 1, plus a boundary. The gateway serves TLS and nothing else
@@ -217,18 +306,6 @@ workstation starts holding nothing.
 kreset_topology simple-with-gateway
 ```
 
-```
-    the boundary lets nothing in yet: it carries TLS alone, and the workstation
-    outside has not been given the authority to verify it with
-```
-
-That last line is a negative check, and it is what NetworkPolicy enforcement looks
-like: with nothing in its keychain, the workstation outside cannot verify what answers,
-so it never gets far enough to be told no about any particular name. Before
-certificates exist, the gateway has no TLS to serve and therefore no listener at all;
-`krun_in gateway as gateway sh -c 'ss -lnt'` shows nothing on 5076 until `kgo_tls` has
-run.
-
 Provision everything:
 
 ```sh
@@ -236,19 +313,32 @@ kgo_tls
 ```
 
 ```
-==> carrying the authority to the workstation outside
-    carried to guest
-    carried to operator
-==> asking for a certificate from outside, across the boundary
-Certificate identifier  : <issuer>:<serial>
-==> reading across the boundary
-    the boundary is open to a holder with a valid certificate
+==> asking for certificates inside the laboratory
+    lab      bc8fc42c:15972558760514836878
+    lab      bc8fc42c:2389177307031252657
+    testioc  bc8fc42c:13492779153098257798
+    tstioc   bc8fc42c:5833605055436574197
+    gateway  bc8fc42c:9542026983815967809
+==> approving them
+  bc8fc42c:09542026983815967809  done
+  bc8fc42c:13492779153098257798  done
+  bc8fc42c:02389177307031252657  done
+  bc8fc42c:05833605055436574197  done
+  bc8fc42c:15972558760514836878  done
+==> restarting what now holds one
+==> copying the trust anchor to the workstation outside
+    copied to guest
+    copied to operator
+==> waiting for the gateway to serve the internet
+==> asking for a certificate from the internet, across the gateway
+Certificate identifier  : bc8fc42c:3451527697326035254
+  bc8fc42c:03451527697326035254  done
+==> reading across the gateway
+    the gateway is open to a holder with a valid certificate
 ```
 
-The anchor is carried by hand, `podman cp` in the podman walkthrough and `kubectl cp`
-here, because that is the story: trust arrives out of band, and everything after it can
-be verified. The outside workstation then requests its own identity across the boundary
-as `remote`, and the walkthrough's three writes behave exactly as they do in podman:
+The trust anchor is copied by hand to the internet workstation. The internet workstation then requests its own identity
+across the boundary as `guest` user.
 
 ```sh
 krun_in internet as guest pvxput test:stringExample 9   # refused: DEFAULT grants no write
@@ -257,24 +347,24 @@ krun_in internet as guest pvxput test:open 9            # written
 krun_in internet as guest pvxget test:open              # value double = 9
 ```
 
-**Why the outside workstation is configured with `no_own_cert_status_check`.** A holder
-normally establishes the status of its own certificate before using it. This
-workstation cannot: the certificate manager is on the other side of a boundary it can
-only cross with TLS. The searches it makes are carried over a TLS name server
-(`pvas://facility:5076`), the gateway checks what is presented to it and refuses a
-holder whose certificate is not valid, so the check is made where the connection is accepted. The
-entitlement belongs to the search, not to any one connection: a channel found by a TLS
-search keeps it even when the channel is later created over a different connection.
-That last sentence is load-bearing in Kubernetes, where the gateway's advertised
-address is reachable and clients leave the name server connection; in podman the
-advertised address is unreachable and the distinction never shows.
+**Why no own-cert status check**:
+	A holder	normally establishes the operational status of its own certificate before using it.  This
+	workstation cannot: the PVACMS is on the other side of a gateway that
+	requires an already validated certificate to traverse - chicken and egg.  So we disable that check
+	knowing that the gateway will act responsibly and check our certificate status before allowing us through.
 
-**A defect worth knowing about.** The gateway's configuration must carry
-`"readOnly": false`. Without it, `pvagw` attaches no access file to any channel:
-every read forwards and every write is refused, whatever the rules say, which presents
-as a permissions problem three steps from the cause.
 
 ## Part 3: federated, one facility root
+
+| Place | Conf | Value | Description |
+|---|---|---|---|
+| internet | `EPICS_PVA_NAME_SERVERS` | `facility:5075 facility:5175` | the port chooses the department |
+| lab / ml workstation | `EPICS_PVA_ADDR_LIST` | its own department's Services | |
+| | `EPICS_PVA_NAME_SERVERS` | `facility:5175` / `facility:5075` | each names the peer department |
+| IOC | `EPICS_PVAS_STATUS_NAME_SERVERS` | `facility:5175` / `facility:5075` | only the issuing department can report a certificate's status |
+| gateway | conf | `serverport 5075`/`5175`, TLS `5076`/`5176` | |
+| | conf | `EPICS_PVAS_STATUS_NAME_SERVERS: pvxs-lab-ml-gateway:5175` / `pvxs-lab-gateway:5075` | the peer gateway, named directly |
+| | pvlist | `CERT:` names qualified by issuer | |
 
 Diagram: [`topology/topology-federated-shared-root.svg`](topology/topology-federated-shared-root.svg)
 
@@ -359,7 +449,7 @@ is the way back.
 ### Revoke the facility root
 
 ```sh
-kauthority_revoke
+kocsp_responder revoke root
 #   the facility root is REVOKED
 ```
 
@@ -371,12 +461,21 @@ krun_in ml  as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12   # AUTHO
 krun_in lab as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12   # AUTHORITY_REVOKED
 ```
 
-`kauthority_restore` puts the answer back so the demonstration can run again. A fresh
-status enquiry recovers on its own; a connection that already degraded stays degraded
-until the process behind it restarts, and in a real facility recovery would mean a new
-root, not an edited index.
+A root's revocation is terminal, and there is no command that puts it back:
+`kreset_topology federated-shared-root` mints new authorities, which is what recovery
+means in a real facility as well.
 
 ## Part 4: federated, two independent roots
+
+| Place | Conf | Value | Description |
+|---|---|---|---|
+| internet | `EPICS_PVA_NAME_SERVERS` | `pvxs-lab-gateway:5075 pvxs-lab-ml-gateway:5075` | no facility: each gateway by its own name |
+| lab / ml workstation | `EPICS_PVA_ADDR_LIST` | its own department's Services | |
+| | `EPICS_PVA_NAME_SERVERS` | `pvxs-lab-ml-gateway:5075` / `pvxs-lab-gateway:5075` | |
+| | `EPICS_PVA_AUTH_ISSUER` | both SKIDs | two roots, so first-use trust needs both whole identifiers |
+| IOC | `EPICS_PVAS_STATUS_NAME_SERVERS` | `pvxs-lab-ml-gateway:5075` / `pvxs-lab-gateway:5075` | |
+| gateway | conf | `gateway.acf` names `LAB_CA` and `ML_CA` | |
+| | pvlist | `CERT:` names qualified by issuer | |
 
 Diagram: [`topology/topology-federated-non-shared-root.svg`](topology/topology-federated-non-shared-root.svg)
 
@@ -458,7 +557,7 @@ wrong.
 
 | Path | What it is |
 |---|---|
-| `helpers.sh` | The commands: `kreset_topology`, `krun_in`, `krestart`, `kgo_tls`, `kcarry_anchor`, `kauthority_*`, `kind_create`, `kload_images` |
+| `helpers.sh` | The commands: `kreset_topology`, `krun_in`, `krestart`, `kgo_tls`, `kcopy_anchor`, `kocsp_responder`, `klab_status`, `klab_ids`, `kind_create`, `kload_images` |
 | `kind-cluster.yaml` | The cluster: one node, default network plugin off |
 | `helm/simple` | Part 1 chart |
 | `helm/simple-with-gateway` | Part 2 chart |

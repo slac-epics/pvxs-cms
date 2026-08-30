@@ -1,0 +1,70 @@
+{{/*
+The segments.
+
+Three here, not five: there is no perimeter and no load balancer. Each gateway stands in its own
+department, in the other department, and outside, and is addressed by its own name.
+
+Ingress only, and enforced only by a CNI that implements NetworkPolicy. Kind's default CNI does
+NOT; kind_create installs Calico for exactly that reason. Without it every rule below is
+ignored and both boundaries are open while the laboratory appears to work.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+{{/*
+Each department: reachable by what sits in it, and by the PEER department's gateway, which is
+what serves this department's names to the other side. Its OWN gateway is a client to it and is
+on the list for that reason.
+
+The peer department's workstations are not here. They reach these IOCs through the gateway or
+not at all, which is what makes the two departments separate rather than merely labelled.
+*/}}
+{{- range $d := list (dict "n" "lab" "apps" (list "pvacms" "testioc" "tstioc" "lab-client") "own" "gateway" "peer" "ml-gateway") (dict "n" "ml" "apps" (list "ml" "ml-ioc" "ml-client") "own" "ml-gateway" "peer" "gateway") }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: {{ $d.n }}-segment-ingress}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app, operator: In, values: [{{ range $i, $a := $d.apps }}{{ if $i }}, {{ end }}"{{ $a }}"{{ end }}]}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {zone: {{ $d.n }}}}
+        - podSelector: {matchLabels: {app: {{ $d.own }}}}
+        - podSelector: {matchLabels: {app: {{ $d.peer }}}}
+---
+{{- end }}
+{{/*
+The gateways.
+
+THE DIFFERENCE. In podman each gateway stands on three segments and is told to serve on two of
+them, its own department left out, so a workstation there is never answered by it. A pod holds
+one address and serves on all of it, so the department is refused the gateway by policy instead.
+
+The rule is the same one: a department never reaches its own gateway. What changes is that a
+mistake now times out rather than being answered twice and reported as a duplicate name.
+
+Reachable by the workstation outside, by the PEER department, whose clients this gateway serves,
+and by the peer gateway, which asks it whether a certificate it was shown still stands. That
+last one is the fourth design rule: only the department that issued a certificate can answer
+for it, and with two independent roots there is nowhere else to ask.
+*/}}
+{{- range $g := list (dict "app" "gateway" "own" "lab" "peer" "ml" "peerGw" "ml-gateway") (dict "app" "ml-gateway" "own" "ml" "peer" "lab" "peerGw" "gateway") }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: {{ $g.app }}-ingress}
+spec:
+  podSelector: {matchLabels: {app: {{ $g.app }}}}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {zone: internet}}
+        - podSelector: {matchLabels: {zone: {{ $g.peer }}}}
+        - podSelector: {matchLabels: {app: {{ $g.peerGw }}}}
+---
+{{- end }}

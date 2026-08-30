@@ -1,0 +1,53 @@
+{{/*
+The three workstations. None has a Service: nothing addresses them, they are places a person
+sits. Each department's workstation names the PEER department's facility port and never its
+own, which is the second design rule.
+*/}}
+{{- $ws := list
+  (dict "name" "lab-client"      "role" "lab"      "zone" "lab"      "pvc" "lab-client-config"      "ns" "pvxs-lab-ml-gateway:5075"  "skid" "LAB_ISSUER_SKID")
+  (dict "name" "ml-client"       "role" "lab"      "zone" "ml"       "pvc" "ml-client-config"       "ns" "pvxs-lab-gateway:5075" "skid" "ML_ISSUER_SKID")
+  (dict "name" "internet-client" "role" "internet" "zone" "internet" "pvc" "internet-client-config" "ns" "pvxs-lab-gateway:5075 pvxs-lab-ml-gateway:5075" "skid" "") }}
+{{- range $w := $ws }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: {{ $w.name }}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: {{ $w.name }}}}
+  template:
+    metadata:
+      labels: {app: {{ $w.name }}, zone: {{ $w.zone }}}
+    spec:
+      securityContext: {runAsUser: 0, fsGroup: 0}
+      containers:
+        - name: {{ $w.name }}
+          image: {{ include "lab.image" (dict "Values" $.Values "role" $w.role) }}
+          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          command: ["/usr/local/bin/start-shell", "guest", "operator"]
+          env:
+{{- if eq $w.zone "lab" }}
+{{ include "lab.labZoneEnv" $ | indent 12 }}
+{{- else if eq $w.zone "ml" }}
+{{ include "lab.mlZoneEnv" $ | indent 12 }}
+{{- else }}
+            # The workstation outside has no department of its own to search.
+            - name: EPICS_PVA_AUTO_ADDR_LIST
+              value: "NO"
+{{- end }}
+{{ include "lab.issuerEnv" $ | indent 12 }}
+            - name: EPICS_PVA_NAME_SERVERS
+              value: {{ $w.ns | quote }}
+{{- if $w.skid }}
+            - name: EPICS_PVA_AUTH_ISSUER
+              valueFrom: {configMapKeyRef: {name: lab-issuer-ids, key: {{ $w.skid }}}}
+{{- end }}
+          volumeMounts:
+            - {name: config, mountPath: /home/guest/.config/pva/1.5}
+            - {name: anchors, mountPath: /certs/trust_anchors.p12, subPath: trust_anchors.p12}
+{{ include "lab.scriptsMount" $ | indent 12 }}
+      volumes:
+        - {name: config, persistentVolumeClaim: {claimName: {{ $w.pvc }}}}
+        - {name: anchors, secret: {secretName: trust-anchors}}
+{{ include "lab.scriptsVolume" $ | indent 8 }}
+{{- end }}

@@ -1,9 +1,10 @@
 #!/bin/bash
-# Build the images the demonstration laboratories are made from.
+# Build the images the demonstration laboratories are made from. Both laboratories use the
+# same images: podman runs them directly, Kubernetes loads them into its cluster.
 #
-# Run once, before the first reset_topology. The images are the same whichever laboratory you
-# bring up; what differs between them is their certificate authorities, and those are minted
-# by reset_topology into the topology that owns them.
+# Run through the helper of whichever laboratory you are using - build_images (podman) or
+# kbuild_images (kubernetes) - or directly, once, before the first reset. What differs
+# between laboratories is their certificate authorities, and those are minted at reset.
 #
 # JOBS controls how many compiler processes run at once. Each can take most of a
 # gigabyte, so on a machine with little memory set it low:
@@ -13,14 +14,30 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# The build scripts shared with the Kubernetes laboratory call `docker`. On podman that
-# is the podman-docker shim, so check for it early rather than failing halfway through.
-command -v podman >/dev/null || { echo "podman is not installed" >&2; exit 1; }
-command -v docker >/dev/null || {
-    echo "no 'docker' command found. The image build scripts call it; install the shim:" >&2
-    echo "    sudo apt install podman-docker        # Debian, Ubuntu" >&2
-    echo "    sudo dnf install podman-docker        # Fedora, RHEL" >&2
-    exit 1; }
+# Which engine builds. The two laboratories are separate instances with separate image
+# stores, and each is tested against its own: the podman helper sets podman, the
+# kubernetes helper sets whatever its cluster runs on. The inner build scripts call
+# `docker` unconditionally, so a podman build puts a private docker-to-podman link first
+# on PATH rather than trusting whatever `docker` happens to resolve to on this machine.
+CONTAINER_ENGINE="${CONTAINER_ENGINE:-docker}"
+case "${CONTAINER_ENGINE}" in
+    docker)
+        command -v docker >/dev/null || {
+            echo "no 'docker' command found. Install Docker, or on a podman machine" >&2
+            echo "install the shim:" >&2
+            echo "    sudo apt install podman-docker        # Debian, Ubuntu" >&2
+            echo "    sudo dnf install podman-docker        # Fedora, RHEL" >&2
+            exit 1; } ;;
+    podman)
+        command -v podman >/dev/null || { echo "podman is not installed" >&2; exit 1; }
+        _shim_dir=$(mktemp -d)
+        trap 'rm -rf "${_shim_dir}"' EXIT
+        ln -s "$(command -v podman)" "${_shim_dir}/docker"
+        PATH="${_shim_dir}:${PATH}"; export PATH ;;
+    *)  echo "CONTAINER_ENGINE must be docker or podman, not '${CONTAINER_ENGINE}'" >&2
+        exit 2 ;;
+esac
+echo "==> building with ${CONTAINER_ENGINE} ($(command -v docker))"
 
 # Built images are referenced by these names in compose.yaml.
 export DOCKER_REGISTRY="${DOCKER_REGISTRY:-localhost}"
@@ -65,18 +82,18 @@ if true; then
 # from example/docker: the Kerberos and LDAP authenticator images beside them are not used
 # here, and nor are the display images.
 echo "==> building epics-base and pvxs (compiles EPICS Base and pvxs)"
-build_image ../../../pvxs/example/docker/epics-base
-build_image ../../../pvxs/example/docker/pvxs
+build_image ../../pvxs/example/docker/epics-base
+build_image ../../pvxs/example/docker/pvxs
 
 echo "==> building the pvxs-cms image"
-build_image ../docker/pvxs-cms
+build_image docker/pvxs-cms
 
 echo "==> building the laboratory images"
 # lab_tools carries the operating system packages, lab_base the built EPICS tree, and
 # everything else derives from lab_base. This order matters.
 for target in lab_tools lab_base idm ml testioc tstioc ml-ioc gateway lab internet; do
     echo "    ${target}"
-    build_image "../kubernetes/docker/${target}" >/dev/null
+    build_image "kubernetes/docker/${target}" >/dev/null
 done
 
 fi
@@ -84,14 +101,12 @@ fi
 # Not ours, and not built: the facility load balancer is HAProxy, which is what a site would
 # use for this. Pulled here so that bringing a laboratory up needs no registry.
 echo "==> fetching the load balancer image"
-podman pull -q docker.io/library/haproxy:lts-alpine >/dev/null 2>&1 \
-    || echo "    could not fetch haproxy - reset_topology simple-with-gateway will need it" >&2
+docker pull -q docker.io/library/haproxy:lts-alpine >/dev/null 2>&1 \
+    || echo "    could not fetch haproxy - the gateway laboratories will need it" >&2
 
 echo
 echo "The images are built. Certificate authorities belong to a laboratory rather than to the"
 echo "images, so they are minted when you bring one up:"
 echo
-echo "    source ./helpers.sh"
-echo "    reset_topology <topology>"
-echo
-echo "reset_topology with no name lists the four and says what each one is."
+echo "    podman:      cd podman     && . ./helpers.sh && reset_topology <topology>"
+echo "    kubernetes:  cd kubernetes && . ./helpers.sh && kload_images && kreset_topology <topology>"

@@ -1,0 +1,71 @@
+# What a gateway admits at the boundary. Both gateways load this one file: the departments
+# differ in what they forward, which their pvlists say, not in who they let in.
+#
+# The gateway image carries a file of this name naming one facility root. Here there is no
+# such root, so this copy is mounted over it and names the two roots that exist instead. A
+# holder is admitted under either.
+
+AUTHORITY(LAB_CA, "EPICS Lab Root Certificate Authority")
+AUTHORITY(ML_CA,  "EPICS ML Root Certificate Authority")
+
+UAG(USERS) {
+    "guest",
+    "operator",
+    "remote"
+}
+
+UAG(SPECIAL_USERS) {
+    "operator"
+}
+
+ASG(SPECIAL) {
+    RULE(1,READ) {
+        UAG(USERS)
+        AUTHORITY(LAB_CA, ML_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(SPECIAL_USERS)
+        AUTHORITY(LAB_CA, ML_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
+
+# Carried across the boundary for any certificate holder, whoever they are.
+#
+# SPECIAL above names operators; this one names nobody, so the condition is only that a
+# certificate was presented over TLS under one of the two roots. It is what decides who may
+# write the variables the pvlists mark with it, because the IOC upstream sees this gateway
+# rather than the client behind it.
+ASG(OPEN_WRITE) {
+    RULE(1,READ) {
+        AUTHORITY(LAB_CA, ML_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    RULE(1,WRITE,TRAPWRITE) {
+        AUTHORITY(LAB_CA, ML_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
+
+ASG(CERT_CREATE) {
+    RULE(1,READ)
+    RULE(1,WRITE)
+}
+
+ASG(CERT_STATUS) {
+    RULE(1,READ)
+}
+
+ASG(DEFAULT) {
+    RULE(1,READ) {
+        UAG(USERS)
+        AUTHORITY(LAB_CA, ML_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}

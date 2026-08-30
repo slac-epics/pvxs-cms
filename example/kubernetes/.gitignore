@@ -1,0 +1,6 @@
+# Written by kreset_topology: which of the four laboratories is up. helpers.sh reads it so
+# krun_in can tell "this laboratory has no gateway" from "the gateway is not running".
+.ktopology
+
+# Copied out of PVACMS by Part 2, to hand to a workstation outside the boundary.
+trust_anchor.p12

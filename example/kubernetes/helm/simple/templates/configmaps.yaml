@@ -1,0 +1,23 @@
+{{/* The start scripts, taken verbatim from the podman topology so the two stay in step. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lab-scripts
+data:
+{{- range $path, $_ := .Files.Glob "files/start-*.sh" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+---
+{{/* The access security files, likewise verbatim. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lab-acf
+data:
+  pvacms.acf: |
+{{ .Files.Get "files/pvacms.acf" | indent 4 }}
+  testioc.acf: |
+{{ .Files.Get "files/testioc.acf" | indent 4 }}
+  tstioc.acf: |
+{{ .Files.Get "files/tstioc.acf" | indent 4 }}

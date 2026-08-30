@@ -1,0 +1,21 @@
+{{/*
+Keychains live here, so they have to outlive a pod. `krestart <place> pod` deletes the pod on
+purpose, and a certificate that vanished with it would make every restart look like a
+revocation. The certificate manager's authority is in the same position: it mints it once, at
+first start, and everything it ever issued is signed by it.
+*/}}
+{{- range $name := list "idm-config" "idm-data" "testioc-config" "tstioc-config" "gateway-config" "lab-client-config" "internet-client-config" }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if $.Values.persistence.storageClass }}
+  storageClassName: {{ $.Values.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $.Values.persistence.size }}
+{{- end }}

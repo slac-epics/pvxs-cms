@@ -1,0 +1,82 @@
+{{/*
+The two workstations. Neither has a Service: nothing addresses them, they are places a person
+sits. The difference between them is the whole of Part 2.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: lab-client}
+  template:
+    metadata:
+      labels: {app: lab-client, zone: lab}
+    spec:
+      securityContext:
+        # Root, so that krun_in can become a person by name with 'su -'. The podman
+        # laboratory uses 'podman exec --user', which kubectl has no equivalent of.
+        runAsUser: 0
+        fsGroup: 0
+      containers:
+        - name: lab-client
+          image: {{ include "lab.image" (dict "Values" .Values "role" "lab") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/local/bin/start-shell", "guest", "operator"]
+          env:
+{{ include "lab.zoneEnv" . | indent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /home/guest/.config/pva/1.5}
+{{ include "lab.scriptsMount" . | indent 12 }}
+{{ include "lab.issuerMount" . | indent 12 }}
+      volumes:
+        - {name: config, persistentVolumeClaim: {claimName: lab-client-config}}
+{{ include "lab.scriptsVolume" . | indent 8 }}
+{{ include "lab.issuerVolume" . | indent 8 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: internet-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: internet-client}
+  template:
+    metadata:
+      labels: {app: internet-client, zone: internet}
+    spec:
+      securityContext:
+        # Root, so that krun_in can become a person by name with 'su -'. The podman
+        # laboratory uses 'podman exec --user', which kubectl has no equivalent of.
+        runAsUser: 0
+        fsGroup: 0
+      containers:
+        - name: internet-client
+          image: {{ include "lab.image" (dict "Values" .Values "role" "internet") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/local/bin/start-shell", "guest", "operator"]
+          env:
+            - name: EPICS_PVA_AUTO_ADDR_LIST
+              value: "NO"
+            # The boundary carries TLS and nothing else, so the facility address is named with
+            # the pvas:// scheme and the TLS port. A name reached this way is asked for over
+            # the secure connection itself, which is why the authority has to be held before
+            # anything is asked.
+            - name: EPICS_PVA_NAME_SERVERS
+              value: "pvas://{{ include "lab.facilityService" . }}:{{ .Values.ports.pvaTls }}"
+            # This workstation cannot reach the certificate manager except through the
+            # gateway, so it cannot establish the standing of its own certificate before using
+            # it. The gateway checks what is presented to it and refuses a holder that does not
+            # stand, so the check is made where the connection is accepted rather than here.
+            - name: EPICS_PVA_TLS_OPTIONS
+              value: "no_own_cert_status_check"
+          volumeMounts:
+            - {name: config, mountPath: /home/guest/.config/pva/1.5}
+{{ include "lab.scriptsMount" . | indent 12 }}
+{{ include "lab.issuerMount" . | indent 12 }}
+      volumes:
+        - {name: config, persistentVolumeClaim: {claimName: internet-client-config}}
+{{ include "lab.scriptsVolume" . | indent 8 }}
+{{ include "lab.issuerVolume" . | indent 8 }}

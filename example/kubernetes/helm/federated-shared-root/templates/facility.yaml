@@ -1,0 +1,45 @@
+{{/*
+The facility address: one name, and the port chooses the department.
+
+This is a real load balancer rather than a Service alone, because a Service selects one set of
+pods and this name has to send 5075 to the lab gateway and 5175 to the ML gateway. It is the
+same haproxy the podman laboratory runs, with the same four frontends and the same rule that a
+port is never translated.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: pvxs-facility-lb}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: facility}}
+  template:
+    metadata:
+      labels: {app: facility, zone: facility}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: haproxy
+          image: {{ include "lab.image" (dict "Values" .Values "role" "haproxy") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - {containerPort: {{ .Values.ports.labTcp }}, protocol: TCP}
+            - {containerPort: {{ .Values.ports.labTls }}, protocol: TCP}
+            - {containerPort: {{ .Values.ports.mlTcp }}, protocol: TCP}
+            - {containerPort: {{ .Values.ports.mlTls }}, protocol: TCP}
+          volumeMounts:
+            - {name: cfg, mountPath: /usr/local/etc/haproxy/haproxy.cfg, subPath: haproxy.cfg}
+      volumes:
+        - {name: cfg, configMap: {name: facility-config}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ include "lab.facility" . }}}
+spec:
+  type: ClusterIP
+  selector: {app: facility}
+  ports:
+    - {name: lab-tcp, port: {{ .Values.ports.labTcp }}, targetPort: {{ .Values.ports.labTcp }}, protocol: TCP}
+    - {name: lab-tls, port: {{ .Values.ports.labTls }}, targetPort: {{ .Values.ports.labTls }}, protocol: TCP}
+    - {name: ml-tcp,  port: {{ .Values.ports.mlTcp }},  targetPort: {{ .Values.ports.mlTcp }},  protocol: TCP}
+    - {name: ml-tls,  port: {{ .Values.ports.mlTls }},  targetPort: {{ .Values.ports.mlTls }},  protocol: TCP}

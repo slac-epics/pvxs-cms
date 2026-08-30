@@ -23,6 +23,7 @@ cd "$(dirname "$0")"
 
 _usage() {
     echo "usage: reset_topology [--authorities] <topology>" >&2
+    echo "       reset_topology clear                  take the laboratory away, build nothing" >&2
     echo >&2
     echo "topologies:" >&2
     local t var
@@ -46,7 +47,10 @@ for arg in "$@"; do
 done
 [ -n "${topology}" ] || { echo "reset_topology: name a topology" >&2; _usage; }
 
-case " ${TOPOLOGY_NAMES} " in
+# 'clear' is not a laboratory. It is the word for taking whichever one is up away and putting
+# nothing in its place, for when the machine is wanted for something else - the Kubernetes
+# laboratory runs on the same podman machine as this one and they are not small.
+case " ${TOPOLOGY_NAMES} clear " in
     *" ${topology} "*) ;;
     *) echo "reset_topology: no topology called '${topology}'" >&2; _usage ;;
 esac
@@ -56,10 +60,15 @@ esac
 # destroys the same set and switching between them leaves nothing of the last one behind.
 project=$(basename "$(pwd)")
 compose_file="topologies/${topology}/compose.yaml"
+if [ "${topology}" = clear ]; then
+    _last=$(cat .topology 2>/dev/null || true)
+    compose_file="topologies/${_last:-simple}/compose.yaml"
+    [ -f "${compose_file}" ] || compose_file="topologies/simple/compose.yaml"
+fi
 _compose() { podman-compose -p "${project}" -f "${compose_file}" "$@"; }
 
 # What is up, for helpers.sh to read: it decides from this which places run_in will accept.
-printf '%s\n' "${topology}" > .topology
+[ "${topology}" = clear ] || printf '%s\n' "${topology}" > .topology
 
 # A laboratory with more than one PVACMS has to be told which authority each one signs with,
 # and the issuer ids have to exist before anything starts, so those topologies mint beside
@@ -67,7 +76,9 @@ printf '%s\n' "${topology}" > .topology
 # own self-signed authority the first time it starts, and with only one of them the
 # unqualified CERT:CREATE is unambiguous.
 topology_dir="topologies/${topology}"
-if [ -x "${topology_dir}/mint.sh" ]; then
+if [ "${topology}" = clear ]; then
+    :   # nothing is being built, so nothing needs an authority
+elif [ -x "${topology_dir}/mint.sh" ]; then
     if [ "${new_authorities}" = yes ] || [ ! -s "${topology_dir}/issuer_ids.env" ]; then
         "${topology_dir}/mint.sh"
     else
@@ -156,9 +167,9 @@ _bring_up() {
 
 # ---------------------------------------------------------------- checks
 # Each laboratory is checked for what it has. A responder, a second department and a
-# perimeter are not universal, and asking about one a topology lacks would report a fault
+# internet are not universal, and asking about one a topology lacks would report a fault
 # where there is none.
-_places=$(eval "printf '%s' \"\${TOPOLOGY_${topology//-/_}_PLACES}\"")
+_places=$(eval "printf '%s' \"\${TOPOLOGY_${topology//-/_}_PLACES:-}\"")
 _has() { case " ${_places} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # A responder answers for a root that names one, and only a laboratory with a facility root
@@ -204,8 +215,8 @@ _check_managers() {
     # and the thing that fails when the facility root cannot be established.
     local ok=no
     for _ in $(seq 1 18); do
-        if run_in lab-manager as admin pvxcert -l >/dev/null 2>&1 \
-        && { ! _has ml-manager || run_in ml-manager as admin pvxcert -l >/dev/null 2>&1; }; then
+        if run_in lab-pvacms as admin pvxcert -l >/dev/null 2>&1 \
+        && { ! _has ml-pvacms || run_in ml-pvacms as admin pvxcert -l >/dev/null 2>&1; }; then
             ok=yes; break
         fi
         sleep 5
@@ -230,10 +241,10 @@ _check_reads() {
         && { ! _has ml-ioc    || run_in ml        as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; } \
         && { ! _has ml-ioc    || run_in lab       as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; } \
         && { ! _has ml        || run_in ml        as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; } \
-        && { ! _has perimeter || _boundary_is_tls_only \
-                              || run_in perimeter as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; } \
-        && { ! _has perimeter || _boundary_is_tls_only || ! _has ml-ioc \
-                              || run_in perimeter as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; }; then
+        && { ! _has internet || _boundary_is_tls_only \
+                              || run_in internet as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; } \
+        && { ! _has internet || _boundary_is_tls_only || ! _has ml-ioc \
+                              || run_in internet as guest without a certificate pvxget ml:aiExample   >/dev/null 2>&1; }; then
             ok=yes; break
         fi
         sleep 5
@@ -245,10 +256,10 @@ _check_reads() {
     _has ml-ioc    && echo "        run_in ml        as guest without a certificate pvxget ml:aiExample" >&2
     _has ml-ioc    && echo "        run_in lab       as guest without a certificate pvxget ml:aiExample" >&2
     _has ml        && echo "        run_in ml        as guest without a certificate pvxget test:aiExample" >&2
-    _has perimeter && ! _boundary_is_tls_only \
-                   && echo "        run_in perimeter as guest without a certificate pvxget test:aiExample" >&2
-    _has perimeter && ! _boundary_is_tls_only && _has ml-ioc \
-                   && echo "        run_in perimeter as guest without a certificate pvxget ml:aiExample" >&2
+    _has internet && ! _boundary_is_tls_only \
+                   && echo "        run_in internet as guest without a certificate pvxget test:aiExample" >&2
+    _has internet && ! _boundary_is_tls_only && _has ml-ioc \
+                   && echo "        run_in internet as guest without a certificate pvxget ml:aiExample" >&2
     return 1
 }
 
@@ -273,15 +284,15 @@ _check_refusals() {
     # handed nothing cannot verify what answers, so it never gets far enough to be told no about
     # a particular variable. What is checked there is that it cannot get in at all, which is the
     # state the walkthrough starts from before the authority is carried across.
-    if _has perimeter && _boundary_is_tls_only; then
-        if run_in perimeter as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; then
+    if _has internet && _boundary_is_tls_only; then
+        if run_in internet as guest without a certificate pvxget test:aiExample >/dev/null 2>&1; then
             echo "    the boundary carries TLS alone, but a workstation holding nothing read across it." >&2
             return 1
         fi
         return 0
     fi
-    if _has perimeter && ! _says 'denied by gateway' \
-         run_in perimeter as guest without a certificate pvxput test:stringExample hello; then
+    if _has internet && ! _says 'denied by gateway' \
+         run_in internet as guest without a certificate pvxput test:stringExample hello; then
         echo "    a request with no certificate was not refused at the boundary." >&2
         return 1
     fi
@@ -291,6 +302,14 @@ _check_refusals() {
 # ---------------------------------------------------------------- do it
 echo "==> destroying the laboratory: containers, volumes, networks"
 _destroy_everything
+
+if [ "${topology}" = clear ]; then
+    rm -f .topology .env
+    echo "    every container, volume and network this laboratory made is gone."
+    echo "    The Kubernetes laboratory, if it is up, is not: it runs inside its own"
+    echo "    container on the same podman machine. Take it away with 'kreset_topology clear'."
+    exit 0
+fi
 
 # A demonstration may have left the facility root revoked, and a laboratory that starts with a
 # revoked authority issues nothing. Put it back. Only a laboratory with a responder has one.
@@ -377,26 +396,33 @@ if [ "${new_authorities}" = yes ]; then
     # The shell that ran reset_topology has them already, because reset_topology reads them as
     # soon as this returns. Any other shell that read the old ones still holds them, and nothing
     # here can reach into one of those.
-    echo "These are new. The shell you ran this from has them. Any other shell that read the"
-    echo "old ones still holds them, so in each of those run:"
+    echo "These are new. run:"
     echo "    lab_ids"
     echo
 fi
-echo "The ${topology} laboratory is up with no certificates issued, and this much was just"
-echo "checked:"
-_has_responder && echo "    the responder answers for the facility root"
-echo "    each PVACMS answers its administrator"
-if _has perimeter && _boundary_is_tls_only; then
-    echo "    reading works from every department inside the facility"
-    echo "    a write with no certificate is refused by the IOC"
-    echo "    the boundary lets nothing in yet: it carries TLS alone, and the workstation"
-    echo "    outside has not been given the authority to verify it with"
-elif _has perimeter; then
-    echo "    reading works, from every department and from outside"
-    echo "    a write with no certificate is refused, by the IOC and at the boundary"
+echo "The ${topology} topology is up:"
+echo "    one laboratory with two IOCs and its own PVACMS,"
+if _has internet; then
+  if _boundary_is_tls_only; then
+      echo "    internet zone connects via a tls-only gateway,"
+      echo "    one root CA"
+  else
+      echo "    one ML center with one ML IOC and its own PVACMS,"
+      if _has_responder ; then
+      echo "    internet zone connects via facility name and port,"
+      echo "    ports 5075-5076 map to laboratory gateway and 5175-5176 map to ML gateway,"
+      echo "    inter-department traffic via peer's facility port mapping,"
+      echo "    one shared root CA referencing an external OCSP responder,"
+      echo "    separate intermediate CA for each department"
+      else
+      echo "    internet zone connects directly to laboratory and ML gateways on 5075-5076,"
+      echo "    inter-department traffic via peer gateway,"
+      echo "    separate independent root CA for each department,"
+      echo "    one intermediate CA for laboratory"
+      fi
+  fi
 else
-    echo "    reading works"
-    echo "    a write with no certificate is refused by the IOC"
+    echo "    one root CA"
 fi
 echo
 # Each laboratory has one part of the README to itself, and the walkthrough in another part
@@ -408,5 +434,4 @@ case "${topology}" in
     federated-non-shared-root) _part="Part 4 - federated, two independent roots" ;;
     *)                         _part="the part of README.md named after this laboratory" ;;
 esac
-echo "Its walkthrough is '${_part}' in README.md. Follow that one: another part is written"
-echo "for another laboratory and names places this one has none of."
+echo "See '${_part}' in README.md"

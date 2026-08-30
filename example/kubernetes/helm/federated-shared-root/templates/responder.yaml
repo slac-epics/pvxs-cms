@@ -1,0 +1,70 @@
+{{/*
+The responder that answers for the facility root.
+
+The root carries no status process variable, so this is the only way its revocation reaches
+anything issued beneath it. It runs the certificate manager's image with the supervisor
+configuration replaced, so nothing but the responder starts.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: pvxs-lab-authority-status}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: authority-status}}
+  template:
+    metadata:
+      labels: {app: authority-status, zone: facility}
+    spec:
+      securityContext: {runAsUser: 0, fsGroup: 0}
+      initContainers:
+        # The index is seeded once and then left alone. Seeding it on every start would undo a
+        # revocation the moment the responder was restarted, and restarting it is exactly what
+        # revoking does.
+        - name: seed-index
+          image: {{ include "lab.image" (dict "Values" .Values "role" "idm") }}
+          # Named explicitly. Without it a :latest tag defaults to Always, and these images are
+          # built on the host and carried into the cluster rather than published anywhere, so
+          # the pull fails, the pod never starts, and helm --wait reports the whole release
+          # failed for what is really one missing line.
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args: ["[ -s /state/index.txt ] || cp /seed/index.txt /state/index.txt"]
+          volumeMounts:
+            - {name: state, mountPath: /state}
+            - {name: seed, mountPath: /seed}
+      containers:
+        - name: responder
+          image: {{ include "lab.image" (dict "Values" .Values "role" "idm") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+          ports: [{containerPort: {{ .Values.ports.ocsp }}, protocol: TCP}]
+          volumeMounts:
+            - {name: material, mountPath: /ocsp/ca.pem, subPath: ca.pem}
+            - {name: material, mountPath: /ocsp/signer.pem, subPath: signer.pem}
+            - {name: material, mountPath: /ocsp/signer.key, subPath: signer.key}
+            - {name: state, mountPath: /ocsp/index.txt, subPath: index.txt}
+            - {name: conf, mountPath: /etc/supervisor/supervisord.conf, subPath: supervisord.conf}
+            - {name: conf, mountPath: /etc/supervisor/conf.d/ocsp.conf, subPath: ocsp.conf}
+          # Asking it the question rather than checking the port. The failure this catches is
+          # the responder holding the port open while answering nothing, which a TCP probe
+          # reports as healthy. podman solves the same problem with a watchdog inside the
+          # container; here the cluster can do it.
+          livenessProbe:
+            exec:
+              command: ["/bin/sh","-c","openssl ocsp -issuer /ocsp/ca.pem -cert /ocsp/ca.pem -url http://127.0.0.1:{{ .Values.ports.ocsp }} -CAfile /ocsp/ca.pem >/dev/null 2>&1"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+      volumes:
+        - {name: material, secret: {secretName: ocsp-material}}
+        - {name: seed, configMap: {name: ocsp-index-seed}}
+        - {name: state, persistentVolumeClaim: {claimName: ocsp-state}}
+        - {name: conf, configMap: {name: responder-config}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ .Values.responder.serviceName }}}
+spec:
+  type: ClusterIP
+  selector: {app: authority-status}
+  ports: [{name: ocsp, port: {{ .Values.ports.ocsp }}, targetPort: {{ .Values.ports.ocsp }}, protocol: TCP}]

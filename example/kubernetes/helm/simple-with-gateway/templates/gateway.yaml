@@ -1,0 +1,86 @@
+{{/*
+The gateway, and the facility address in front of it.
+
+The gateway serves TLS and nothing else, so it must already hold a certificate before it is
+any use: with the plaintext listener closed, a gateway with no certificate serves nothing at
+all. That is the state the walkthrough starts from.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pvxs-lab-gateway
+  annotations:
+    checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: gateway}
+  template:
+    metadata:
+      labels: {app: gateway, zone: perimeter}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        # Root, so that krun_in can become a person by name with 'su -'. The podman
+        # laboratory uses 'podman exec --user', which kubectl has no equivalent of.
+        runAsUser: 0
+        fsGroup: 0
+      containers:
+        - name: gateway
+          image: {{ include "lab.image" (dict "Values" .Values "role" "gateway") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          # 'none' because this laboratory's certificate process variables carry no issuer in
+          # their names, so the pvlist needs no substitution.
+          command: ["/usr/local/bin/start-gateway", "none"]
+          env:
+            # The gateway is a client to the laboratory and names its upstreams directly. It
+            # does not take part in the zone's discovery.
+            - name: EPICS_PVA_AUTO_ADDR_LIST
+              value: "NO"
+            # The prefix of the pod network, so start-gateway resolves the pod's own address
+            # and substitutes it for __SERVE_ADDR__, as it does in podman.
+            - name: GATEWAY_SERVE_SUBNET
+              value: "192.168."
+            # For the gateway's own tools, which is how it asks for its certificate. pvagw
+            # itself takes its upstreams from gateway.conf and does not read this. In podman
+            # the gateway broadcasts to find the certificate manager; there is no broadcast
+            # here, so it is named.
+            - name: EPICS_PVA_ADDR_LIST
+              value: {{ include "lab.pvacmsService" . | quote }}
+          ports:
+            - {containerPort: {{ .Values.ports.pvaTls }}, protocol: TCP}
+            - {containerPort: {{ .Values.ports.pvaUdp }}, protocol: UDP}
+          volumeMounts:
+            - {name: config, mountPath: /home/gateway/.config/pva/1.5}
+            - {name: gw, mountPath: /home/gateway/gateway.conf.in, subPath: gateway.conf}
+            - {name: gw, mountPath: /home/gateway/gateway.pvlist.in, subPath: gateway.pvlist}
+{{ include "lab.scriptsMount" . | indent 12 }}
+{{ include "lab.issuerMount" . | indent 12 }}
+      volumes:
+        - {name: config, persistentVolumeClaim: {claimName: gateway-config}}
+        - name: gw
+          configMap: {name: gateway-config}
+{{ include "lab.scriptsVolume" . | indent 8 }}
+{{ include "lab.issuerVolume" . | indent 8 }}
+---
+{{/*
+The facility address. In podman this is an haproxy container aliased 'facility' on the outside
+segment; here the same job is done by a Service of that name, which is what a Kubernetes load
+balancer is. Only the secure port is published, for the reason haproxy.cfg gives: the gateway
+behind it has no plaintext listener, so a frontend on 5075 would forward to a closed port and
+time out, which reads as a broken laboratory rather than a closed boundary.
+
+The port is the same on both sides, and must stay that way. A PVAccess server names its own
+port in a search reply and the client dials that port next, so translating one would send the
+client somewhere nothing is listening.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "lab.facilityService" . }}
+spec:
+  type: {{ .Values.facility.serviceType }}
+  selector: {app: gateway}
+  ports:
+    - {name: pva-tls, port: {{ .Values.ports.pvaTls }}, targetPort: {{ .Values.ports.pvaTls }}, protocol: TCP}

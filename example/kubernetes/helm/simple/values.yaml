@@ -1,0 +1,46 @@
+# The simple laboratory: one department and nothing else.
+#
+# The podman topology this is taken from is example/podman/topologies/simple. One thing could
+# not come across as it was written, and it is marked THE DIFFERENCE where it appears:
+#
+#   Discovery. A laboratory zone in podman finds its IOCs by broadcast. A pod network has no
+#   broadcast domain, so the zone is given an explicit address list of the IOC services
+#   instead. What is being demonstrated - that a zone reaches its own IOCs without naming a
+#   gateway - still holds, but it is reached by naming them rather than by asking everyone.
+#
+
+namespace: spva-lab
+
+dockerRegistry: localhost
+dockerUsername: spva
+imageTag: latest
+imagePullPolicy: IfNotPresent
+
+images:
+  idm: idm
+  testioc: testioc
+  tstioc: tstioc
+  lab: lab
+
+# Same numbers on both sides of every service, always. A PVAccess server names its own port in
+# a search reply and the client then dials that port, so a service that translated one would
+# send the client somewhere nothing is listening.
+ports:
+  pvaTcp: 5075
+  pvaTls: 5076
+  pvaUdp: 5076
+
+certAuthority:
+  name: EPICS Root Certificate Authority
+  organization: certs.epics.org
+  organizationalUnit: epics.org Certificate Authority
+
+# The address the workstation outside the boundary knows. In podman this is an haproxy
+# container aliased 'facility'; here it is a Service of the same name, which is the same job
+# done by kube-proxy. Set type to LoadBalancer if you want it published outside the cluster.
+facility:
+  serviceType: ClusterIP
+
+persistence:
+  storageClass: ""
+  size: 128Mi

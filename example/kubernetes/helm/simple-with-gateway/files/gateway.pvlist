@@ -1,0 +1,21 @@
+
+# What crosses the boundary, and as what.
+#
+# This laboratory has one PVACMS, so the certificate process variables have no issuer in
+# their names: there is nothing for a name to be ambiguous between. The federated
+# laboratories qualify every one of these by issuer for exactly that reason.
+test:.* ALLOW
+tst:.* ALLOW
+test:spec ALLOW SPECIAL
+test:open ALLOW OPEN_WRITE
+
+# Asking for a certificate, and checking one, from outside.
+CERT:CREATE(?::.*)? ALLOW CERT_CREATE
+CERT:STATUS(?::.*)? ALLOW CERT_STATUS
+
+# The two views that are open to everyone. The awaiting-decision view is deliberately absent:
+# a gateway makes its upstream connection as itself, so PVACMS would see the gateway rather
+# than the administrator behind it, and a decision has to be made where the administrator's
+# own certificate is presented.
+CERT:LIST:ALL ALLOW CERT_STATUS
+CERT:LIST:EXPIRING ALLOW CERT_STATUS

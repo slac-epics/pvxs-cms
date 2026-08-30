@@ -1,0 +1,9 @@
+apiVersion: v2
+name: simple
+description: >-
+  The simple laboratory, as Kubernetes objects. One department, one certificate manager that
+  mints its own authority, two IOCs behind Services, and a workstation. No gateway and no
+  boundary: everything here is inside one segment.
+type: application
+version: 0.1.0
+appVersion: "latest"

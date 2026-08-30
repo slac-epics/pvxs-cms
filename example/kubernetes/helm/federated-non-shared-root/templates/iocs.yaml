@@ -1,0 +1,68 @@
+{{/*
+The three IOCs, each behind a Service.
+
+EPICS_PVAS_STATUS_NAME_SERVERS is the fourth design rule in its controller form: only the
+department that issued a certificate can say whether it still stands, and an IOC has no leg
+into the peer department. The facility address does, and its PEER port reaches that
+department's gateway. Read by the inner status client alone, so it answers that one question
+and is not a general route into the other department.
+*/}}
+{{- $iocs := list
+  (dict "name" "pvxs-lab-testioc" "app" "testioc" "role" "testioc" "arg" "testioc" "user" "testioc" "zone" "lab" "pvc" "testioc-config" "skid" "LAB_ISSUER_SKID" "peer" "pvxs-lab-ml-gateway:5075" "tcp" .Values.ports.pvaTcp "tls" .Values.ports.pvaTls)
+  (dict "name" "pvxs-lab-tstioc"  "app" "tstioc"  "role" "tstioc"  "arg" "tstioc"  "user" "tstioc"  "zone" "lab" "pvc" "tstioc-config" "skid" "LAB_ISSUER_SKID" "peer" "pvxs-lab-ml-gateway:5075" "tcp" .Values.ports.pvaTcp "tls" .Values.ports.pvaTls)
+  (dict "name" "pvxs-lab-ml-ioc"  "app" "ml-ioc"  "role" "mlIoc"   "arg" "mlioc"   "user" "mlioc"   "zone" "ml"  "pvc" "ml-ioc-config" "skid" "ML_ISSUER_SKID"  "peer" "pvxs-lab-gateway:5075" "tcp" .Values.ports.pvaTcp  "tls" .Values.ports.pvaTls) }}
+{{- range $i := $iocs }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: {{ $i.name }}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: {{ $i.app }}}}
+  template:
+    metadata:
+      labels: {app: {{ $i.app }}, zone: {{ $i.zone }}}
+    spec:
+      securityContext: {runAsUser: 0, fsGroup: 0}
+      containers:
+        - name: {{ $i.app }}
+          image: {{ include "lab.image" (dict "Values" $.Values "role" $i.role) }}
+          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          command: ["/usr/local/bin/start-ioc", "{{ $i.arg }}"]
+          env:
+{{- if eq $i.zone "lab" }}
+{{ include "lab.labZoneEnv" $ | indent 12 }}
+{{- else }}
+{{ include "lab.mlZoneEnv" $ | indent 12 }}
+{{- end }}
+{{ include "lab.issuerEnv" $ | indent 12 }}
+            - name: EPICS_PVA_AUTH_ISSUER
+              valueFrom: {configMapKeyRef: {name: lab-issuer-ids, key: {{ $i.skid }}}}
+            - name: EPICS_PVAS_STATUS_NAME_SERVERS
+              value: {{ $i.peer | quote }}
+          ports:
+            - {containerPort: {{ $i.tcp }}, protocol: TCP}
+            - {containerPort: {{ $i.tls }}, protocol: TCP}
+            - {containerPort: {{ $i.tls }}, protocol: UDP}
+          volumeMounts:
+            - {name: config, mountPath: /home/{{ $i.user }}/.config/pva/1.5}
+            - {name: anchors, mountPath: /certs/trust_anchors.p12, subPath: trust_anchors.p12}
+            - {name: acf, mountPath: /home/{{ $i.user }}/{{ $i.arg }}.acf, subPath: {{ $i.arg }}.acf}
+{{ include "lab.scriptsMount" $ | indent 12 }}
+      volumes:
+        - {name: config, persistentVolumeClaim: {claimName: {{ $i.pvc }}}}
+        - {name: anchors, secret: {secretName: trust-anchors}}
+        - {name: acf, configMap: {name: lab-acf}}
+{{ include "lab.scriptsVolume" $ | indent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ $i.name }}}
+spec:
+  type: ClusterIP
+  selector: {app: {{ $i.app }}}
+  ports:
+    - {name: pva-tcp, port: {{ $i.tcp }}, targetPort: {{ $i.tcp }}, protocol: TCP}
+    - {name: pva-tls, port: {{ $i.tls }}, targetPort: {{ $i.tls }}, protocol: TCP}
+    - {name: pva-udp, port: {{ $i.tls }}, targetPort: {{ $i.tls }}, protocol: UDP}
+{{- end }}

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: federated-non-shared-root
+description: >-
+  The federated-non-shared-root laboratory, as Kubernetes objects. Two departments under two
+  independent roots, with both roots held as trust anchors in every keychain, so trust comes
+  from the anchor list rather than from a shared chain.
+type: application
+version: 0.1.0
+appVersion: "latest"

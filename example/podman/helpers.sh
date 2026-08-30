@@ -1,23 +1,22 @@
-# Shorthands for the demonstration laboratory, so an example says what is run, where, and
-# by whom. Source it once, from this directory:
+# Shorthands for the demonstration laboratory:
 #
 #     source ./helpers.sh
 #
 # Then:
 #
 #     run_in lab         as guest    pvxget test:aiExample
-#     run_in lab-manager as admin    pvxcert -l --where "state:VALID and type:IOC"
+#     run_in lab-pvacms  as admin    pvxcert -l --where "state:VALID and type:IOC"
 #     run_in ml          as operator pvxput ml:aiExample 42
-#     run_in perimeter   as guest without a certificate  pvxget test:aiExample
+#     run_in internet    as guest without a certificate  pvxget test:aiExample
 #     run_in testioc     as testioc  authnstd -u ioc
 #
 # Every shorthand can show the command it stands for instead of running it:
 #
-#     run_in lab-manager as admin --show pvxcert -l
+#     run_in lab-pvacms as admin --show pvxcert -l
 #
-# Several commands as one person, when the sequence is the point:
+# Several commands as one person:
 #
-#     run_in lab-manager as admin <<'EOF'
+#     run_in lab-pvacms as admin <<'EOF'
 #         pvxcert -l
 #         pvxcert -l --where "state:VALID"
 #     EOF
@@ -26,25 +25,18 @@
 
 # ---------------------------------------------------------------------------- where things are
 #
-# A place is a machine, and it is named for what stands there. An administrator's identity
-# lives beside PVACMS, so "lab-manager" is a different place from "lab".
-#
 #   lab, ml                   a workstation inside a department
-#   perimeter                 a workstation outside, reaching in only across a boundary
-#   lab-manager, ml-manager   a department's PVACMS
+#   internet                  a workstation in the internet zone
+#   lab-pvacms, ml-pvacms     a department's PVACMS
 #   testioc, tstioc, ml-ioc   an IOC
 #   gateway, ml-gateway       a department's boundary
-#
-# A person is a real account on that machine:
 #
 #   guest, operator           ordinary users of a workstation
 #   admin                     a department's certificate administrator
 #   testioc, tstioc, mlioc,   the account a service runs as
-#   gateway, idm
+#   gateway
 
-# Which laboratory is up, written by reset.sh. run_in uses it to tell "this laboratory has no
-# gateway" apart from "the gateway is not running", which are different problems with
-# different answers.
+# Which laboratory is up
 _lab_topology() {
     local f="${LAB_HELPERS_DIR:-.}/.topology"
     [ -r "${f}" ] && head -1 "${f}" || echo unknown
@@ -58,9 +50,6 @@ _lab_topology_places() {
     # shellcheck disable=SC1090
     . "${env}"
     var="TOPOLOGY_${t//-/_}_PLACES"
-    # eval rather than ${!var}: this file is sourced by whichever shell the reader uses, and
-    # indirect expansion is spelt differently in each. zsh answers ${!var} with
-    # "bad substitution", which is what a person sees instead of their command running.
     local places
     places=$(eval "printf '%s' \"\${${var}-}\"")
     [ -n "${places}" ] || return 1
@@ -71,11 +60,11 @@ _lab_place() {          # place -> compose service
     case "$1" in
         lab)          echo lab-client ;;
         ml)           echo ml-client ;;
-        perimeter)    echo internet-client ;;
-        lab-manager)  echo pvxs-lab-pvacms ;;
-        ml-manager)   echo pvxs-lab-ml ;;
+        internet)     echo internet-client ;;
+        lab-pvacms)   echo pvxs-lab-pvacms ;;
+        ml-pvacms)    echo pvxs-lab-ml ;;
         testioc)      echo pvxs-lab-testioc ;;
-        tstioc)        echo pvxs-lab-tstioc ;;
+        tstioc)       echo pvxs-lab-tstioc ;;
         ml-ioc)       echo pvxs-lab-ml-ioc ;;
         gateway)      echo pvxs-lab-gateway ;;
         ml-gateway)   echo pvxs-lab-ml-gateway ;;
@@ -84,7 +73,7 @@ _lab_place() {          # place -> compose service
 }
 
 # Compose names a container after the project directory, so ask podman which container is
-# running the service rather than assuming what it is called.
+# running the service.
 _lab_container() {
     local name
     name=$(podman ps --filter "label=com.docker.compose.service=$1" --format '{{.Names}}' 2>/dev/null | head -1)
@@ -119,12 +108,6 @@ _lab_quote() {
 }
 
 # Whether the authority this shell names is still the one the laboratory has.
-#
-# Minting new authorities rewrites .env, but an exported variable in a shell that is already
-# open cannot be reached from outside it. Anything typed with ${LAB} or ${LAB_SKID} then names
-# an authority that no longer exists, and what comes back says nothing about why: a request
-# times out, because there is nothing to answer it, and a PVACMS that never saw the authority
-# has nothing to say about it either.
 _lab_ids_are_current() {
     local env_file="${LAB_HELPERS_DIR:-.}/.env"
     [ -r "${env_file}" ] || return 0
@@ -149,8 +132,6 @@ run_in() {
         return 2
     fi
 
-    # RUN_IN_SHOW=yes turns every call into a --show, which is how a whole document's worth
-    # of examples can be checked for where they would go without running any of them.
     local place="$1" who="$3" plain=no show="${RUN_IN_SHOW:-no}"
     if [ "$2" != as ] || [ -z "${who}" ]; then
         echo "run_in: say it as: run_in <place> as <person> <command...>" >&2; return 2
@@ -175,8 +156,6 @@ run_in() {
 
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            # "without a certificate" reads as English and says exactly what is being
-            # shown: the same person, presenting nothing.
             without) [ "$2" = a ] && [ "$3" = certificate ] || {
                          echo "run_in: did you mean 'without a certificate'?" >&2; return 2; }
                      plain=yes; shift 3 ;;
@@ -187,12 +166,11 @@ run_in() {
 
     local service container places topology
     if ! service=$(_lab_place "${place}"); then
-        echo "run_in: no place called '${place}'. Places: lab ml perimeter lab-manager ml-manager testioc tstioc ml-ioc gateway ml-gateway" >&2
+        echo "run_in: no place called '${place}'. Places: lab ml internet lab-pvacms ml-pvacms testioc tstioc ml-ioc gateway ml-gateway" >&2
         return 2
     fi
 
-    # A real place, but one this laboratory has none of: say which laboratory is up and what
-    # it does have, rather than reporting nothing is running for it.
+    # A real place, but one this laboratory has none of: say which is up and what it does have.
     if places=$(_lab_topology_places); then
         case " ${places} " in
             *" ${place} "*) ;;
@@ -204,36 +182,21 @@ run_in() {
         esac
     fi
 
-    # The administrator is not a user of a workstation. Say why rather than quietly running
-    # the command somewhere the reader was not told about.
-    if [ "${who}" = admin ] && [ "${place}" != lab-manager ] && [ "${place}" != ml-manager ]; then
-        echo "run_in: the administrator's identity lives on the PVACMS, not at ${place}." >&2
+    # The administrator must run in a pvacms node in this demo.
+    if [ "${who}" = admin ] && [ "${place}" != lab-pvacms ] && [ "${place}" != ml-pvacms ]; then
+        echo "run_in: the administrator's identity lives on the PVACMS node, not at ${place}." >&2
         case "${place}" in
-            lab|ml) echo "        Write: run_in ${place}-manager as admin ..." >&2 ;;
-            *)      echo "        Write: run_in lab-manager as admin ...  (or ml-manager)" >&2 ;;
+            lab|ml) echo "        Write: run_in ${place}-pvacms as admin ..." >&2 ;;
+            *)      echo "        Write: run_in lab-pvacms as admin ...  (or ml-pvacms)" >&2 ;;
         esac
         return 2
     fi
 
     container=$(_lab_container "${service}") || return 1
 
-    # Keep the command exactly as it was typed. Requoting matters: a filter such as
-    # --where "state:VALID and type:IOC" is one argument, and flattening it into a string
-    # would hand pvxcert three.
-    #
-    # A terminal is handed through only when there is one on both sides, which is what lets
-    # a command that asks a question - pvxcert --review-pending - be answered. The tools ask
-    # nothing unless they are talking to a terminal.
-    #
-    # Connecting standard input at any other time would do harm. A container given the
-    # surrounding script's input reads it: a run_in inside a loop over a list of commands
-    # would swallow the rest of the list and the loop would stop after one turn.
     local attach="podman exec"
     if [ -t 0 ] && [ -t 1 ]; then attach="podman exec -it"; fi
 
-    # No command at a terminal opens a shell there, as that person, with everything set up
-    # that a command would have had. It is how to answer something that asks a question, and
-    # how to try things without writing run_in in front of each.
     local script interactive=no
     if [ "$#" -gt 0 ]; then
         script=$(_lab_quote "$@")
@@ -245,57 +208,59 @@ exec bash --norc -i"
         script=$(cat)
     fi
 
-    # Whatever the person needs set before their command runs. Held as one string rather
-    # than an array, because arrays are not written the same way in every shell and this
-    # file is sourced by whichever one the reader happens to use.
     local prelude=
     [ "${plain}" = yes ] && prelude='export EPICS_PVA_TLS_KEYCHAIN=
 '
     case "${who}" in
         admin)
-            # The identity PVACMS issued to itself, presented over the secure port. Without
-            # both of these it sees no administrator and refuses the decision - which is the
-            # access rule working, not a broken tool.
-            #
-            # The address is this machine: an administrator's tools run beside PVACMS and
-            # have no reason to look anywhere else. Naming it here rather than in
-            # compose.yaml keeps PVACMS itself free of any address list.
-            prelude="export EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12
+            # The identity PVACMS issued to itself.
+            prelude="
+export EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12
 export EPICS_PVA_ADDR_LIST=127.0.0.1
 export EPICS_PVA_AUTO_ADDR_LIST=NO
 export EPICS_PVA_NAME_SERVERS=
 " ;;
         guest|operator)
-            # The login profile supplies the tool paths and the organisation, but it was
-            # written for the federated laboratory and names its hosts. The container knows
-            # which laboratory it is actually in, so put its own addressing back afterwards -
-            # otherwise a command run on the ML workstation, or on the
-            # perimeter, quietly talks to the lab instead.
-            #
-            # All three of these, not just the two lists: a laboratory that finds everything
-            # by broadcast sets neither list and turns automatic discovery on, and leaving the
-            # profile's "NO" in place would leave it with nowhere to search at all.
-            prelude="_addr_was=\${EPICS_PVA_ADDR_LIST+set}; _addr=\${EPICS_PVA_ADDR_LIST-}
-_ns_was=\${EPICS_PVA_NAME_SERVERS+set}; _ns=\${EPICS_PVA_NAME_SERVERS-}
-_auto_was=\${EPICS_PVA_AUTO_ADDR_LIST+set}; _auto=\${EPICS_PVA_AUTO_ADDR_LIST-}
+            # The login profile supplies the tool paths and the organisation.
+            prelude="
+_addr_was=\${EPICS_PVA_ADDR_LIST+set}
+_addr=\${EPICS_PVA_ADDR_LIST-}
+_ns_was=\${EPICS_PVA_NAME_SERVERS+set}
+_ns=\${EPICS_PVA_NAME_SERVERS-}
+_auto_was=\${EPICS_PVA_AUTO_ADDR_LIST+set}
+_auto=\${EPICS_PVA_AUTO_ADDR_LIST-}
 source ~/.${who}_bashrc 2>/dev/null
-if [ -n \"\${_addr_was}\" ]; then export EPICS_PVA_ADDR_LIST=\"\${_addr}\"; else unset EPICS_PVA_ADDR_LIST; fi
-if [ -n \"\${_ns_was}\" ]; then export EPICS_PVA_NAME_SERVERS=\"\${_ns}\"; else unset EPICS_PVA_NAME_SERVERS; fi
-if [ -n \"\${_auto_was}\" ]; then export EPICS_PVA_AUTO_ADDR_LIST=\"\${_auto}\"; else unset EPICS_PVA_AUTO_ADDR_LIST; fi
+if [ -n \"\${_addr_was}\" ]; then
+  export EPICS_PVA_ADDR_LIST=\"\${_addr}\";
+else
+  unset EPICS_PVA_ADDR_LIST;
+fi
+if [ -n \"\${_ns_was}\" ]; then
+  export EPICS_PVA_NAME_SERVERS=\"\${_ns}\";
+else
+  unset EPICS_PVA_NAME_SERVERS;
+fi
+if [ -n \"\${_auto_was}\" ]; then
+  export EPICS_PVA_AUTO_ADDR_LIST=\"\${_auto}\";
+else
+  unset EPICS_PVA_AUTO_ADDR_LIST;
+fi
 export EPICS_PVA_TLS_KEYCHAIN=\${HOME}/.config/pva/1.5/${keychain_name}.p12
-${prelude}" ;;
+${prelude}
+" ;;
         *)
             # A service acting as itself, through its own login, which is where its keychain
             # path and its department's addressing come from.
-            prelude="source ~/.${who}_bashrc 2>/dev/null
-${prelude}" ;;
+            prelude="
+source ~/.${who}_bashrc 2>/dev/null
+${prelude}
+" ;;
     esac
     script="
 ${prelude}export PVXS_LOG=\${PVXS_LOG:-none}
 ${script}"
 
-    # Showing rather than running: print it the way a person would type it, with the script
-    # left as written instead of escaped, so it can be read and pasted back.
+    # Showing rather than running.
     if [ "${show}" = yes ]; then
         local quoted
         case "${script}" in
@@ -317,18 +282,20 @@ ${script}"
     esac
 }
 
+# Build the images every laboratory is made from. The script is shared with the Kubernetes
+# laboratory and lives one directory up; this and its kubernetes twin are the two ways in.
+build_images() {
+    JOBS="${JOBS:-}" CONTAINER_ENGINE=podman "${LAB_HELPERS_DIR:-.}/../bootstrap.sh" "$@"
+}
+
 # ------------------------------------------------------------------------------- conveniences
 
-# This laboratory's issuer identifiers, as bootstrap.sh recorded them, so an example can say
-# CERT:LIST:${LAB}:ALL rather than a forty-character string.
+# This laboratory's issuer identifiers.
 lab_ids() {
     local env_file="${LAB_HELPERS_DIR:-.}/.env"
     if [ ! -r "${env_file}" ]; then
         echo "no ${env_file} yet - run reset_topology <topology> first" >&2; return 1
     fi
-    # Two forms, wanted in different places. The short one names an authority in a process
-    # variable name, such as CERT:LIST:${LAB}:ALL. The whole one is what establishes trust in
-    # it, and is what --issuer wants on a first request.
     LAB=$(sed -n 's/^LAB_ISSUER=//p' "${env_file}")
     ML=$(sed -n 's/^ML_ISSUER=//p'  "${env_file}")
     LAB_SKID=$(sed -n 's/^LAB_ISSUER_SKID=//p' "${env_file}")
@@ -337,8 +304,6 @@ lab_ids() {
     ROOT=$(sed -n 's/^ROOT_ISSUER=//p' "${env_file}")
     ROOT_SKID=$(sed -n 's/^ROOT_ISSUER_SKID=//p' "${env_file}")
     export LAB ML LAB_SKID ML_SKID ROOT ROOT_SKID
-    # Silent: this is also run when the file is sourced, and sourcing should say nothing.
-    # Use lab_ids_show to see them.
 }
 
 # Brings a laboratory up and reads its authorities into this shell, in one step.
@@ -357,6 +322,9 @@ reset_topology() {
         echo "reset_topology: cannot run ${script}" >&2; return 1
     fi
     "${script}" "$@" || return $?
+    # 'clear' takes the laboratory away and puts nothing in its place, so there are no
+    # identifiers to read and nothing to report.
+    case " $* " in *" clear "*) return 0 ;; esac
     # Only reached when the laboratory came up, so a failure above leaves the old values alone
     # rather than half-replacing them.
     lab_ids
@@ -420,59 +388,227 @@ _lab_compose() {
                        -f "topologies/${t}/compose.yaml" "$@")
 }
 
-authority_says() {
-    local index; index=$(_lab_authority_index) || return 1
-    case "$(cut -f1 "${index}")" in
-        R) echo "the facility root is REVOKED" ;;
-        V) echo "the facility root is VALID" ;;
-        *) echo "the responder's index says something this does not understand" ;;
+# The OCSP responder that answers for the facility root's revocation status:
+#
+#     ocsp_responder                   what it currently says about the root
+#     ocsp_responder unreachable       make it unresponsive
+#     ocsp_responder reachable         make it responsive
+#     ocsp_responder revoke root       respond that the facility root is REVOKED
+ocsp_responder() {
+    case "${1:-says}" in
+        says)
+            # The status is stored in a file on the host.
+            local index state
+            index=$(_lab_authority_index 2>/dev/null)
+            if [ -z "${index}" ]; then echo "no responder here"; return 0; fi
+            state=$(podman ps --filter "label=com.docker.compose.service=pvxs-lab-authority-status" \
+                        --format '{{.State}}' 2>/dev/null | head -1)
+            if [ "${state}" != running ]; then
+                echo "the status of the facility root is UNKNOWN"; return 0
+            fi
+            case "$(cut -f1 "${index}")" in
+                R) echo "the facility root is REVOKED" ;;
+                V) echo "the facility root is VALID" ;;
+                *) echo "internal error in the OCSP responder" ;;
+            esac ;;
+        unreachable)
+            _lab_authority_index >/dev/null || return 1
+            _lab_compose stop pvxs-lab-authority-status >/dev/null 2>&1
+            echo "the responder is stopped" ;;
+        reachable)
+            _lab_authority_index >/dev/null || return 1
+            _lab_compose start pvxs-lab-authority-status >/dev/null 2>&1
+            echo "the responder is running"
+            ocsp_responder says ;;
+        revoke)
+            [ "${2:-}" = root ] || { echo "usage: ocsp_responder revoke root" >&2; return 2; }
+            local index; index=$(_lab_authority_index) || return 1
+            # The revocation time is the two-digit-year form the index uses throughout; the
+            # four-digit form makes the responder answer with an internal error.
+            awk -F'\t' -v when="$(date -u +%y%m%d%H%M%SZ)" 'BEGIN{OFS="\t"}
+                {print "R", $2, when, $4, $5, $6}' "${index}" > "${index}.new" && mv "${index}.new" "${index}"
+            _lab_compose restart pvxs-lab-authority-status >/dev/null 2>&1
+            ocsp_responder says ;;
+        *)
+            echo "ocsp_responder: no subcommand '${1}'." >&2
+            echo "usage: ocsp_responder [unreachable|reachable|revoke root]" >&2
+            return 2 ;;
     esac
 }
 
-# Revoke the facility root, as its own authority would.
-authority_revoke() {
-    local index; index=$(_lab_authority_index) || return 1
-    # The revocation time is the two-digit-year form the index uses throughout; the four-digit
-    # form makes the responder answer with an internal error rather than a status.
-    awk -F'\t' -v when="$(date -u +%y%m%d%H%M%SZ)" 'BEGIN{OFS="\t"}
-        {print "R", $2, when, $4, $5, $6}' "${index}" > "${index}.new" && mv "${index}.new" "${index}"
-    _lab_compose restart pvxs-lab-authority-status >/dev/null 2>&1
-    authority_says
+# One certificate request, with its outcome reported. "Valid certificate found" is not a
+# failure: it is what an already-provisioned laboratory says, and go_tls is safe to run twice.
+_ask() {
+    local place="$1" who="$2"; shift 2
+    local out; out=$(run_in "${place}" as "${who}" "$@" 2>&1 || true)
+    if printf '%s' "${out}" | grep -q "Certificate identifier"; then
+        printf '    %-10s %s\n' "${place}" "$(printf '%s' "${out}" | grep 'Certificate identifier' | sed 's/.*: //')"
+    elif printf '%s' "${out}" | grep -q "Valid certificate found"; then
+        printf '    %-10s already holds one\n' "${place}"
+    else
+        printf '    %-10s FAILED\n' "${place}"
+        printf '%s\n' "${out}" | tail -3 | sed 's/^/        /'
+    fi
 }
 
-# Put the facility root back, so a demonstration can be run again.
-authority_restore() {
-    local index; index=$(_lab_authority_index) || return 1
-    awk -F'\t' 'BEGIN{OFS="\t"} {print "V", $2, "", $4, $5, $6}' "${index}" > "${index}.new" \
-        && mv "${index}.new" "${index}"
-    _lab_compose restart pvxs-lab-authority-status >/dev/null 2>&1
-    authority_says
+# The trust anchor, copied to the workstation outside by hand. Never over an identity: the
+# anchor and the identity share one file, so that would reduce the holder to anonymous.
+copy_anchor() {
+    local places; places=" $(_lab_topology_places) " || return 1
+    case "${places}" in *" internet "*) ;; *)
+        echo "copy_anchor: this laboratory has no workstation outside." >&2; return 2 ;;
+    esac
+    local mgr dst tmp who
+    mgr=$(_lab_container "$(_lab_place lab-pvacms)") || return 1
+    dst=$(_lab_container "$(_lab_place internet)") || return 1
+    tmp="${TMPDIR:-/tmp}/trust_anchor.$$.p12"
+    echo "==> copying the trust anchor to the workstation outside"
+    # Beside the CA keychain, wherever that is: /etc/pvacms when the authority is installed
+    # at start, beside the database when the manager minted its own.
+    podman exec "${mgr}" sh -c '
+        for f in /etc/pvacms/trust_anchor.p12 "$(dirname "${EPICS_PVACMS_DB}")/trust_anchor.p12"; do
+            [ -s "${f}" ] && exec cat "${f}"
+        done; exit 1' > "${tmp}" 2>/dev/null
+    if [ ! -s "${tmp}" ]; then
+        echo "    the certificate manager has not written a trust anchor." >&2
+        rm -f "${tmp}"; return 1
+    fi
+    for who in guest operator; do
+        if podman exec "${dst}" sh -c \
+             'openssl pkcs12 -in "/home/'"${who}"'/.config/pva/1.5/client.p12" -nocerts -passin pass: -passout pass:x 2>/dev/null | grep -q "PRIVATE KEY"' 2>/dev/null; then
+            echo "    ${who} already holds an identity, left alone"
+            continue
+        fi
+        podman exec --user root "${dst}" install -d -o "${who}" -g "${who}" -m 0700 "/home/${who}/.config/pva/1.5" 2>/dev/null
+        if podman cp "${tmp}" "${dst}:/home/${who}/.config/pva/1.5/client.p12" >/dev/null 2>&1; then
+            podman exec --user root "${dst}" chown "${who}" "/home/${who}/.config/pva/1.5/client.p12" 2>/dev/null
+            echo "    copied to ${who}"
+        else
+            echo "    could not copy it to ${who}" >&2
+        fi
+    done
+    rm -f "${tmp}"
 }
 
-# Take the responder away without changing what it would have said, which is the other thing
-# that can happen to it.
-authority_unreachable() {
-    _lab_authority_index >/dev/null || return 1
-    _lab_compose stop pvxs-lab-authority-status >/dev/null 2>&1
-    echo "the responder is stopped; nothing can be learned about the root"
+# Everything the walkthrough does by hand, in the order it has to be done in: IOCs before
+# the gateway, because a gateway serves nothing until it holds a certificate and makes its
+# upstream connections when it starts; the workstation outside last, because it can ask for
+# nothing until the anchor has been carried across.
+go_tls() {
+    local places has_ml=no has_gateway=no has_internet=no
+    places=" $(_lab_topology_places) "
+    case "${places}" in *" ml "*) has_ml=yes ;; esac
+    case "${places}" in *" gateway "*) has_gateway=yes ;; esac
+    case "${places}" in *" internet "*) has_internet=yes ;; esac
+
+    echo "==> asking for certificates inside the laboratory"
+    _ask lab     guest    authnstd -u client
+    _ask lab     operator authnstd -u client
+    _ask testioc testioc  authnstd -u ioc
+    _ask tstioc  tstioc   authnstd -u ioc
+    [ "${has_gateway}" = yes ] && _ask gateway gateway authnstd -u ioc
+    if [ "${has_ml}" = yes ]; then
+        _ask ml         guest   authnstd -u client
+        _ask ml-ioc     mlioc   authnstd -u ioc
+        _ask ml-gateway gateway authnstd -u ioc
+    fi
+
+    echo "==> approving them"
+    run_in lab-pvacms as admin pvxcert --review-pending --all approve --yes 2>&1 \
+        | grep -E 'done|No certificates' || true
+    if [ "${has_ml}" = yes ]; then
+        run_in ml-pvacms as admin pvxcert --review-pending --all approve --yes 2>&1 \
+            | grep -E 'done|No certificates' || true
+    fi
+
+    echo "==> restarting what now holds one"
+    local c=
+    c=$(_lab_container "$(_lab_place testioc)") && podman exec --user root "${c}" supervisorctl restart testioc >/dev/null 2>&1
+    c=$(_lab_container "$(_lab_place tstioc)")  && podman exec --user root "${c}" supervisorctl restart tstioc  >/dev/null 2>&1
+    if [ "${has_ml}" = yes ]; then
+        c=$(_lab_container "$(_lab_place ml-ioc)") && podman exec --user root "${c}" supervisorctl restart mlioc >/dev/null 2>&1
+    fi
+    if [ "${has_gateway}" = yes ] || [ "${has_ml}" = yes ]; then
+        # pvagw makes its upstream connections at start and does not retry them.
+        podman ps --format '{{.Names}}' | grep -- '-gateway' | while read -r c; do
+            [ -n "${c}" ] && podman restart "${c}" >/dev/null 2>&1
+        done
+        sleep 8
+    fi
+
+    # A laboratory with nothing outside it is provisioned already: no anchor to carry, no
+    # boundary to cross.
+    if [ "${has_internet}" != yes ]; then
+        echo "==> no workstation outside this laboratory; done"
+        return 0
+    fi
+
+    copy_anchor || return 1
+
+    echo "==> waiting for the gateway to serve the internet"
+    local i=0
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        run_in gateway as gateway sh -c 'ss -lnt 2>/dev/null | grep -q 507' 2>/dev/null && break
+        sleep 5
+    done
+
+    echo "==> asking for a certificate from the internet, across the gateway"
+    local _last=
+    for i in 1 2 3 4 5 6; do
+        # An explicit branch, not a conditional expansion: zsh hands
+        # ${X:+--issuer "${X}"} to the command as a single word.
+        if [ -n "${LAB_SKID:-}" ]; then
+            _last=$(run_in internet as guest authnstd -u client -n remote --issuer "${LAB_SKID}" 2>&1)
+        else
+            _last=$(run_in internet as guest authnstd -u client -n remote 2>&1)
+        fi
+        printf '%s\n' "${_last}" | grep -E 'Certificate identifier|Valid certificate found' && break
+        sleep 5
+    done
+    # Every attempt failed: show the last error, because a silence here cannot be told
+    # apart from success by anything that follows.
+    if ! printf '%s\n' "${_last}" | grep -qE 'Certificate identifier|Valid certificate found'; then
+        printf '%s\n' "${_last}" | tail -3 | sed 's/^/    /' >&2
+    fi
+    run_in lab-pvacms as admin pvxcert --review-pending --all approve --yes 2>&1 \
+        | grep -E 'done|No certificates' || true
+    sleep 3
+
+    echo "==> reading across the gateway"
+    local ok=no
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        run_in internet as guest pvxget test:aiExample >/dev/null 2>&1 && { ok=yes; break; }
+        sleep 5
+    done
+    if [ "${ok}" = yes ]; then
+        # A read alone proves reachability, not identity: a gateway forwards anonymous TLS
+        # reads, so an empty keychain passes it. Say which one this was.
+        if run_in internet as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12 2>/dev/null \
+               | grep -q '^Entity Subject'; then
+            echo "    the gateway is open to a holder with a valid certificate"
+        else
+            echo "    reading works, but the workstation outside holds no identity:" >&2
+            echo "    the certificate request across the gateway did not succeed." >&2
+            return 1
+        fi
+    else
+        echo "    it still will not read. Look at the gateway:" >&2
+        echo "        podman logs \$(podman ps --format '{{.Names}}' | grep -m1 -- '-gateway')" >&2
+        return 1
+    fi
 }
 
-authority_reachable() {
-    _lab_authority_index >/dev/null || return 1
-    _lab_compose start pvxs-lab-authority-status >/dev/null 2>&1
-    echo "the responder is running again"
-    authority_says
-}
-
-# Which parts of the laboratory are up, named the way run_in names them.
 lab_status() {
     local place service
-    printf '%-12s %-18s %-10s %s\n' PLACE SERVICE STATE CONTAINER
-    local all="lab-manager testioc tstioc gateway ml-manager ml-ioc ml-gateway lab ml perimeter"
+    printf '%-12s %-19s %-10s %s\n' PLACE SERVICE STATE CONTAINER
+    local all="lab-pvacms testioc tstioc gateway ml-pvacms ml-ioc ml-gateway lab ml internet"
     local places; places=$(_lab_topology_places) || places="${all}"
-    for place in ${places}; do
-        service=$(_lab_place "${place}")
-        printf '%-12s %-18s %-10s %s\n' "${place}" "${service}" \
+    # Split through a pipe rather than by expansion: zsh does not word-split ${places},
+    # and this file is sourced by whichever shell the reader uses.
+    echo "${places}" | tr ' ' '\n' | while read -r place; do
+        [ -n "${place}" ] || continue
+        service=$(_lab_place "${place}") || continue
+        printf '%-12s %-19s %-10s %s\n' "${place}" "${service}" \
             "$(podman ps -a --filter "label=com.docker.compose.service=${service}" --format '{{.State}}' 2>/dev/null | head -1)" \
             "$(podman ps -a --filter "label=com.docker.compose.service=${service}" --format '{{.Names}}' 2>/dev/null | head -1)"
     done

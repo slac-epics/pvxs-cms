@@ -51,8 +51,8 @@
 <text x="1214.0" y="1295" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">                                    asks it about lab certificates</text>
 <text x="1214.0" y="1310" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Program: p4p pvagw, layer 7</text>
 <text x="1214.0" y="1325" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Config: config/gateway-lab.conf</text>
-<text x="1214.0" y="1340" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves on eth1 and eth2, never on its own department: pinned by</text>
-<text x="1214.0" y="1355" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    GATEWAY_SERVE_SUBNET, so its own side is not answered twice</text>
+<text x="1214.0" y="1340" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves on eth1 and eth2, never on its own department: "interface" is</text>
+<text x="1214.0" y="1355" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    pinned, so its own side is not answered twice</text>
 <text x="1214.0" y="1370" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Reached directly at its own net-internet address, on 5075 and 5076</text>
 <text x="1214.0" y="1385" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVAS_STATUS_NAME_SERVERS: the peer gateway, read by the inner</text>
 <text x="1214.0" y="1400" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    client alone, to ask after a certificate the peer authority issued</text>
@@ -246,8 +246,8 @@
 <text x="3080.0" y="1295" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">                                    asks it about ML certificates</text>
 <text x="3080.0" y="1310" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Program: p4p pvagw, layer 7</text>
 <text x="3080.0" y="1325" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Config: config/gateway-ml.conf</text>
-<text x="3080.0" y="1340" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves on eth1 and eth2, never on its own department: pinned by</text>
-<text x="3080.0" y="1355" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    GATEWAY_SERVE_SUBNET, so its own side is not answered twice</text>
+<text x="3080.0" y="1340" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves on eth1 and eth2, never on its own department: "interface" is</text>
+<text x="3080.0" y="1355" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    pinned, so its own side is not answered twice</text>
 <text x="3080.0" y="1370" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Reached directly at its own net-internet address, on 5075 and 5076</text>
 <text x="3080.0" y="1385" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVAS_STATUS_NAME_SERVERS: the peer gateway, read by the inner</text>
 <text x="3080.0" y="1400" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    client alone, to ask after a certificate the peer authority issued</text>

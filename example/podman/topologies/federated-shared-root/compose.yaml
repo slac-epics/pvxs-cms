@@ -18,7 +18,7 @@
 # Service names match the DNS names used inside the images, so the shell profiles and the
 # gateway configuration work unchanged.
 #
-# Run ./bootstrap.sh first: it builds the images and mints the authorities.
+# Run build_images first (helpers.sh): it builds the images. ./reset.sh mints the authorities.
 
 # Carried by the things that never look for a process variable: PVACMS serves and is served,
 # and a gateway is told its upstream in its own configuration file. Everything else here

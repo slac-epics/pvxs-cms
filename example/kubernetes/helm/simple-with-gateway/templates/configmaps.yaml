@@ -1,0 +1,71 @@
+{{/* The start scripts, taken verbatim from the podman topology so the two stay in step. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lab-scripts
+data:
+{{- range $path, $_ := .Files.Glob "files/start-*.sh" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+---
+{{/* The access security files, likewise verbatim. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lab-acf
+data:
+  pvacms.acf: |
+{{ .Files.Get "files/pvacms.acf" | indent 4 }}
+  testioc.acf: |
+{{ .Files.Get "files/testioc.acf" | indent 4 }}
+  tstioc.acf: |
+{{ .Files.Get "files/tstioc.acf" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+data:
+  gateway.pvlist: |
+{{ .Files.Get "files/gateway.pvlist" | indent 4 }}
+  gateway.conf: |
+    {
+      "version": 2,
+      "//readOnly": "Must be present and false, or the gateway attaches no access file to a channel and refuses every write whatever the rules say. Reads are forwarded either way, so omitting it looks like a permissions problem rather than a missing line.",
+      "readOnly": false,
+      "clients": [
+        {
+          "name": "local",
+          "autoaddrlist": false,
+          "addrlist": "{{ include "lab.zoneAddrList" . }}",
+          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12"
+        }
+      ],
+      "servers": [
+        {
+          "name": "gateway",
+          "clients": ["local"],
+          "acf_client": "local",
+          "statusprefix": "GW:STS:",
+          "//interface": "start-gateway substitutes the pod's own address.",
+      "interface": ["__SERVE_ADDR__"],
+          "autoaddrlist": false,
+          "addrlist": "{{ include "lab.pvacmsService" . }}",
+          "tls_keychain": "/home/gateway/.config/pva/1.5/gateway.p12",
+          "//tls-only": "NO closes the plaintext listener, so the boundary carries TLS and nothing else. The gateway must already hold a certificate when it starts with this set, because a gateway with no certificate serves no TLS and so serves nothing at all.",
+          "EPICS_PVAS_SERVER_PORT": "NO",
+          "EPICS_PVAS_TLS_PORT": "{{ .Values.ports.pvaTls }}",
+          "bcastport": "{{ .Values.ports.pvaUdp }}",
+          "access": "gateway.acf",
+          "pvlist": "gateway.pvlist"
+        },
+        {
+          "name": "downstream_status",
+          "clients": [],
+          "interface": ["127.0.0.1"],
+          "serverport": "0",
+          "statusprefix": "GW:STS:"
+        }
+      ]
+    }
