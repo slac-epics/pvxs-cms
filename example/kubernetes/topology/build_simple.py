@@ -1,0 +1,246 @@
+#!/usr/bin/env python3
+# The simple topology, as Kubernetes renders it: one namespace, one certificate manager
+# that mints its own authority, two IOCs and a client workstation, all admitted to one
+# another by a single NetworkPolicy. Each Deployment is one card, each Service a small
+# card in front of its pod, and the cluster objects that carry no traffic - ConfigMaps,
+# claims, policies - stand in a row of their own below the segment.
+# Every coordinate is computed here. See topology_kit for the primitives.
+import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'podman', 'topology'))
+from topology_kit import (C, CH, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields,
+                          measure, output_path)
+
+# ---------------------------------------------------------------- content
+# The three places in the zone share one address list.
+ADDR1 = 'EPICS_PVA_ADDR_LIST: pvxs-lab-pvacms'
+ADDR2 = '    pvxs-lab-testioc pvxs-lab-tstioc'
+
+client_l = fields('Labels: app=lab-client zone=lab',
+ 'Image: lab',
+ 'Logins: guest, operator',
+ 'EPICS_PVA_AUTO_ADDR_LIST: NO', ADDR1, ADDR2,
+ 'Claim: lab-client-config',
+ 'Mounts: ConfigMaps lab-scripts, lab-issuer')
+pvacms_l = fields('Labels: app=pvacms zone=lab',
+ 'Image: idm',
+ 'Mints its own authority at first start:',
+ '    cert_auth.p12 on claim idm-data',
+ 'Access file from ConfigMap lab-acf',
+ 'Claims: idm-config, idm-data',
+ 'EPICS_PVA_AUTO_ADDR_LIST: NO', ADDR1, ADDR2,
+ 'Serves:',
+ '    CERT:CREATE, CERT:LIST',
+ '    CERT:STATUS:<issuer>:<serial>')
+testioc_l = fields('Labels: app=testioc zone=lab',
+ 'Image: testioc',
+ 'EPICS_PVA_AUTO_ADDR_LIST: NO', ADDR1, ADDR2,
+ 'Access file from ConfigMap lab-acf',
+ 'Claim: testioc-config',
+ 'Serves:',
+ '    test:aiExample, test:stringExample',
+ '    test:longExample, test:enumExample',
+ '    test:spec (SPECIAL), test:open (OPEN)')
+tstioc_l = fields('Labels: app=tstioc zone=lab',
+ 'Image: tstioc',
+ 'EPICS_PVA_AUTO_ADDR_LIST: NO', ADDR1, ADDR2,
+ 'Access file from ConfigMap lab-acf',
+ 'Claim: tstioc-config',
+ 'Serves: tst:ArrayData, tst:ColorMode,',
+ '    and the rest of the image database')
+
+def svc_l(app):
+    return fields('ClusterIP', '5075/TCP 5076/TCP 5076/UDP', f'selects app={app}')
+
+svc_cms_l, svc_t1_l, svc_t2_l = svc_l('pvacms'), svc_l('testioc'), svc_l('tstioc')
+
+# The cluster objects that carry no traffic, in a row of their own.
+cm_l = fields('lab-scripts: the start scripts',
+ 'lab-acf: the access files')
+issuer_l = fields('issuer id, read back after the authority',
+ 'exists; pods roll to mount it')
+pvc_l = fields('idm-config, idm-data, testioc-config,',
+ 'tstioc-config, lab-client-config',
+ 'Keychains and the database outlive their',
+ 'pods, so a restart is the same holder')
+
+FILE_CARDS = [('ConfigMaps', cm_l),
+              ('ConfigMap lab-issuer', issuer_l),
+              ('PersistentVolumeClaims', pvc_l)]
+
+# ---------------------------------------------------------------- legend content
+CHIPS = [('client workstation pod', C['client'][1]),
+         ('IOC pod', C['ioc'][1]),
+         ('PVACMS pod - the certificate manager', C['pvacms'][1]),
+         ('Service - a stable name and ports in front of a pod', C['lb'][1]),
+         ('cluster objects - ConfigMaps, claims, policies, notes', C['file'][1])]
+SAMPLES = [('Service selects pod - a short solid arrow', C['lb'][1], 2, None),
+           ('PVA search and data on the lab segment', C['bus_lab'], 4, None)]
+NOTATION = ['5075/TCP  : PVAccess, plaintext',
+            '5076/TCP  : PVAccess over TLS',
+            '5076/UDP  : PVAccess search',
+            'ClusterIP : a Service address that exists only',
+            '            inside the cluster',
+            'app=, zone= : pod labels. A Service picks its pod',
+            '            by app; a NetworkPolicy admits by zone',
+            '',
+            'A Service name resolves inside the cluster, so the',
+            'address lists name Services, not addresses.']
+ABBREV = ['PVACMS : certificate manager',
+          'IOC    : input output controller',
+          'PVA    : PVAccess, the EPICS network protocol',
+          'CNI    : container network interface, the',
+          '         cluster network plugin']
+NOTE = ['A line claims attachment. Arrowheads appear only',
+        'where a direction is real.']
+
+# ---------------------------------------------------------------- geometry
+M = 40
+TITLE_BLOCK = 108        # title, subtitle, and the cluster note
+legend_x, legend_y = M, TITLE_BLOCK + 8
+
+LEG_COL_GAP = 34
+LEG_COL_L = int(max([len(t)*CH + 24 for t, _ in CHIPS] + [len(t)*CH + 50 for t, _, _, _ in SAMPLES])) + 10
+LEG_COL_R = int(max(len(l)*CH for l in NOTATION + ABBREV + NOTE)) + 10
+lg_w = 14 + LEG_COL_L + LEG_COL_GAP + LEG_COL_R + 14
+lg_h = HDR + max(12 + len(CHIPS)*24 + 10 + len(SAMPLES)*24,
+                 12 + LH + len(NOTATION)*LH + 10 + LH + len(ABBREV)*LH + 10 + len(NOTE)*LH) + 14
+
+# One column per Deployment, as wide as the widest card standing in it, every card centred
+# so the Service arrow onto its pod is a straight drop.
+COLS = [max(colw('lab-client', client_l), colw('svc pvxs-lab-testioc', svc_t1_l),
+            colw('pvxs-lab-testioc', testioc_l)),
+        max(colw('svc pvxs-lab-tstioc', svc_t2_l), colw('pvxs-lab-tstioc', tstioc_l)),
+        max(colw('svc pvxs-lab-pvacms', svc_cms_l), colw('pvxs-lab-pvacms', pvacms_l))]
+cxs = [0]
+for w in COLS[:-1]:
+    cxs.append(cxs[-1] + w + GAP)
+W_lab = cxs[-1] + COLS[-1] + 2*ZP
+lab_x = M
+zone_y = legend_y + lg_h + 44
+
+files_ws = [measure(t, l)[0] for t, l in FILE_CARDS]
+files_total = sum(files_ws) + GAP*(len(files_ws) - 1)
+
+CANVAS_W = max(lab_x + W_lab, M + files_total, legend_x + lg_w) + M
+CANVAS_H = 0                          # set once the rows are measured
+
+SEL = C['lb'][1]                      # the colour a Service arrow is drawn in
+
+# ---------------------------------------------------------------- emit
+def sel_arrow(cv, x, y0, y1):
+    """A Service selecting its pod: a short solid drop with a hand-drawn head."""
+    cv.hv([(x, y0), (x, y1 - 6)], SEL, 2)
+    cv.emit(f'<path d="M {x-4.5} {y1-8} L {x+4.5} {y1-8} L {x} {y1-1} z" fill="{SEL}"/>')
+    cv.pill(x + 46, (y0 + y1)/2, 'selects', SEL)
+
+
+def build(cv):
+    global CANVAS_H
+    hdr = []
+
+    row1_y = zone_y + ZTITLE + 34
+    h_cl = measure('lab-client', client_l)[1]
+    bus_y = row1_y + h_cl + 34
+    svc_y = bus_y + 32
+    svc_h = max(measure('svc pvxs-lab-pvacms', l)[1] for l in (svc_cms_l, svc_t1_l, svc_t2_l))
+    pod_y = svc_y + svc_h + 44
+    h_pods = max(measure('x', l)[1] for l in (testioc_l, tstioc_l, pvacms_l))
+    zone_h = (pod_y - zone_y) + h_pods + ZP
+    files_y = zone_y + zone_h + 40
+    files_h = max(measure(t, l)[1] for t, l in FILE_CARDS)
+    CANVAS_H = files_y + files_h + M
+
+    cv.zone(lab_x, zone_y, W_lab, zone_h,
+            'lab segment - NetworkPolicy lab-segment-ingress', 'zone_lab')
+    cv.emit(f'<text x="{lab_x+ZP}" y="{zone_y+ZTITLE+20}" font-family="Menlo,Consolas,monospace" '
+            f'font-size="11" fill="{C["zone_lab"][1]}">ingress: pods labelled zone=lab only</text>')
+
+    # --- the segment's traffic, drawn as one bus
+    bus0, bus1 = lab_x + ZP, lab_x + W_lab - ZP
+    cv.hv([(bus0, bus_y), (bus1, bus_y)], C['bus_lab'], 4)
+    bus_label = 'PVA search and data  5075/TCP 5076/TCP 5076/UDP'
+    cv.pill(bus1 - 20 - (len(bus_label)*6.2 + 12)/2, bus_y - 16, bus_label, C['bus_lab'])
+
+    def at(i, y, title, lines, kind, icon):
+        """Centred in column i, which is what keeps the Service arrow vertical."""
+        w = measure(title, lines)[0]
+        return cv.card(lab_x + ZP + cxs[i] + (COLS[i] - w)/2, y, title, lines, kind, icon)
+
+    cl = at(0, row1_y, 'lab-client', client_l, 'client', 'client')
+    s1 = at(0, svc_y, 'svc pvxs-lab-testioc', svc_t1_l, 'lb', 'lb')
+    s2 = at(1, svc_y, 'svc pvxs-lab-tstioc', svc_t2_l, 'lb', 'lb')
+    s3 = at(2, svc_y, 'svc pvxs-lab-pvacms', svc_cms_l, 'lb', 'lb')
+    t1 = at(0, pod_y, 'pvxs-lab-testioc', testioc_l, 'ioc', 'ioc')
+    t2 = at(1, pod_y, 'pvxs-lab-tstioc', tstioc_l, 'ioc', 'ioc')
+    pv = at(2, pod_y, 'pvxs-lab-pvacms', pvacms_l, 'pvacms', 'pvacms')
+
+    # --- bus taps: the workstation from above, each Service from below
+    cv.hv([(cl['cx'], cl['bot']), (cl['cx'], bus_y)], C['bus_lab'], 2)
+    cv.dot(cl['cx'], bus_y, C['bus_lab'])
+    for s in (s1, s2, s3):
+        cv.hv([(s['cx'], bus_y), (s['cx'], s['top'])], C['bus_lab'], 2)
+        cv.dot(s['cx'], bus_y, C['bus_lab'])
+
+    # --- each Service selects its pod
+    for s, p in ((s1, t1), (s2, t2), (s3, pv)):
+        sel_arrow(cv, s['cx'], s['bot'], p['top'])
+
+    # --- the cluster objects that carry no traffic
+    fx = M
+    for title, lines in FILE_CARDS:
+        c = cv.card(fx, files_y, title, lines, 'file', 'file')
+        fx = c['x'] + c['w'] + GAP
+
+    # --- legend. Two columns: the swatches and line kinds on the left, the notation and
+    # --- the abbreviations on the right.
+    lx0, ly = legend_x, legend_y
+    cv.emit(f'<rect x="{lx0}" y="{ly}" width="{lg_w}" height="{lg_h}" rx="10" fill="white" stroke="#B0BEC5" stroke-width="1.4"/>')
+    cv.emit(f'<path d="M {lx0} {ly+10} a10 10 0 0 1 10 -10 h{lg_w-20} a10 10 0 0 1 10 10 v{HDR-10} h-{lg_w} z" fill="#455A64"/>')
+    cv.emit(f'<text x="{lx0+14}" y="{ly+20}" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" font-weight="bold" fill="white">Legend</text>')
+    cv.emit(f'<line x1="{lx0+14+LEG_COL_L+LEG_COL_GAP/2}" y1="{ly+HDR+8}" x2="{lx0+14+LEG_COL_L+LEG_COL_GAP/2}" y2="{ly+lg_h-10}" stroke="#CFD8DC" stroke-width="1"/>')
+
+    def _txt(x, y, t, bold=False, colour=None):
+        b = ' font-weight="bold"' if bold else ''
+        cv.emit(f'<text x="{x}" y="{y}" font-family="Menlo,Consolas,monospace" font-size="11"{b} fill="{colour or C["ink"]}" xml:space="preserve">{esc(t)}</text>')
+
+    lcx = lx0 + 14
+    yy = ly + HDR + 12 + 8
+    for label, colr in CHIPS:
+        cv.emit(f'<rect x="{lcx}" y="{yy-10}" width="14" height="14" rx="3" fill="{colr}"/>')
+        _txt(lcx+24, yy+1, label)
+        yy += 24
+    yy += 10
+    for label, colr, wdt, dash in SAMPLES:
+        dd = f' stroke-dasharray="{dash}"' if dash else ''
+        cv.emit(f'<line x1="{lcx}" y1="{yy-4}" x2="{lcx+40}" y2="{yy-4}" stroke="{colr}" stroke-width="{wdt}"{dd}/>')
+        _txt(lcx+50, yy, label)
+        yy += 24
+
+    rx0 = lx0 + 14 + LEG_COL_L + LEG_COL_GAP
+    yy = ly + HDR + 12 + 8
+    _txt(rx0, yy, 'Notation', bold=True); yy += LH
+    for l in NOTATION:
+        _txt(rx0, yy, l); yy += LH
+    yy += 10
+    _txt(rx0, yy, 'Abbreviations', bold=True); yy += LH
+    for l in ABBREV:
+        _txt(rx0, yy, l); yy += LH
+    yy += 10
+    for l in NOTE:
+        _txt(rx0, yy, l, colour='#607D8B'); yy += LH
+
+    cv.note_card('LEGEND', lx0, ly, lg_w, lg_h)
+
+    # --- page title, and the cluster the picture stands in
+    hdr.append(f'<text x="{M}" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="{C["ink"]}">Secure PVAccess demonstration laboratory</text>')
+    hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">simple: one namespace, one certificate manager, IOCs named by their Services - example/kubernetes</text>')
+    hdr.append(f'<text x="{M}" y="82" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B">Cluster: kind, name spva-lab, namespace spva-lab. Cilium is the network plugin.</text>')
+    hdr.append(f'<text x="{M}" y="97" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B">The segments below are NetworkPolicy, enforced by Cilium; the default CNI of kind does not enforce policy at all.</text>')
+    return hdr
+
+
+cv = Canvas()
+hdr = build(cv)
+cv.write(output_path(__file__, 'topology-simple.svg'), CANVAS_W, CANVAS_H, hdr,
+         'Secure PVAccess demonstration laboratory, simple topology on Kubernetes - hand-drawn flat-design infographic.')

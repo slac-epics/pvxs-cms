@@ -4,6 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <list>
@@ -465,7 +466,16 @@ int main(int argc, char *argv[]) {
         else if (deny) {
             action = DENY;
         } else {
-            conf.tls_disabled = true;
+            // When pvas:// name servers exist and we disable checking our own status, TLS is safe.
+            const bool tls_route = std::any_of(conf.nameServers.begin(), conf.nameServers.end(),
+                                               [](const std::string &name_server) {
+                                                   return name_server.compare(0, 7, "pvas://") == 0;
+                                               });
+            if (tls_route && conf.isTlsConfigured()) {
+                conf.disableOwnCertStatusCheck();
+            } else {
+                conf.tls_disabled = true;
+            }
         }
 
         auto client = conf.build();
