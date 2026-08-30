@@ -6,9 +6,8 @@
 #   Discovery. A department in podman finds its own IOCs by broadcast. A pod network has no
 #   broadcast domain, so each department is given an explicit list of its own IOC services.
 #
-#   The gateway not answering its own department. podman pins each gateway's listening
-#   interface to the perimeter address. A pod holds one address, so a NetworkPolicy stops the
-#   department reaching its gateway instead.
+#   The gateway not answering its own department. A NetworkPolicy stops the department
+#   reaching its gateway.
 #
 #   Which facility port a department may use. In podman nothing stops a lab workstation
 #   naming facility:5075 and so reaching its own gateway the long way round; only the

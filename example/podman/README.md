@@ -82,7 +82,7 @@ These are the same four laboratories as [`example/kubernetes`](../kubernetes/REA
 
 4. Build the images
 
-- `bootstrap.sh` builds the images, run once. Compiles EPICS Base, pvxs, pvxs-cms, and p4p from source.
+- `build_images` builds the images, run once. Compiles EPICS Base, pvxs, pvxs-cms, and p4p from source.
 
 ```sh
 cd ~/spva/pvxs-cms/example/podman
@@ -2918,7 +2918,7 @@ nothing about them to rebuild.
 To rebuild the images without discarding anything:
 
 ```sh
-./bootstrap.sh
+build_images
 ```
 
 Building issues no certificates and issuing certificates builds nothing, so neither

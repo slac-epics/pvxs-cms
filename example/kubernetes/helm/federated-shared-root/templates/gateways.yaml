@@ -16,7 +16,7 @@ spec:
   selector: {matchLabels: {app: {{ $g.app }}}}
   template:
     metadata:
-      labels: {app: {{ $g.app }}, zone: perimeter}
+      labels: {app: {{ $g.app }}}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") $ | sha256sum }}
     spec:

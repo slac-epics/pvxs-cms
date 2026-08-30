@@ -9,9 +9,8 @@
 #   instead. What is being demonstrated - that a zone reaches its own IOCs without naming a
 #   gateway - still holds, but it is reached by naming them rather than by asking everyone.
 #
-#   The gateway not answering its own zone. In podman the gateway binds only its perimeter
-#   address, so a laboratory search is never answered by it. A pod holds one address, so that
-#   pinning is not available. A NetworkPolicy stops the zone reaching the gateway's ports
+#   The gateway not answering its own zone. A NetworkPolicy stops the zone reaching the
+#   gateway's ports
 #   instead. The rule is kept; what changes is that the zone cannot ask, where before the
 #   gateway did not answer. A misconfiguration here times out rather than returning twice.
 

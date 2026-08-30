@@ -224,7 +224,7 @@ kcopy_anchor                # physically copy the trust anchor to the internet z
 |                      | `EPICS_PVA_ADDR_LIST`      | `pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc` |                                        |
 
 
-Diagram: [`topology/topology-simple.svg`](topology/topology-simple.svg)
+[![The simple laboratory in one namespace: a certificate manager that mints its own authority, two IOCs and a workstation, admitted to one another by a single NetworkPolicy](topology/topology-simple.svg)](https://raw.githubusercontent.com/spva-epics/pvxs-cms/fy26-integration-testing/example/kubernetes/topology/topology-simple.svg)
 
 One department: a certificate manager that mints its own authority the first time it
 starts, two IOCs each behind a ClusterIP Service, and a workstation. Build it:
@@ -295,7 +295,7 @@ certificates from an authority named by that file.
 | gateway         | conf                       | `EPICS_PVAS_SERVER_PORT: NO`                       | gateway allows only TLS traffic               |
 |                 | pvlist                     | unqualified `test:`, `tst:`, `CERT:` names         |                                               |
 
-Diagram: [`topology/topology-simple-with-gateway.svg`](topology/topology-simple-with-gateway.svg)
+[![The simple laboratory published at a facility Service: a gateway serving TLS alone, the department behind it, and a workstation on the internet outside](topology/topology-simple-with-gateway.svg)](https://raw.githubusercontent.com/spva-epics/pvxs-cms/fy26-integration-testing/example/kubernetes/topology/topology-simple-with-gateway.svg)
 
 Part 1, plus a boundary. The gateway serves TLS and nothing else
 (`EPICS_PVAS_SERVER_PORT: "NO"`), a Service named `facility` in front of it is the one
@@ -366,7 +366,7 @@ krun_in internet as guest pvxget test:open              # value double = 9
 | | conf | `EPICS_PVAS_STATUS_NAME_SERVERS: pvxs-lab-ml-gateway:5175` / `pvxs-lab-gateway:5075` | the peer gateway, named directly |
 | | pvlist | `CERT:` names qualified by issuer | |
 
-Diagram: [`topology/topology-federated-shared-root.svg`](topology/topology-federated-shared-root.svg)
+[![Two departments side by side, each with its own certificate manager and gateway, one facility root above them and a responder answering for it](topology/topology-federated-shared-root.svg)](https://raw.githubusercontent.com/spva-epics/pvxs-cms/fy26-integration-testing/example/kubernetes/topology/topology-federated-shared-root.svg)
 
 Two departments under one facility root. Each has its own certificate manager signing
 with its own intermediate, its own IOCs and workstation, and its own gateway. A
@@ -467,17 +467,17 @@ means in a real facility as well.
 
 ## Part 4: federated, two independent roots
 
-| Place | Conf | Value | Description |
-|---|---|---|---|
-| internet | `EPICS_PVA_NAME_SERVERS` | `pvxs-lab-gateway:5075 pvxs-lab-ml-gateway:5075` | no facility: each gateway by its own name |
-| lab / ml workstation | `EPICS_PVA_ADDR_LIST` | its own department's Services | |
-| | `EPICS_PVA_NAME_SERVERS` | `pvxs-lab-ml-gateway:5075` / `pvxs-lab-gateway:5075` | |
-| | `EPICS_PVA_AUTH_ISSUER` | both SKIDs | two roots, so first-use trust needs both whole identifiers |
-| IOC | `EPICS_PVAS_STATUS_NAME_SERVERS` | `pvxs-lab-ml-gateway:5075` / `pvxs-lab-gateway:5075` | |
-| gateway | conf | `gateway.acf` names `LAB_CA` and `ML_CA` | |
-| | pvlist | `CERT:` names qualified by issuer | |
+| Place                | Conf                             | Value                                                | Description                                                |
+| -------------------- | -------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- |
+| internet             | `EPICS_PVA_NAME_SERVERS`         | `pvxs-lab-gateway:5075 pvxs-lab-ml-gateway:5075`     | no facility: each gateway by its own name                  |
+| lab / ml workstation | `EPICS_PVA_ADDR_LIST`            | its own department's Services                        |                                                            |
+|                      | `EPICS_PVA_NAME_SERVERS`         | `pvxs-lab-ml-gateway:5075` / `pvxs-lab-gateway:5075` |                                                            |
+|                      | `EPICS_PVA_AUTH_ISSUER`          | both SKIDs                                           | two roots, so first-use trust needs both whole identifiers |
+| IOC                  | `EPICS_PVAS_STATUS_NAME_SERVERS` | `pvxs-lab-ml-gateway:5075` / `pvxs-lab-gateway:5075` |                                                            |
+| gateway              | conf                             | `gateway.acf` names `LAB_CA` and `ML_CA`             |                                                            |
+|                      | pvlist                           | `CERT:` names qualified by issuer                    |                                                            |
 
-Diagram: [`topology/topology-federated-non-shared-root.svg`](topology/topology-federated-non-shared-root.svg)
+[![Two departments side by side under two independent roots, each keychain holding one identity and both roots as trust anchors](topology/topology-federated-non-shared-root.svg)](https://raw.githubusercontent.com/spva-epics/pvxs-cms/fy26-integration-testing/example/kubernetes/topology/topology-federated-non-shared-root.svg)
 
 Two departments under two roots that share nothing. There is no facility above them: no
 load balancer, no responder, no common ancestor. Each gateway is addressed by its own

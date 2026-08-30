@@ -1,7 +1,7 @@
 {{/*
 The segments.
 
-Three here, not five: there is no perimeter and no load balancer. Each gateway stands in its own
+Three here, not five: there is no load balancer. Each gateway stands in its own
 department, in the other department, and outside, and is addressed by its own name.
 
 Ingress only, and enforced only by a CNI that implements NetworkPolicy. Kind's default CNI does

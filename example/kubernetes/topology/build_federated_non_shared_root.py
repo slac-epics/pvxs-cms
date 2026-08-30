@@ -61,7 +61,7 @@ ml_ioc_l = fields('Labels: app=ml-ioc zone=ml',
  'Access file mlioc.acf',
  'Anchors: /certs/trust_anchors.p12',
  'Claim: ml-ioc-config')
-gw_lab_l = fields('Labels: app=gateway zone=perimeter',
+gw_lab_l = fields('Labels: app=gateway',
  'Image: gateway   Program: p4p pvagw',
  'Serves 5075/TCP and 5076/TCP TLS',
  'Upstream: the lab services',
@@ -70,7 +70,7 @@ gw_lab_l = fields('Labels: app=gateway zone=perimeter',
  'pvlist: issuer-qualified CERT names',
  'Anchors: /certs/trust_anchors.p12',
  'Claim: gateway-config')
-gw_ml_l = fields('Labels: app=ml-gateway zone=perimeter',
+gw_ml_l = fields('Labels: app=ml-gateway',
  'Image: gateway   Program: p4p pvagw',
  'Serves 5075/TCP and 5076/TCP TLS',
  'Upstream: the ML services',
@@ -127,10 +127,27 @@ pvc_l = fields('idm-config idm-data ml-config ml-data',
 FILE_CARDS = [('Secrets and ConfigMaps', secrets_l),
               ('PersistentVolumeClaims', pvc_l)]
 
+lab_root_l = fields('Subject: CN=EPICS Lab Root Certificate Authority',
+ 'Signs the Lab intermediate, which signs',
+ '    every Lab certificate',
+ 'Rotated independently of the ML root')
+labca_l = fields('Subject: CN=EPICS Controls Intermediate CA',
+ 'SKID: LAB_ISSUER_SKID', 'Issuer ID: LAB_ISSUER',
+ 'Issued by: EPICS Lab Root Certificate Authority',
+ 'Secret lab-intermediate',
+ 'Mounted into: pvxs-lab-pvacms')
+ml_root_l = fields('Subject: CN=EPICS ML Root Certificate Authority',
+ 'SKID: ML_ISSUER_SKID', 'Issuer ID: ML_ISSUER',
+ 'Signs every ML certificate itself',
+ 'Secret ml-root',
+ 'Mounted into: pvxs-lab-ml-pvacms',
+ 'Rotated independently of the Lab root')
+
 # ---------------------------------------------------------------- legend content
 CHIPS = [('client workstation pod', C['client'][1]),
          ('IOC pod', C['ioc'][1]),
          ('PVACMS pod - the certificate manager', C['pvacms'][1]),
+         ('certificate authority - a file, mounted into a pod', C['ca'][1]),
          ('gateway pod', C['gateway'][1]),
          ('minting Job - runs once per laboratory', C['ca'][1]),
          ('Service - a stable name in front of a pod', C['lb'][1]),
@@ -202,7 +219,17 @@ iz_w = int(max(inet_w + 2*ZP, 40 + len(IZ_TITLE)*9.0 + 16))
 iz_h = ZTITLE + 12 + inet_h + 20
 iz_cx = (gwl_cx + gwm_cx)/2
 iz_x = iz_cx - iz_w/2
-iz_y = top_y
+legend_x, legend_y = M, top_y
+lab_root_w, lab_root_h = measure('Lab Root Certificate Authority', lab_root_l)
+labca_w, labca_h = measure('Lab Intermediate CA', labca_l)
+ml_root_w, ml_root_h = measure('ML Root Certificate Authority', ml_root_l)
+ca_h = ZTITLE + 10 + lab_root_h + 46 + labca_h + 20
+lab_ca_w = max(lab_root_w, labca_w) + 2*ZP
+ml_ca_w = ml_root_w + 2*ZP
+lab_ca_x = M
+ml_ca_x = M + lab_ca_w + GAP
+ca_y = legend_y + lg_h + 34
+iz_y = ca_y + ca_h + 44
 
 PZ_TITLE = 'gateways - NetworkPolicies gateway-ingress and ml-gateway-ingress'
 pz_y = iz_y + iz_h + 64
@@ -221,7 +248,8 @@ anchors_w = measure('the trust anchors', anchors_l)[0]
 files_ws = [measure(t, l)[0] for t, l in FILE_CARDS]
 files_total = sum(files_ws) + GAP*(len(files_ws) - 1)
 
-CANVAS_W = int(max(ml_x + W_ml + 70, M + files_total, M + lg_w) + M)
+CANVAS_W = int(max(ml_x + W_ml + 70, M + files_total, M + lg_w,
+                   ml_ca_x + ml_ca_w) + M)
 CANVAS_H = 0
 
 SEL = C['lb'][1]
@@ -254,8 +282,7 @@ def build(cv):
     jobs_h = max(measure('Job ca-keygen', job_l)[1], measure('the trust anchors', anchors_l)[1])
     files_y = jobs_y + jobs_h + 44
     files_h = max(measure(t, l)[1] for t, l in FILE_CARDS)
-    legend_y = files_y + files_h + 44
-    CANVAS_H = legend_y + lg_h + M
+    CANVAS_H = files_y + files_h + M
 
     # --- zones
     LZ_TITLE = 'lab segment - NetworkPolicy lab-segment-ingress'
@@ -356,6 +383,18 @@ def build(cv):
     for title, lines in FILE_CARDS:
         c = cv.card(fx, files_y, title, lines, 'file', 'file')
         fx = c['x'] + c['w'] + GAP
+
+    # --- the two independent authorities
+    cv.zone(lab_ca_x, ca_y, lab_ca_w, ca_h, 'Lab Certificate Authority   -   independent', 'zone_ca')
+    cv.zone(ml_ca_x, ca_y, ml_ca_w, ca_h, 'ML Certificate Authority   -   independent', 'zone_ca')
+    lroot = cv.card(lab_ca_x + (lab_ca_w - lab_root_w)/2, ca_y + ZTITLE + 10,
+                    'Lab Root Certificate Authority', lab_root_l, 'ca', 'ca')
+    lint = cv.card(lab_ca_x + (lab_ca_w - labca_w)/2, lroot['bot'] + 46,
+                   'Lab Intermediate CA', labca_l, 'ca', 'ca')
+    cv.hv([(lroot['cx'], lroot['bot']), (lint['cx'], lint['top'] - 3)],
+          C['cert'], 2, dash='6 5', marker=True)
+    cv.card(ml_ca_x + (ml_ca_w - ml_root_w)/2, ca_y + ZTITLE + 10,
+            'ML Root Certificate Authority', ml_root_l, 'ca', 'ca')
 
     # --- legend
     lx0, ly = M, legend_y
