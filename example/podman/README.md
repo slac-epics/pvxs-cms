@@ -97,6 +97,8 @@ swap space is available  e.g.:
 JOBS=2 build_images
 ```
 
+**Note**: The images and build scripts are shared with the podman examples so you don't have to do this twice.  Do either here or there.
+
 ## Start a topology scenario
 
 - `reset_topology` resets and builds a laboratory from the images & reads that laboratory's authority identifiers into your shell.
@@ -108,9 +110,9 @@ reset_topology federated-shared-root  # brings it up, verifies it, and reads its
 
 ## Certificate Authorities
 
-Certificate authorities are created in `topologies/<name>/`.
+Root and CA certificate identifiers that can be used to establish trust are created in `topologies/<name>/issuer_ids.env`.
 
-Environment variables set automatically but `reset_topology`
+Environment variables are set automatically by `reset_topology`
 - `$LAB`  `$LAB_SKID` - lab issuer ID and lab issuer SKID (Lab CA)
 - `$ML`  `$ML_SKID` - lab issuer ID and lab issuer SKID (ML CA)
 - `$ROOT` `ROOT_SKID` - If lab is an intermediate CA then this is its Root CA's ID and SKID 
@@ -145,7 +147,34 @@ run_in <place> as <person> [without a certificate] [--show] <command...>
 
 ```sh
 run_in lab as guest --show pvxget test:aiExample
-#   podman exec --user guest podman_lab-client_1 bash -lc '...'
+# podman exec -it --user guest podman_lab-client_1 bash -lc '
+# 
+# _addr_was=${EPICS_PVA_ADDR_LIST+set}
+# _addr=${EPICS_PVA_ADDR_LIST-}
+# _ns_was=${EPICS_PVA_NAME_SERVERS+set}
+# _ns=${EPICS_PVA_NAME_SERVERS-}
+# _auto_was=${EPICS_PVA_AUTO_ADDR_LIST+set}
+# _auto=${EPICS_PVA_AUTO_ADDR_LIST-}
+# source ~/.guest_bashrc 2>/dev/null
+# if [ -n "${_addr_was}" ]; then
+#   export EPICS_PVA_ADDR_LIST="${_addr}";
+# else
+#   unset EPICS_PVA_ADDR_LIST;
+# fi
+# if [ -n "${_ns_was}" ]; then
+#   export EPICS_PVA_NAME_SERVERS="${_ns}";
+# else
+#   unset EPICS_PVA_NAME_SERVERS;
+# fi
+# if [ -n "${_auto_was}" ]; then
+#   export EPICS_PVA_AUTO_ADDR_LIST="${_auto}";
+# else
+#   unset EPICS_PVA_AUTO_ADDR_LIST;
+# fi
+# export EPICS_PVA_TLS_KEYCHAIN=${HOME}/.config/pva/1.5/client.p12
+# 
+# export PVXS_LOG=${PVXS_LOG:-none}
+# pvxget test:aiExample '
 ```
 
 With no command, `run_in` opens a shell as the given user in that place.
@@ -160,6 +189,7 @@ Simulation status.
 - `lab_status` shows what is running.
 
 ### Controlling the OCSP responder
+For `federated-shared-root` only:
 - `ocsp_responder` reports what facility root's OCSP responder is reporting about the root certificate status
 - `ocsp_responder unreachable` makes the OCSP responder unreachable
 - `ocsp_responder reachable` restores reachability of the OCSP responder
@@ -194,163 +224,30 @@ copy_anchor                 # physically copy the trust anchor to the internet z
 
 # Part 1 - simple
 
+### Deploy 
+
 | Place                | Conf                       | Value | Description                                |
 | -------------------- | -------------------------- | ----- | ------------------------------------------ |
 | lab workstation, IOC | `EPICS_PVA_AUTO_ADDR_LIST` | `YES` | finds the IOCs by broadcast on the segment |
-
-
-One segment, one self-signed authority held by PVACMS, two IOCs, and a workstation.
-Nothing crosses a boundary because there is no boundary, so this laboratory shows what a
-certificate does on its own.
 
 ```sh
 reset_topology simple
 ```
 
 [![The simple laboratory: one segment carrying a PVACMS, two IOCs and a workstation, and one self-signed authority beside it](topology/topology-simple.svg)](https://raw.githubusercontent.com/spva-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple.svg)
-
-The diagram is wide. To read every access rule and `pvlist` at full size, click the
-diagram to open the raw file.
-
-Nothing is issued for this laboratory before it starts. PVACMS finds no authority at its
-configured location, creates a self-signed one there, and issues every certificate under
-it. That is the whole hierarchy: one authority, and the certificates it signs.
-
-## Distribute the trust anchor
-
-An authority that PVACMS created itself has an identifier nobody chose, and no node may
-trust an authority it learned about over the same channel it is trying to secure. Before
-anyone can request a certificate, the identifier has to reach them another way.
-`reset_topology` does this for you. It is worth doing by hand once, because it is what an
-operator does when distributing trust to a machine the laboratory does not manage.
-
-The authority is a keychain file that PVACMS wrote, and its identifier is that
-certificate's subject key identifier:
-
-```sh
-run_in lab-pvacms as admin \
-    openssl pkcs12 -in /home/idm/.local/share/pva/1.5/cert_auth.p12 -nokeys -passin pass: \
-  | openssl x509 -noout -ext subjectKeyIdentifier
-#   X509v3 Subject Key Identifier:
-#       E3:7F:CF:9D:DF:0B:AC:65:D3:30:2B:4D:B5:88:71:F9:6E:E1:01:24
-```
-
-The tools expect the same digits without separators and in lowercase:
-
-```sh
-run_in lab-pvacms as admin bash -c \
-  'openssl pkcs12 -in /home/idm/.local/share/pva/1.5/cert_auth.p12 -nokeys -passin pass: \
-   | openssl x509 -noout -ext subjectKeyIdentifier | tail -1 | tr -d " :" | tr "A-F" "a-f"'
-#   e37fcf9ddf0bac65d3302b4db58871f96ee10124
-```
-
-Different places need different forms of the identifier. `lab_ids` sets both in the
-shell:
-
-```sh
-lab_ids
-echo "${ROOT}"        # 39ed6dd4          names the authority where a name is needed
-echo "${ROOT_SKID}"   # 39ed6dd4...  40   establishes trust in it, the first time
-```
-
-Both are variables in the shell you type in. The shell expands a command before sending
-it into a container, so `"${ROOT_SKID}"` reaches the container as its value. Typing the
-same expression inside a container's own shell finds nothing, because `lab_ids` set the
-variable in the outer shell.
-
-A holder needs all 40 digits the first time it makes a request, because eight digits are
-not enough to decide which authority is meant. In this laboratory every container
-receives the full identifier at start, in `/etc/epics/issuer`, which a login shell reads
-back. The walkthrough therefore needs no further setup, and you can go straight to
-section 1.
-
-### Reference: give a holder the issuer identifier
-
-> **Nothing in this subsection is part of the walkthrough. Do not run it here.** Each
-> command replaces a keychain or removes something a later section depends on. It is
-> documented because it is what an operator does for a machine the laboratory does not
-> manage.
-
-The identifier goes to the holder, so give it where the holder runs, which in this
-laboratory means inside a container and therefore through `run_in`. There are three
-ways, in increasing order of persistence:
-
-- `authnstd -u client --issuer "${ROOT_SKID}"` supplies the identifier for that one
-  request and keeps nothing.
-- `EPICS_PVA_AUTH_ISSUER="${ROOT_SKID}"` supplies it to every request that the
-  environment covers. This is how the containers here are configured, from
-  `/etc/epics/issuer` at start.
-- `authnstd --trust-anchor --issuer "${ROOT_SKID}"` fetches the authority and writes it
-  into the keychain, answering `Trust Anchor retrieved`. Only this form leaves the
-  holder needing no identifier again, and it replaces whatever the keychain held,
-  renaming the old file aside.
-
-Running more than one of these in turn demonstrates nothing: after a request succeeds,
-the keychain holds a valid certificate and the next attempt stops with
-`Valid certificate found: Use --force flag to overwrite`.
-
-### Reference: hand over the authority certificate
-
-> **Nothing in this subsection is part of the walkthrough either. Do not run it here.**
-> It overwrites the workstation's keychain and removes the identifier that every later
-> section relies on.
-
-All three methods in the previous subsection tell a holder which authority to expect,
-and the holder then fetches and stores it. For a machine the laboratory does not manage
-there is a more direct route: put the authority certificate into its keychain yourself.
-A holder whose keychain already contains the authority needs no identifier at all,
-because there is nothing left to decide.
-
-The file to hand over is the authority certificate with its private key removed, which
-is what `authnstd --trust-anchor` produces. To make one with openssl, run these commands
-on the PVACMS, which holds `/home/idm/.local/share/pva/1.5/cert_auth.p12`:
-
-- `openssl pkcs12 -in cert_auth.p12 -nokeys -passin pass: -out root.pem` extracts the
-  certificate and leaves the key behind.
-- `openssl pkcs12 -export -nokeys -in root.pem -out trust_anchor.p12 -passout pass:`
-  puts that certificate, and only it, into a keychain.
-- `openssl pkcs12 -in trust_anchor.p12 -passin pass: -info -noout` must report one
-  `Certificate bag` and no shrouded key bag. Verify this: a keychain that kept the key
-  would hand out the power to issue certificates rather than the ability to trust them.
-
-Put that file at the path the holder's `EPICS_PVA_TLS_KEYCHAIN` names, which for the
-laboratory workstation is `/home/guest/.config/pva/1.5/client.p12`, and make it readable
-by that user: `podman cp` it in and `chown guest`. From that moment,
-`authnstd -u client` succeeds there with no `--issuer` and no `EPICS_PVA_AUTH_ISSUER`
-set, and the certificate comes back issued under the authority you copied in. The
-request keeps the authority and adds the holder's own identity beside it, so one file
-ends up carrying both.
-
-Both routes are safe for the same reason: the authority, or its identifier, reached the
-holder over a path the laboratory does not depend on. Copying a file across is such a
-path. Accepting an authority from whatever answered the request is not, which is why a
-holder with neither refuses to make a request at all.
+The reset also prints `$ROOT` and `$ROOT_SKID`, the CA issuer ID and SKID and exports both into your shell.  As a convenience
+we add the full identifier in `/etc/epics/issuer`.
 
 ## 1. Authorization
 
-Nothing holds a certificate yet, and the laboratory is already running. This is the
-baseline to return to whenever something later looks broken.
-
-**Reading needs nothing.** Both IOCs answer anyone on the segment:
+Reading is permitted everywhere in this lab, but writing is refused without a certificate:
 
 ```sh
 run_in lab as guest without a certificate pvxget test:aiExample
 #   value double = 10
-run_in lab as guest without a certificate pvxget tst:ColorMode
-#   value.index int32_t = 0
-```
-
-**Writing is refused, whatever you write to.** Every write rule in `testioc.acf` names
-`PROTOCOL(TLS)` (Transport Layer Security) and `METHOD(X509)`, so with no certificate
-nothing is writable:
-
-```sh
 run_in lab as guest without a certificate pvxput test:stringExample hello
 #   ERROR ... Put not permitted
 ```
-
-The refusal comes from the IOC itself. There is nowhere else it could come from: the
-laboratory is one segment, and the holder is on it.
 
 **Issue certificates.** Request one for each of two people and both IOCs, then approve
 the four together:
@@ -364,10 +261,7 @@ run_in tstioc  as tstioc  authnstd -u ioc
 run_in lab-pvacms as admin pvxcert --review-pending --all approve --yes
 ```
 
-An IOC reads its keychain when it starts, and both IOCs were already running when their
-certificates arrived, so they keep serving plain traffic until restarted. Restart them,
-or every write in this section is refused for a reason unrelated to the rule being
-tested:
+Need to restart IOCs to have them pick up the certificates:
 
 ```sh
 podman-compose -p podman -f topologies/simple/compose.yaml \
