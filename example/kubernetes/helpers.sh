@@ -722,7 +722,6 @@ kgo_tls() {
     # A laboratory with nothing outside it is provisioned already: no anchor to carry,
     # no boundary to cross.
     if [ "${has_internet}" != yes ]; then
-        echo "==> no workstation outside this laboratory; done"
         return 0
     fi
 

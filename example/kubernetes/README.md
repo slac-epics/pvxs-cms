@@ -262,7 +262,6 @@ kgo_tls
 #   7680fd57:16731642807076057207  done
 #   7680fd57:07037933793904719043  done
 # ==> restarting services
-# ==> no workstation outside this laboratory; done
 ```
 
 Now create user certificates
