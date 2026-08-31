@@ -53,7 +53,7 @@ certAuthorities:
 # The facility root has no status process variable of its own, so it names a responder in its
 # certificate. That name is minted INTO the root, so changing it means minting again.
 responder:
-  serviceName: pvxs-lab-authority-status
+  serviceName: pvxs-lab-ocsp-responder
 
 persistence:
   storageClass: ""

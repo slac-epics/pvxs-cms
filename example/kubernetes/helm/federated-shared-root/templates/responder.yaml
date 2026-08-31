@@ -7,13 +7,13 @@ configuration replaced, so nothing but the responder starts.
 */}}
 apiVersion: apps/v1
 kind: Deployment
-metadata: {name: pvxs-lab-authority-status}
+metadata: {name: pvxs-lab-ocsp-responder}
 spec:
   replicas: 1
-  selector: {matchLabels: {app: authority-status}}
+  selector: {matchLabels: {app: ocsp-responder}}
   template:
     metadata:
-      labels: {app: authority-status, zone: facility}
+      labels: {app: ocsp-responder, zone: facility}
     spec:
       securityContext: {runAsUser: 0, fsGroup: 0}
       initContainers:
@@ -64,5 +64,5 @@ kind: Service
 metadata: {name: {{ .Values.responder.serviceName }}}
 spec:
   type: ClusterIP
-  selector: {app: authority-status}
+  selector: {app: ocsp-responder}
   ports: [{name: ocsp, port: {{ .Values.ports.ocsp }}, targetPort: {{ .Values.ports.ocsp }}, protocol: TCP}]

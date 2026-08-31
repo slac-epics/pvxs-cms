@@ -29,11 +29,11 @@
 <circle cx="77" cy="1704" r="2.6" fill="white"/><circle cx="87" cy="1704" r="2.6" fill="white"/><circle cx="82" cy="1694" r="2.6" fill="white"/><path d="M 82 1694 L 77 1704 M 82 1694 L 87 1704 M 77 1704 H 87" stroke="white" stroke-width="1.4"/>
 <text x="100" y="1705" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">NetworkPolicies gateway-ingress and ml-gateway-ingress</text>
 <text x="86" y="1743" font-family="Menlo,Consolas,monospace" font-size="11" fill="#FFB300">ingress: app=facility, and the peer gateway</text>
-<rect x="833.0" y="2845" width="342" height="406" rx="10" fill="#EDE7F6" stroke="#6A1B9A" stroke-width="1.6"/>
-<path d="M 833.0 2855 a10 10 0 0 1 10 -10 h322 a10 10 0 0 1 10 10 v34 h-342 z" fill="#6A1B9A" fill-opacity="0.92"/>
-<circle cx="850.0" cy="2872" r="2.6" fill="white"/><circle cx="860.0" cy="2872" r="2.6" fill="white"/><circle cx="855.0" cy="2862" r="2.6" fill="white"/><path d="M 855.0 2862 L 850.0 2872 M 855.0 2862 L 860.0 2872 M 850.0 2872 H 860.0" stroke="white" stroke-width="1.4"/>
-<text x="873.0" y="2873" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">facility root status</text>
-<text x="859.0" y="2909" font-family="Menlo,Consolas,monospace" font-size="11" fill="#6A1B9A">ingress: zones lab and ml, port 8888</text>
+<rect x="840.5" y="2845" width="327" height="406" rx="10" fill="#EDE7F6" stroke="#6A1B9A" stroke-width="1.6"/>
+<path d="M 840.5 2855 a10 10 0 0 1 10 -10 h307 a10 10 0 0 1 10 10 v34 h-327 z" fill="#6A1B9A" fill-opacity="0.92"/>
+<circle cx="857.5" cy="2872" r="2.6" fill="white"/><circle cx="867.5" cy="2872" r="2.6" fill="white"/><circle cx="862.5" cy="2862" r="2.6" fill="white"/><path d="M 862.5 2862 L 857.5 2872 M 862.5 2862 L 867.5 2872 M 857.5 2872 H 867.5" stroke="white" stroke-width="1.4"/>
+<text x="880.5" y="2873" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">facility root status</text>
+<text x="866.5" y="2909" font-family="Menlo,Consolas,monospace" font-size="11" fill="#6A1B9A">ingress: zones lab and ml, port 8888</text>
 <path d="M 96 2420 L 942 2420" fill="none" stroke="#3949AB" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M 1066 2420 L 1640 2420" fill="none" stroke="#00897B" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <g><rect x="96.0" y="2237" width="270" height="149" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.4"/>
@@ -292,19 +292,19 @@
 <circle cx="1141.75" cy="1379.5" r="4" fill="#455A64"/>
 <g><rect x="6.0" y="2124" width="92.60000000000001" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="52.300000000000004" y="2136.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">facility:5175</text></g>
 <g><rect x="1641.7" y="2124" width="92.60000000000001" height="18" rx="9" fill="white" stroke="#455A64" stroke-width="1.2"/><text x="1688" y="2136.5" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="10" fill="#455A64">facility:5075</text></g>
-<g><rect x="859.0" y="2917" width="290" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
-<path d="M 859.0 2925 a8 8 0 0 1 8 -8 h274 a8 8 0 0 1 8 8 v22 h-290 z" fill="#5D4037"/>
-<line x1="870.0" y1="2932" x2="875.0" y2="2932" stroke="white" stroke-width="1.8"/><path d="M 875.0 2932 L 882.0 2926" stroke="white" stroke-width="1.5" fill="none"/><path d="M 875.0 2932 L 882.0 2932" stroke="white" stroke-width="1.5" fill="none"/><path d="M 875.0 2932 L 882.0 2938" stroke="white" stroke-width="1.5" fill="none"/><circle cx="875.0" cy="2932" r="2" fill="white"/>
-<text x="891.0" y="2937" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-authority-status</text>
-<text x="871.0" y="2966" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
-<text x="871.0" y="2981" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">8888/TCP</text>
-<text x="871.0" y="2996" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=authority-status</text>
+<g><rect x="866.5" y="2917" width="275" height="89" rx="8" fill="#EFEBE9" stroke="#5D4037" stroke-width="1.4"/>
+<path d="M 866.5 2925 a8 8 0 0 1 8 -8 h259 a8 8 0 0 1 8 8 v22 h-275 z" fill="#5D4037"/>
+<line x1="877.5" y1="2932" x2="882.5" y2="2932" stroke="white" stroke-width="1.8"/><path d="M 882.5 2932 L 889.5 2926" stroke="white" stroke-width="1.5" fill="none"/><path d="M 882.5 2932 L 889.5 2932" stroke="white" stroke-width="1.5" fill="none"/><path d="M 882.5 2932 L 889.5 2938" stroke="white" stroke-width="1.5" fill="none"/><circle cx="882.5" cy="2932" r="2" fill="white"/>
+<text x="898.5" y="2937" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">svc pvxs-lab-ocsp-responder</text>
+<text x="878.5" y="2966" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClusterIP</text>
+<text x="878.5" y="2981" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">8888/TCP</text>
+<text x="878.5" y="2996" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">selects app=ocsp-responder</text>
 </g>
 <g><rect x="869.0" y="3046" width="270" height="179" rx="8" fill="#FFEBEE" stroke="#E53935" stroke-width="1.4"/>
 <path d="M 869.0 3054 a8 8 0 0 1 8 -8 h254 a8 8 0 0 1 8 8 v22 h-270 z" fill="#E53935"/>
 <circle cx="886.0" cy="3061" r="7" fill="none" stroke="white" stroke-width="1.8"/><path d="M 880.5 3061 h3 l1.6 -3.6 l2.4 7 l1.6 -3.4 h2.4" stroke="white" stroke-width="1.6" fill="none"/>
-<text x="901.0" y="3066" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-authority-status</text>
-<text x="881.0" y="3095" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=authority-status</text>
+<text x="901.0" y="3066" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">pvxs-lab-ocsp-responder</text>
+<text x="881.0" y="3095" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Labels: app=ocsp-responder</text>
 <text x="881.0" y="3110" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Image: idm - runs only openssl ocsp</text>
 <text x="881.0" y="3125" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Secret ocsp-material: ca.pem,</text>
 <text x="881.0" y="3140" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    signer.pem, signer.key</text>
@@ -329,7 +329,7 @@
 <text x="52" y="2909" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">probe: skips when lab-issuer-ids exists;</text>
 <text x="52" y="2924" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    authorities are minted once per laboratory</text>
 <text x="52" y="2939" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">mint: gen_lab_certs -R root -L lab -M ml</text>
-<text x="52" y="2954" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    -S http://pvxs-lab-authority-status:8888</text>
+<text x="52" y="2954" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    -S http://pvxs-lab-ocsp-responder:8888</text>
 <text x="52" y="2969" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    - the responder name is referenced by</text>
 <text x="52" y="2984" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    the root certificate</text>
 <text x="52" y="2999" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">package: writes the Secrets and ConfigMaps</text>
@@ -376,7 +376,7 @@
 <path d="M 394.0 669 l7 3 v5 c0 4 -3.5 7 -7 8 c-3.5 -1 -7 -4 -7 -8 v-5 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 391.0 676.5 l2.2 2.2 l4 -4" stroke="white" stroke-width="1.8" fill="none"/>
 <text x="409.0" y="682" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">Root Certificate Authority</text>
 <text x="389.0" y="711" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Subject: CN=EPICS Root Certificate Authority</text>
-<text x="389.0" y="726" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP: pvxs-lab-authority-status:8888</text>
+<text x="389.0" y="726" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">OCSP: pvxs-lab-ocsp-responder:8888</text>
 <text x="389.0" y="741" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    (named in the AIA extension)</text>
 <text x="389.0" y="756" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Minted by Job ca-keygen, kept in the</text>
 <text x="389.0" y="771" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    Secrets below</text>

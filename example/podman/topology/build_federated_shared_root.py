@@ -100,14 +100,14 @@ def _router(dept, seg, cidr, far_gw, far_ports):
     return fields('Role: routing firewall, layers 3 and 4',
      '§Image: SIMULATED - by isolate=true on every network, and by the',
      '§    extra interfaces drawn on pvxs-facility-lb and',
-     '§    pvxs-lab-authority-status',
+     '§    pvxs-lab-ocsp-responder',
      f'eth0  {seg:<14} {cidr}',
      'eth1  net-perimeter  10.89.2.0/24',
      'eth2  net-it         10.89.3.0/24',
      f'Carries every packet leaving the {dept} department',
      'Routes:',
      f'    {far_ports[0]}, {far_ports[1]} to {far_gw} on net-perimeter',
-     '    tcp/8888 to pvxs-lab-authority-status on net-it')
+     '    tcp/8888 to pvxs-lab-ocsp-responder on net-it')
 
 lab_router_l = _router('lab', 'net-lab', '10.89.0.0/24',
                        'pvxs-lab-ml-gateway', ('tcp/5175', 'tcp/5176'))
@@ -129,7 +129,7 @@ resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
  'Program: openssl ocsp, under supervisor with a watchdog - one call at',
  '    a time, so a PVACMS asks up to five times before giving up',
  'Files: ocsp/ca.pem, ocsp/signer.pem, ocsp/signer.key, ocsp/index.txt')
-root_l = fields('Subject: CN=EPICS Root Certificate Authority','OCSP: pvxs-lab-authority-status:8888',
+root_l = fields('Subject: CN=EPICS Root Certificate Authority','OCSP: pvxs-lab-ocsp-responder:8888',
  '    (named in the AIA extension)','File: certs/cert_auth.p12')
 labca_l = fields('Subject: CN=EPICS Controls Intermediate CA','SKID: LAB_ISSUER_SKID','Issuer ID: LAB_ISSUER',
  'File: certs/lab_intermediate.p12','Mounted into: pvxs-lab-pvacms')
@@ -330,7 +330,7 @@ pz_x, pz_y = ca_x - pz_w - 60, ca_y
 # line-through-card assertion guards that, since the legend registers as a rectangle.
 router_w, router_h = measure('pvxs-lab-router', lab_router_l)
 lb_w, lb_h = measure('pvxs-facility-lb', lb_l)
-resp_w, resp_h = measure('pvxs-lab-authority-status', resp_l)
+resp_w, resp_h = measure('pvxs-lab-ocsp-responder', resp_l)
 
 # The facility's own segments and the services standing on them, in one box, the way each
 # department is in one box. The two lines belong to it; the departments and the outside
@@ -438,7 +438,7 @@ def build(cv):
     # Bottom-aligned with the load balancer, which leaves the run down from the signing
     # certificate long enough to read as arriving from above.
     rc = cv.card(svc_x + lb_w + 70, svc_y + max(0, lb_h - resp_h),
-                 'pvxs-lab-authority-status', resp_l, 'ocsp', 'ocsp')
+                 'pvxs-lab-ocsp-responder', resp_l, 'ocsp', 'ocsp')
 
     # --- certificate relationships (dashed purple, arrowheads)
     for cc in (c1, c2, c3):

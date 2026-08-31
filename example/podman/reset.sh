@@ -174,7 +174,7 @@ _has() { case " ${_places} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 # A responder answers for a root that names one, and only a laboratory with a facility root
 # has one to answer for. Asked of the compose file rather than of a list kept in step by hand,
 # because the compose file is what decides whether the container exists.
-_has_responder() { _compose config --services 2>/dev/null | grep -q -- '-authority-status'; }
+_has_responder() { _compose config --services 2>/dev/null | grep -q -- '-ocsp-responder'; }
 
 # Whether the boundary carries TLS and nothing else, which changes what a workstation outside it
 # can do before anything has been handed to it: with no plaintext listener to answer, it cannot
@@ -192,7 +192,7 @@ _boundary_is_tls_only() {
 _check_responder() {
     # The authority has to be establishable before anything can be issued. A laboratory that
     # looks up but cannot establish it is the worst state to hand back.
-    local c; c=$(podman ps --format '{{.Names}}' | grep -- '-authority-status' | head -1)
+    local c; c=$(podman ps --format '{{.Names}}' | grep -- '-ocsp-responder' | head -1)
     [ -n "${c}" ] || { echo "    no responder container is running" >&2; return 1; }
     for _ in $(seq 1 12); do
         if podman exec "${c}" timeout 8 openssl ocsp \

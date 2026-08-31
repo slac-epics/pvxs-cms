@@ -179,7 +179,7 @@ _klab_place() {         # place -> deployment
         ml-ioc)             echo pvxs-lab-ml-ioc ;;
         gateway)            echo pvxs-lab-gateway ;;
         ml-gateway)         echo pvxs-lab-ml-gateway ;;
-        responder)          echo pvxs-lab-authority-status ;;
+        responder)          echo pvxs-lab-ocsp-responder ;;
         facility)           echo pvxs-facility-lb ;;
         *) return 1 ;;
     esac
@@ -197,7 +197,7 @@ _klab_app() {           # place -> the app label, which is what selects a pod
         ml-ioc)             echo ml-ioc ;;
         gateway)            echo gateway ;;
         ml-gateway)         echo ml-gateway ;;
-        responder)          echo authority-status ;;
+        responder)          echo ocsp-responder ;;
         facility)           echo facility ;;
         *) return 1 ;;
     esac
@@ -826,13 +826,13 @@ _kcheck_responder() {
     echo "==> checking the responder answers for the facility root"
     local i=0
     for i in $(seq 1 12); do
-        if _k exec deploy/pvxs-lab-authority-status -c responder -- sh -c \
+        if _k exec deploy/pvxs-lab-ocsp-responder -c responder -- sh -c \
             'openssl ocsp -issuer /ocsp/ca.pem -cert /ocsp/ca.pem -url http://127.0.0.1:8888 -CAfile /ocsp/ca.pem' \
             2>/dev/null | grep -q 'ca.pem: good'; then return 0; fi
         sleep 5
     done
     echo "    the responder will not answer." >&2
-    echo "        kubectl -n ${KLAB_NS} logs deploy/pvxs-lab-authority-status" >&2
+    echo "        kubectl -n ${KLAB_NS} logs deploy/pvxs-lab-ocsp-responder" >&2
     return 1
 }
 
@@ -896,7 +896,7 @@ _kcheck_refusals_federated() {
 #
 # The status is stored on a tab-separated line in an index file.
 
-_kindex() { _k exec deploy/pvxs-lab-authority-status -c responder -- cat /ocsp/index.txt 2>/dev/null; }
+_kindex() { _k exec deploy/pvxs-lab-ocsp-responder -c responder -- cat /ocsp/index.txt 2>/dev/null; }
 
 # The OCSP responder that answers for the facility root's revocation status:
 #
@@ -908,11 +908,11 @@ _kindex() { _k exec deploy/pvxs-lab-authority-status -c responder -- cat /ocsp/i
 kocsp_responder() {
     case "${1:-says}" in
         says)
-            if ! _k get deploy/pvxs-lab-authority-status >/dev/null 2>&1; then
+            if ! _k get deploy/pvxs-lab-ocsp-responder >/dev/null 2>&1; then
                 echo "no OCSP responder here"; return 0
             fi
             # readyReplicas is absent, not zero, while nothing is ready.
-            if [ -z "$(_k get deploy/pvxs-lab-authority-status \
+            if [ -z "$(_k get deploy/pvxs-lab-ocsp-responder \
                         -o jsonpath="{.status.readyReplicas}" 2>/dev/null)" ]; then
                 echo "the status of the facility root is UNKNOWN"; return 0
             fi
@@ -922,24 +922,24 @@ kocsp_responder() {
                 *) echo "internal error in the OCSP responder" ;;
             esac ;;
         unreachable)
-            _k scale deploy/pvxs-lab-authority-status --replicas=0 >/dev/null 2>&1 || return 1
-            _k wait --for=delete pod -l app=authority-status --timeout=120s >/dev/null 2>&1 || true
+            _k scale deploy/pvxs-lab-ocsp-responder --replicas=0 >/dev/null 2>&1 || return 1
+            _k wait --for=delete pod -l app=ocsp-responder --timeout=120s >/dev/null 2>&1 || true
             echo "the responder is stopped" ;;
         reachable)
-            _k scale deploy/pvxs-lab-authority-status --replicas=1 >/dev/null 2>&1 || return 1
-            _k rollout status deploy/pvxs-lab-authority-status --timeout=120s >/dev/null 2>&1
+            _k scale deploy/pvxs-lab-ocsp-responder --replicas=1 >/dev/null 2>&1 || return 1
+            _k rollout status deploy/pvxs-lab-ocsp-responder --timeout=120s >/dev/null 2>&1
             echo "the responder is running"
             kocsp_responder says ;;
         revoke)
             [ "${2:-}" = root ] || { echo "usage: kocsp_responder revoke root" >&2; return 2; }
             # The revocation time is the two-digit-year form the index uses throughout; the
             # four-digit form makes the responder answer with an internal error.
-            _k exec deploy/pvxs-lab-authority-status -c responder -- sh -c '
+            _k exec deploy/pvxs-lab-ocsp-responder -c responder -- sh -c '
                 awk -F"\t" -v when="$(date -u +%y%m%d%H%M%SZ)" "BEGIN{OFS=\"\t\"}
                     {print \"R\", \$2, when, \$4, \$5, \$6}" /ocsp/index.txt > /tmp/ix.new \
                 && cat /tmp/ix.new > /ocsp/index.txt' || return 1
-            _k rollout restart deploy/pvxs-lab-authority-status >/dev/null 2>&1
-            _k rollout status deploy/pvxs-lab-authority-status --timeout=120s >/dev/null 2>&1
+            _k rollout restart deploy/pvxs-lab-ocsp-responder >/dev/null 2>&1
+            _k rollout status deploy/pvxs-lab-ocsp-responder --timeout=120s >/dev/null 2>&1
             kocsp_responder says ;;
         *)
             echo "kocsp_responder: no subcommand '${1}'." >&2
