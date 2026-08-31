@@ -313,7 +313,7 @@ class Responder {
     std::thread worker_;
 };
 
-/** Waits for the monitor to reach a standing, so a test states what it wants rather than a delay. */
+/** Waits for the monitor to reach a wanted operational state, so a test states what it wants rather than a delay. */
 bool reaches(const AuthorityMonitor& monitor, const cert_authority_standing_t wanted) {
     const auto give_up_at = std::chrono::steady_clock::now() + answer_timeout;
     while (std::chrono::steady_clock::now() < give_up_at) {
@@ -323,7 +323,7 @@ bool reaches(const AuthorityMonitor& monitor, const cert_authority_standing_t wa
     return false;
 }
 
-/** Whether a standing stays what it is for the whole of a stated time. */
+/** Whether an operational status stays what it is for the whole of a stated time. */
 bool holds(const AuthorityMonitor& monitor, const cert_authority_standing_t wanted,
            const std::chrono::seconds duration) {
     const auto until = std::chrono::steady_clock::now() + duration;
@@ -334,7 +334,7 @@ bool holds(const AuthorityMonitor& monitor, const cert_authority_standing_t want
     return true;
 }
 
-/** Waits for a standing to be established at all, whatever it turns out to be. */
+/** Waits for an operational status to be established at all, whatever it turns out to be. */
 bool settles(const AuthorityMonitor& monitor) { return reaches(monitor, cert_authority_standing_t::STANDING); }
 
 const char* nameOf(const cert_authority_standing_t standing) {
@@ -405,7 +405,7 @@ void testResponderUnreachable() {
     monitor.start();
 
     testOk(reaches(monitor, cert_authority_standing_t::UNKNOWN),
-           "an unreachable responder leaves the standing unknown, which denies connections");
+           "an unreachable responder leaves the operational status UNKNOWN, which denies connections");
 }
 
 void testBusyResponderIsNotNews() {
@@ -418,7 +418,7 @@ void testBusyResponderIsNotNews() {
     AuthorityMonitor monitor(lab.root.cert.get(), false);
     monitor.start();
     if (!settles(monitor)) {
-        testFail("the anchor was never established as standing, so there is nothing to disturb");
+        testFail("the anchor was never established as VALID, so there is nothing to disturb");
         return;
     }
 
@@ -427,7 +427,7 @@ void testBusyResponderIsNotNews() {
     // and nothing should change.
     lab.responder.dropFirst(3);
     testOk(holds(monitor, cert_authority_standing_t::STANDING, std::chrono::seconds(10)),
-           "a dropped call does not disturb a standing that is still good");
+           "a dropped call does not disturb a operational status that is still GOOD");
 }
 
 void testResponderAcceptsAndSaysNothing() {
@@ -452,7 +452,7 @@ void testLastAnswerHeld() {
     AuthorityMonitor monitor(lab.root.cert.get(), true);
     monitor.start();
     if (!settles(monitor)) {
-        testFail("the anchor was never established as standing, so there is nothing to hold");
+        testFail("the anchor was never established as GOOD, so there is nothing to hold");
         testSkip(1, "no answer to hold");
         return;
     }

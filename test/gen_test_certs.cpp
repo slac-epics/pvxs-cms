@@ -328,7 +328,7 @@ struct PKCS12Writer {
 struct CertCreator {
     // commonName string
     const char *CN = nullptr;
-    // Optional inner organizational unit, emitted before the standing one so the subject
+    // Optional inner organizational unit, emitted before the operational status one so the subject
     // reads as a containment path: this unit sits inside "epics.org Certificate Authority".
     // Left null for every certificate that does not need one, so their subjects are unchanged.
     const char *inner_OU = nullptr;

@@ -1020,12 +1020,12 @@ before it carries the new identity.
 > **Why this workstation is configured with `no_own_cert_status_check`.** A holder normally
 > confirms its own certificate with the certificate manager before using it. This one
 > cannot: the certificate manager is behind the boundary, and reaching it means using
-> the certificate whose standing is in question. The gateway checks what is presented to
+> the certificate whose operational status is in question. The gateway checks what is presented to
 > it and refuses a holder that does not stand, so the check still happens, at the point
 > the connection is accepted rather than before it is made. The setting is in
 > `compose.yaml` as `EPICS_PVA_TLS_OPTIONS: "no_own_cert_status_check"`, and it applies only
 > to a name server named with `pvas://`. A workstation with an ordinary route to the
-> certificate manager establishes its own standing as usual.
+> certificate manager establishes its own operational status as usual.
 
 ## 6. Identity across a gateway
 
