@@ -64,7 +64,7 @@
 #include "certfilefactory.h"
 #include "certrequestid.h"
 #include "certstatus.h"
-#include "authoritymonitor.h"
+#include "ocspstatusmonitor.h"
 #include "certstatusfactory.h"
 #include "cmsversion.h"
 #include "trustanchors.h"
@@ -90,7 +90,7 @@ namespace pvxs {
 namespace certs {
 
 /** What the authority above this service's certificates is known to be. */
-cert_authority_standing_t authorityStanding();
+ocspcertstatus_t ocspStatus();
 
 /** The facility root as the listing needs it, or nothing when none is loaded. */
 std::unique_ptr<RootAuthority> currentRootAuthority();
@@ -1174,7 +1174,7 @@ int64_t onCreateCertificate(ConfigCms &config,
     // First, make sure that we've updated any expired cert first
     auto const full_skid = CertStatus::getFullSkId(pub_key);
     auto cert_status_factory(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_cert_chain, config.cert_status_validity_mins, 0, authorityStanding()));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_cert_chain, config.cert_status_validity_mins, 0, ocspStatus()));
     postUpdateToNextCertToExpire(cert_status_factory,
                                  shared_status_pv,
                                  certs_db,
@@ -1434,7 +1434,7 @@ int64_t onCreateCertificate(ConfigCms &config,
 
 
 /**
- * @brief Keeps the three operational status listing views up to date.
+ * @brief Keeps the three certificate status listing views up to date.
  *
  * A monitored table resends every column whenever anything changes, because a change mask
  * marks fields and an array is one field. A shortest gap between posts collapses a burst of
@@ -1638,7 +1638,7 @@ void onGetStatus(const ConfigCms &config,
                  const ossl_ptr<X509> &cert_auth_cert,
                  const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, ocspStatus()));
     try {
         std::vector<serial_number_t> cert_auth_serial_numbers;
         log_debug_printf(pvacms, "GET STATUS: Certificate %s\n", getCertId(our_issuer_id, serial).c_str());
@@ -1674,17 +1674,17 @@ void onGetStatus(const ConfigCms &config,
         // authority, neither of which is the problem. AUTHORITY_REVOKED says the fault is above
         // them, which is what tells a holder it is not theirs to fix and tells whoever runs the
         // site which certificate to go and look at.
-        certstatus_t authority_status = UNKNOWN;
+        certstatus_t authority_ocsp_status = UNKNOWN;
         time_t authority_status_date = 0;
         for (const auto cert_auth_serial_number : cert_auth_serial_numbers) {
-            getWorstCertificateStatus(certs_db, cert_auth_serial_number, authority_status, authority_status_date);
+            getWorstCertificateStatus(certs_db, cert_auth_serial_number, authority_ocsp_status, authority_status_date);
         }
 
         // A certificate revoked or expired in its own right keeps reporting that, because that
         // is the fact its holder can act on. An authority revoked or expired anywhere in the
         // chain is named as the authority's fault, so a reader looks further up.
-        if (status != REVOKED && status != EXPIRED && authority_status != UNKNOWN) {
-            switch (authority_status) {
+        if (status != REVOKED && status != EXPIRED && authority_ocsp_status != UNKNOWN) {
+            switch (authority_ocsp_status) {
                 case REVOKED:
                 case AUTHORITY_REVOKED:
                     status = AUTHORITY_REVOKED;
@@ -1697,9 +1697,9 @@ void onGetStatus(const ConfigCms &config,
                     break;
                 default:
                     // Anything else the chain reports that is worse than the holder's own
-                    // operational status is reported as it stands.
-                    if (authority_status > status) {
-                        status = authority_status;
+                    // certificate status is reported as it stands.
+                    if (authority_ocsp_status > status) {
+                        status = authority_ocsp_status;
                         status_date = authority_status_date;
                     }
                     break;
@@ -1744,7 +1744,7 @@ void onRevoke(const ConfigCms &config,
               const ossl_ptr<X509> &cert_auth_cert,
               const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, ocspStatus()));
     try {
         Guard G(status_update_lock);
         serial_number_t serial = getParameters(parameters);
@@ -1792,7 +1792,7 @@ void onApprove(const ConfigCms &config,
                const ossl_ptr<X509> &cert_auth_cert,
                const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, ocspStatus()));
     try {
         Guard G(status_update_lock);
         std::string issuer_id;
@@ -1853,7 +1853,7 @@ void onDeny(const ConfigCms &config,
             const ossl_ptr<X509> &cert_auth_cert,
             const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, ocspStatus()));
     try {
         Guard G(status_update_lock);
         std::string issuer_id;
@@ -2928,28 +2928,28 @@ void setValue(Value &target, const std::string &field, const T &new_value) {
 // certificate and the one monitor stay alive until the process image goes away.
 
 /**
- * @brief The one trust anchor this service issues beneath, and its operational status.
+ * @brief The one trust anchor this service issues beneath, and its certificate status.
  *
  * A process has exactly one, established before it serves anything, and every status it
  * composes is answered through it, so every status in this service has it.
  */
-cms::cert::AuthorityMonitor *the_authority_monitor = nullptr;
+cms::cert::OcspStatusMonitor *the_ocsp_status_monitor = nullptr;
 
 /** The facility root this service issues beneath, kept so the listing can name it. */
 X509 *the_root_certificate = nullptr;
 
-cert_authority_standing_t authorityStanding() {
+ocspcertstatus_t ocspStatus() {
     // Nothing is known about an authority nobody is watching, and nothing should be: a trust
     // anchor that names no responder makes no claim to be checkable, and its certificates are
     // answered on their own merits.
-    if (!the_authority_monitor || !the_authority_monitor->isActive()) return cert_authority_standing_t::STANDING;
-    return the_authority_monitor->standing();
+    if (!the_ocsp_status_monitor || !the_ocsp_status_monitor->isActive()) return OCSP_CERTSTATUS_GOOD;
+    return the_ocsp_status_monitor->ocspStatus();
 }
 
 /**
  * @brief The facility root as the listing needs it, assembled fresh each time it is asked for.
  *
- * Fresh because its operational status is not recorded anywhere: it is what the responder last said, and
+ * Fresh because its certificate status is not recorded anywhere: it is what the responder last said, and
  * that is read at the point of answering like every other status this service composes.
  *
  * @return the root, or nothing when this service has not loaded one
@@ -2961,12 +2961,12 @@ std::unique_ptr<RootAuthority> currentRootAuthority() {
     std::unique_ptr<RootAuthority> root(new RootAuthority());
 
     // A responder that was never named has said nothing, so the authority is unknown.
-    root->names_responder = the_authority_monitor && the_authority_monitor->isActive();
+    root->names_responder = the_ocsp_status_monitor && the_ocsp_status_monitor->isActive();
     if (root->names_responder) {
-        switch (the_authority_monitor->standing()) {
-            case cert_authority_standing_t::STANDING: root->standing = VALID; break;
-            case cert_authority_standing_t::REVOKED: root->standing = REVOKED; break;
-            default: root->standing = UNKNOWN; break;
+        switch (the_ocsp_status_monitor->ocspStatus()) {
+            case OCSP_CERTSTATUS_GOOD: root->status = VALID; break;
+            case OCSP_CERTSTATUS_REVOKED: root->status = REVOKED; break;
+            default: root->status = UNKNOWN; break;
         }
     }
 
@@ -3458,7 +3458,7 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
  * actually watching are posted to, because a status nobody is subscribed to is composed again
  * the moment somebody asks.
  *
- * @param cert_status_creator composes each status, already carrying the new operational status
+ * @param cert_status_creator composes each status, already carrying the new certificate status
  * @param status_monitor_params the certificates database and the channel to post on
  */
 void postAuthorityChangeToWatchers(const CertStatusFactory &cert_status_creator,
@@ -3493,7 +3493,7 @@ void postAuthorityChangeToWatchers(const CertStatusFactory &cert_status_creator,
         }
     }
     stmt.reset();
-    log_info_printf(pvacmsmonitor, "Authority operational status changed: told %u watched certificates\n", posted);
+    log_info_printf(pvacmsmonitor, "Authority certificate status changed: told %u watched certificates\n", posted);
 }
 
 timeval statusMonitor(const StatusMonitor &status_monitor_params) {
@@ -3502,14 +3502,14 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
                                                      status_monitor_params.cert_auth_pkey_,
                                                      status_monitor_params.cert_auth_cert_chain_,
                                                      status_monitor_params.config_.cert_status_validity_mins,
-                                                     0, authorityStanding()));
+                                                     0, ocspStatus()));
 
     // The authority above every certificate is checked on its own schedule, so a change in it
     // arrives between these wake-ups. Carry it to whoever is listening now.
-    static cert_authority_standing_t last_reported_standing = cert_authority_standing_t::STANDING;
-    const auto standing_now = authorityStanding();
-    if (standing_now != last_reported_standing) {
-        last_reported_standing = standing_now;
+    static ocspcertstatus_t last_reported_status = OCSP_CERTSTATUS_GOOD;
+    const auto status_now = ocspStatus();
+    if (status_now != last_reported_status) {
+        last_reported_status = status_now;
         postAuthorityChangeToWatchers(cert_status_creator, status_monitor_params);
     }
 
@@ -3929,9 +3929,9 @@ int main(int argc, char *argv[]) {
         // The root states where its own revocation can be learned. Ask, so that a revoked
         // authority reaches the certificates issued beneath it.
         the_root_certificate = X509_dup(cert_auth_root_cert.get());
-        the_authority_monitor =
-            new cms::cert::AuthorityMonitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status);
-        the_authority_monitor->start();
+        the_ocsp_status_monitor =
+            new cms::cert::OcspStatusMonitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status);
+        the_ocsp_status_monitor->start();
 
         if (!admin_name.empty()) {
             // Name the step that failed. Creating the certificate and registering the
@@ -4006,7 +4006,7 @@ int main(int argc, char *argv[]) {
         SharedPV list_pv(SharedPV::buildReadonly());
         WildcardPV list_view_pv(WildcardPV::buildMailbox());
 
-        // The three standing views a control room keeps open. Exact names, so they cannot
+        // The three views a control room keeps open. Exact names, so they cannot
         // swallow the issuer-qualified one-shot call name,
         // which has the same shape. That holds only while no view word can be a legal issuer
         // id - an issuer id is eight hexadecimal digits and none of these is - so any new view

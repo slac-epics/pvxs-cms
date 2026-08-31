@@ -4,7 +4,7 @@
  * in file LICENSE that is included with this distribution.
  */
 
-#include "authoritymonitor.h"
+#include "ocspstatusmonitor.h"
 
 #include <chrono>
 #include <memory>
@@ -28,7 +28,7 @@
 
 #include "certstatusmanager.h"
 
-DEFINE_LOGGER(authmonitor, "cms.certs.status.authority");
+DEFINE_LOGGER(ocspmonitor, "cms.certs.status.ocsp");
 
 namespace cms {
 namespace cert {
@@ -56,7 +56,7 @@ constexpr time_t shortest_wait_secs = 1;
 /**
  * What fraction of an answer's life to wait before asking for the next one.
  *
- * Asking at the moment one runs out leaves a single attempt standing between a busy responder
+ * Asking at the moment one runs out leaves a single attempt between a busy responder
  * and a facility that stops. Asking at a third of the way leaves two spare attempts, and each
  * one that comes back with nothing costs nothing at all, because the answer already held is
  * still good. That is what replaces retrying: not asking harder, but asking sooner.
@@ -70,9 +70,7 @@ constexpr int ask_again_after_fraction = 3;
  */
 constexpr auto responder_patience = std::chrono::seconds(10);
 
-using pvxs::certs::cert_authority_standing_t;
-
-using aia_ptr = std::unique_ptr<AUTHORITY_INFO_ACCESS, decltype(&AUTHORITY_INFO_ACCESS_free)>;
+using pvxs::certs::ocspcertstatus_t;
 
 /**
  * @brief Waits until the exchange with the responder can go further, or the deadline passes.
@@ -117,8 +115,8 @@ bool waitForProgress(BIO *bio, const std::chrono::steady_clock::time_point deadl
  * @return the responder address, or an empty string when the certificate names none
  */
 std::string responderUriOf(X509 *cert) {
-    const aia_ptr aia(static_cast<AUTHORITY_INFO_ACCESS *>(X509_get_ext_d2i(cert, NID_info_access, nullptr, nullptr)),
-                      &AUTHORITY_INFO_ACCESS_free);
+    const pvxs::ossl_ptr<AUTHORITY_INFO_ACCESS> aia(
+        static_cast<AUTHORITY_INFO_ACCESS *>(X509_get_ext_d2i(cert, NID_info_access, nullptr, nullptr)), false);
     if (!aia) return {};
 
     for (int i = 0; i < sk_ACCESS_DESCRIPTION_num(aia.get()); ++i) {
@@ -172,7 +170,7 @@ pvxs::ossl_ptr<OCSP_RESPONSE> askOnce(const std::string &host_port, const std::s
 
 }  // namespace
 
-AuthorityMonitor::AuthorityMonitor(X509 *trust_anchor, const bool hold_last_known)
+OcspStatusMonitor::OcspStatusMonitor(X509 *trust_anchor, const bool hold_last_known)
     : responder_uri_(responderUriOf(trust_anchor)), hold_last_known_(hold_last_known) {
     if (responder_uri_.empty()) return;
 
@@ -180,8 +178,8 @@ AuthorityMonitor::AuthorityMonitor(X509 *trust_anchor, const bool hold_last_know
     // its own issuer, which is what lets it be asked about at all. Anything else at the top of
     // the chain is not an anchor, and this service has no way to trust an answer about it.
     if (X509_NAME_cmp(X509_get_subject_name(trust_anchor), X509_get_issuer_name(trust_anchor)) != 0) {
-        log_warn_printf(authmonitor,
-                        "Authority status: %s names a responder but is not self-signed; not watching\n",
+        log_warn_printf(ocspmonitor,
+                        "OCSP status: %s names a responder but is not self-signed; not watching\n",
                         responder_uri_.c_str());
         responder_uri_.clear();
         return;
@@ -201,29 +199,29 @@ AuthorityMonitor::AuthorityMonitor(X509 *trust_anchor, const bool hold_last_know
     // run on the server's loop, which is answering process variables.
     poll_loop_ = pvxs::impl::evbase("PVACMSAUTH", epicsThreadPriorityCAServerLow - 2);
     poll_timer_ = pvxs::impl::evevent(__FILE__, __LINE__,
-                                      event_new(poll_loop_.base, -1, EV_TIMEOUT, &AuthorityMonitor::pollTimer, this));
+                                      event_new(poll_loop_.base, -1, EV_TIMEOUT, &OcspStatusMonitor::pollTimer, this));
 }
 
-AuthorityMonitor::~AuthorityMonitor() { stop(); }
+OcspStatusMonitor::~OcspStatusMonitor() { stop(); }
 
-void AuthorityMonitor::start() {
+void OcspStatusMonitor::start() {
     if (!isActive() || !poll_timer_) return;
-    log_info_printf(authmonitor, "Authority status: watching %s\n", responder_uri_.c_str());
+    log_info_printf(ocspmonitor, "OCSP status: watching %s\n", responder_uri_.c_str());
     // Ask at once, then on whatever schedule each answer sets.
     static constexpr timeval immediately{0, 0};
     if (event_add(poll_timer_.get(), &immediately)) {
-        log_err_printf(authmonitor, "Authority status: cannot start watching %s\n", responder_uri_.c_str());
+        log_err_printf(ocspmonitor, "OCSP status: cannot start watching %s\n", responder_uri_.c_str());
     }
 }
 
-void AuthorityMonitor::stop() {
+void OcspStatusMonitor::stop() {
     if (!poll_timer_) return;
     // On the loop's own thread, so it cannot race a poll that is being armed.
     poll_loop_.call([this]() { event_del(poll_timer_.get()); });
 }
 
-void AuthorityMonitor::pollTimer(evutil_socket_t, short, void *raw) {
-    auto self = static_cast<AuthorityMonitor *>(raw);
+void OcspStatusMonitor::pollTimer(evutil_socket_t, short, void *raw) {
+    auto self = static_cast<OcspStatusMonitor *>(raw);
     time_t wait_secs = retry_after_failure_secs;
     try {
         self->poll();
@@ -235,25 +233,25 @@ void AuthorityMonitor::pollTimer(evutil_socket_t, short, void *raw) {
         if (before_it_lapses < wait_secs) wait_secs = before_it_lapses;
         // Nothing is recorded: the answer already held goes on being the answer until it runs
         // out, and this is simply one of the attempts there were before that happens.
-        log_debug_printf(authmonitor, "Authority status: %s\n", e.what());
+        log_debug_printf(ocspmonitor, "OCSP status: %s\n", e.what());
     }
     if (wait_secs < shortest_wait_secs) wait_secs = shortest_wait_secs;
     if (wait_secs > longest_wait_secs) wait_secs = longest_wait_secs;
 
     const timeval next{static_cast<decltype(timeval::tv_sec)>(wait_secs), 0};
     if (event_add(self->poll_timer_.get(), &next)) {
-        log_err_printf(authmonitor, "Authority status: cannot arrange to ask again%s\n", "");
+        log_err_printf(ocspmonitor, "OCSP status: cannot arrange to ask again%s\n", "");
     }
 }
 
-time_t AuthorityMonitor::askAgainIn() const {
+time_t OcspStatusMonitor::askAgainIn() const {
     const time_t valid_until = answer_valid_until_.load(std::memory_order_acquire);
     const time_t now = time(nullptr);
     // A share of what is left, so there are attempts in hand before it runs out.
     return valid_until > now ? (valid_until - now) / ask_again_after_fraction : 0;
 }
 
-void AuthorityMonitor::poll() {
+void OcspStatusMonitor::poll() {
     // OCSP_parse_url hands back three separately allocated strings; owning them means they go
     // back however this leaves, including by the throw below.
     pvxs::ossl_ptr<char> host, port, path;
@@ -285,17 +283,17 @@ void AuthorityMonitor::poll() {
     // every status it receives.
     const auto parsed = pvxs::certs::CmsStatusManager::parse(response, trusted_store_.get());
 
-    const auto reported = parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_REVOKED ? cert_authority_standing_t::REVOKED
-                          : parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_GOOD  ? cert_authority_standing_t::STANDING
-                                                                                     : cert_authority_standing_t::UNKNOWN;
-    const auto previous = standing();
+    const auto reported = parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_REVOKED ? ocspcertstatus_t::OCSP_CERTSTATUS_REVOKED
+                          : parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_GOOD  ? ocspcertstatus_t::OCSP_CERTSTATUS_GOOD
+                                                                                     : ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN;
+    const auto previous = ocspStatus();
     answer_valid_until_.store(parsed.status_valid_until_date.t, std::memory_order_release);
     answer_.store(reported, std::memory_order_release);
 
     if (reported != previous) {
-        log_warn_printf(authmonitor, "Authority status: the facility root %s\n",
-                        reported == cert_authority_standing_t::REVOKED    ? "has been revoked"
-                        : reported == cert_authority_standing_t::STANDING ? "stands"
+        log_warn_printf(ocspmonitor, "OCSP status: the facility root %s\n",
+                        reported == ocspcertstatus_t::OCSP_CERTSTATUS_REVOKED    ? "has been revoked"
+                        : reported == ocspcertstatus_t::OCSP_CERTSTATUS_GOOD ? "stands"
                                                                           : "cannot be established");
     }
 }

@@ -27,7 +27,7 @@ PROD += pvacms
 # Entry points and pvacms-specific config
 pvacms_SRCS += pvacms.cpp
 pvacms_SRCS += configcms.cpp
-pvacms_SRCS += authoritymonitor.cpp
+pvacms_SRCS += ocspstatusmonitor.cpp
 pvacms_SRCS += sqlitehardening.cpp
 pvacms_SRCS += certlist.cpp
 pvacms_SRCS += certsubjectunits.cpp
