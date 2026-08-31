@@ -99,10 +99,10 @@ services:
   # net-it is its own segment; the other two are legs into the networks that name it, the same
   # accommodation pvxs-facility-lb needs. Each PVACMS stays on one interface, so that neither
   # can address the other.
-  pvxs-lab-authority-status:
+  pvxs-lab-ocsp-responder:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
-    hostname: pvxs-lab-authority-status
+    hostname: pvxs-lab-ocsp-responder
     networks: [net-it, net-lab, net-ml]
     volumes:
       - ./ocsp:/ocsp:ro,Z
@@ -113,7 +113,7 @@ services:
   # ---------------------------------------------------------------- lab department
   pvxs-lab-pvacms:
     init: true
-    depends_on: [pvxs-lab-authority-status]
+    depends_on: [pvxs-lab-ocsp-responder]
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-pvacms
     networks: [net-lab]
@@ -198,7 +198,7 @@ services:
   # ------------------------------------------------- ML department
   pvxs-lab-ml:
     init: true
-    depends_on: [pvxs-lab-authority-status]
+    depends_on: [pvxs-lab-ocsp-responder]
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml:latest
     hostname: pvxs-lab-ml
     networks: [net-ml]

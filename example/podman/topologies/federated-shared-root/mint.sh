@@ -26,7 +26,7 @@ podman run --rm -v "$(pwd)/certs:/certs:Z" \
         arch=\$(/opt/epics/epics-base/startup/EpicsHostArch)
         /opt/epics/pvxs-cms/test/O.\$arch/gen_lab_certs \
             -O /certs -R '${ROOT_CN}' -L '${LAB_CN}' -M '${ML_CN}' \
-            -S 'http://pvxs-lab-authority-status:8888'" >/dev/null
+            -S 'http://pvxs-lab-ocsp-responder:8888'" >/dev/null
 
 cp certs/issuer_ids.env issuer_ids.env
 

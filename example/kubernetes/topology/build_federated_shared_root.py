@@ -87,7 +87,7 @@ inet_l = fields('Labels: app=internet-client zone=internet',
  'Image: internet', 'Logins: guest, operator',
  'EPICS_PVA_NAME_SERVERS:',
  '    facility:5075 facility:5175')
-resp_l = fields('Labels: app=authority-status',
+resp_l = fields('Labels: app=ocsp-responder',
  'Image: idm - runs only openssl ocsp',
  'Secret ocsp-material: ca.pem,',
  '    signer.pem, signer.key',
@@ -100,7 +100,7 @@ job_l = fields('pre-install hook, runs before anything',
  'probe: skips when lab-issuer-ids exists;',
  '    authorities are minted once per laboratory',
  'mint: gen_lab_certs -R root -L lab -M ml',
- '    -S http://pvxs-lab-authority-status:8888',
+ '    -S http://pvxs-lab-ocsp-responder:8888',
  '    - the responder name is referenced by',
  '    the root certificate',
  'package: writes the Secrets and ConfigMaps')
@@ -118,7 +118,7 @@ svc_gwm_l = svc('ml-gateway', '5175/TCP 5176/TCP 5176/UDP')
 svc_fac_l = fields('ClusterIP  5075 5076 5175 5176/TCP',
  'selects app=facility',
  'the port chooses the department')
-svc_resp_l = svc('authority-status', '8888/TCP')
+svc_resp_l = svc('ocsp-responder', '8888/TCP')
 
 secrets_l = fields('Secrets: lab-intermediate, ml-intermediate,',
  '    ocsp-material',
@@ -142,7 +142,7 @@ FILE_CARDS = [('Secrets and ConfigMaps', secrets_l),
               ('NetworkPolicy facility-ingress', facpol_l)]
 
 root_l = fields('Subject: CN=EPICS Root Certificate Authority',
- 'OCSP: pvxs-lab-authority-status:8888',
+ 'OCSP: pvxs-lab-ocsp-responder:8888',
  '    (named in the AIA extension)',
  'Minted by Job ca-keygen, kept in the',
  '    Secrets below')
@@ -281,8 +281,8 @@ pz_h = (gw_y - pz_y) + gw_h + ZP
 zone_y = int(pz_y + pz_h + 64)
 
 # The responder below the departments, the files row below it, the legend last.
-resp_w = measure('pvxs-lab-authority-status', resp_l)[0]
-svc_resp_w = measure('svc pvxs-lab-authority-status', svc_resp_l)[0]
+resp_w = measure('pvxs-lab-ocsp-responder', resp_l)[0]
+svc_resp_w = measure('svc pvxs-lab-ocsp-responder', svc_resp_l)[0]
 job_w = measure('Job ca-keygen', job_l)[0]
 
 files_ws = [measure(t, l)[0] for t, l in FILE_CARDS]
@@ -323,8 +323,8 @@ def build(cv):
 
     RZ_TITLE = 'facility root status'
     rz_y = zone_y + zone_h + 70
-    rsvc_h = measure('svc pvxs-lab-authority-status', svc_resp_l)[1]
-    rz_h = ZTITLE + 28 + rsvc_h + 40 + measure('pvxs-lab-authority-status', resp_l)[1] + ZP
+    rsvc_h = measure('svc pvxs-lab-ocsp-responder', svc_resp_l)[1]
+    rz_h = ZTITLE + 28 + rsvc_h + 40 + measure('pvxs-lab-ocsp-responder', resp_l)[1] + ZP
     rz_w = int(max(resp_w, svc_resp_w) + 2*ZP)
     rz_cx = (lab_x + W_lab + ml_x)/2   # in the gap's neighbourhood, clear of both buses
     rz_x = rz_cx - rz_w/2
@@ -440,8 +440,8 @@ def build(cv):
 
     # --- the responder, and who asks it
     rsv = cv.card(rz_cx - svc_resp_w/2, rz_y + ZTITLE + 28,
-                  'svc pvxs-lab-authority-status', svc_resp_l, 'lb', 'lb')
-    rsp = cv.card(rz_cx - resp_w/2, rsv['bot'] + 40, 'pvxs-lab-authority-status',
+                  'svc pvxs-lab-ocsp-responder', svc_resp_l, 'lb', 'lb')
+    rsp = cv.card(rz_cx - resp_w/2, rsv['bot'] + 40, 'pvxs-lab-ocsp-responder',
                   resp_l, 'ocsp', 'ocsp')
     sel_arrow(cv, rsv['cx'], rsv['bot'], rsp['top'])
     # Straight drops into the responder zone's top edge, then the zone speaks for itself.
