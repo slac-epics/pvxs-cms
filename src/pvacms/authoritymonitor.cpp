@@ -49,10 +49,7 @@ constexpr time_t longest_wait_secs = 60 * 60;
 /**
  * Shortest wait, so that a responder promising an immediate next update is not asked in a spin.
  *
- * A second rather than anything longer, because this is a floor and not a policy: how often to
- * ask follows from how long an answer lasts, and a floor set above that would leave the answer
- * expired for the gap - the service reporting an authority it cannot establish while a perfectly
- * good responder waits to be asked.
+ * A second, because this is a floor: how often to ask follows from how long an answer lasts.
  */
 constexpr time_t shortest_wait_secs = 1;
 
@@ -69,8 +66,7 @@ constexpr int ask_again_after_fraction = 3;
 /**
  * How long one exchange with the responder may take, from connecting to a complete answer.
  *
- * A responder that accepts a connection and then says nothing would otherwise hold the polling
- * loop for as long as it cared to, and stopping the service waits for a poll in flight.
+ * Stopping the service waits for a poll in flight, so one exchange is bounded.
  */
 constexpr auto responder_patience = std::chrono::seconds(10);
 
@@ -141,7 +137,7 @@ std::string responderUriOf(X509 *cert) {
  *
  * Everything that can go wrong between here and an answer in hand is thrown, so that the
  * caller can decide whether to ask again. A reply that arrives and cannot be believed is not
- * thrown from here: that is an answer, and asking again would only be told the same thing.
+ * thrown from here: that is an answer.
  *
  * @param host_port where the responder is
  * @param request_path the path it answers on

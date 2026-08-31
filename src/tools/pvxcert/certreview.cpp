@@ -74,7 +74,7 @@ enum class Answer { Decide, Skip, Stop, Cancel, Again };
 
 /** Read one answer. The mode decides which words mean a decision.
  *
- *  "s" is refused rather than guessed at: it begins both skip and stop, and those differ in
+ *  "s" is refused: it begins both skip and stop, and those differ in
  *  whether the remaining certificates are offered at all.
  */
 Answer readAnswer(std::istream &in, std::ostream &out, const ReviewMode mode, ReviewDecision &decision) {
@@ -164,7 +164,7 @@ int runReview(std::vector<ReviewRow> &rows, const ReviewOptions &options, const 
     }
 
     // Asking for an interactive run with nothing able to type into it, and no decision given up
-    // front, is a command line mistake rather than something to guess at. The listing is still
+    // front, so it is refused. The listing is still
     // printed, because that much was unambiguous.
     if (!options.interactive && options.all == ReviewDecision::Undecided) {
         size_t index = 0;

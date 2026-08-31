@@ -442,9 +442,7 @@ krun_in lab as operator pvxcert -f /home/operator/.config/pva/1.5/client.p12 # V
 ```
 
 The ML manager's own service certificate is signed by the revoked intermediate too, so
-its secure port goes with it, and its administrator tooling stops answering. That is
-the rule working, not a broken laboratory; it behaves identically under podman. A reset
-is the way back.
+its secure port goes with it, and its administrator tooling stops answering.
 
 ### Revoke the facility root
 

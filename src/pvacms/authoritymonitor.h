@@ -58,7 +58,7 @@ class AuthorityMonitor {
 
     /**
      * @brief The authority's standing, worked out from the last answer and the moment it runs
-     * out rather than recorded when a poll happens.
+     * out.
      *
      * `UNKNOWN` is what an answer that has run out with nothing to replace it comes to, along
      * with a reply that could not be verified and one that said as much. A site that would
@@ -97,11 +97,8 @@ class AuthorityMonitor {
     /**
      * The last answer this service verified, and the moment it stops being one.
      *
-     * The standing is derived from these rather than stored, which is what makes a poll that
-     * came back with nothing a non-event: it records nothing, and the answer already held goes
-     * on being the answer until it runs out. A responder busy with somebody else costs one of
-     * the several attempts there are before that happens, instead of costing the facility every
-     * connection it underwrites.
+     * The standing is derived from these, so a poll that came back with nothing records
+     * nothing and the answer already held stands until it runs out.
      */
     std::atomic<pvxs::certs::cert_authority_standing_t> answer_{pvxs::certs::cert_authority_standing_t::UNKNOWN};
     std::atomic<time_t> answer_valid_until_{0};

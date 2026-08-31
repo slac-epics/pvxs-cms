@@ -22,8 +22,7 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
     spec:
       securityContext:
-        # Root, so that krun_in can become a person by name with 'su -'. The podman
-        # laboratory uses 'podman exec --user', which kubectl has no equivalent of.
+        # Root, so that krun_in can become a person by name with 'su -'.
         runAsUser: 0
         fsGroup: 0
       containers:
@@ -39,13 +38,11 @@ spec:
             - name: EPICS_PVA_AUTO_ADDR_LIST
               value: "NO"
             # The prefix of the pod network, so start-gateway resolves the pod's own address
-            # and substitutes it for __SERVE_ADDR__, as it does in podman.
+            # and substitutes it for __SERVE_ADDR__.
             - name: GATEWAY_SERVE_SUBNET
               value: "192.168."
             # For the gateway's own tools, which is how it asks for its certificate. pvagw
-            # itself takes its upstreams from gateway.conf and does not read this. In podman
-            # the gateway broadcasts to find the certificate manager; there is no broadcast
-            # here, so it is named.
+            # takes its upstreams from gateway.conf. The certificate manager is named here.
             - name: EPICS_PVA_ADDR_LIST
               value: {{ include "lab.pvacmsService" . | quote }}
           ports:
@@ -65,11 +62,8 @@ spec:
 {{ include "lab.issuerVolume" . | indent 8 }}
 ---
 {{/*
-The facility address. In podman this is an haproxy container aliased 'facility' on the outside
-segment; here the same job is done by a Service of that name, which is what a Kubernetes load
-balancer is. Only the secure port is published, for the reason haproxy.cfg gives: the gateway
-behind it has no plaintext listener, so a frontend on 5075 would forward to a closed port and
-time out, which reads as a broken laboratory rather than a closed boundary.
+The facility address, a Service of that name. Only the secure port is published: the gateway
+behind it has no plaintext listener.
 
 The port is the same on both sides, and must stay that way. A PVAccess server names its own
 port in a search reply and the client dials that port next, so translating one would send the

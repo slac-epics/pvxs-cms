@@ -306,8 +306,7 @@ void P12FileFactory::writePKCS12File() {
             ossl_ptr<X509_ATTRIBUTE> attr(X509_ATTRIBUTE_create(NID_oracle_jdk_trustedkeyusage, V_ASN1_OBJECT, trust.get()));
 
             // OPENSSL_sk_push returns the new element count, not a success flag, so anything
-            // above zero is the push succeeding. A bag that already carried an attribute would
-            // otherwise be reported as a failure that did not happen.
+            // above zero is the push succeeding.
             if (sk_X509_ATTRIBUTE_push(newattrs.get(), attr.get()) <= 0) {
                 log_err_printf(filelogger, "Unable to add JDK trust attribute%s\n", "");
                 return 1;

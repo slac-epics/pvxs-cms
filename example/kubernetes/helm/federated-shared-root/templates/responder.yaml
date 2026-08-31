@@ -17,9 +17,8 @@ spec:
     spec:
       securityContext: {runAsUser: 0, fsGroup: 0}
       initContainers:
-        # The index is seeded once and then left alone. Seeding it on every start would undo a
-        # revocation the moment the responder was restarted, and restarting it is exactly what
-        # revoking does.
+        # The index is seeded once, by an init container that copies the seed into the claim
+        # when there is nothing there.
         - name: seed-index
           image: {{ include "lab.image" (dict "Values" .Values "role" "idm") }}
           # Named explicitly. Without it a :latest tag defaults to Always, and these images are
@@ -45,10 +44,9 @@ spec:
             - {name: state, mountPath: /ocsp/index.txt, subPath: index.txt}
             - {name: conf, mountPath: /etc/supervisor/supervisord.conf, subPath: supervisord.conf}
             - {name: conf, mountPath: /etc/supervisor/conf.d/ocsp.conf, subPath: ocsp.conf}
-          # Asking it the question rather than checking the port. The failure this catches is
+          # An OCSP query, so the failure this catches is
           # the responder holding the port open while answering nothing, which a TCP probe
-          # reports as healthy. podman solves the same problem with a watchdog inside the
-          # container; here the cluster can do it.
+          # reports as healthy.
           livenessProbe:
             exec:
               command: ["/bin/sh","-c","openssl ocsp -issuer /ocsp/ca.pem -cert /ocsp/ca.pem -url http://127.0.0.1:{{ .Values.ports.ocsp }} -CAfile /ocsp/ca.pem >/dev/null 2>&1"]

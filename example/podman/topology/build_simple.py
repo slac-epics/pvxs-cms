@@ -87,9 +87,9 @@ NOTATION = ['10.89.0.0/24 : the segment, in CIDR. One podman bridge, carrying',
 ABBREV = ['CA     : certificate authority','SKID   : subject key identifier, 40 hex digits',
           'Issuer ID: the first 8 digits of a SKID','PVACMS : certificate manager',
           'IOC    : input output controller','ACF    : access security file']
-NOTE = ['A line claims attachment. Arrowheads appear only where','a direction is real.','',
+NOTE = ['A line claims attachment. Arrowheads mark a real direction.','',
 
-        'ROOT_ISSUER and ROOT_ISSUER_SKID are named rather than','printed here: a fresh mint changes them.',
+        'ROOT_ISSUER and ROOT_ISSUER_SKID are named here:','a fresh mint changes them.',
         'Values: issuer_ids.env']
 
 # ---------------------------------------------------------------- geometry
@@ -111,8 +111,7 @@ lab_x = M
 RIGHT = 96
 CANVAS_W = lab_x + W_lab + RIGHT
 
-# legend, drawn by hand from the lists above. Both columns are measured from their own
-# text rather than guessed, so a reworded line cannot run out past the border.
+# legend, drawn by hand from the lists above. Both columns are measured from their own text.
 legend_x, legend_y = M, title_h + 26
 LEG_COL_GAP = 34
 LEG_COL_L = int(max([len(t)*CH + 24 for t, _ in CHIPS] + [len(t)*CH + 50 for t, _, _, _ in SAMPLES])) + 10

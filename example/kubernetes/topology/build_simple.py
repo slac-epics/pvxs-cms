@@ -94,14 +94,16 @@ NOTATION = ['5075/TCP  : PVAccess, plaintext',
             '            by app; a NetworkPolicy admits by zone',
             '',
             'A Service name resolves inside the cluster, so the',
-            'address lists name Services, not addresses.']
+            'address lists name Services.']
 ABBREV = ['PVACMS : certificate manager',
           'IOC    : input output controller',
           'PVA    : PVAccess, the EPICS network protocol',
           'CNI    : container network interface, the',
           '         cluster network plugin']
-NOTE = ['A line claims attachment. Arrowheads appear only',
-        'where a direction is real.']
+NOTE = ['A thick line is a segment or a shared address. Things',
+        'hang off it, marked with a dot where they attach.',
+        'A dashed line with an arrowhead is a certificate:',
+        'an authority signs, or a pod holds a file.']
 
 # ---------------------------------------------------------------- geometry
 M = 40
@@ -148,9 +150,9 @@ SEL = C['lb'][1]                      # the colour a Service arrow is drawn in
 
 # ---------------------------------------------------------------- emit
 def sel_arrow(cv, x, y0, y1):
-    """A Service selecting its pod: a short solid drop with a hand-drawn head."""
-    cv.hv([(x, y0), (x, y1 - 6)], SEL, 2)
-    cv.emit(f'<path d="M {x-4.5} {y1-8} L {x+4.5} {y1-8} L {x} {y1-1} z" fill="{SEL}"/>')
+    """A Service selecting its pod. Not traffic, so it carries no arrowhead."""
+    cv.hv([(x, y0), (x, y1)], SEL, 2)
+    cv.dot(x, y1, SEL)
     cv.pill(x + 46, (y0 + y1)/2, 'selects', SEL)
 
 
@@ -267,7 +269,7 @@ def build(cv):
     hdr.append(f'<text x="{M}" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="{C["ink"]}">Secure PVAccess demonstration laboratory</text>')
     hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">simple: one namespace, one certificate manager, IOCs named by their Services - example/kubernetes</text>')
     hdr.append(f'<text x="{M}" y="82" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B">Cluster: kind, name spva-lab, namespace spva-lab. Cilium is the network plugin.</text>')
-    hdr.append(f'<text x="{M}" y="97" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B">The segments below are NetworkPolicy, enforced by Cilium; the default CNI of kind does not enforce policy at all.</text>')
+    hdr.append(f'<text x="{M}" y="97" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B">The segments below are NetworkPolicy, enforced by Cilium.</text>')
     return hdr
 
 

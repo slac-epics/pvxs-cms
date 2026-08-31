@@ -8,8 +8,7 @@
  * The responder here is part of the test rather than a separate program, and it is bound to a
  * port the operating system chooses on the loopback interface. Two things follow. Nothing is
  * reachable from off the machine, and nothing collides with another test, another job on the
- * same machine, or a demonstration laboratory the developer happens to have running - which
- * uses a fixed port and would otherwise be answered instead of this.
+ * same machine, or a demonstration laboratory on a fixed port.
  *
  * The address goes inside the certificate, so the order is forced: bind first to learn the
  * port, then mint the root that names it.
@@ -192,7 +191,7 @@ class Responder {
         worker_ = std::thread([this] { serve(); });
     }
 
-    /** Stops answering without changing what the answer would have been. */
+    /** Stops answering, keeping the answer it holds. */
     void stop() {
         if (!worker_.joinable()) return;
         running_.store(false);
@@ -425,8 +424,7 @@ void testBusyResponderIsNotNews() {
 
     // The next few calls are dropped, as a responder already answering somebody else drops
     // them. The answer in hand is good for much longer than that, so nothing has been learned
-    // and nothing should change: a service that reported the authority unknown here would stop
-    // every connection it underwrites on the strength of one missed call.
+    // and nothing should change.
     lab.responder.dropFirst(3);
     testOk(holds(monitor, cert_authority_standing_t::STANDING, std::chrono::seconds(10)),
            "a dropped call does not disturb a standing that is still good");
@@ -436,8 +434,7 @@ void testResponderAcceptsAndSaysNothing() {
     testDiag("== a responder that takes the call and then says nothing");
     Laboratory lab;
     // Bound and listening, but nothing is accepting, so the caller is connected and then left.
-    // Without a bound on the exchange this never returns: the standing would freeze wherever it
-    // was and the service could not shut down, because stopping waits for the poll in flight.
+    // One exchange is bounded, and stopping waits for the poll in flight.
 
     AuthorityMonitor monitor(lab.root.cert.get(), false);
     monitor.start();

@@ -24,7 +24,7 @@ namespace certs {
  *    restarted. With a timeout it waits for the lock instead.
  *  - write-ahead logging: readers and one writer can work at the same time, so
  *    the contention is rarer to begin with.
- *  - foreign keys: enforced rather than parsed and ignored, which is SQLite's
+ *  - foreign keys: enforced, which differs from SQLite's
  *    default for backwards compatibility.
  *
  * A setting that cannot be applied is logged and not fatal: the server still

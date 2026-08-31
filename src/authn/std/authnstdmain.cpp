@@ -56,10 +56,7 @@ namespace certs {
     app.add_flag("--add-config-uri", add_config_uri, "Add a config uri to the generated certificate");
     app.add_option("--cert-pv-prefix", cert_pv_prefix, "Specifies the pv prefix to use to contact PVACMS.  Default `CERT`");
     // One option carrying a list, in the same shape as EPICS_PVA_AUTH_ISSUER, so there is one
-    // syntax to learn. One value each, the treatment --ou gets below, so an unquoted list is an
-    // error rather than a silently truncated one. Bound to a list of its own rather than to the
-    // configuration so that giving the option twice reaches a message worth reading here rather
-    // than the option library's, which says only that at most one argument was expected.
+    // syntax to learn. An unquoted list is an error. Giving the option twice is an error.
     app.add_option("-i,--issuer", issuer_option, "The issuer IDs of the PVACMS services to contact, whitespace or comma separated.  If not specified (default) broadcast to any that are listening")
         ->allow_extra_args(false);
 
@@ -148,17 +145,13 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
 
     CLI11_PARSE(app, argc, argv);
 
-    // Taking the last value quietly is the exact failure this option exists to prevent: it would
-    // drop an authority without saying so. Refused here rather than by the option library, which
-    // says only that at most one argument was expected and leaves an operator no wiser.
     if (issuer_option.size() > 1) {
         std::cerr << "--issuer is given once, with a list: --issuer \"aaaa bbbb\" or --issuer aaaa,bbbb. "
                      "It was given " << issuer_option.size() << " times." << std::endl;
         return 16;
     }
 
-    // An option given at all replaces the environment entirely, for membership and for ordering.
-    // Absent, whatever EPICS_PVA_AUTH_ISSUER put there is left alone.
+    // An option given at all replaces EPICS_PVA_AUTH_ISSUER entirely, for membership and for ordering.
     if (!issuer_option.empty()) {
         try {
             config.issuer_ids = cms::cert::parseIssuerList(issuer_option.front());
@@ -296,7 +289,8 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
             // The root each named authority chains to, not the certificate it signs with. Two
             // authorities under one root each answer that root, and it is written once.
             std::vector<X509 *> anchors_to_hold;
-            for (const auto &delivered : retrieved) anchors_to_hold.push_back(certs::anchorFromReply(delivered));
+            anchors_to_hold.reserve(retrieved.size());
+            for (const auto &delivered : retrieved) anchors_to_hold.push_back(anchorFromReply(delivered));
 
             // The identity already in the file is kept, so the chain is laid out around it and
             // the reset is refused outright when it would leave that identity unverifiable.

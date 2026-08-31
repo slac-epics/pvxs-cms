@@ -345,7 +345,7 @@ void writePemKey(const std::string& path, EVP_PKEY* key) {
  * The format is one tab-separated line per certificate: state, expiry, revocation time, serial,
  * file name, subject. Times are the two-digit-year form, which is what an X.509 UTCTime already
  * holds, and a four-digit year in the revocation field makes the responder answer with an
- * internal error instead of a status. Revoking is a matter of changing the state letter and
+ * internal error. Revoking changes the state letter and
  * filling in the revocation time.
  */
 void writeOcspIndex(const std::string& path, X509* cert, const std::string& subject_cn, bool revoked) {
@@ -514,9 +514,8 @@ struct CertCreator {
         // see RFC5280
 
         // Compute the Subject Key Identifier from the SUBJECT's own public key (RFC 5280).
-        // NOTE: gen_test_certs computes this from the issuer key (ikey), which is harmless there
-        // because it mints only one intermediate. Here we mint TWO intermediates, so each MUST get
-        // its OWN key's SKID or both collapse to the root's SKID and share one issuer id.
+        // Two intermediates are minted here, so each takes its OWN key's SKID and its own
+        // issuer id.
         add_skid_extension(cert.get(), key.get());
 
         // store hash and name of issuer certificate (or issuer's issuer?)
@@ -683,7 +682,7 @@ int main(int argc, char *argv[])
             // The responder reads the authority's standing from this file. It is written here
             // rather than by a script because the format is a certificate index: two-digit-year
             // times, tab separated, and a wrong field makes the responder answer with an
-            // internal error rather than a status.
+            // internal error.
             writeOcspIndex(SB()<<outdir<<"ocsp_index.txt", root_cert.get(), root_cn, false);
         }
 

@@ -51,8 +51,7 @@ RUN mkdir -p /home/idm/.config/krb5/
 # on regardless. Nothing was lost by that: each instruction runs in its own container, so a
 # process started by one is gone by the next, and the database is created and filled below with
 # kadmin.local, which works on the file directly and needs neither of them running. All the two
-# lines did was print two failures in the middle of a build that is otherwise quiet, which reads
-# like the build breaking.
+# lines print two failures in an otherwise quiet build. Suppressed.
 
 # Create the principals
 # - note clear passwords for testing purposes only

@@ -154,8 +154,7 @@ cert_factory_ptr IdFileFactory::create(const std::string& filename, const std::s
     const std::string ext = getExtension(filename);
     if (ext == "p12" || ext == "pfx") {
         // A chain with no entity certificate is the shape of a keychain that holds trust anchors
-        // and no identity of its own, so it takes the explicit form too rather than falling
-        // through to the one that reads a PEM string and would drop the chain.
+        // and no identity of its own, so it takes the explicit form too.
         if (cert_ptr || (certs_ptr && sk_X509_num(certs_ptr) > 0))
             return make_factory_ptr<P12FileFactory>(filename, password, key_pair, cert_ptr, certs_ptr);
         return make_factory_ptr<P12FileFactory>(filename, password, key_pair, pem_string);

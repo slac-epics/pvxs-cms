@@ -166,9 +166,8 @@ _bring_up() {
 }
 
 # ---------------------------------------------------------------- checks
-# Each laboratory is checked for what it has. A responder, a second department and a
-# internet are not universal, and asking about one a topology lacks would report a fault
-# where there is none.
+# Each laboratory is checked for what it has: a responder, a second department and an
+# internet belong to some topologies only.
 _places=$(eval "printf '%s' \"\${TOPOLOGY_${topology//-/_}_PLACES:-}\"")
 _has() { case " ${_places} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
@@ -264,8 +263,7 @@ _check_reads() {
 }
 
 _says() { # _says <expected text> <command...>   - true when the output contains the text
-    # The output is captured before it is searched: these commands are expected to fail, and
-    # under 'set -o pipefail' their failure would sink the pipeline even when the text matched.
+    # The output is captured before it is searched: these commands are expected to fail.
     local want="$1"; shift
     local out; out=$("$@" 2>&1 || true)
     printf '%s' "${out}" | grep -q -- "${want}"
@@ -351,8 +349,7 @@ if [ ! -x "${topology_dir}/mint.sh" ]; then
         _c=$(podman ps --filter "label=com.docker.compose.service=${_svc}" --format '{{.Names}}' | head -1)
         [ -n "${_c}" ] || continue
         # As root, because the images run their shells as an unprivileged user and /etc is
-        # root's. sh rather than bash, and only where EPICS is installed: a laboratory has
-        # appliances in it that are not ours and have neither.
+        # root's. sh, and only where EPICS is installed.
         podman exec --user root "${_c}" sh -c '
             [ -d /opt/epics ] || exit 0
             mkdir -p /etc/epics && printf "%s" "$1" > /etc/epics/issuer' _ "${_skid}" \

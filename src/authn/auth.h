@@ -479,9 +479,8 @@ inline std::string certAuthorityIssuerId(const CertData &cert_data) {
  *
  * Deciding whether an authority is the expected one must never rest on the subject key identifier
  * extension: that is written by whoever produced the certificate, so an attacker substituting its
- * own authority simply writes the expected value into it and passes. Computing the identifier from
- * the public key removes that, because the attacker would have to find a key that hashes to the
- * expected value rather than just assert it.
+ * own authority simply writes the expected value into it and passes. Computing the identifier
+ * from the public key binds it to the key.
  *
  * Returns the whole identifier, not a prefix. How much of it is compared is decided by the caller,
  * from how much they committed to in advance.
@@ -565,9 +564,8 @@ inline std::vector<std::string> heldAuthorityIds(const CertData &held) {
 /**
  * @brief Resolve the issuer ID that the caller has committed to trust, for this request.
  *
- * Trust must be asserted out-of-band before a certificate is accepted, otherwise the initial
- * exchange silently trusts whatever certificate authority answers — a man-in-the-middle could
- * substitute its own authority and compromise all later operations (issue slac-epics/pvxs-cms#18).
+ * Trust is asserted out-of-band before a certificate is accepted, so the initial exchange trusts
+ * a named authority (issue slac-epics/pvxs-cms#18).
  *
  * Naming an authority the keychain does not already hold is not a refusal: it asks that
  * authority to mint, and its root joins the anchors the file trusts without displacing any. What
@@ -594,8 +592,8 @@ inline std::string resolveExpectedIssuerId(const std::string &minting_issuer_id,
         // Nothing in the file names this authority, so this identifier is the only thing
         // deciding whether it is trusted, and it has to be the whole one. The short form names
         // an authority in a channel name and constrains 32 bits, which is few enough that an
-        // authority whose identifier begins with any wanted 32 bits can be generated in hours;
-        // trusting on that basis would accept one so generated.
+        // authority whose identifier begins with any wanted 32 bits can be generated in hours,
+        // so the whole identifier is required.
         requireCompleteIssuerId(minting_issuer_id, held_ids);
         return minting_issuer_id;
     }
@@ -649,9 +647,8 @@ inline void requireCompleteUnlessHeld(const std::string &issuer_id, const std::v
  *
  * A trust anchor reply is the certificate the manager signs with followed by the chain above it,
  * which is the opposite shape to a keychain, where the first certificate is an identity and the
- * authority is the one after it. `verifyDeliveredIssuerId` reads the keychain shape, so it must
- * not be used here: given a reply carrying a chain it would compare the root against the
- * authority that was asked for and reject a correct answer.
+ * authority is the one after it. `verifyDeliveredIssuerId` reads the keychain shape, so this
+ * reads the reply shape.
  *
  * @param delivered the reply
  * @param expected_issuer_id the authority that was asked
@@ -713,9 +710,7 @@ CertData retrieveTrustAnchor(const AuthT &authenticator,
  * certificate authority answers that intermediate together with the chain above it, and the root
  * is where the walk up that chain ends.
  *
- * A reply that reaches no root fails the command rather than falling back to the certificate
- * that was delivered. Holding a certificate that is not self-signed as though it were an anchor
- * writes a keychain that trusts nothing while reporting success, which is worse than refusing.
+ * A reply that reaches no root fails the command. An anchor is self-signed.
  *
  * @param delivered the reply, the authority's certificate followed by the chain above it
  * @return the root, borrowed from @p delivered
@@ -766,8 +761,8 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
         if (daemon_mode) credentials->config_uri_base = config.getCertPvPrefix();
 
         // What the keychain held before the request was sent. Anything an authenticator has to
-        // trust while reading the reply must come from here rather than from the reply itself,
-        // and the anchors it already holds are what this request must not disturb.
+        // trust while reading the reply comes from here, and the anchors it already holds are
+        // what this request must leave alone.
         const CertData held_before_request = readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
 
         // Which authority mints and which roots the file ends up trusting are two separate
@@ -779,9 +774,8 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
 
         // An authority named after the first is only added when trust is being established, so
         // say which one was passed over. An authority the keychain already trusts is silently
-        // passed over instead, because a site is expected to leave EPICS_PVA_AUTH_ISSUER set to
-        // its whole trusted list and a warning on every ordinary request would teach operators
-        // to ignore this one.
+        // passed over silently, because a site leaves EPICS_PVA_AUTH_ISSUER set to its whole
+        // trusted list.
         for (const auto &ignored : plan.ignored_issuers)
             std::cerr << "Ignoring issuer '" << ignored
                       << "': a certificate request is made against the first issuer named, and adding a trust anchor "
@@ -842,8 +836,8 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
             log_debug_printf(auth, "Cert generated by PVACMS and successfully received: %s\n", p12_pem_string.c_str());
 
             // Read the delivered material as certificates before anything is written, so the
-            // chain can be laid out afresh around the new identity rather than taken as it
-            // arrived. Taking it as it arrived is what would drop the anchors already held.
+            // chain is laid out afresh around the new identity, keeping the anchors already
+            // held.
             const CertData delivered = certDataFromPem(p12_pem_string);
 
             std::vector<X509 *> available = cms::cert::certsInChain(delivered.cert_auth_chain);
@@ -1031,8 +1025,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
             // is no cert file at all, handled above), behave as normal and mint a fresh cert.
             // If it does, adopt the existing cert and start the daemon: the status monitor then
             // fetches the initial status and handles renew-by / revoked / expired (and PVACMS
-            // connect/disconnect) itself, rather than doing a separate blocking status request
-            // here. See RenewalManager in auth.cpp.
+            // connect/disconnect) itself. See RenewalManager in auth.cpp.
             bool has_status_ext = true;
             try {
                 (void)CmsStatusManager::getStatusPvFromCert(cert_data.cert);

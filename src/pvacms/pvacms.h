@@ -131,8 +131,8 @@
 // The organizational units are not compared here. They are an ordered list of any length, so the
 // test is appended by getOrganizationalUnitsClause: a count of the candidate's units followed by
 // one positional equality test per requested value. `certs.OU` is deliberately left out of the
-// comparison even though it would narrow the search, because it is derived from the child table
-// and matching on both would make the answer depend on the two never drifting apart.
+// comparison, because it is derived from the child table and matching on both would couple
+// them.
 #define SQL_DUPS_SUBJECT              \
     "SELECT COUNT(*) "                \
     "FROM certs "                     \
