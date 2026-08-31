@@ -15,8 +15,7 @@ spec:
       labels: {app: pvacms, zone: lab}
     spec:
       securityContext:
-        # Root, so that krun_in can become a person by name with 'su -'. The podman
-        # laboratory uses 'podman exec --user', which kubectl has no equivalent of.
+        # Root, so that krun_in can become a person by name with 'su -'.
         runAsUser: 0
         fsGroup: 0
       containers:

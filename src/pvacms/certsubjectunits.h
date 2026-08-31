@@ -28,7 +28,7 @@ namespace certs {
 // runs when `certs` is absent and so never reaches a database made by an earlier version. The
 // migration travels with it in one transaction: a table that existed but had not been filled in
 // would make every certificate look as though it named no unit at all. A certificate that
-// already has units is left alone, so running this on every start is harmless.
+// already has units is left alone.
 #define SQL_CREATE_SUBJECT_UNITS_TABLE                                         \
     "BEGIN TRANSACTION; "                                                      \
     "CREATE TABLE IF NOT EXISTS cert_subject_units("                           \

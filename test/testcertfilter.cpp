@@ -71,8 +71,7 @@ void testPrecedence() {
 }
 
 // What a certificate is for is stored, and the listing prints it, so it can be filtered on.
-// It is derived from the recorded key usage rather than held in a column, which is why it is
-// matched in memory and never appears in the query.
+// It is derived from the recorded key usage, so it is matched in memory.
 void testTypeMatchesTheWordTheListingPrints() {
     testDiag("type: matches the word shown in the Type column");
 
@@ -107,7 +106,7 @@ void testTypeTakesTheSameValueFormsAsAnyText() {
 }
 
 // A derived field cannot be asked of the database, so the condition has to let its rows
-// through and leave the decision to matches(). Getting this wrong would silently drop rows.
+// through and leave the decision to matches().
 void testTypeIsDecidedInMemoryNotInTheQuery() {
     testDiag("A type test widens the condition rather than narrowing it");
 
@@ -203,8 +202,7 @@ void testPeriodDirectionFollowsTheField() {
     testOk(recent.matches(rowFor("a", "SLAC", {}, VALID)), "Issued inside the period matches");
 }
 
-// The shared duration reader treats a bare number as minutes, which would silently turn
-// "thirty days" into thirty minutes.
+// The shared duration reader treats a bare number as minutes, so a period names its unit.
 void testAPeriodWithoutAUnitIsRefused() {
     testDiag("A period without a unit letter is refused rather than guessed at");
     try {
@@ -241,7 +239,7 @@ void testUnitMatchesAnyValue() {
 }
 
 // The identifier an operator types back is the one they read, so it is matched through the same
-// helper the listing prints with rather than a padding rule written here.
+// helper the listing prints with.
 void testIdMatchesThePrintedForm() {
     testDiag("An identifier test matches the printed form");
     const auto printed = getCertId("a76e613b", 12345);
@@ -302,16 +300,13 @@ void testAnIssuerIsReadInEveryFormItIsWrittenIn() {
     // Nothing given stays nothing given, which is how "ask whoever answers" is said.
     testEq(readIssuerId(""), std::string(""));
 
-    // Whatever length it was given in, a channel name carries the digits it carries. Without
-    // this, naming an authority in full builds a name nothing serves and the request is never
-    // answered rather than refused.
+    // Whatever length it was given in, a channel name carries the digits it carries.
     testEq(issuerIdForPvName(full), std::string("807feda5"));
     testEq(getCertCreatePv("CERT", full), std::string("CERT:CREATE:807feda5"));
     testEq(getCertCreatePv("CERT", "807FEDA5"), std::string("CERT:CREATE:807feda5"));
     testEq(getCertListPv("CERT", full), std::string("CERT:LIST:807feda5"));
 
-    // Not an identifier at all, and too little of one to name an authority, are both refused
-    // rather than turned into a name that goes unanswered.
+    // Neither an identifier nor enough of one to name an authority is accepted.
     testThrows<std::runtime_error>([] { readIssuerId("not-hex-at-all"); });
     testThrows<std::runtime_error>([] { readIssuerId("807fed"); });
 
@@ -334,7 +329,7 @@ void testAnAuthorityCanBeNamedInFull() {
     // Naming somewhere else in full is still somewhere else.
     testOk1(!CertFilter::parse("issuer:d7421bfed1c58c1b9ba0f3d17c1d3a0f4e5c6d7e", kNow).possibleFor("a76e613b"));
 
-    // A pattern is left as written rather than shortened on the caller's behalf.
+    // A pattern is left as written.
     testOk1(CertFilter::parse("issuer:a76e*", kNow).possibleFor("a76e613b"));
 
     // The colon-separated form the certificate tools print, which has to be quoted here
@@ -428,8 +423,7 @@ void testMessagesCarryNoParserVocabulary() {
     testPass("No message uses parser vocabulary");
 }
 
-// The type is a real field that cannot be answered yet. Reporting it as unknown would send an
-// operator looking for a spelling mistake that is not there.
+// The type is a real field that cannot be answered yet, and says so.
 void testLimitsAreRefusedPlainly() {
     testDiag("A filter past a limit is refused with something an operator can act on");
 

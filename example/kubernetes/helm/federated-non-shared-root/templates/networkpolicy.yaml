@@ -42,12 +42,8 @@ spec:
 {{/*
 The gateways.
 
-THE DIFFERENCE. In podman each gateway stands on three segments and is told to serve on two of
-them, its own department left out, so a workstation there is never answered by it. A pod holds
-one address and serves on all of it, so the department is refused the gateway by policy instead.
-
-The rule is the same one: a department never reaches its own gateway. What changes is that a
-mistake now times out rather than being answered twice and reported as a duplicate name.
+A pod holds one address and serves on all of it, so a department is refused its own gateway by
+policy. A mistake times out.
 
 Reachable by the workstation outside, by the PEER department, whose clients this gateway serves,
 and by the peer gateway, which asks it whether a certificate it was shown still stands. That

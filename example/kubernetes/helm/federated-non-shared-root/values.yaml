@@ -1,18 +1,11 @@
 # The federated-non-shared-root laboratory: two departments under two independent roots.
 #
-# Ported from example/podman/topologies/federated-shared-root. Where the two differ, the
-# difference is marked THE DIFFERENCE at the point it applies. There are three:
+#   Discovery. This laboratory names every address it uses and turns automatic discovery off.
 #
-#   Discovery needs no substitute here: this laboratory already names every address it uses
-#   and turns automatic discovery off, so it ports across unchanged.
+#   The gateway. A NetworkPolicy stops a department reaching its own gateway.
 #
-#   The gateway not answering its own department. podman pins each gateway's listening
-#   A NetworkPolicy stops the
-#   department reaching its gateway instead.
-#
-#   Serving on some interfaces and not others. In podman each gateway stands on three segments
-#   and serves on two of them, its own department excluded. A pod has one address and serves on
-#   all of it, so a NetworkPolicy decides who may reach it instead.
+#   Serving. A pod has one address and serves on all of it, so a NetworkPolicy decides who may
+#   reach it.
 
 namespace: spva-lab
 

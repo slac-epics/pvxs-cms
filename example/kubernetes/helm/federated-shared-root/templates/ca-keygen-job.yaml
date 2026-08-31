@@ -1,12 +1,9 @@
 {{/*
 The authorities, minted before anything starts.
 
-THE DIFFERENCE from simple-with-gateway: there the certificate manager mints its own authority
-the first time it runs, and the issuer id is read back afterwards. Here there are two managers
-under one root, so the hierarchy has to exist before either of them starts and both have to be
-handed a piece of it. podman does this with mint.sh on the host, writing into a bind mount;
-there is no host to write to here, so the same binary runs as a pre-install hook and the result
-is packaged into Secrets.
+Two managers sit under one root, so the hierarchy exists before either starts and both are
+handed a piece of it. gen_lab_certs runs as a pre-install hook and the result is packaged into
+Secrets.
 
 The root is written without its key. It is a trust anchor for every host, and the key that
 would let anything be signed with it is not wanted on a running service.

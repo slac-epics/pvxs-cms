@@ -181,9 +181,8 @@ struct KeychainCase {
 
 // pvacms is pointed at copies of the generated keychains, never at the generated keychains
 // themselves. A password that does not open a keychain is not refused: pvacms sets that file
-// aside and mints a new one in its place, which would destroy the fixtures the rest of the test
-// suite is built on. The unparsable access policy file stops pvacms once the keychains have been
-// loaded, which it would otherwise not do, being a server.
+// aside and mints a new one. The unparsable access policy file stops pvacms once the keychains
+// have been loaded.
 std::string prepareCopies(const std::string &work, const std::string &name) {
     const std::string home = prepareHome(work, name);
     copyFile("client2.p12", home + "/client2.p12");

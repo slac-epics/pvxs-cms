@@ -98,9 +98,8 @@ services:
       - ../../scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
     command: ["/usr/local/bin/start-pvacms", "lab"]
 
-  # An IOC is told its own department's authority and given both roots as a file. It cannot
-  # reach the peer department to ask for that department's root, so it is handed over
-  # instead; see certs/trust_anchors.p12 and mint.sh.
+  # An IOC is told its own department's authority and given both roots as a file, because it
+  # has no route to the peer department's manager; see certs/trust_anchors.p12 and mint.sh.
   pvxs-lab-testioc:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/testioc:latest
@@ -108,9 +107,8 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      # Its own department by name rather than by broadcast. Naming them is what lets the
-      # peer department's gateway stand on this segment without being answered to a
-      # broadcast it was never meant to hear.
+      # Its own department, by name. Naming them lets the peer department's gateway stand on
+      # this segment and answer only what is meant for it.
       EPICS_PVA_AUTO_ADDR_LIST: "NO"
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
       # Only the ML department can say whether a certificate it issued still stands, and
@@ -133,9 +131,8 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      # Its own department by name rather than by broadcast. Naming them is what lets the
-      # peer department's gateway stand on this segment without being answered to a
-      # broadcast it was never meant to hear.
+      # Its own department, by name. Naming them lets the peer department's gateway stand on
+      # this segment and answer only what is meant for it.
       EPICS_PVA_AUTO_ADDR_LIST: "NO"
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
       # Only the ML department can say whether a certificate it issued still stands, and
@@ -166,8 +163,7 @@ services:
       <<: *lab-env
       EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
-      # Outside, and the ML department. Never its own department, which reaches its services
-      # directly and would otherwise be answered twice for the same name.
+      # Outside, and the ML department. Its own department reaches its services directly.
       GATEWAY_SERVE_SUBNET: "10.89.4. 10.89.1."
     volumes:
       - gateway-config:/home/gateway/.config/pva/1.5

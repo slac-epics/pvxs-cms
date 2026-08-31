@@ -17,7 +17,7 @@ namespace {
 DEFINE_LOGGER(sqlitehardening, "cms.db.hardening");
 
 // Applies one setting. A failure is reported and shrugged off: the server runs
-// without it, so refusing to start would be a worse outcome than running less
+// without it, so the service starts with a warning and runs less
 // well.
 void applyPragma(sqlite3 *db, const std::string &pragma, const char *what) {
     if (sqlite3_exec(db, pragma.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK) {

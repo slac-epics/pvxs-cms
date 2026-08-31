@@ -50,9 +50,8 @@ namespace certs {
  * of a certificate, it is a record of one request for one, and only a request awaiting approval
  * has one. Keyed on the serial number, which is how the rest of the schema names a certificate.
  *
- * The create statement must be run on every start rather than only when the certificate table is
- * absent, because the statement that builds the certificate table never reaches a database made
- * by an earlier version, and every running deployment would otherwise be left without this one.
+ * The create statement runs on every start, so a database made by an earlier version gains
+ * this table.
  */
 #define SQL_CREATE_REQUEST_ID_TABLE               \
     "CREATE TABLE IF NOT EXISTS cert_request_ids(" \
@@ -162,9 +161,7 @@ RequestIdPayload parseRequestIdPayload(const std::string &payload,
  * with SHA-256, empty label.
  *
  * A key that is not RSA, or whose modulus is under 2048 bits, or a payload the modulus cannot
- * carry, throws rather than falling back to anything weaker or truncating. A later move to
- * elliptic curve keys therefore fails loudly and forces the key agreement step to be designed
- * rather than skipped.
+ * carry, throws. A later move to elliptic curve keys fails loudly.
  */
 std::vector<uint8_t> encryptToRequester(const std::string &pub_key_pem, const std::string &payload);
 

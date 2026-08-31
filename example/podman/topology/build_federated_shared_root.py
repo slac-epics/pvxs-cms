@@ -42,8 +42,7 @@ tstioc_l = fields('Role: IOC','Image: tstioc','eth0  net-lab        10.89.0.0/24
  'Serves: tst:ArrayData, tst:ColorMode,','    and the rest of the image database')
 pvacms_l = fields('Role: PVACMS','Image: idm',
  'eth0  net-lab        10.89.0.0/24   its only interface',
- 'EPICS_PVA_AUTO_ADDR_LIST: NO   it serves and is served, and never',
- '                                   searches for anything itself',
+ 'EPICS_PVA_AUTO_ADDR_LIST: NO   it serves and is served',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/lab_intermediate.p12',
  'ACF: /etc/pvacms/pvacms.acf','Serves:','    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER',
@@ -73,17 +72,15 @@ mlioc_l = fields('Role: IOC','Image: ml-ioc','eth0  net-ml         10.89.1.0/24'
  'Serves: ml:aiExample, ml:stringExample,','    ml:longExample, ml:open (OPEN)')
 mlcms_l = fields('Role: PVACMS','Image: ml',
  'eth0  net-ml         10.89.1.0/24   its only interface',
- 'EPICS_PVA_AUTO_ADDR_LIST: NO   it serves and is served, and never',
- '                                   searches for anything itself',
+ 'EPICS_PVA_AUTO_ADDR_LIST: NO   it serves and is served',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'CA keychain: certs/ml_intermediate.p12',
  'ACF: /etc/pvacms/pvacms.acf','Serves:','    CERT:CREATE, CERT:LIST, CERT:ROOT, CERT:ISSUER',
  '    CERT:CREATE:ML_ISSUER, CERT:ISSUER:ML_ISSUER, CERT:ROOT:ML_ISSUER',
  '    CERT:LIST:ML_ISSUER:ALL, :EXPIRING, :PENDING_APPROVAL',
  '    CERT:STATUS:ML_ISSUER:<serial>')
-# One appliance owns the facility address. Mapping a port to a different port would break
-# PVAccess: a server names its own port in a search reply and the client dials that port on
-# the address the reply arrived from, so a translated port sends it to the other department.
+# One appliance owns the facility address, and each port maps to the same number: a server
+# names its own port in a search reply and the client dials that port.
 lb_l = fields('Role: facility load balancer, layer 4','Image: haproxy',
  'eth0  net-internet   10.89.4.0/24   the facility address',
  'eth1  net-perimeter  10.89.2.0/24   its foot in the DMZ',
@@ -120,14 +117,14 @@ ml_router_l = _router('ML', 'net-ml', '10.89.1.0/24',
 pc_l = fields('Role: client','Image: internet',
  'eth0  net-internet   10.89.4.0/24',
  'Listens: none (client only)','Logins: guest, operator',
- 'EPICS_PVA_ADDR_LIST: unset - nothing on its own segment to find',
+ 'EPICS_PVA_ADDR_LIST: unset',
  'EPICS_PVA_NAME_SERVERS: facility:5075, facility:5175',
  '    one address, one port per department')
 resp_l = fields('Role: OCSP responder for the Facility Root CA','Image: idm',
  'eth0  net-it         10.89.3.0/24   its own segment',
  'eth1  net-lab        10.89.0.0/24   on each network that names it,',
  'eth2  net-ml         10.89.1.0/24       as the balancer is',
- 'An IT service: it belongs to neither department, as the root does not',
+ 'An IT service, as the facility root is',
  'Listens: tcp/8888 OCSP over HTTP',
  'Program: openssl ocsp, under supervisor with a watchdog - one call at',
  '    a time, so a PVACMS asks up to five times before giving up',
@@ -252,8 +249,7 @@ CANVAS_W = ml_x + W_ml + M
 # top band geometry
 legend_x, legend_y = M, title_h + 26
 
-# The legend's height decides where everything below the top band starts, so it is worked
-# out here rather than while drawing.
+# The legend's height decides where everything below the top band starts.
 chips = [('CA or certificate - a file, on no network', C['ca'][1]),
          ('OCSP responder', C['ocsp'][1]),
          ('PVACMS', C['pvacms'][1]),
@@ -273,10 +269,9 @@ samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, N
            ('certificate relationship - signs / names', C['cert'], 2, '6 5'),
            ('a file the component loads', C['filedrop'], 1.6, '2 4')]
 notation = ['10.89.0.0/24 : the segment, in CIDR. Five of them, each with',
-            '               isolate=true: no network forwards to another, a',
-            '               broadcast search never leaves one, and a name is',
-            '               answered only within one. Crossing needs an',
-            '               interface on both sides.',
+            '               isolate=true: a broadcast search stays inside one,',
+            '               and a name is answered within one. Crossing needs',
+            '               an interface on both sides.',
             'eth0, eth1   : the host\'s interface on each segment. A host on',
             '               more than one is marked dual-homed',
             'tcp/5075     : PVAccess, plaintext',
@@ -287,16 +282,15 @@ notation = ['10.89.0.0/24 : the segment, in CIDR. Five of them, each with',
             '',
             'The segment CIDRs are pinned in compose.yaml, so they are',
             'these on every laboratory. Host addresses within a segment are',
-            'assigned by podman when a container starts and are not fixed:',
-            'per-container addresses cannot be set, because podman refuses',
-            'them on a container attached to more than one segment.']
+            'assigned by podman when a container starts, because podman sets',
+            'them per segment on a container attached to more than one.']
 abbrev = ['CA     : certificate authority','SKID   : subject key identifier, 40 hex digits',
           'Issuer ID: the first 8 digits of a SKID','PVACMS : certificate manager',
           'IOC    : input output controller','ACF    : access security file',
           'pvlist : what a gateway forwards','OCSP   : online certificate status protocol',
           'AIA    : authority information access extension','ML     : machine learning']
-note = ['A line claims attachment, not direction.','Arrowheads only where a direction is real.','',
-        'LAB_ISSUER, ML_ISSUER and the _SKID forms are','named, not printed: a fresh mint changes them.',
+note = ['A line claims attachment. Arrowheads mark a real direction.','',
+        'LAB_ISSUER, ML_ISSUER and the _SKID forms are','named here: a fresh mint changes them.',
         'Values: issuer_ids.env']
 # Two columns: the swatches and line kinds on the left, the notation and the
 # abbreviations on the right. One column ran past the zones below and crossed the line
@@ -328,8 +322,7 @@ ca_h = ZTITLE + 10 + root_h + 46 + child_h + 20
 ca_x = rx - ca_w/2
 ca_y = title_h + 26
 
-# The perimeter stands beside the authorities rather than above them, right of the legend,
-# which is where the simple-with-gateway picture puts it too.
+# The perimeter stands beside the authorities, right of the legend.
 pz_x, pz_y = ca_x - pz_w - 60, ca_y
 
 # Every segment is one horizontal line, tapped by each host standing on it, labelled once.
@@ -348,8 +341,8 @@ gw2_w = measure('pvxs-lab-ml-gateway', ml_gw_l)[0]
 itz_x = pz_x
 itz_w = (gx2 + gw2_w/2) - pz_x
 # The IT zone stands entirely right of the legend, so only what is directly above it counts.
-# net-internet belongs to nobody in the facility, so its line is drawn above the IT zone
-# rather than inside it, and the balancer reaches up out of the box to stand on it.
+# net-internet belongs to nobody in the facility, so its line is drawn above the IT zone, and
+# the balancer reaches up out of the box to stand on it.
 inet_bus_y = max(ca_y + ca_h, pz_y + pz_h) + 44
 itz_y = inet_bus_y + 44
 
@@ -491,9 +484,8 @@ def build(cv):
     cv.pill(rx, perim_bus_y - 16, 'net-perimeter  10.89.2.0/24  tcp/5075, tcp/5076, tcp/5175, tcp/5176', C['perim'])
 
     # --- the IT segment: the two routers stand on it, and the responder is the service on it
-    # A router taps the perimeter line at cx-30 and this one at cx+30, so an overhang of 60
-    # would end the line exactly on that router's other connector and read as joining it.
-    # 30 ends it midway between the two, clear of both.
+    # A router taps the perimeter line at cx-30 and this one at cx+30. An overhang of 30 ends
+    # midway between the two, clear of both.
     it_taps = [labr['cx'] + 30, mlr['cx'] + 30, rc['cx']]
     it0 = min(it_taps) - 30
     it1 = max(it_taps) + 30

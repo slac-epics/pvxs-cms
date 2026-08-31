@@ -1,18 +1,12 @@
 # The federated-shared-root laboratory: two departments under one facility root.
 #
-# Ported from example/podman/topologies/federated-shared-root. Where the two differ, the
-# difference is marked THE DIFFERENCE at the point it applies. There are three:
+#   Discovery. A pod network has no broadcast domain, so each department is given an explicit
+#   list of its own IOC services.
 #
-#   Discovery. A department in podman finds its own IOCs by broadcast. A pod network has no
-#   broadcast domain, so each department is given an explicit list of its own IOC services.
+#   The gateway. A NetworkPolicy stops a department reaching its own gateway.
 #
-#   The gateway not answering its own department. A NetworkPolicy stops the department
-#   reaching its gateway.
-#
-#   Which facility port a department may use. In podman nothing stops a lab workstation
-#   naming facility:5075 and so reaching its own gateway the long way round; only the
-#   configured value keeps it honest. Here the policy on the load balancer allows a department
-#   the PEER department's ports and not its own, so the rule is enforced rather than observed.
+#   Facility ports. The policy on the load balancer allows a department the PEER department's
+#   ports, so the rule is enforced.
 
 namespace: spva-lab
 

@@ -11,10 +11,8 @@
 #                       intermediate
 #   the ML department   a root held by PVACMS itself, which signs every certificate directly
 #
-# The lab root is written without its key, as the record of the authority: it is a trust
-# anchor, and the key that would let anything be signed with it is not wanted on a running
-# service. The ML root is written with its key, because that department's PVACMS is what
-# signs with it.
+# The lab root is written without its key, as the record of the authority. The ML root is
+# written with its key, because that department's PVACMS signs with it.
 #
 # There is no responder here. A responder answers for a root's own status, and revoking a
 # root is the shared-root laboratory's demonstration. Withdrawing a department here is
@@ -40,17 +38,14 @@ podman run --rm -v "$(pwd)/certs:/certs:Z" \
         mv /certs/cert_auth.p12 /certs/lab_root.p12
         # The tool mints a root with two intermediates beneath it, which is the shape the
         # shared-root laboratory wants. Here the second department has a root of its own, so
-        # the second intermediate is removed rather than left in certs/ to be taken for
-        # something in use.
+        # the second intermediate is removed.
         rm -f /certs/ml_intermediate.p12" >/dev/null
 
 LAB_ISSUER=$(sed -n 's/^LAB_ISSUER=//p' certs/issuer_ids.env)
 LAB_ISSUER_SKID=$(sed -n 's/^LAB_ISSUER_SKID=//p' certs/issuer_ids.env)
 
-# The ML root is minted by pvacms itself, the same code that would mint one on a first start,
-# run once here so that the identifier exists before anything is started. Everything that has
-# to be told which authority to trust is told before it runs, and a PVACMS that made its own
-# would not be able to say so until afterwards.
+# The ML root is minted by pvacms itself, run once here so the identifier exists before
+# anything starts and everything can be told which authority to trust.
 echo "==> minting the ML root, which that department's PVACMS signs with"
 podman run --rm \
     -v "$(pwd)/certs:/certs:Z" \
@@ -84,9 +79,7 @@ ML_ISSUER=${ML_ISSUER_SKID:0:8}
 # asks for an identity, and what it is issued is added to the anchors the file already holds
 # rather than replacing them.
 #
-# A workstation is left out on purpose. A person establishing trust by hand is the
-# demonstration this laboratory exists for, and a workstation that already held both anchors
-# would have nothing left to show.
+# A workstation is left out on purpose: establishing trust by hand is the demonstration.
 echo "==> writing the trust anchors both departments have to hold"
 podman run --rm -v "$(pwd)/certs:/certs:Z" \
     "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/idm:latest" bash -c '

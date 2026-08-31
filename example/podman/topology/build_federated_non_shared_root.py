@@ -22,8 +22,7 @@ lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-internet','Image:
  'eth2  net-ml         10.89.1.0/24   server side, where the ML department',
  '                                    asks it about lab certificates',
  'Program: p4p pvagw, layer 7','Config: config/gateway-lab.conf',
- 'Serves on eth1 and eth2, never on its own department: "interface" is',
- '    pinned, so its own side is not answered twice',
+ 'Serves on eth1 and eth2: "interface" is pinned to those two',
  'Reached directly at its own net-internet address, on 5075 and 5076',
  'EPICS_PVAS_STATUS_NAME_SERVERS: the peer gateway, read by the inner',
  '    client alone, to ask after a certificate the peer authority issued',
@@ -53,8 +52,7 @@ ml_gw_l = fields('Role: gateway (dual-homed), net-ml <-> net-internet','Image: g
  'eth2  net-lab        10.89.0.0/24   server side, where the lab department',
  '                                    asks it about ML certificates',
  'Program: p4p pvagw, layer 7','Config: config/gateway-ml.conf',
- 'Serves on eth1 and eth2, never on its own department: "interface" is',
- '    pinned, so its own side is not answered twice',
+ 'Serves on eth1 and eth2: "interface" is pinned to those two',
  'Reached directly at its own net-internet address, on 5075 and 5076',
  'EPICS_PVAS_STATUS_NAME_SERVERS: the peer gateway, read by the inner',
  '    client alone, to ask after a certificate the peer authority issued',
@@ -102,7 +100,7 @@ labca_l = fields('Subject: CN=EPICS Controls Intermediate CA','SKID: LAB_ISSUER_
 # signed under either root be verified.
 keychain_l = fields('File: one PKCS#12 keychain',
  '',
- 'IDENTITY - exactly one, never more',
+ 'IDENTITY - exactly one',
  '    Entity certificate: CN=guest',
  '    Private key',
  '',
@@ -209,9 +207,8 @@ def _router(dept, seg, cidr, far_gw, far_ports):
      'Routes on the destination subnet alone, layer 3. The port decides',
      '    only whether a packet is permitted at all, layer 4:',
      f'    {far_ports[0]}, {far_ports[1]} to {far_gw} on net-internet',
-     'Nothing here searches by broadcast: every service is named, which',
-     '    is what lets the peer gateway stand on this segment without',
-     '    answering a search that was never meant for it.')
+     'Every service here is named, which lets the peer gateway stand on',
+     '    this segment and answer only the searches meant for it.')
 lab_router_l = _router('lab', 'net-lab', '10.89.0.0/24',
                        'pvxs-lab-ml-gateway', ('tcp/5075', 'tcp/5076'))
 ml_router_l = _router('ML', 'net-ml', '10.89.1.0/24',
@@ -245,8 +242,7 @@ CANVAS_W = ml_x + W_ml + M
 # top band geometry
 legend_x, legend_y = M, title_h + 26
 
-# The legend's height decides where the rows below the top band start, so it is worked out
-# here rather than while drawing.
+# The legend's height decides where the rows below the top band start.
 chips = [('CA or certificate - a file, on no network', C['ca'][1]),
          ('PVACMS', C['pvacms'][1]),
          ('IOC', C['ioc'][1]),
@@ -274,15 +270,14 @@ notation = ['10.89.0.0/24 : the segment, in CIDR. Three of them: the two',
             '',
             'The segment CIDRs are pinned in compose.yaml, so they are',
             'these on every laboratory. Host addresses within a segment are',
-            'assigned by podman when a container starts and are not fixed:',
-            'per-container addresses cannot be set, because podman refuses',
-            'them on a container attached to more than one segment.']
+            'assigned by podman when a container starts, because podman sets',
+            'them per segment on a container attached to more than one.']
 abbrev = ['CA     : certificate authority','SKID   : subject key identifier, 40 hex digits',
           'Issuer ID: the first 8 digits of a SKID','PVACMS : certificate manager',
           'IOC    : input output controller','ACF    : access security file',
           'pvlist : what a gateway forwards','ML     : machine learning']
-note = ['A line claims attachment, not direction.','Arrowheads only where a direction is real.','',
-        'LAB_ISSUER, ML_ISSUER and the _SKID forms are','named, not printed: a fresh mint changes them.',
+note = ['A line claims attachment. Arrowheads mark a real direction.','',
+        'LAB_ISSUER, ML_ISSUER and the _SKID forms are','named here: a fresh mint changes them.',
         'Values: issuer_ids.env']
 # Two columns: the swatches and line kinds on the left, the notation and the
 # abbreviations on the right. One column ran past the zones below and crossed the line
@@ -331,22 +326,20 @@ ml_ca_x = lab_ca_x + lab_ca_w + CA_GAP
 
 ca_x, ca_w = lab_ca_x, ca_span
 
-# The keychain sits below both groups and reaches up to each root. Anything drawn between or
-# above them would read as the shared parent this topology does not have.
+# The keychain sits below both groups and reaches up to each root.
 kc_w, kc_h = measure('Keychain: one identity, many trust anchors', keychain_l)
 kc_x = (lab_ca_x + ml_ca_x + ml_ca_w)/2 - kc_w/2      # centred under the two groups it reaches
 kc_y = ca_y + ca_h + 52
 
 # net-internet is drawn the way every other segment is: one horizontal line, tapped by each
 # host that stands on it, labelled once. It belongs to nobody in the facility, so the line is
-# drawn below the box that holds the outside workstation rather than inside it: the
-# workstation taps it from above, and the two gateways and the two routers reach up to it out
-# of their departments.
+# drawn below the box that holds the outside workstation: the workstation taps it from above,
+# and the two gateways and the two routers reach up to it out of their departments.
 router_w, router_h = measure('pvxs-lab-router', lab_router_l)
 
 # The box outside the facility holds the one host that stands there and nothing else. It is
 # wide enough for its own title strip as well as the card: the title is set in 15px bold from
-# 40px in, so a box sized by the card alone would let the title run past the corner. It is
+# 40px in, so the box is sized for the title as well as the card. It is
 # centred between the two gateways, which is where the facility's outward face is, and hangs
 # below the authority groups and the keychain, so nothing in the top band is crossed.
 OUTSIDE_TITLE = 'net-internet   10.89.4.0/24   -   outside the facility'

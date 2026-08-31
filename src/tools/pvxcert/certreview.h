@@ -60,8 +60,7 @@ struct ReviewRow {
  *  test without a certificate manager.
  */
 struct ReviewCallbacks {
-    /** Read a certificate's status now. Return an empty string when it cannot be read, which
-     *  is treated as "unchanged" rather than as a reason to drop the certificate. */
+    /** Read a certificate's status now. An empty string is treated as unchanged. */
     std::function<std::string(const std::string &cert_id)> currentStatus;
 
     /** Apply one decision. Return an empty string on success, otherwise the server's message
@@ -92,10 +91,9 @@ std::vector<ReviewRow> reviewRowsFromTable(const Value &table);
 
 /** The status the certificate manager will compute for a certificate it approves.
  *
- *  It derives the status from the dates rather than storing the requested one, so an approved
- *  certificate whose validity has not started yet becomes PENDING and one whose validity has
- *  passed becomes EXPIRED. Worked out here only so the review can say what is about to happen;
- *  the certificate manager decides the value that is actually written.
+ *  It derives the status from the dates, so an approved certificate whose validity has not
+ *  started yet becomes PENDING and one whose validity has passed becomes EXPIRED. Worked out
+ *  here so the review can say what is about to happen; the certificate manager writes it.
  *
  *  @param issued start of validity, fixed-width year-first
  *  @param expires end of validity, fixed-width year-first

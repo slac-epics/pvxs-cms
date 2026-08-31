@@ -26,9 +26,9 @@ shift 2>/dev/null || true
 
 # Whether this session carries decisions. The internet zone reaches a certificate manager only
 # through a gateway, which makes its upstream connection as itself, so the certificate manager
-# would see the gateway rather than the administrator: the view of certificates awaiting a
-# decision is refused there and so is a decision write. Such a session opens with decisions off
-# and the display leaves those controls out rather than showing ones that come back refused.
+# sees the gateway: the view of certificates awaiting a decision is refused there and so is a
+# decision write. Such a session opens with decisions off and the display leaves those controls
+# out.
 : "${DECISIONS:=yes}"
 
 export DISPLAY=${DISPLAY:-:99}

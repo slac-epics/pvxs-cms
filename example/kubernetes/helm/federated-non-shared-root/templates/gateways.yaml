@@ -48,7 +48,7 @@ spec:
             - {name: gw, mountPath: /home/gateway/gateway.pvlist.in, subPath: {{ $g.pvlist }}}
             # Over the baked one, which names the shared root of Part 3. This laboratory has
             # two roots of its own, and a rule naming an authority that does not exist matches
-            # no holder, so every write would be refused with nothing looking wrong.
+            # no holder.
             - {name: acf, mountPath: /home/gateway/gateway.acf, subPath: gateway.acf}
 {{ include "lab.scriptsMount" $ | indent 12 }}
       volumes:

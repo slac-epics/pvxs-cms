@@ -114,8 +114,7 @@ inline std::string readIssuerId(const std::string &text) {
  * @brief The part of an issuer identifier that a process channel name carries.
  *
  * Channel names carry the first eight digits, so an identifier given in full addresses the same
- * certificate manager as the short form of it. Without this, naming an authority by all forty
- * digits builds a name nothing serves, and the request goes unanswered rather than refused.
+ * certificate manager as the short form of it.
  */
 inline std::string issuerIdForPvName(const std::string &issuer_id) {
     const auto digits = readIssuerId(issuer_id);

@@ -68,8 +68,7 @@ gw_lab_l = fields('Labels: app=gateway',
  'gateway-lab.conf carries',
  '    EPICS_PVAS_STATUS_NAME_SERVERS:',
  '    pvxs-lab-ml-gateway:5175 - read by',
- '    the inner client alone, so nothing',
- '    else is given the route',
+ '    the inner client alone',
  'Claim: gateway-config')
 gw_ml_l = fields('Labels: app=ml-gateway',
  'Image: gateway   Program: p4p pvagw',
@@ -81,9 +80,9 @@ gw_ml_l = fields('Labels: app=ml-gateway',
  'Claim: ml-gateway-config')
 fac_l = fields('Labels: app=facility zone=facility',
  'Image: haproxy, four frontends',
- 'A port is never translated: a server',
- 'names its own port in a search reply,',
- 'and the client dials that port next')
+ 'Each frontend and its backend carry the',
+ 'same port: a server names its own port in',
+ 'a search reply, and the client dials it')
 inet_l = fields('Labels: app=internet-client zone=internet',
  'Image: internet', 'Logins: guest, operator',
  'EPICS_PVA_NAME_SERVERS:',
@@ -96,18 +95,15 @@ resp_l = fields('Labels: app=authority-status',
  '    ocsp-index-seed onto claim',
  '    ocsp-state, so a revocation',
  '    survives the responder restarting',
- 'Liveness: an exec openssl ocsp',
- '    question, not a TCP probe')
+ 'Liveness: an exec openssl ocsp query')
 job_l = fields('pre-install hook, runs before anything',
- 'probe: skips when lab-issuer-ids exists -',
- '    authorities are minted once per',
- '    laboratory, not once per helm operation',
+ 'probe: skips when lab-issuer-ids exists;',
+ '    authorities are minted once per laboratory',
  'mint: gen_lab_certs -R root -L lab -M ml',
  '    -S http://pvxs-lab-authority-status:8888',
- '    - the responder name is minted INTO',
- '    the root; changing it means minting again',
- 'package: writes the Secrets and ConfigMaps;',
- '    the root key is never packaged')
+ '    - the responder name is referenced by',
+ '    the root certificate',
+ 'package: writes the Secrets and ConfigMaps')
 
 def svc(app, ports):
     return fields('ClusterIP', ports, f'selects app={app}')
@@ -195,9 +191,10 @@ ABBREV = ['PVACMS : certificate manager',
           'OCSP   : online certificate status protocol,',
           '         how the root is answered for',
           'SKID   : subject key identifier']
-NOTE = ['The root has no status process variable of its own.',
-        'The responder it names is the only way its',
-        'revocation reaches anything issued beneath it.']
+NOTE = ['A thick line is a segment or a shared address. Things',
+        'hang off it, marked with a dot where they attach.',
+        'A dashed line with an arrowhead is a certificate:',
+        'an authority signs, or a pod holds a file.']
 
 # ---------------------------------------------------------------- geometry
 M = 40
@@ -266,8 +263,9 @@ band_y = ca_y + ca_h + 18
 iz_y = ca_y + ca_h + 44
 
 FZ_TITLE = 'facility - NetworkPolicy facility-ingress'
-fz_h = ZTITLE + 30 + max(measure('svc facility', svc_fac_l)[1], measure('pvxs-facility-lb', fac_l)[1]) + ZP
-fz_w = int(max(svc_fac_w + GAP + fac_w + 2*ZP, 40 + len(FZ_TITLE)*9.0 + 16))
+fz_h = (ZTITLE + 30 + measure('svc facility', svc_fac_l)[1] + 44
+        + measure('pvxs-facility-lb', fac_l)[1] + ZP)
+fz_w = int(max(svc_fac_w + 2*ZP, fac_w + 2*ZP, 40 + len(FZ_TITLE)*9.0 + 16))
 fz_x = fac_cx - fz_w/2
 fz_y = iz_y + iz_h + 56
 
@@ -298,12 +296,14 @@ SEL = C['lb'][1]
 
 # ---------------------------------------------------------------- emit
 def sel_arrow(cv, x, y0, y1):
-    cv.hv([(x, y0), (x, y1 - 6)], SEL, 2)
-    cv.emit(f'<path d="M {x-4.5} {y1-8} L {x+4.5} {y1-8} L {x} {y1-1} z" fill="{SEL}"/>')
+    """A Service selecting its pod. Not traffic, so it carries no arrowhead."""
+    cv.hv([(x, y0), (x, y1)], SEL, 2)
+    cv.dot(x, y1, SEL)
     cv.pill(x + 46, (y0 + y1)/2, 'selects', SEL)
 
 def head_down(cv, x, y, colour):
-    cv.emit(f'<path d="M {x-4.5} {y-8} L {x+4.5} {y-8} L {x} {y-1} z" fill="{colour}"/>')
+    """Where a path meets a card. A dot, not an arrowhead: arrowheads mean certificates."""
+    cv.dot(x, y, colour)
 
 
 def build(cv):
@@ -387,13 +387,9 @@ def build(cv):
         sel_arrow(cv, s['cx'], s['bot'], p['top'])
 
     # --- facility and internet
-    sf = cv.card(fac_cx - (svc_fac_w + GAP + fac_w)/2, fz_y + ZTITLE + 30,
-                 'svc facility', svc_fac_l, 'lb', 'lb')
-    fb = cv.card(sf['x'] + svc_fac_w + GAP, fz_y + ZTITLE + 30,
-                 'pvxs-facility-lb', fac_l, 'lb', 'router')
-    # The Service and the pod stand side by side; the selection is said, not drawn, because
-    # an arrow between neighbours reads as traffic.
-    cv.pill((sf['x'] + sf['w'] + fb['x'])/2, sf['top'] - 14, 'selects app=facility', SEL)
+    sf = cv.card(fac_cx - svc_fac_w/2, fz_y + ZTITLE + 30, 'svc facility', svc_fac_l, 'lb', 'lb')
+    fb = cv.card(fac_cx - fac_w/2, sf['bot'] + 44, 'pvxs-facility-lb', fac_l, 'lb', 'router')
+    sel_arrow(cv, sf['cx'], sf['bot'], fb['top'])
     ic = cv.card(iz_x + (iz_w - inet_w)/2, iz_y + ZTITLE + 12, 'internet-client',
                  inet_l, 'client', 'client')
     cv.hv([(ic['cx'], ic['bot']), (ic['cx'], sf['top'] - 6)], C['bus_inet'], 2.5)
@@ -412,7 +408,7 @@ def build(cv):
     fan_y = fz_y + fz_h + 22
     for tgt, label in ((sgl, 'ports 5075 5076'), (sgm, 'ports 5175 5176')):
         x = tgt['cx']
-        cv.hv([(sf['cx'], sf['bot']), (sf['cx'], fan_y), (x, fan_y), (x, tgt['top'] - 6)],
+        cv.hv([(fb['cx'], fb['bot']), (fb['cx'], fan_y), (x, fan_y), (x, tgt['top'] - 6)],
               C['bus_inet'], 2.5)
         head_down(cv, x, tgt['top'], C['bus_inet'])
         cv.pill(x, fan_y + 26, label, C['bus_inet'])
@@ -431,12 +427,16 @@ def build(cv):
     # --- each department reaches its peer through the facility, up the outer margins
     lmx = lab_x - 22
     rmx = ml_x + W_ml + 22
-    cv.hv([(lcl['x'], lcl['top'] + 24), (lmx, lcl['top'] + 24), (lmx, fz_y + fz_h/2),
-           (fz_x, fz_y + fz_h/2)], C['bus_inet'], 2.5)
-    cv.pill(lmx, zone_y - 26, 'facility:5175 - the ML department', C['bus_inet'])
-    cv.hv([(mcl['x'] + mcl['w'], mcl['top'] + 24), (rmx, mcl['top'] + 24), (rmx, fz_y + fz_h/2),
-           (fz_x + fz_w, fz_y + fz_h/2)], C['bus_inet'], 2.5)
-    cv.pill(rmx, zone_y - 26, 'facility:5075 - the lab department', C['bus_inet'])
+    sfy = sf['top'] + sf['h']/2
+    cv.hv([(lcl['x'], lcl['top'] + 24), (lmx, lcl['top'] + 24), (lmx, sfy),
+           (sf['x'] - 3, sfy)], C['bus_inet'], 2.5)
+    cv.dot(sf['x'] - 3, sfy, C['bus_inet'])
+    cv.hv([(mcl['x'] + mcl['w'], mcl['top'] + 24), (rmx, mcl['top'] + 24), (rmx, sfy),
+           (sf['x'] + sf['w'] + 3, sfy)], C['bus_inet'], 2.5)
+    cv.dot(sf['x'] + sf['w'] + 3, sfy, C['bus_inet'])
+    for cx, text in ((lmx, 'facility:5175'), (rmx, 'facility:5075')):
+        half = (len(text)*6.2 + 12)/2
+        cv.pill(min(max(cx, half + 6), CANVAS_W - half - 6), zone_y - 26, text, C['bus_inet'])
 
     # --- the responder, and who asks it
     rsv = cv.card(rz_cx - svc_resp_w/2, rz_y + ZTITLE + 28,
@@ -530,7 +530,7 @@ def build(cv):
     hdr.append(f'<text x="{M}" y="40" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="{C["ink"]}">Secure PVAccess demonstration laboratory</text>')
     hdr.append(f'<text x="{M}" y="60" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">federated-shared-root: two departments under one facility root - example/kubernetes</text>')
     hdr.append(f'<text x="{M}" y="82" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B">Cluster: kind, name spva-lab, namespace spva-lab. Cilium is the network plugin.</text>')
-    hdr.append(f'<text x="{M}" y="97" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B">The segments below are NetworkPolicy, enforced by Cilium; the default CNI of kind does not enforce policy at all.</text>')
+    hdr.append(f'<text x="{M}" y="97" font-family="Menlo,Consolas,monospace" font-size="11" fill="#607D8B">The segments below are NetworkPolicy, enforced by Cilium.</text>')
     return hdr
 
 

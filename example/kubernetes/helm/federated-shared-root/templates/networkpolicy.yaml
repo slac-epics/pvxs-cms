@@ -1,9 +1,8 @@
 {{/*
 The segments.
 
-podman gives each of the five its own bridge with isolate=true, so nothing reaches another by
-addressing it and the gateways are the only crossings as a fact of the network. A pod network
-is flat, so the same shape is drawn with policy.
+A pod network is flat, so the segments are drawn with policy, and the gateways are the only
+crossings.
 
 Ingress only. A pod that may not be reached cannot do anything by trying, and a matched pair of
 ingress and egress rules is far harder to read than one direction.
@@ -45,15 +44,8 @@ spec:
 {{/*
 The gateways.
 
-THE DIFFERENCE, and the one worth reading twice. In podman each gateway stands on its own
-department's segment and simply does not listen there, so a workstation's search is answered
-once, by the IOC. A pod holds one address and cannot listen on part of it, so instead the
-department is not allowed to reach its own gateway at all.
-
-The rule that was being kept - a department never reaches its own gateway - is kept. What
-changes is where it is enforced, and so what a mistake looks like: a workstation that somehow
-addressed its own gateway now waits and times out, where in podman it would have been answered
-twice and told 'Duplicate PV name'.
+A pod holds one address and listens on all of it, so a department is kept from its own gateway
+by policy. A workstation that addresses it waits and times out.
 
 Reachable by the load balancer, which is how everything legitimate arrives, and by the PEER
 gateway, which is the fourth design rule: a gateway's server side asks the other department
@@ -73,13 +65,9 @@ spec:
 ---
 {{- end }}
 {{/*
-The load balancer, and the rule podman cannot enforce.
+The load balancer.
 
-In podman the facility alias exists on both departments' segments and every port is forwarded,
-so a lab workstation that named facility:5075 would reach its own gateway the long way round.
-Nothing prevents it there; only the configured value keeps it honest.
-
-Here each department is allowed the PEER department's ports and refused its own, so the second
+Each department is allowed the PEER department's ports and refused its own, so the second
 and third design rules hold whatever a workstation is configured with. The workstation outside
 gets both, which is the whole of its access.
 */}}

@@ -1,4 +1,4 @@
-{{/* The start scripts, taken verbatim from the podman topology so the two stay in step. */}}
+{{/* The start scripts. */}}
 apiVersion: v1
 kind: ConfigMap
 metadata:

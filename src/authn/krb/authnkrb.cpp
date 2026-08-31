@@ -405,7 +405,7 @@ bool AuthNKrb::verify(Value &ccr, time_t &authenticated_expiration_date) const {
     }
     // The whole list, not just the single-value field. Checking one field while the certificate
     // manager builds the subject from the other is how an unauthorised unit gets issued: the
-    // caller leaves the single value blank, which this would have accepted, and puts what it
+    // caller leaves the single value blank and puts what it
     // likes in the list. A Kerberos principal names no unit at all, so the list must be empty.
     if (!getOrganizationalUnits(ccr).empty()) {
         throw std::runtime_error(SB() << "Verify Credentials: Organization Unit in CCR not blank");

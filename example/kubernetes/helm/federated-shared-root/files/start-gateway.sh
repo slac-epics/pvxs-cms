@@ -3,15 +3,13 @@
 # variable list.
 #
 # The pvlist names certificate process variables by issuer, so each gateway claims only
-# what its own PVACMS can answer. With two of them on one network an unqualified name
-# would be claimed by both, and neither gateway could tell which department a request
-# meant.
+# what its own PVACMS can answer, so each name says which department it belongs to.
 set -euo pipefail
 var="${1:?usage: start-gateway <LAB_ISSUER|ML_ISSUER|none>}"
 
 # 'none' is a laboratory with one PVACMS, where the certificate process variables have no
-# issuer in their names and the authority is minted at that first start rather than
-# beforehand. Its issuer id therefore does not exist yet when this runs: reset.sh writes it
+# issuer in their names and the authority is minted at that first start. Its issuer id
+# therefore does not exist yet when this runs: reset.sh writes it
 # into /etc/epics/issuer once PVACMS has made it, and the gateway is restarted after that,
 # along with the IOCs, when the certificates are issued.
 if [ "${var}" = none ]; then
@@ -20,8 +18,8 @@ else
     issuer="${!var:-}"
     [ -n "$issuer" ] || { echo "$var is not set - is issuer_ids.env present?" >&2; exit 1; }
 
-    # The two forms are wanted for two different things, so both are read rather than one
-    # derived from the other. The short one names the department's certificate process
+    # The two forms are wanted for two different things, so both are read. The short one
+    # names the department's certificate process
     # variables, below. The whole one is what the gateway has to be given to establish trust in
     # the authority the first time it asks for its own certificate; the short form is refused
     # for that, being too little to decide which authority is meant.
@@ -38,10 +36,9 @@ fi
 # volume is mounted owned by root.
 mkdir -p /home/gateway/.config/pva/1.5 && chown -R gateway /home/gateway/.config
 
-# The trust anchors, where a laboratory hands them over rather than leaving them to be
-# fetched. A gateway with no path to the peer department's PVACMS cannot ask it for its root,
-# and in a laboratory whose departments share no root it has to hold that root to verify
-# anything signed under it. So the file is placed here before the gateway asks for
+# The trust anchors, where a laboratory hands them over. A gateway needs the peer
+# department's root to verify anything signed under it, so the file is placed here before
+# the gateway asks for
 # an identity: what it then receives is added to a keychain that already holds both anchors,
 # and asking for an identity never removes one.
 keychain=/home/gateway/.config/pva/1.5/gateway.p12
@@ -68,8 +65,7 @@ fi
 # department's servers can ask it about a certificate this one's authority issued, which is the
 # question only this side can answer.
 #
-# The addresses cannot be written into the configuration because podman assigns them at start,
-# so the subnets are named instead and the addresses are looked up here.
+# The subnets are named, and the addresses looked up here at start.
 if [ -n "${GATEWAY_SERVE_SUBNET:-}" ]; then
     serve_addrs=
     for subnet in ${GATEWAY_SERVE_SUBNET}; do

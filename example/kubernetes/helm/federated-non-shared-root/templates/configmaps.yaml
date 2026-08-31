@@ -1,4 +1,4 @@
-{{/* The start scripts and access security files, verbatim from the podman topology. */}}
+{{/* The start scripts and access security files. */}}
 apiVersion: v1
 kind: ConfigMap
 metadata: {name: lab-scripts}

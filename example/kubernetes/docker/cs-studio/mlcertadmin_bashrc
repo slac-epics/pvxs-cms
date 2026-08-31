@@ -7,7 +7,7 @@ export EPICS_PVA_AUTH_ORGANIZATION=epics.org
 
 # The machine learning department's certificate manager, and nothing else. The same reasoning as
 # the laboratory administrator: this identity administers its own department's certificates, and
-# the other department's certificate manager would refuse it.
+# the other department's certificate manager.
 export EPICS_PVA_ADDR_LIST="127.0.0.1 pvxs-lab-ml"
 export EPICS_PVA_AUTO_ADDR_LIST="NO"
 

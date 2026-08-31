@@ -270,15 +270,12 @@ std::vector<ReviewRow> issuedRows() {
 void testOnlyRevocableCertificatesAreOffered() {
     testDiag("a certificate that cannot be revoked is shown with a reason and never asked about");
 
-    // Tied to the server's own default rather than repeated by hand, so that changing the set
-    // the certificate manager will accept a revocation from, without changing the tool, fails
-    // here instead of only showing up as a refusal the administrator has already been asked to
-    // confirm. The declaration is pvacms.h updateCertificateStatus's valid_status default.
+    // Tied to the server's own default: pvacms.h updateCertificateStatus's valid_status.
     const std::vector<certstatus_t> server_revocable = {PENDING_APPROVAL, PENDING, VALID};
     for (const auto status : server_revocable) testTrue(isRevocable(CERT_STATE(status)));
 
-    // Walking every status the server defines, rather than a list repeated here, so that a new
-    // status added to CERT_STATUS_LIST is refused by default and has to be considered. The
+    // Walking every status the server defines, so a new one added to CERT_STATUS_LIST is
+    // refused by default and has to be considered. The
     // enumerators are consecutive from UNKNOWN, and REVOKED is declared last.
     for (int status = UNKNOWN; status <= REVOKED; ++status) {
         const auto expected = std::find(server_revocable.begin(), server_revocable.end(),

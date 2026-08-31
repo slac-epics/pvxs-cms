@@ -44,8 +44,7 @@ try:
                 cert_id = str(row[cert_at]).strip()
                 if cert_id == "":
                     continue
-                # A row the server would refuse is marked on the table and cannot be added, so
-                # the administrator is never asked to confirm a write that comes back refused.
+                # A row the server refuses is marked on the table and cannot be added.
                 if reason_at >= 0 and str(row[reason_at]).strip() != "":
                     refused.append("%s: %s" % (cert_id, str(row[reason_at]).strip()))
                     continue

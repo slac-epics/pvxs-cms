@@ -27,12 +27,9 @@ RUN echo "PVXS = \$(TOP)/../pvxs"             >> ${PROJECT_HOME}/RELEASE.local
 # Set up CONFIG_SITE.local
 RUN echo "PVXS_ENABLE_PVACMS = YES"           >> CONFIG_SITE.local
 
-# VCS_VERSION carries `git describe` in from the host: .dockerignore keeps .git
-# out of the build context (its bookkeeping churns constantly and would wreck the
-# layer cache), but without it the built binary could not say which commit it is.
-# Record it in CONFIG_SITE.local rather than on one make command line: several
-# downstream images (lab_base, idm, gateway) rebuild this tree and would
-# otherwise regenerate the version header with nothing in it.
+# VCS_VERSION carries `git describe` in from the host, because .dockerignore keeps
+# .git out of the build context. It is recorded in CONFIG_SITE.local, so the
+# downstream images that rebuild this tree keep it.
 ARG VCS_VERSION=unknown
 WORKDIR ${PROJECT_HOME}
 RUN echo "GENVERSIONDEFAULT = ${VCS_VERSION}" >> CONFIG_SITE.local

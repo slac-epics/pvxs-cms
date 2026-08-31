@@ -245,7 +245,7 @@ void testSchema() {
     testEq(scalar(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cert_request_ids';"),
            int64_t(1));
 
-    // Running it again must be harmless, because it runs on every start.
+    // It runs on every start, so running it again must succeed.
     testOk1(sqlite3_exec(db, SQL_CREATE_REQUEST_ID_TABLE, nullptr, nullptr, nullptr) == SQLITE_OK);
 
     // The certificate table is untouched: same rows, and no column added to it.
