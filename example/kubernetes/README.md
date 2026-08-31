@@ -252,16 +252,16 @@ krun_in lab as guest without a certificate pvxput test:stringExample hello
 ```sh
 kgo_tls
 # ==> asking for certificates inside the laboratory
-#     lab      7680fd57:9543760797533644244
-#     lab      7680fd57:7037933793904719043
-#     testioc  7680fd57:16731642807076057207
-#     tstioc   7680fd57:163946842145459274
+#     lab/guest         7680fd57:9543760797533644244
+#     lab/operator      7680fd57:7037933793904719043
+#     testioc/testioc   7680fd57:16731642807076057207
+#     tstioc/tstioc     7680fd57:163946842145459274
 # ==> approving them
 #   7680fd57:00163946842145459274  done
 #   7680fd57:09543760797533644244  done
 #   7680fd57:16731642807076057207  done
 #   7680fd57:07037933793904719043  done
-# ==> restarting what now holds one
+# ==> restarting services
 # ==> no workstation outside this laboratory; done
 ```
 
@@ -334,7 +334,7 @@ kgo_tls
   bc8fc42c:02389177307031252657  done
   bc8fc42c:05833605055436574197  done
   bc8fc42c:15972558760514836878  done
-==> restarting what now holds one
+==> restarting services
 ==> copying the trust anchor to the workstation outside
     copied to guest
     copied to operator
