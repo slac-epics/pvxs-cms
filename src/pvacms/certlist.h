@@ -116,7 +116,7 @@ enum class CertListView {
  * asked about it, and this is the only way it appears in a listing at all.
  *
  * A manager that signs with its own self-signed root is the other case. There the same
- * certificate is also a row of the certificates table, and the listing reads its standing back
+ * certificate is also a row of the certificates table, and the listing reads its operational status back
  * out of the table (`SQL_GET_CERT_STANDING`) so that the two rows agree.
  *
  * It is listed because of when it expires. Every certificate beneath it stops working the day

@@ -97,7 +97,7 @@ class AuthorityMonitor {
     /**
      * The last answer this service verified, and the moment it stops being one.
      *
-     * The standing is derived from these, so a poll that came back with nothing records
+     * The operational status is derived from these, so a poll that came back with nothing records
      * nothing and the answer already held stands until it runs out.
      */
     std::atomic<pvxs::certs::cert_authority_standing_t> answer_{pvxs::certs::cert_authority_standing_t::UNKNOWN};

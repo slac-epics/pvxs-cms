@@ -273,7 +273,7 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
     // never appear.
     if (root && view != CertListView::PendingApproval) {
         // A manager that signs with its own self-signed root holds that root in its own
-        // certificates table, and there is exactly one truth about a certificate's standing:
+        // certificates table, and there is exactly one truth about a certificate's operational status:
         // what this manager recorded. Taking it from anywhere else makes the anchor's row
         // contradict the row for the same certificate a few lines above it.
         const auto recorded = recordedStanding(certs_db, root->serial);
@@ -308,12 +308,12 @@ std::vector<CertListRow> queryCertList(sqlite3 *const certs_db, const CertListVi
             row.status = CERT_STATE(static_cast<int>(standing));
             row.issued = renderDate(root->not_before);
             row.expires = renderDate(root->not_after);
-            // Empty for a root nobody here issued: nothing changed its standing and nothing
+            // Empty for a root nobody here issued: nothing changed its operational status and nothing
             // here will renew it, both being the authority's own business.
             row.status_changed = renderDate(recorded.status_date);
             row.renew_by = renderDate(recorded.renew_by);
             // The column that carries a request identifier everywhere else says instead where
-            // this row's standing comes from, because the anchor was never requested.
+            // this row's operational status comes from, because the anchor was never requested.
             if (with_request_id) {
                 row.request_id = recorded.recorded ? kRootIssuedHere
                                                    : (root->names_responder ? "EXTERN OCSP" : "EXTERN");

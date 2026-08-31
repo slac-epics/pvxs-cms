@@ -65,7 +65,7 @@ spec:
             - name: EPICS_PVA_NAME_SERVERS
               value: "pvas://{{ include "lab.facilityService" . }}:{{ .Values.ports.pvaTls }}"
             # This workstation cannot reach the certificate manager except through the
-            # gateway, so it cannot establish the standing of its own certificate before using
+            # gateway, so it cannot establish the operational status of its own certificate before using
             # it. The gateway checks what is presented to it and refuses a holder that does not
             # stand, so the check is made where the connection is accepted rather than here.
             - name: EPICS_PVA_TLS_OPTIONS

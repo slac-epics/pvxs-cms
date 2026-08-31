@@ -1434,7 +1434,7 @@ int64_t onCreateCertificate(ConfigCms &config,
 
 
 /**
- * @brief Keeps the three standing listing views up to date.
+ * @brief Keeps the three operational status listing views up to date.
  *
  * A monitored table resends every column whenever anything changes, because a change mask
  * marks fields and an array is one field. A shortest gap between posts collapses a burst of
@@ -1697,7 +1697,7 @@ void onGetStatus(const ConfigCms &config,
                     break;
                 default:
                     // Anything else the chain reports that is worse than the holder's own
-                    // standing is reported as it stands.
+                    // operational status is reported as it stands.
                     if (authority_status > status) {
                         status = authority_status;
                         status_date = authority_status_date;
@@ -2928,7 +2928,7 @@ void setValue(Value &target, const std::string &field, const T &new_value) {
 // certificate and the one monitor stay alive until the process image goes away.
 
 /**
- * @brief The one trust anchor this service issues beneath, and its standing.
+ * @brief The one trust anchor this service issues beneath, and its operational status.
  *
  * A process has exactly one, established before it serves anything, and every status it
  * composes is answered through it, so every status in this service has it.
@@ -2949,7 +2949,7 @@ cert_authority_standing_t authorityStanding() {
 /**
  * @brief The facility root as the listing needs it, assembled fresh each time it is asked for.
  *
- * Fresh because its standing is not recorded anywhere: it is what the responder last said, and
+ * Fresh because its operational status is not recorded anywhere: it is what the responder last said, and
  * that is read at the point of answering like every other status this service composes.
  *
  * @return the root, or nothing when this service has not loaded one
@@ -3458,7 +3458,7 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
  * actually watching are posted to, because a status nobody is subscribed to is composed again
  * the moment somebody asks.
  *
- * @param cert_status_creator composes each status, already carrying the new standing
+ * @param cert_status_creator composes each status, already carrying the new operational status
  * @param status_monitor_params the certificates database and the channel to post on
  */
 void postAuthorityChangeToWatchers(const CertStatusFactory &cert_status_creator,
@@ -3493,7 +3493,7 @@ void postAuthorityChangeToWatchers(const CertStatusFactory &cert_status_creator,
         }
     }
     stmt.reset();
-    log_info_printf(pvacmsmonitor, "Authority standing changed: told %u watched certificates\n", posted);
+    log_info_printf(pvacmsmonitor, "Authority operational status changed: told %u watched certificates\n", posted);
 }
 
 timeval statusMonitor(const StatusMonitor &status_monitor_params) {
@@ -4061,8 +4061,6 @@ int main(int argc, char *argv[]) {
                 cluster_sync.publishCertChange(created_serial);
             else
                 cluster_sync.publishSnapshot();
-            // A new certificate belongs in the standing views straight away, most often on
-            // the one showing what is awaiting a decision.
             cert_list_views.refresh();
         });
 

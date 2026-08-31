@@ -679,7 +679,7 @@ int main(int argc, char *argv[])
             writePem(SB()<<outdir<<"ocsp_signer.pem", signer_cert.get());
             writePemKey(SB()<<outdir<<"ocsp_signer.key", signer_key.get());
 
-            // The responder reads the authority's standing from this file. It is written here
+            // The responder reads the authority's operational status from this file. It is written here
             // rather than by a script because the format is a certificate index: two-digit-year
             // times, tab separated, and a wrong field makes the responder answer with an
             // internal error.

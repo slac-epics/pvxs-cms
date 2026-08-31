@@ -166,7 +166,7 @@ services:
       # connection itself, which is why the authority has to be held before anything is asked.
       EPICS_PVA_NAME_SERVERS: "pvas://facility:5076"
       # This workstation cannot reach the certificate manager except through the gateway, so it
-      # cannot establish the standing of its own certificate before using it. The gateway checks
+      # cannot establish the operational status of its own certificate before using it. The gateway checks
       # what is presented to it and refuses a holder that does not stand, so the check is made
       # where the connection is accepted rather than here. It applies to this pvas:// name server
       # and nothing else.

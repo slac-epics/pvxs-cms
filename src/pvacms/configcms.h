@@ -335,10 +335,10 @@ class ConfigCms final : public Config {
 
     /**
      * @brief When the trust anchor's responder cannot be reached, keep serving the last
-     * verified answer about the authority rather than reporting its standing as unknown.
+     * verified answer about the authority rather than reporting its operational status as unknown.
      *
      * A failed transfer, an unverifiable reply and a malformed reply are one outcome: the
-     * authority's standing is not known. The default is to say so, which denies connections
+     * authority's operational status is not known. The default is to say so, which denies connections
      * until the responder answers again, because a facility that cannot check its authority
      * should stop rather than continue on an assumption. A site whose availability matters
      * more than that guarantee sets this, and an outage of one web service then leaves the
