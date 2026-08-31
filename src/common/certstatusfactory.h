@@ -75,13 +75,13 @@ class CertStatusFactory {
     CertStatusFactory(const ossl_ptr<X509>& cert_auth_cert, const ossl_ptr<EVP_PKEY>& cert_auth_pkey,
                       const pvxs::ossl_shared_ptr<STACK_OF(X509)>& cert_auth_cert_chain, const uint32_t cert_status_validity_mins = 30,
                       const uint32_t cert_status_validity_secs = 0,
-                      const cert_authority_standing_t authority_standing = cert_authority_standing_t::STANDING)
+                      const ocspcertstatus_t ocsp_status = OCSP_CERTSTATUS_GOOD)
         : cert_auth_cert_(cert_auth_cert),
           cert_auth_pkey_(cert_auth_pkey),
           cert_auth_cert_chain_(cert_auth_cert_chain),
           cert_status_validity_mins_(cert_status_validity_mins),
           cert_status_validity_secs_(cert_status_validity_secs),
-          authority_standing_(authority_standing) {}
+          authority_ocsp_status_(ocsp_status) {}
 
     /**
      * @brief Create OCSP status for certificate identified by serial number
@@ -185,7 +185,7 @@ class CertStatusFactory {
   private:
     // What the authority above these certificates is known to be. Every status composed here
     // is answered through it, so no caller can compose one that forgets it.
-    const cert_authority_standing_t authority_standing_;
+    const ocspcertstatus_t authority_ocsp_status_;
 
 
     /**

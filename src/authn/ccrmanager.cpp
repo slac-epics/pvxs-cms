@@ -80,7 +80,7 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     // way. The request presents no identity of its own - the point of it is that there is not one
     // yet - so the connection is anonymous whichever transport carries it, and the answer is
     // still verified against the authority the keychain already holds. Remote verification is
-    // enabled so that a holder whose own operational status cannot be established from where it stands is
+    // enabled so that a holder whose own certificate status cannot be established from where it stands is
     // not held back by it.
     //
     // Plain TCP is kept as the fallback rather than dropped. A holder with no anchor at all has
@@ -98,7 +98,7 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     if (holds_an_authority && base_config.isTlsConfigured()) {
         auto tls_config = base_config;
         // This request is made where the holder cannot reach the certificate manager to
-        // establish its own operational status, which is the whole reason it is asking.
+        // establish its own certificate status, which is the whole reason it is asking.
         tls_config.disableOwnCertStatusCheck();
         try {
             auto tls_client = tls_config.build();

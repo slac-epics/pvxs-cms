@@ -83,7 +83,7 @@ namespace certs {
  * Read for the trust anchor alone, outside the listing query, because the view and the filter
  * both narrow what that query returns.
  */
-#define SQL_GET_CERT_STANDING         \
+#define SQL_GET_CERT_STATUS         \
     "SELECT c.status, c.status_date, c.renew_by " \
     "FROM certs c WHERE c.serial = :serial"
 
@@ -116,8 +116,8 @@ enum class CertListView {
  * asked about it, and this is the only way it appears in a listing at all.
  *
  * A manager that signs with its own self-signed root is the other case. There the same
- * certificate is also a row of the certificates table, and the listing reads its operational status back
- * out of the table (`SQL_GET_CERT_STANDING`) so that the two rows agree.
+ * certificate is also a row of the certificates table, and the listing reads its certificate status back
+ * out of the table (`SQL_GET_CERT_STATUS`) so that the two rows agree.
  *
  * It is listed because of when it expires. Every certificate beneath it stops working the day
  * it does, and an authority that appears in no listing is one nobody is watching the calendar
@@ -125,7 +125,7 @@ enum class CertListView {
  */
 struct RootAuthority {
     bool names_responder{false};  //!< whether the certificate says where its revocation is published
-    certstatus_t standing{UNKNOWN};  //!< what that responder says, or UNKNOWN when there is none
+    certstatus_t status{UNKNOWN};  //!< what that responder says, or UNKNOWN when there is none
     std::string cert_id;          //!< its own subject key identifier and serial, since it issued itself
     std::string common_name, organization, country;
     std::vector<std::string> organizational_units;
