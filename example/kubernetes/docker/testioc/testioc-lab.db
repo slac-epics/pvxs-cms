@@ -20,3 +20,11 @@ record(ao, "test:open") {
    field(ASG, "OPEN")
    field(DESC, "Any certificate holder, either zone")
 }
+
+# A variable no anonymous client can see at all. Its access group carries no unqualified rule,
+# so a caller with no certificate is refused both ways. A holder of any certificate this
+# laboratory trusts may read it, and only the lab department may write it.
+record(ao, "test:hidden") {
+   field(ASG, "HIDDEN")
+   field(DESC, "Cert holders read, lab dept writes")
+}

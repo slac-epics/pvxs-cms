@@ -48,3 +48,19 @@ ASG(DEFAULT) {
         METHOD(X509)
     }
 }
+
+# test:hidden. No unqualified rule, so a caller presenting no certificate gets neither read nor
+# write. Reading asks for a certificate and nothing more; writing asks which department issued
+# it.
+ASG(HIDDEN) {
+    RULE(1,READ) {
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    RULE(1,WRITE,TRAPWRITE) {
+        AUTHORITY(EPICS_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}
