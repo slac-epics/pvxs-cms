@@ -664,13 +664,15 @@ _kcheck_refusals() {
 #
 _kask() {
     local place="$1" who="$2"; shift 2
+    # Named place/person: two people in one place each hold their own certificate.
+    local label="${place}/${who}"
     local out; out=$(krun_in "${place}" as "${who}" "$@" 2>&1 || true)
     if printf '%s' "${out}" | grep -q "Certificate identifier"; then
-        printf '    %-8s %s\n' "${place}" "$(printf '%s' "${out}" | grep 'Certificate identifier' | sed 's/.*: //')"
+        printf '    %-22s %s\n' "${label}" "$(printf '%s' "${out}" | grep 'Certificate identifier' | sed 's/.*: //')"
     elif printf '%s' "${out}" | grep -q "Valid certificate found"; then
-        printf '    %-8s already holds one\n' "${place}"
+        printf '    %-22s already holds one\n' "${label}"
     else
-        printf '    %-8s FAILED\n' "${place}"
+        printf '    %-22s FAILED\n' "${label}"
         printf '%s\n' "${out}" | tail -3 | sed 's/^/        /'
     fi
 }
@@ -704,7 +706,7 @@ kgo_tls() {
             | grep -E "done|No certificates" || true
     fi
 
-    echo "==> restarting what now holds one"
+    echo "==> restarting services"
     _k exec deploy/pvxs-lab-testioc -- supervisorctl restart testioc >/dev/null 2>&1 || true
     _k exec deploy/pvxs-lab-tstioc  -- supervisorctl restart tstioc  >/dev/null 2>&1 || true
     if [ "${has_ml}" = yes ]; then
