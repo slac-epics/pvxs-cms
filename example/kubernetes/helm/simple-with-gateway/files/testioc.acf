@@ -49,10 +49,11 @@ ASG(DEFAULT) {
     }
 }
 
-# test:hidden. No unqualified rule, so a caller presenting no certificate gets neither read nor
-# write. Reading asks for a certificate and nothing more; writing asks which department issued
-# it.
+# test:hidden. The default is no access at all: a caller with no certificate matches only the
+# NONE rule, so it can neither read nor write. A certificate holder reads. Only the lab
+# department writes.
 ASG(HIDDEN) {
+    RULE(1,NONE)
     RULE(1,READ) {
         AUTHORITY(EPICS_CA)
         PROTOCOL(TLS)
