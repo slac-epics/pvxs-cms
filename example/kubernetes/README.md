@@ -82,6 +82,8 @@ Use Docker Desktop on macOS, but install kind and helm
    kbuild_images                # JOBS=2 kbuild_images on a machine with little memory
    ```
 
+**Note**: The images and build scripts are shared with the podman examples so you don't have to do this twice.  Do either here or there.
+
 6. Load the images into the cluster, which has no access to the runtime's image
    store:
 
@@ -103,7 +105,7 @@ kreset_topology federated-shared-root  # brings it up, verifies it, and reads it
 ```
 
 
-To take a laboratory away and build nothing in its place:
+To take a laboratory away:
 
 ```sh
 kreset_topology clear             # the laboratory; the cluster stays
@@ -112,9 +114,7 @@ kreset_topology clear --cluster   # the cluster too
 
 ## Certificate Authorities
 
-Certificate authorities are created in `topologies/<name>/`.
-
-Environment variables set automatically but `reset_topology`
+Environment variables are set automatically by `reset_topology`
 - `$LAB`  `$LAB_SKID` - lab issuer ID and lab issuer SKID (Lab CA)
 - `$ML`  `$ML_SKID` - lab issuer ID and lab issuer SKID (ML CA)
 - `$ROOT` `ROOT_SKID` - If lab is an intermediate CA then this is its Root CA's ID and SKID 
@@ -149,13 +149,13 @@ krun_in <place> as <person> [without a certificate] [--show] <command...>
 - `--show` prints the `kubectl` command that would run, without running it.
 
 ```sh
-krun_in internet as guest without a certificate --show pvxmonitor tst:ArrayData                                                                                                                                                 # kubectl -n spva-lab exec -it deploy/internet-client -- su - guest -c '
+krun_in lab as guest without a certificate --show pvxmonitor tst:ArrayData                                                                                                                                                      # kubectl -n spva-lab exec -it deploy/lab-client -- su - guest -c '
 # source ~/.guest_bashrc 2>/dev/null
 # unset EPICS_PVA_ADDR_LIST EPICS_PVA_AUTO_ADDR_LIST EPICS_PVA_NAME_SERVERS EPICS_PVA_TLS_OPTIONS
 # [ -r /tmp/.pva-pod-env ] && . /tmp/.pva-pod-env
 # export EPICS_PVA_TLS_KEYCHAIN=${HOME}/.config/pva/1.5/client.p12
 # export EPICS_PVA_TLS_KEYCHAIN=
-
+# 
 # export PVXS_LOG=${PVXS_LOG:-none}
 # pvxmonitor tst:ArrayData '
 ```
@@ -172,6 +172,7 @@ Simulation status.
 - `klab_status` shows what is running.
 
 ### Controlling the OCSP responder
+For `federated-shared-root` only:
 - `kocsp_responder` reports what facility root's OCSP responder is reporting about the root certificate status
 - `kocsp_responder unreachable` makes the OCSP responder unreachable
 - `kocsp_responder reachable` restores reachability of the OCSP responder
@@ -218,31 +219,26 @@ kcopy_anchor                # physically copy the trust anchor to the internet z
 
 ## Part 1: simple
 
+### Deploy 
+
 | Place                | Conf                       | Value                                              | Description                            |
 | -------------------- | -------------------------- | -------------------------------------------------- | -------------------------------------- |
 | lab workstation, IOC | `EPICS_PVA_AUTO_ADDR_LIST` | `NO`                                               | finds IOCs by `EPICS_PVA(S)_ADDR_LIST` |
 |                      | `EPICS_PVA_ADDR_LIST`      | `pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc` |                                        |
-
-
-[![The simple laboratory in one namespace: a certificate manager that mints its own authority, two IOCs and a workstation, admitted to one another by a single NetworkPolicy](topology/topology-simple.svg)](https://raw.githubusercontent.com/spva-epics/pvxs-cms/fy26-integration-testing/example/kubernetes/topology/topology-simple.svg)
-
-One department: a certificate manager that mints its own authority the first time it
-starts, two IOCs each behind a ClusterIP Service, and a workstation. Build it:
+|                      |                            |                                                    |                                        |
 
 ```sh
 kreset_topology simple
 ```
 
-```
-The simple laboratory is up:
-    one laboratory with two IOCs and its own PVACMS,
+[![The simple laboratory in one namespace: a certificate manager that mints its own authority, two IOCs and a workstation, admitted to one another by a single NetworkPolicy](topology/topology-simple.svg)](https://raw.githubusercontent.com/spva-epics/pvxs-cms/fy26-integration-testing/example/kubernetes/topology/topology-simple.svg)
+The reset also prints `$ROOT` and `$ROOT_SKID`, the CA issuer ID and SKID and exports both into your shell.  As a convenience
+we add the full identifier in `/etc/epics/issuer`.
 
-```
 
-The reset also prints `$ROOT` and `$ROOT_SKID`, the authority's issuer identifier in its
-short and whole forms, and exports both into your shell.
+## 1. Authorization
 
-Reading needs nothing. Writing needs a certificate, and nothing holds one yet:
+Reading is permitted everywhere in this lab:
 
 ```sh
 krun_in lab as guest without a certificate pvxget test:aiExample
@@ -251,17 +247,30 @@ krun_in lab as guest without a certificate pvxput test:stringExample hello
 #   ERROR ... Put not permitted
 ```
 
-Everyone asks for a certificate, the administrator approves the lot, and the IOCs pick
-theirs up:
+**Issue certificates, approve, and restart services.** Do it all at once with `kgo_tls`:
+
+```sh
+kgo_tls
+# ==> asking for certificates inside the laboratory
+#     lab      7680fd57:9543760797533644244
+#     lab      7680fd57:7037933793904719043
+#     testioc  7680fd57:16731642807076057207
+#     tstioc   7680fd57:163946842145459274
+# ==> approving them
+#   7680fd57:00163946842145459274  done
+#   7680fd57:09543760797533644244  done
+#   7680fd57:16731642807076057207  done
+#   7680fd57:07037933793904719043  done
+# ==> restarting what now holds one
+# ==> no workstation outside this laboratory; done
+```
+
+Now create user certificates
 
 ```sh
 krun_in lab as guest    authnstd -u client
 krun_in lab as operator authnstd -u client
-krun_in testioc as testioc authnstd -u ioc
-krun_in tstioc  as tstioc  authnstd -u ioc
 krun_in lab-pvacms as admin pvxcert --review-pending --all approve --yes
-krestart testioc
-krestart tstioc
 ```
 
 Now the access rules decide, and they distinguish people:
