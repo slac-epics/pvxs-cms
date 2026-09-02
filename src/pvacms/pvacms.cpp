@@ -2924,11 +2924,11 @@ int readParameters(int argc,
                    "Specify PVACMS default duration for client certificates");
 
     app.add_option("--cert_validity-server",
-                   config.default_client_cert_validity,
+                   config.default_server_cert_validity,
                    "Specify PVACMS default duration for server certificates");
 
     app.add_option("--cert_validity-ioc",
-                   config.default_client_cert_validity,
+                   config.default_ioc_cert_validity,
                    "Specify PVACMS default duration for IOC certificates");
 
     app.add_option("--cert_validity",
