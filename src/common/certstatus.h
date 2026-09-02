@@ -13,6 +13,7 @@
 #define PVXS_CERTSTATUS_H_
 
 #include <iomanip>
+#include <limits>
 
 #include <openssl/x509.h>
 
@@ -24,21 +25,13 @@
 #include "ownedptr.h"
 #include "security.h"
 
-#define CERT_TIME_FORMAT "%a %b %d %H:%M:%S %Y UTC"
-
 typedef epicsGuard<epicsMutex> Guard;
 typedef epicsGuardRelease<epicsMutex> UnGuard;
 
 DEFINE_LOGGER(status_setup, "pvxs.certs.status");
 
 // Define permanently valid status time
-#if defined(__TIME_T_MAX__)
-#define PERMANENTLY_VALID_STATUS __TIME_T_MAX__
-#elif defined(__INT_MAX__)
-#define PERMANENTLY_VALID_STATUS (time_t)(__INT_MAX__)
-#else
-#define PERMANENTLY_VALID_STATUS (time_t)((~(unsigned long long)0) >> 1)
-#endif
+#define PERMANENTLY_VALID_STATUS (std::numeric_limits<time_t>::max)()
 
 namespace pvxs {
 namespace certs {
@@ -200,23 +193,6 @@ inline std::string getCertStatusURI(const std::string &prefix, const std::string
 }
 
 /**
- * @brief Make the config URI for a certificate
- *
- * @param cert_pv_prefix the prefix for PVACMS PVs.  Default `CERT`
- * @param issuer_id the issuer ID (first 8 hex digits of the hex SKID)
- * @param skid Subject Key Identifier based on a public key used to re-generate Cert
- * @return the config URI
- */
-inline std::string getConfigURI(const std::string &cert_pv_prefix, const std::string& issuer_id, const std::string& skid) {
-    std::string pv = cert_pv_prefix;
-    pv += ":CONFIG:";
-    pv += issuer_id;
-    pv += ":";
-    pv += skid;
-    return pv;
-}
-
-/**
  * @brief Generates a serial number string as used in a certificate ID.
  *
  * Left pad with zeros in 20 characters
@@ -321,16 +297,10 @@ enum ocspcertstatus_t { OCSP_CERT_STATUS_LIST };
 #define CERT_STATES {CERT_STATUS_LIST}
 #define OCSP_CERT_STATES {OCSP_CERT_STATUS_LIST}
 
-// Gets status name based on index (use inline functions for MSVC compatibility)
-// Compound literals ((const char*[]){...}) are a GCC/Clang extension, not supported by MSVC.
-inline const char* cert_state_name(int index) {
-    static const char* const states[] = CERT_STATES;
-    return states[index];
-}
-inline const char* ocsp_cert_state_name(int index) {
-    static const char* const states[] = OCSP_CERT_STATES;
-    return states[index];
-}
+// Gets status name based on index (defined out-of-line in certstatus.cpp, with
+// bounds checking, to avoid duplicating the name tables in every translation unit)
+const char* cert_state_name(std::size_t index);
+const char* ocsp_cert_state_name(std::size_t index);
 #define CERT_STATE(index) cert_state_name(index)
 #define OCSP_CERT_STATE(index) ocsp_cert_state_name(index)
 
@@ -388,8 +358,8 @@ struct DbCert {
 struct CertStatus {
     // enum value of the status
     uint32_t i{0};
-    // string representation of the status
-    std::string s{};
+    // string representation of the status (points into a static name table)
+    const char* s{""};
     // Default constructor
     CertStatus() = default;
     CertStatus(const CertStatus&) = default;
@@ -644,7 +614,7 @@ struct CertStatus {
      * @param status the enum index of the status
      * @param status_string the string representation of the status
      */
-    explicit CertStatus(const uint32_t status, const std::string& status_string) : i(status), s(status_string) {}
+    explicit CertStatus(const uint32_t status, const char* status_string) : i(status), s(status_string) {}
 
     // Friend declarations to allow cross-comparisons only between specific types
     friend struct PVACertStatus;
@@ -679,7 +649,7 @@ struct PVACertStatus : CertStatus {
      * @param status the enum index of the status
      * @return the string representation of the status
      */
-    static std::string toString(const certstatus_t status) { return CERT_STATE(status); }
+    static const char* toString(const certstatus_t status) { return CERT_STATE(status); }
 };
 
 /**
@@ -709,7 +679,7 @@ struct OCSPCertStatus : CertStatus {
      * @param status the enum index of the status
      * @return the string representation of the status
      */
-    static std::string toString(const ocspcertstatus_t& status) { return OCSP_CERT_STATE(status); }
+    static const char* toString(const ocspcertstatus_t& status) { return OCSP_CERT_STATE(status); }
 };
 
 /**

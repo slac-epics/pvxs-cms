@@ -7,6 +7,8 @@
 #ifndef PVXS_CONFIGCMS_H_
 #define PVXS_CONFIGCMS_H_
 
+#include <iosfwd>
+
 #include <pvxs/config.h>
 #include <pvxs/server.h>
 
@@ -18,7 +20,51 @@ namespace certs {
 
 class ConfigCms final : public Config {
    public:
-    void updateDefs(defs_t& defs) const override;
+    //! Fill defs with the base server config plus the PVACMS-specific
+    //! definitions.  Not an override: the base updateDefs() is non-virtual, so
+    //! this is a distinctly-named method that the ConfigCms operator<< uses to
+    //! print the full effective config.
+    void updateCmsDefs(defs_t& defs) const;
+
+    /**
+     * @brief The prefix to prepend to the URI for CREATE, STATUS, ROOT, etc PVs
+     * that this PVACMS publishes.  Default "CERT".
+     *
+     * PVACMS owns this because it originates these PVs; clients and servers
+     * derive the names from certificate extensions rather than configuration.
+     */
+    std::string cert_pv_prefix{"CERT"};
+
+    /**
+     * @brief Set the certificate PV prefix
+     * @param prefix the certificate PV prefix
+     */
+    void setCertPvPrefix(const std::string& prefix) { cert_pv_prefix = prefix; }
+
+    /**
+     * @brief Get the certificate PV prefix
+     */
+    std::string getCertPvPrefix() const { return cert_pv_prefix; }
+
+    /**
+     * @brief The request timeout, in seconds, for PVACMS client operations.
+     *
+     * PVACMS owns this because it drives its own client waits; it is not
+     * settable via an environment variable, only programmatically or from
+     * a command line tool.
+     */
+    double request_timeout{5.0};
+
+    /**
+     * @brief Set the request timeout
+     * @param timeout the request timeout in seconds
+     */
+    void setRequestTimeout(const double timeout) { request_timeout = timeout; }
+
+    /**
+     * @brief Get the request timeout
+     */
+    double getRequestTimeout() const { return request_timeout; }
 
     /**
      * @brief Minutes that the ocsp status response will
@@ -320,6 +366,10 @@ class ConfigCms final : public Config {
     static ConfigCms mockCms(int family=AF_INET);
     static ConfigCms forCms();
 };
+
+//! Print the full effective PVACMS configuration (base server config plus the
+//! PVACMS-specific definitions).
+std::ostream &operator<<(std::ostream &strm, const ConfigCms &conf);
 
 }  // namespace certs
 }  // namespace pvxs

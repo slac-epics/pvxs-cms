@@ -13,7 +13,7 @@
 #include <dbBase.h>
 
 #include <pvxs/log.h>
-#include <pvxs/credentials.h>
+#include "asauth.h"
 
 #include "clustersync.h"
 #include "pvacmsVersion.h"
@@ -122,11 +122,8 @@ void ClusterController::setupRpcHandler() {
     ctrl_pv_.onRPC([this](server::SharedPV &, std::unique_ptr<server::ExecOp> &&op, Value &&args) {
         try {
             const auto creds = op->credentials();
-            ioc::Credentials credentials(*creds);
-            ioc::SecurityClient securityClient;
-            securityClient.update(as_cluster_mem_, ASL1, credentials);
 
-            if (!securityClient.canWrite()) {
+            if (!clientCanPut(as_cluster_mem_, ASL1, *creds)) {
                 log_warn_printf(pvacmscluster, "Join request rejected: client not authorized (%s)\n",
                                 creds->account.c_str());
                 op->error("Not authorized for cluster operations");

@@ -28,7 +28,6 @@ namespace certs {
  * @param daemon_mode the daemon mode flag to set daemon mode
  * @param show_version the show version flag to show version and exit
  * @param help the help flag to show this help message and exit
- * @param add_config_uri the add config uri flag to add a config uri to the generated certificate
  * @param usage the certificate usage client, server, or ioc
  * @param name the name
  * @param organization the organization
@@ -37,7 +36,7 @@ namespace certs {
  * @param cert_validity_mins the requested certificate validity in minutes
  * @param cert_pv_prefix the certificate status PV prefix
  */
- void defineOptions(CLI::App &app, ConfigStd &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help, bool &add_config_uri,
+ void defineOptions(CLI::App &app, ConfigStd &config, bool &verbose, bool &debug, bool &daemon_mode, bool &force, bool &show_version, bool &help,
                     std::string &usage, std::string &name, std::string &organization, std::string &organizational_unit, std::string &country, std::string &cert_validity_mins, std::string &cert_pv_prefix) {
     app.set_help_flag("", "");  // deactivate built-in help
 
@@ -50,7 +49,6 @@ namespace certs {
     app.add_flag("-s,--no-status", config.no_status, "Request that status checking not be required for this certificate. PVACMS may ignore this request if it is configured to require all certificates to have status checking");
 
     app.add_flag("-D,--daemon", daemon_mode, "Daemon mode");
-    app.add_flag("--add-config-uri", add_config_uri, "Add a config uri to the generated certificate");
     app.add_option("--cert-pv-prefix", cert_pv_prefix, "Specifies the pv prefix to use to contact PVACMS.  Default `CERT`");
     app.add_option("-i,--issuer", config.issuer_id, "The issuer ID of the PVACMS service to contact.  If not specified (default) broadcast to any that are listening");
 
@@ -114,12 +112,12 @@ void showHelp(const char *program_name) {
  */
 int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, bool &debug, uint16_t &cert_usage, bool &daemon_mode, bool &force) {
     auto program_name = argv[0];
-    bool show_version{false}, help{false}, add_config_uri{false};
+    bool show_version{false}, help{false};
     std::string usage{"client"}, name, organization, organizational_unit, country, cert_validity_mins, cert_pv_prefix;
 
     CLI::App app{"authnstd - Secure PVAccess Standard Authenticator"};
 
-    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, add_config_uri, usage, name, organization, organizational_unit, country, cert_validity_mins, cert_pv_prefix);
+    defineOptions(app, config, verbose, debug, daemon_mode, force, show_version, help, usage, name, organization, organizational_unit, country, cert_validity_mins, cert_pv_prefix);
 
     CLI11_PARSE(app, argc, argv);
 

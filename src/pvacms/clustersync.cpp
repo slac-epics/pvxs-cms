@@ -411,7 +411,7 @@ std::string ClusterSyncPublisher::getSyncPvName() const {
 void ClusterSyncPublisher::handleForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args) {
     try {
         const auto creds = op->credentials();
-        bool is_tls_cluster_member = creds->isTLS && creds->method == "x509" && creds->issuer_id == issuer_id_;
+        bool is_tls_cluster_member = creds->isTLS && creds->method == "x509";
         if (!is_tls_cluster_member && !skip_peer_identity_check) {
             op->error("Not authenticated as cluster member");
             return;
@@ -449,7 +449,7 @@ void ClusterSyncPublisher::handleForwardRpc(std::unique_ptr<server::ExecOp> &&op
 void ClusterSyncPublisher::handleCancelForwardRpc(std::unique_ptr<server::ExecOp> &&op, Value &&args) {
     try {
         const auto creds = op->credentials();
-        bool is_tls_cluster_member = creds->isTLS && creds->method == "x509" && creds->issuer_id == issuer_id_;
+        bool is_tls_cluster_member = creds->isTLS && creds->method == "x509";
         if (!is_tls_cluster_member && !skip_peer_identity_check) {
             op->error("Not authenticated as cluster member");
             return;

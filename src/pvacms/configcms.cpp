@@ -6,15 +6,34 @@
 
 #include "configcms.h"
 
+#include <cstring>
+#include <ostream>
+
 #include <envDefs.h>
 #include <osiFileName.h>
 
 #include <pvxs/log.h>
+#include <pvxs/util.h>
 
 #include "authregistry.h"
 #include "configcerts.h"
 
 DEFINE_LOGGER(cert_cfg, "pvxs.certs.cfg");
+
+namespace {
+// Split a "<file>;<password>" keychain setting into its filename and optional
+// password. The password is everything after the first ';', if present.
+void splitKeychainSetting(const std::string &value, std::string &file, std::string &password) {
+    auto sep = value.find(';');
+    if (sep != std::string::npos) {
+        file = value.substr(0, sep);
+        password = value.substr(sep + 1);
+    } else {
+        file = value;
+        password.clear();
+    }
+}
+}  // namespace
 
 namespace pvxs {
 namespace certs {
@@ -69,27 +88,13 @@ ConfigCms ConfigCms::forCms() {
 
 void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
     PickOne pickone{defs, true};
-    PickOne pick_another_one{defs, true};
 
-    // EPICS_PVACMS_TLS_KEYCHAIN (default the private key to use the same file and password)
+    // EPICS_PVACMS_TLS_KEYCHAIN (with optional ";<password>" postfix)
     if (pickone({"EPICS_PVACMS_TLS_KEYCHAIN", "EPICS_PVAS_TLS_KEYCHAIN"})) {
-        ensureDirectoryExists(tls_keychain_file = pickone.val);
-
-        // EPICS_PVACMS_TLS_KEYCHAIN_PWD_FILE
-        std::string password_filename;
-        if (pickone.name == "EPICS_PVACMS_TLS_KEYCHAIN") {
-            pick_another_one({"EPICS_PVACMS_TLS_KEYCHAIN_PWD_FILE"});
-            password_filename = pick_another_one.val;
-        } else if (pickone.name == "EPICS_PVAS_TLS_KEYCHAIN") {
-            pick_another_one({"EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE"});
-            password_filename = pick_another_one.val;
-        }
-        ensureDirectoryExists(password_filename);
-        try {
-            setKeychainPassword(getFileContents(password_filename));
-        } catch (std::exception &e) {
-            log_err_printf(cert_cfg, "error reading password file: %s. %s", password_filename.c_str(), e.what());
-        }
+        std::string password;
+        splitKeychainSetting(pickone.val, tls_keychain_file, password);
+        ensureDirectoryExists(tls_keychain_file);
+        setKeychainPassword(password);
     } else {
         std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "pvacms.p12";
         ensureDirectoryExists(tls_keychain_file = filename);
@@ -112,41 +117,22 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         certs_db_filename = filename;
     }
 
-    // EPICS_CERT_AUTH_TLS_KEYCHAIN
-
+    // EPICS_CERT_AUTH_TLS_KEYCHAIN (with optional ";<password>" postfix)
     if (pickone({"EPICS_CERT_AUTH_TLS_KEYCHAIN"})) {
-        ensureDirectoryExists(cert_auth_keychain_file = pickone.val);
-
-        // EPICS_CERT_AUTH_TLS_KEYCHAIN_PWD_FILE
-        if (pickone.name == "EPICS_CERT_AUTH_TLS_KEYCHAIN") {
-            pick_another_one({"EPICS_CERT_AUTH_TLS_KEYCHAIN_PWD_FILE"});
-            std::string password_filename = pick_another_one.val;
-            ensureDirectoryExists(password_filename);
-            try {
-                cert_auth_keychain_pwd = getFileContents(password_filename);
-            } catch (std::exception &e) {
-                log_err_printf(cert_cfg, "error reading password file: %s. %s", password_filename.c_str(), e.what());
-            }
-        }
+        std::string password;
+        splitKeychainSetting(pickone.val, cert_auth_keychain_file, password);
+        ensureDirectoryExists(cert_auth_keychain_file);
+        cert_auth_keychain_pwd = password;
     } else {
         std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "cert_auth.p12";
         ensureDirectoryExists(cert_auth_keychain_file = filename);
     }
-    // EPICS_ADMIN_TLS_KEYCHAIN
+    // EPICS_ADMIN_TLS_KEYCHAIN (with optional ";<password>" postfix)
     if (pickone({"EPICS_ADMIN_TLS_KEYCHAIN"})) {
-        ensureDirectoryExists(admin_keychain_file = pickone.val);
-
-        // EPICS_ADMIN_TLS_KEYCHAIN_PWD_FILE
-        if (pickone.name == "EPICS_ADMIN_TLS_KEYCHAIN") {
-            pick_another_one({"EPICS_ADMIN_TLS_KEYCHAIN_PWD_FILE"});
-            std::string password_filename = pick_another_one.val;
-            ensureDirectoryExists(password_filename);
-            try {
-                admin_keychain_pwd = getFileContents(password_filename);
-            } catch (std::exception &e) {
-                log_err_printf(cert_cfg, "error reading password file: %s. %s", password_filename.c_str(), e.what());
-            }
-        }
+        std::string password;
+        splitKeychainSetting(pickone.val, admin_keychain_file, password);
+        ensureDirectoryExists(admin_keychain_file);
+        admin_keychain_pwd = password;
     } else {
         std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "admin.p12";
         ensureDirectoryExists(admin_keychain_file = filename);
@@ -179,6 +165,11 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         } catch (std::exception &e) {
             log_err_printf(cert_cfg, "%s invalid validity duration : %s", pickone.name.c_str(), e.what());
         }
+    }
+
+    // EPICS_PVAS_CERT_PV_PREFIX / EPICS_PVA_CERT_PV_PREFIX
+    if (pickone({"EPICS_PVAS_CERT_PV_PREFIX", "EPICS_PVA_CERT_PV_PREFIX"})) {
+        cert_pv_prefix = pickone.val;
     }
 
     // EPICS_PVACMS_REQUIRE_APPROVAL
@@ -288,10 +279,11 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
  *
  * @param defs the definitions to update with the PVACMS specific definitions
  */
-void ConfigCms::updateDefs(defs_t &defs) const {
+void ConfigCms::updateCmsDefs(defs_t &defs) const {
     Config::updateDefs(defs);
     defs["EPICS_PVACMS_ACF"] = pvacms_acf_filename;
     defs["EPICS_PVACMS_DB"] = certs_db_filename;
+    if (!cert_pv_prefix.empty()) defs["EPICS_PVAS_CERT_PV_PREFIX"] = defs["EPICS_PVA_CERT_PV_PREFIX"] = cert_pv_prefix;
     defs["EPICS_CERT_AUTH_TLS_KEYCHAIN"] = cert_auth_keychain_file;
     defs["EPICS_ADMIN_TLS_KEYCHAIN"] = admin_keychain_file;
     defs["EPICS_CERT_AUTH_NAME"] = cert_auth_name;
@@ -330,6 +322,26 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     // Add any defs for any registered authn methods
     for (auto &authn_entry : AuthRegistry::getRegistry()) authn_entry.second->updateDefs(defs);
 }
+
+#define MATCHING_DEF(D) (pair.first.size() >= sizeof(D##prefix) - 1u && strncmp(pair.first.c_str(), D##prefix, sizeof(D##prefix) - 1u) == 0)
+std::ostream &operator<<(std::ostream &strm, const ConfigCms &conf) {
+    ConfigCms::defs_t defs;
+    conf.updateCmsDefs(defs);
+
+    for (const auto &pair : defs) {
+        static constexpr char prefix[] = "EPICS_PVAS_";
+        static constexpr char cert_auth_prefix[] = "EPICS_CERT_AUTH_";
+        static constexpr char pvacms_prefix[] = "EPICS_PVACMS_";
+        static constexpr char ocsp_prefix[] = "EPICS_OCSP_";
+        static constexpr char auth_prefix[] = "EPICS_AUTH_";
+
+        if (MATCHING_DEF() || MATCHING_DEF(cert_auth_) || MATCHING_DEF(pvacms_) || MATCHING_DEF(ocsp_) || MATCHING_DEF(auth_))
+            strm << pvxs::indent{} << pair.first << '=' << pair.second << '\n';
+    }
+
+    return strm;
+}
+#undef MATCHING_DEF
 
 }  // namespace certs
 }  // namespace pvxs

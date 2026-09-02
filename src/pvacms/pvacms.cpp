@@ -53,7 +53,7 @@
 #include <pvxs/server.h>
 #include <pvxs/sharedpv.h>
 #include <wildcardpv.h>
-#include <pvxs/credentials.h>
+#include "asauth.h"
 
 #include "auth.h"
 #include "authregistry.h"
@@ -366,6 +366,22 @@ std::string getCertificateSkid(const sql_ptr &certs_db, serial_number_t serial) 
     }
     sqlite3_finalize(stmt);
     return skid;
+}
+
+std::string getCertificateCommonName(const sql_ptr &certs_db, serial_number_t serial) {
+    const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
+    sqlite3_stmt *stmt;
+    std::string common_name;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_CN_BY_SERIAL, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":serial"), db_serial);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const auto *text = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+            if (text)
+                common_name = text;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return common_name;
 }
 
 bool isNodeCertRevoked(const sql_ptr &certs_db, const std::string &node_id) {
@@ -1065,14 +1081,11 @@ int64_t onCreateCertificate(ConfigCms &config,
             }
         }
 
-        // If config uri base provided then use it
-        auto config_uri_base = ccr["config_uri_base"].as<std::string>();
-
         // Create a certificate factory
         const auto not_before = getStructureValue<time_t>(ccr, "not_before");
         auto certificate_factory = CertFactory(serial, key_pair, name, country, organization, organization_unit,
                                                not_before, expiration, renew_by, usage,
-                                               config.getCertPvPrefix(), config_uri_base,
+                                               config.getCertPvPrefix(),
                                                config.cert_status_subscription, no_status,
                                                type != PVXS_DEFAULT_AUTH_TYPE,
                                                cert_auth_cert.get(),
@@ -1108,7 +1121,7 @@ int64_t onCreateCertificate(ConfigCms &config,
 
                 updateCertificateRenewalStatus(certs_db, original_certificate.serial, new_status, new_renewal_date);
                 postCertificateStatus(shared_status_pv, pv_name, original_certificate.serial, cert_status);
-                log_info_printf(pvacmsmonitor, "%s ==> %s\n", getCertId(issuer_id, original_certificate.serial).c_str(), cert_status.status.s.c_str());
+                log_info_printf(pvacmsmonitor, "%s ==> %s\n", getCertId(issuer_id, original_certificate.serial).c_str(), cert_status.status.s);
             } else { // VALID, PENDING_APPROVAL, PENDING
                 // Update the renew_by date if it's less than the new one but don't change status and post an update to listeners
                 if (original_certificate.renew_by < new_renewal_date) {
@@ -2381,7 +2394,7 @@ Value postCertificateStatus(server::WildcardPV &status_pv,
         status_value["ocsp_response"] = ocsp_bytes.freeze();
     }
 
-    log_debug_printf(pvacms, "Posting Certificate Status: %s = %s\n", pv_name.c_str(), cert_status.status.s.c_str());
+    log_debug_printf(pvacms, "Posting Certificate Status: %s = %s\n", pv_name.c_str(), cert_status.status.s);
     if (was_open) {
         status_pv.post(pv_name, status_value);
     } else {
@@ -2844,7 +2857,7 @@ int readParameters(int argc,
                    std::map<const std::string, std::unique_ptr<client::Config>> &authn_config_map,
                    bool &verbose,
                    std::string &admin_name) {
-    std::string cert_auth_password_file, pvacms_password_file, admin_password_file;
+    std::string cert_auth_password, pvacms_password, admin_password;
     bool show_version{false}, help{false};
     bool create_client_cert_in_valid_state{false}, create_server_cert_in_valid_state{false},
         create_ioc_cert_in_valid_state{false}, create_all_certs_in_valid_state{false};
@@ -2865,8 +2878,8 @@ int readParameters(int argc,
                    config.cert_auth_keychain_file,
                    "Specify Certificate Authority keychain file location");
     app.add_option("--cert-auth-keychain-pwd",
-                   cert_auth_password_file,
-                   "Specify Certificate Authority keychain password file location");
+                   cert_auth_password,
+                   "Specify Certificate Authority keychain password");
     app.add_option("--cert-auth-name",
                    config.cert_auth_name,
                    "Specify the Certificate Authority's name. Used if we need to create a root certificate");
@@ -2883,7 +2896,7 @@ int readParameters(int argc,
     app.add_option("-d,--cert-db", config.certs_db_filename, "Specify cert db file location");
 
     app.add_option("-p,--pvacms-keychain", config.tls_keychain_file, "Specify PVACMS keychain file location");
-    app.add_option("--pvacms-keychain-pwd", pvacms_password_file, "Specify PVACMS keychain password file location");
+    app.add_option("--pvacms-keychain-pwd", pvacms_password, "Specify PVACMS keychain password");
     app.add_option("--pvacms-name",
                    config.pvacms_name,
                    "Specify the PVACMS name. Used if we need to create a PVACMS certificate");
@@ -2902,8 +2915,8 @@ int readParameters(int argc,
                    "Specify PVACMS admin user's keychain file location");
     app.add_option("--admin-keychain-new", admin_name, "Generate a new admin keychain and exit.");
     app.add_option("--admin-keychain-pwd",
-                   admin_password_file,
-                   "Specify PVACMS admin user's keychain password file location");
+                   admin_password,
+                   "Specify PVACMS admin user's keychain password");
     app.add_option("--acf", config.pvacms_acf_filename, "Admin Security Configuration File");
 
     app.add_flag("--client-dont-require-approval",
@@ -3012,8 +3025,7 @@ int readParameters(int argc,
             << "                                             Specify Certificate Authority keychain file location. "
                "Default "
                "${XDG_CONFIG_HOME}/pva/1.5/cert_auth.p12\n"
-            << "        --cert-auth-keychain-pwd <file>      Specify location of file containing Certificate Authority "
-               "keychain file's password\n"
+            << "        --cert-auth-keychain-pwd <password>  Specify Certificate Authority keychain password\n"
             << "        --cert-auth-name <name>              Specify name (CN) to be used for certificate authority "
                "certificate. Default `EPICS Root "
                "Certificate Authority`\n"
@@ -3030,8 +3042,7 @@ int readParameters(int argc,
                "${XDG_DATA_HOME}/pva/1.5/certs.db\n"
             << "  (-p | --pvacms-keychain) <pvacms_keychain> Specify PVACMS keychain file location. Default "
                "${XDG_CONFIG_HOME}/pva/1.5/pvacms.p12\n"
-            << "        --pvacms-keychain-pwd <file>         Specify location of file containing PVACMS keychain "
-               "file's password\n"
+            << "        --pvacms-keychain-pwd <password>     Specify PVACMS keychain password\n"
             << "        --pvacms-name <name>                 Specify name (CN) to be used for PVACMS certificate. "
                "Default `PVACMS Service`\n"
             << "        --pvacms-org <name>                  Specify organisation (O) to be used for PVACMS "
@@ -3071,8 +3082,7 @@ int readParameters(int argc,
                "${XDG_CONFIG_HOME}/pva/1.5/pvacms.acf\n"
             << "  (-a | --admin-keychain) <admin_keychain>   Specify Admin User's keychain file location. Default "
                "${XDG_CONFIG_HOME}/pva/1.5/admin.p12\n"
-            << "        --admin-keychain-pwd <file>          Specify location of file containing Admin User's keychain "
-               "file password\n"
+            << "        --admin-keychain-pwd <password>      Specify Admin User's keychain password\n"
             << "        --cert-pv-prefix <cert_pv_prefix>    Specifies the prefix for all PVs published by this "
                "PVACMS.  Default `CERT`\n"
             << authn_help << std::endl;
@@ -3113,18 +3123,12 @@ int readParameters(int argc,
         ensureDirectoryExists(config.admin_keychain_file);
     if (!config.certs_db_filename.empty())
         ensureDirectoryExists(config.certs_db_filename);
-    if (!cert_auth_password_file.empty()) {
-        ensureDirectoryExists(cert_auth_password_file);
-        config.cert_auth_keychain_pwd = getFileContents(cert_auth_password_file);
-    }
-    if (!pvacms_password_file.empty()) {
-        ensureDirectoryExists(pvacms_password_file);
-        config.setKeychainPassword(getFileContents(pvacms_password_file));
-    }
-    if (!admin_password_file.empty()) {
-        ensureDirectoryExists(admin_password_file);
-        config.admin_keychain_pwd = getFileContents(admin_password_file);
-    }
+    if (!cert_auth_password.empty())
+        config.cert_auth_keychain_pwd = cert_auth_password;
+    if (!pvacms_password.empty())
+        config.setKeychainPassword(pvacms_password);
+    if (!admin_password.empty())
+        config.admin_keychain_pwd = admin_password;
 
     if (create_all_certs_in_valid_state)
         config.cert_client_require_approval = config.cert_server_require_approval = config.cert_ioc_require_approval =
@@ -3186,7 +3190,7 @@ int main(int argc, char *argv[]) {
         pvxs::sql_ptr certs_db;
         auto program_name = argv[0];
         bool verbose = false;
-        std::string cert_auth_password_file, pvacms_password_file, admin_password_file, admin_name;
+        std::string admin_name;
 
         auto parse_result = readParameters(argc, argv, program_name, config, authn_config_map, verbose, admin_name);
         if (parse_result)
@@ -3369,22 +3373,22 @@ int main(int argc, char *argv[]) {
             // Get credentials for this operation
             const auto creds = op->credentials();
 
-            pvxs::ioc::Credentials credentials(*creds);
-
-            // Get security client from channel
-            pvxs::ioc::SecurityClient securityClient;
-
-            static ASMember as_member;
-            securityClient.update(as_member.mem, ASL1, credentials);
-
             // Don't allow if:
             // - The new `state` is not `REVOKE` and the user is not an administrator, OR
             // - The new `state` is `REVOKE` and either:
             //   - both conditions are true (an administrator is revoking their own certificate), OR
             //   - both are false (a non-administrator is revoking a certificate that is not their own).
-            const auto is_admin = securityClient.canWrite();
+            static ASMember as_member;
+            const auto is_admin = clientCanPut(as_member.mem, ASL1, *creds);
+            // "Own certificate" means the caller authenticated over TLS with an
+            // x509 certificate whose common name matches the common name recorded
+            // for the certificate being acted on.  The issuer is implied: only
+            // certificates issued by this PVACMS's own certificate authority can
+            // complete the TLS handshake and appear in the certs database.
             const auto is_own_cert =
-                (credentials.issuer_id == our_issuer_id && std::to_string(serial) == credentials.serial);
+                creds->isTLS && creds->method == "x509" &&
+                !creds->account.empty() &&
+                creds->account == getCertificateCommonName(certs_db, serial);
             const auto is_revoke = (state == "REVOKED");
 
             if (is_revoke && is_own_cert) {

@@ -6,6 +6,11 @@
 
 #include "configauthn.h"
 
+#include <cstring>
+#include <ostream>
+
+#include <pvxs/util.h>
+
 #include "authnstd.h"
 #ifndef _WIN32
 #  include <ifaddrs.h>
@@ -79,20 +84,33 @@ void ConfigAuthN::fromAuthEnv(const std::map<std::string, std::string> &defs) {
         tls_keychain_file = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "client.p12";
     }
 
-    // EPICS_PVAS_TLS_KEYCHAIN
+    // EPICS_PVAS_TLS_KEYCHAIN (with optional ";<password>" postfix)
     if (pickone({"EPICS_PVAS_TLS_KEYCHAIN", "EPICS_PVA_TLS_KEYCHAIN"})) {
-        ensureDirectoryExists(tls_srv_keychain_file = pickone.val);
         if (pickone.name == "EPICS_PVAS_TLS_KEYCHAIN") {
-            // EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE
-            if (pickone({"EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE"})) tls_srv_keychain_pwd = getFileContents(pickone.val);
-        } else
+            auto sep = pickone.val.find(';');
+            if (sep != std::string::npos) {
+                tls_srv_keychain_file = pickone.val.substr(0, sep);
+                tls_srv_keychain_pwd = pickone.val.substr(sep + 1);
+            } else {
+                tls_srv_keychain_file = pickone.val;
+            }
+        } else {
+            // EPICS_PVA_TLS_KEYCHAIN alias: reuse the client keychain password
+            tls_srv_keychain_file = pickone.val;
             tls_srv_keychain_pwd = getKeychainPassword();
+        }
+        if (pickone.val.find(';') == std::string::npos)
+            tls_srv_keychain_pwd.clear();
+        ensureDirectoryExists(tls_srv_keychain_file);
     } else {
         const std::string filename = SB() << getXdgPvaConfigHome() << OSI_PATH_SEPARATOR << "server.p12";
         ensureDirectoryExists(tls_srv_keychain_file = filename);
     }
 
     if (pickone({"EPICS_PVA_AUTH_CERT_VALIDITY_MINS"})) cert_validity_mins = CertDate::parseDurationMins(pickone.val);
+
+    // EPICS_PVA_CERT_PV_PREFIX, EPICS_PVAS_CERT_PV_PREFIX
+    if (pickone({"EPICS_PVA_CERT_PV_PREFIX", "EPICS_PVAS_CERT_PV_PREFIX"})) cert_pv_prefix = pickone.val;
 }
 
 /**
@@ -111,14 +129,19 @@ void ConfigAuthN::updateDefs(defs_t &defs) const {
     defs["EPICS_PVAS_AUTH_NO_STATUS"] = no_status ? "YES" : "NO";
     defs["EPICS_PVAS_AUTH_ORGANIZATION"] = server_organization;
     defs["EPICS_PVAS_AUTH_ORGANIZATIONAL_UNIT"] = server_organizational_unit;
-    defs["EPICS_PVAS_TLS_KEYCHAIN"] = tls_srv_keychain_file;
+    {
+        // EPICS_PVAS_TLS_KEYCHAIN (with optional ";<password>" postfix)
+        std::string keychain = tls_srv_keychain_file;
+        if (!tls_srv_keychain_pwd.empty()) keychain += ";<password read>";
+        defs["EPICS_PVAS_TLS_KEYCHAIN"] = keychain;
+    }
     defs["EPICS_PVA_AUTH_CERT_VALIDITY_MINS"] = CertDate::formatDurationMins(cert_validity_mins);
     defs["EPICS_PVA_AUTH_COUNTRY"] = country;
     defs["EPICS_PVA_AUTH_ISSUER"] = defs["EPICS_PVAS_AUTH_ISSUER"] = issuer_id;
     defs["EPICS_PVA_AUTH_NAME"] = name;
     defs["EPICS_PVA_AUTH_ORGANIZATION"] = organization;
     defs["EPICS_PVA_AUTH_ORGANIZATIONAL_UNIT"] = organizational_unit;
-    if (!tls_srv_keychain_pwd.empty()) defs["EPICS_PVAS_TLS_KEYCHAIN_PWD_FILE"] = "<password read>";
+    if (!cert_pv_prefix.empty()) defs["EPICS_PVA_CERT_PV_PREFIX"] = defs["EPICS_PVAS_CERT_PV_PREFIX"] = cert_pv_prefix;
 }
 
 /**
@@ -192,6 +215,21 @@ std::string ConfigAuthN::getIPAddress() {
     return chosen_ip;
 #endif
 }
+
+#define MATCHING_DEF(D) (pair.first.size() >= sizeof(D##prefix) - 1u && strncmp(pair.first.c_str(), D##prefix, sizeof(D##prefix) - 1u) == 0)
+void printAuthNDefs(std::ostream& strm, const client::Config::defs_t& defs) {
+    for (const auto& pair : defs) {
+        static constexpr char prefix[] = "EPICS_PVAS_";
+        static constexpr char pva_prefix[] = "EPICS_PVA_";
+        static constexpr char cert_auth_prefix[] = "EPICS_CERT_AUTH_";
+        static constexpr char auth_prefix[] = "EPICS_AUTH_";
+        static constexpr char krb_prefix[] = "KRB5_";
+
+        if (MATCHING_DEF() || MATCHING_DEF(pva_) || MATCHING_DEF(cert_auth_) || MATCHING_DEF(auth_) || MATCHING_DEF(krb_))
+            strm << pvxs::indent{} << pair.first << '=' << pair.second << '\n';
+    }
+}
+#undef MATCHING_DEF
 
 }  // namespace certs
 }  // namespace pvxs

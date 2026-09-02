@@ -33,9 +33,6 @@ struct AuthnCredentials {
     time_t not_before;
     time_t not_after;
 
-    // Config uri
-    std::string config_uri_base;
-
     static std::string base64Encode(const char *data, const size_t len) {
         BUF_MEM *buffer_ptr;
 
@@ -94,7 +91,6 @@ struct AuthnCredentials {
         members::UInt64("not_before"),         \
         members::UInt64("not_after"),          \
         members::String("pub_key"),            \
-        members::String("config_uri_base"),    \
         members::Bool("no_status"),            \
         members::Struct("verifier", VERIFIER), \
     }
