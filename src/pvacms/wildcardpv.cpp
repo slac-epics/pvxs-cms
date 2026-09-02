@@ -285,7 +285,12 @@ void WildcardPV::attach(std::unique_ptr<ChannelControl>&& ctrlop, const std::lis
         WildcardPV pv;
         pv.impl = self;
         pv.wildcard_pv = wildcard_pv;
-        cb(pv, ctrl->name(), parameters);
+        try {
+            cb(pv, ctrl->name(), parameters);
+        } catch (std::exception& e) {
+            log_err_printf(logshared, "error in FirstConnect cb(%s): %s\n", ctrl->name().c_str(), e.what());
+            ctrl->close();
+        }
     }
 }
 
@@ -524,6 +529,9 @@ void WildcardSource::onSearch(Search& op) {
     for(auto& name : op) {
         const auto searched_name = std::string(name.name());
 
+        // A name containing wildcard characters is never a concrete PV
+        if(searched_name.find_first_of("*?") != std::string::npos) continue;
+
         // Try a wildcard match
         WildcardPV pv;
         if(wildcardMatch(searched_name, pv)) {
@@ -539,6 +547,12 @@ void WildcardSource::onCreate(std::unique_ptr<ChannelControl>&& op)
     {
         auto G(lock.lockReader());
         const auto searched_name = op->name();
+
+        // A name containing wildcard characters is never a concrete PV
+        if(searched_name.find_first_of("*?") != std::string::npos) {
+            log_debug_printf(logsource, "%p refuse wildcard name '%s'\n", this, searched_name.c_str());
+            return;
+        }
 
         if(wildcardMatch(searched_name, pv)) {
             log_debug_printf(logsource, "%p create '%s'\n", this, searched_name.c_str());
