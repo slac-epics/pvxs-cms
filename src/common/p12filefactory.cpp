@@ -32,17 +32,20 @@
 #include "security.h"
 #include "utilpvt.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
-DEFINE_LOGGER(filelogger, "pvxs.p12");
+using cms::detail::ensureDirectoryExists;
+using cms::detail::file_ptr;
+
+DEFINE_LOGGER(filelogger, "cms.p12");
 
 /**
  * @brief Get a key pair from a P12 file
  *
  * @return a shared pointer to the KeyPair object
  * @throw std::runtime_error if the file cannot be opened
- * @throw ossl::SSLError if file cannot be parsed
+ * @throw cms::ssl::SSLError if file cannot be parsed
  */
 std::shared_ptr<KeyPair> P12FileFactory::getKeyFromFile() {
     const file_ptr fp(fopen(filename_.c_str(), "rb"), false);
@@ -57,7 +60,7 @@ std::shared_ptr<KeyPair> P12FileFactory::getKeyFromFile() {
 
     ossl_ptr<EVP_PKEY> pkey;
     if (!PKCS12_parse(p12.get(), password_.c_str(), pkey.acquire(), nullptr, nullptr)) {
-        throw ossl::SSLError(SB() << "Error parsing private key file: " << filename_);
+        throw cms::ssl::SSLError(SB() << "Error parsing private key file: " << filename_);
     }
 
     return std::make_shared<KeyPair>(std::move(pkey));
@@ -318,5 +321,5 @@ void P12FileFactory::writePKCS12File() {
     }
 #endif
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

@@ -22,10 +22,29 @@
 
 #include "pvacmsVersion.h"
 
-DEFINE_LOGGER(pvacmscluster, "pvxs.certs.cluster");
+DEFINE_LOGGER(pvacmscluster, "cms.certs.cluster");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cluster {
+
+namespace client = ::pvxs::client;
+
+using ::pvxs::shared_array;
+using ::cms::detail::SB;
+using ::pvxs::TypeCode;
+using ::pvxs::TypeDef;
+using ::pvxs::Value;
+using ::cms::SYNC_FULL_SNAPSHOT;
+using ::cms::SYNC_INCREMENTAL;
+using ::cms::clusterSign;
+using ::cms::clusterVerify;
+using ::cms::getTimeStamp;
+using ::cms::isValidStatusTransition;
+using ::cms::makeJoinRequestValue;
+using ::cms::setTimeStamp;
+using ::cms::detail::ossl_ptr;
+
+namespace members = ::pvxs::members;
 
 typedef epicsGuard<epicsMutex> Guard;
 
@@ -101,7 +120,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
     const auto certs_arr = snapshot["certs"].as<shared_array<const Value>>();
     for (const auto & row : certs_arr) {
         const auto serial = row["serial"].as<int64_t>();
-        const auto remote_status = static_cast<certstatus_t>(row["status"].as<int32_t>());
+        const auto remote_status = static_cast<cms::cert::certstatus_t>(row["status"].as<int32_t>());
 
         sqlite3_stmt *check_stmt;
         if (sqlite3_prepare_v2(certs_db, SQL_SYNC_CHECK_CERT_STATUS, -1, &check_stmt, nullptr) != SQLITE_OK)
@@ -109,7 +128,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
         sqlite3_bind_int64(check_stmt, sqlite3_bind_parameter_index(check_stmt, ":serial"), serial);
 
         if (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            const auto local_status = static_cast<certstatus_t>(sqlite3_column_int(check_stmt, 0));
+            const auto local_status = static_cast<cms::cert::certstatus_t>(sqlite3_column_int(check_stmt, 0));
             sqlite3_finalize(check_stmt);
 
             if (!isValidStatusTransition(local_status, remote_status))
@@ -119,7 +138,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             // fall through to the UPDATE so renewal metadata (not_after, renew_by, ...)
             // propagates across the cluster. The UPDATE is an idempotent field overwrite.
 
-            if (remote_status == REVOKED && local_status != REVOKED) {
+            if (remote_status == cms::cert::REVOKED && local_status != cms::cert::REVOKED) {
                 result.revoked_skids.push_back(row["skid"].as<std::string>());
             }
 
@@ -174,7 +193,7 @@ SyncMergeResult applySyncSnapshot(sqlite3 *certs_db,
             sqlite3_finalize(ins_stmt);
             result.had_changes = true;
 
-            if (remote_status == REVOKED) {
+            if (remote_status == cms::cert::REVOKED) {
                 result.revoked_skids.push_back(row["skid"].as<std::string>());
             }
         }
@@ -733,5 +752,5 @@ void ClusterDiscovery::publishMemberConnectivity() {
     sync_publisher_.publishSnapshot(members);
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cluster
+}  // namespace cms

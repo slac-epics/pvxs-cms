@@ -75,11 +75,57 @@
 
 #include <CLI/CLI.hpp>
 
-DEFINE_LOGGER(pvacms, "pvxs.certs.cms");
-DEFINE_LOGGER(pvacmsmonitor, "pvxs.certs");
+DEFINE_LOGGER(pvacms, "cms.certs.cms");
+DEFINE_LOGGER(pvacmsmonitor, "cms");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+using pvxs::Value;
+using pvxs::shared_array;
+using pvxs::NoConvert;
+using pvxs::impl::ConfigCommon;
+namespace server = pvxs::server;
+namespace client = pvxs::client;
+namespace nt = pvxs::nt;
+namespace members = pvxs::members;
+using pvxs::parseTo;
+using cms::detail::SB;
+using cms::detail::ensureDirectoryExists;
+using cms::detail::getFileContents;
+using cms::auth::Auth;
+using cms::auth::AuthRegistry;
+using cms::cert::DbCert;
+using cms::cert::timeNow;
+using cms::cert::IdFileFactory;
+using cms::cert::KeyPair;
+    using cms::cert::CertFactory;
+    using cms::cert::CertStatus;
+    using cms::cert::CmsStatusManager;
+    using cms::cert::CertStatusFactory;
+    using cms::cert::CertData;
+    using cms::cert::CertDate;
+    using cms::cert::PVACertificateStatus;
+    using cms::cert::getCertId;
+    using cms::cert::getCertCreatePv;
+    using cms::cert::getCertStatusPvBase;
+    using cms::cert::getCertStatusPv;
+    using cms::cert::getCertIssuerPv;
+    using cms::cert::getCertAuthRootPv;
+    using cms::cert::getCertStatusURI;
+    using cms::cert::certstatus_t;
+    using cms::cert::CertStatusSubscription;
+    using cms::cert::DEFAULT;
+    using cms::cert::YES;
+    using cms::cert::NO;
+    using cms::cert::VALID;
+    using cms::cert::PENDING;
+    using cms::cert::PENDING_APPROVAL;
+    using cms::cert::PENDING_RENEWAL;
+    using cms::cert::EXPIRED;
+    using cms::cert::REVOKED;
+    using cms::cert::UNKNOWN;
+    using cms::cluster::ClusterController;
+    using cms::cluster::ClusterDiscovery;
+    using cms::cluster::ClusterSyncPublisher;
 
 // fwd decl
 static void insertLoadedCertIfMissing(const ConfigCms &config,
@@ -767,12 +813,12 @@ ossl_ptr<X509> createCertificate(sql_ptr &certs_db, CertFactory &cert_factory) {
 
     log_debug_printf(pvacms, "--------------------------------------%s", "\n");
     auto cert_description = (SB() << "X.509 "
-                                  << (IS_USED_FOR_(cert_factory.usage_, ssl::kForIntermediateCertAuth)
+                                  << (IS_USED_FOR_(cert_factory.usage_, cms::ssl::kForIntermediateCertAuth)
                                           ? "INTERMEDIATE CERTIFICATE AUTHORITY"
-                                      : IS_USED_FOR_(cert_factory.usage_, ssl::kForClientAndServer) ? "IOC"
-                                      : IS_USED_FOR_(cert_factory.usage_, ssl::kForClient)          ? "CLIENT"
-                                      : IS_USED_FOR_(cert_factory.usage_, ssl::kForServer)          ? "SERVER"
-                                      : IS_USED_FOR_(cert_factory.usage_, ssl::kForCMS)             ? "PVACMS"
+                                      : IS_USED_FOR_(cert_factory.usage_, cms::ssl::kForClientAndServer) ? "IOC"
+                                      : IS_USED_FOR_(cert_factory.usage_, cms::ssl::kForClient)          ? "CLIENT"
+                                      : IS_USED_FOR_(cert_factory.usage_, cms::ssl::kForServer)          ? "SERVER"
+                                      : IS_USED_FOR_(cert_factory.usage_, cms::ssl::kForCMS)             ? "PVACMS"
                                                                                                     : "CERTIFICATE"))
                                 .str();
     log_debug_printf(pvacms, "%s\n", cert_description.c_str());
@@ -991,9 +1037,9 @@ int64_t onCreateCertificate(ConfigCms &config,
             state = VALID;
         } else {
             state = PENDING_APPROVAL;
-            if ((IS_USED_FOR_(usage, ssl::kForClientAndServer) && !config.cert_ioc_require_approval) ||
-                (IS_USED_FOR_(usage, ssl::kForClient) && !config.cert_client_require_approval) ||
-                (IS_USED_FOR_(usage, ssl::kForServer) && !config.cert_server_require_approval)) {
+            if ((IS_USED_FOR_(usage, cms::ssl::kForClientAndServer) && !config.cert_ioc_require_approval) ||
+                (IS_USED_FOR_(usage, cms::ssl::kForClient) && !config.cert_client_require_approval) ||
+                (IS_USED_FOR_(usage, cms::ssl::kForServer) && !config.cert_server_require_approval)) {
                 state = VALID;
             }
         }
@@ -1004,19 +1050,19 @@ int64_t onCreateCertificate(ConfigCms &config,
         // Set the Expiration date
         // Use a default expiration date if none specified by the client, or we have disabled custom durations
         if ((config.cert_disallow_ioc_custom_duration || expiration <= 0) &&
-            IS_USED_FOR_(usage, ssl::kForClientAndServer)) {
+            IS_USED_FOR_(usage, cms::ssl::kForClientAndServer)) {
             expiration = now + CertDate::parseDuration(config.default_ioc_cert_validity);
             if (expiration > 0)
                 log_info_printf(pvacms, "Overriding requested expiration with default: %s\n", config.default_ioc_cert_validity.c_str());
         }
         else if ((config.cert_disallow_server_custom_duration || expiration <= 0) &&
-                 IS_USED_FOR_(usage, ssl::kForServer)) {
+                 IS_USED_FOR_(usage, cms::ssl::kForServer)) {
             expiration = now + CertDate::parseDuration(config.default_server_cert_validity);
             if (expiration > 0)
                 log_info_printf(pvacms, "Overriding requested expiration with default: %s\n", config.default_server_cert_validity.c_str());
         }
         else if ((config.cert_disallow_client_custom_duration || expiration <= 0) &&
-                 IS_USED_FOR_(usage, ssl::kForClient)) {
+                 IS_USED_FOR_(usage, cms::ssl::kForClient)) {
             expiration = now + CertDate::parseDuration(config.default_client_cert_validity);
             if (expiration > 0)
                 log_info_printf(pvacms, "Overriding requested expiration with default: %s\n", config.default_client_cert_validity.c_str());
@@ -1916,7 +1962,7 @@ void createAdminClientCert(const ConfigCms &config,
                                            not_before,
                                            not_after,
                                            0,
-                                           ssl::kForClient,
+                                           cms::ssl::kForClient,
                                            config.getCertPvPrefix(),
                                            YES,
                                            false,
@@ -2140,7 +2186,7 @@ CertData createCertAuthCertificate(const ConfigCms &config,
                                            not_before,
                                            not_after,
                                            0,
-                                           ssl::kForCertAuth,
+                                           cms::ssl::kForCertAuth,
                                            config.getCertPvPrefix(),
                                            config.cert_status_subscription,
                                            false,
@@ -2194,7 +2240,7 @@ void createServerCertificate(const ConfigCms &config,
                                            getNotBeforeTimeFromCert(cert_auth_cert.get()),
                                            getNotAfterTimeFromCert(cert_auth_cert.get()),
                                            0,
-                                           ssl::kForCMS,
+                                           cms::ssl::kForCMS,
                                            config.getCertPvPrefix(),
                                            NO,
                                            true,
@@ -3170,11 +3216,39 @@ int readParameters(int argc,
     return 0;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cms
 
 int main(int argc, char *argv[]) {
-    using namespace pvxs::certs;
+    using cms::cert::CertFactory;
+using cms::cert::CertStatus;
+using cms::cert::CmsStatusManager;
+using cms::cert::CertStatusFactory;
+using cms::cert::CertData;
+using cms::cert::CertDate;
+using cms::cert::PVACertificateStatus;
+using cms::cert::getCertId;
+using cms::cert::getCertCreatePv;
+using cms::cert::getCertStatusPvBase;
+using cms::cert::getCertStatusPv;
+using cms::cert::getCertIssuerPv;
+using cms::cert::getCertAuthRootPv;
+using cms::cert::getCertStatusURI;
+using cms::cert::certstatus_t;
+using cms::cert::CertStatusSubscription;
+using cms::cert::DEFAULT;
+using cms::cert::YES;
+using cms::cert::NO;
+using cms::cert::VALID;
+using cms::cert::PENDING;
+using cms::cert::PENDING_APPROVAL;
+using cms::cert::PENDING_RENEWAL;
+using cms::cert::EXPIRED;
+using cms::cert::REVOKED;
+using cms::cert::UNKNOWN;
+using cms::cluster::ClusterController;
+using cms::cluster::ClusterDiscovery;
+using cms::cluster::ClusterSyncPublisher;
+    using namespace cms;
     using namespace pvxs::server;
 
     try {
@@ -3194,7 +3268,7 @@ int main(int argc, char *argv[]) {
 
         // Logger config from environment (so environment overrides verbose setting)
         if (verbose)
-            logger_level_set("pvxs.certs*", pvxs::Level::Info);
+            logger_level_set("cms.*", pvxs::Level::Info);
         pvxs::logger_config_env();
 
         // Initialize the certificates database

@@ -237,8 +237,23 @@
     "ORDER BY status_date DESC "  \
     "LIMIT 1 "
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+    using pvxs::Value;
+    namespace server = pvxs::server;
+    using cms::cert::DbCert;
+    using cms::cert::KeyPair;
+    using cms::cert::CertFactory;
+    using cms::cert::CertData;
+    using cms::cert::PVACertificateStatus;
+    using cms::cert::certstatus_t;
+    using cms::cert::VALID;
+    using cms::cert::PENDING;
+    using cms::cert::PENDING_APPROVAL;
+    using cms::detail::ossl_ptr;
+    using cms::detail::ossl_shared_ptr;
+    using cms::detail::sql_ptr;
+    using cms::detail::ServerEv;
+
 
 /**
  * @brief Monitors the certificate status and updates the shared wildcard status pv when any become valid or expire.
@@ -368,7 +383,6 @@ uint64_t getParameters(const std::list<std::string> &parameters);
 template <typename T>
 void setValue(Value &target, const std::string &field, const T &new_value);
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cms
 
 #endif  // PVXS_PVACMS_H

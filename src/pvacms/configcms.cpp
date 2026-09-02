@@ -13,11 +13,28 @@
 
 #include "authregistry.h"
 #include "configcerts.h"
+#include "utilpvt.h"
 
-DEFINE_LOGGER(cert_cfg, "pvxs.certs.cfg");
+DEFINE_LOGGER(cert_cfg, "cms.certs.cfg");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+    using pvxs::Value;
+    using pvxs::TypeDef;
+    using pvxs::TypeCode;
+    using pvxs::Member;
+    using cms::auth::AuthRegistry;
+    using cms::cert::CertDate;
+    using cms::cert::CertStatusSubscription;
+    using cms::cert::DEFAULT;
+    using cms::cert::YES;
+    using cms::cert::NO;
+    using cms::detail::SB;
+    using cms::detail::PickOne;
+    using cms::detail::ensureDirectoryExists;
+    using cms::detail::getFileContents;
+    using cms::detail::getXdgPvaConfigHome;
+    using cms::detail::getXdgPvaDataHome;
+    using cms::detail::parseTo;
 
 /**
  * @brief Create a Config object with default values suitable for use with a Mock CMS
@@ -331,5 +348,4 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     for (auto &authn_entry : AuthRegistry::getRegistry()) authn_entry.second->updateDefs(defs);
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cms

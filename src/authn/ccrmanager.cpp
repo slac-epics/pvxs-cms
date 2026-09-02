@@ -14,10 +14,19 @@
 #include "openssl.h"
 #include "security.h"
 
-DEFINE_LOGGER(auth_log, "pvxs.auth.ccr");
+DEFINE_LOGGER(auth_log, "cms.auth.ccr");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    namespace client = ::pvxs::client;
+    namespace nt = ::pvxs::nt;
+    namespace members = ::pvxs::members;
+
+    using ::pvxs::Value;
+    using ::serial_number_t;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::CertDate;
+    using ::cms::cert::getCertCreatePv;
 
 using namespace members;
 
@@ -72,5 +81,5 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     }
     return {0, pem_string};
 }
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

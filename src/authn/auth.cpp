@@ -25,15 +25,24 @@
 #include "p12filefactory.h"
 #include "security.h"
 
-DEFINE_LOGGER(config, "pvxs.auth.config");
+DEFINE_LOGGER(config, "cms.auth.config");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::KeyPair;
+    using ::cms::cert::CertStatus;
+    using ::cms::cert::CmsStatusManager;
+    using ::cms::cert::CertData;
+    using ::cms::cert::CertDate;
+    using ::cms::cert::CertStatusNoExtensionException;
+    using ::cms::cert::getConfigURI;
 
 // Shared authenticator logger, defined once here and declared extern in auth.h
 // (loggers should not be defined in a header; DEFINE_LOGGER yields a static per
 // translation unit).
-::pvxs::logger auth{"pvxs.auth.common"};
+::pvxs::logger auth{"cms.auth.common"};
 
 /**
  * @brief Get a pointer to the singleton Auth object for the given type.
@@ -293,5 +302,5 @@ std::string Auth::formatTimeDuration(time_t total_seconds) {
 }
 
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms

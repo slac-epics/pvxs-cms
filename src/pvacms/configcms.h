@@ -13,9 +13,16 @@
 #include "certfactory.h"
 #include "configcerts.h"
 
-namespace pvxs {
-namespace certs {
-
+namespace cms {
+    using pvxs::Value;
+    using pvxs::TypeDef;
+    using pvxs::TypeCode;
+    using pvxs::Member;
+    using cms::auth::Config;
+    using cms::cert::CertStatusSubscription;
+    using cms::cert::DEFAULT;
+    using cms::cert::YES;
+    using cms::cert::NO;
 class ConfigCms final : public Config {
    public:
     void updateDefs(defs_t& defs) const override;
@@ -321,6 +328,5 @@ class ConfigCms final : public Config {
     static ConfigCms forCms();
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cms
 #endif  // PVXS_CONFIGCMS_H_

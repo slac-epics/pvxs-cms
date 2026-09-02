@@ -27,10 +27,10 @@
 #include "opensslgbl.h"
 #include "ownedptr.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
-DEFINE_LOGGER(status, "pvxs.certs.status");
+DEFINE_LOGGER(status, "cms.certs.status");
 
 /**
  * @brief Retrieves the Online Certificate Status Protocol (OCSP) response from the given byte array.
@@ -309,8 +309,8 @@ time_t CmsStatusManager::getExpirationDateFromCert(const ossl_ptr<X509> &cert) {
  */
 X509_EXTENSION *CmsStatusManager::getStatusExtension(const X509 *certificate) {
     // Make sure the custom extensions are configured before querying them
-    ossl::osslInit();
-    const int extension_index = X509_get_ext_by_NID(certificate, ossl::NID_SPvaCertStatusURI, -1);
+    cms::ssl::osslInit();
+    const int extension_index = X509_get_ext_by_NID(certificate, cms::ssl::NID_SPvaCertStatusURI, -1);
     if (extension_index < 0) throw CertStatusNoExtensionException("Failed to find Certificate-Status-PV extension in certificate.");
 
     // Get the extension object from the certificate
@@ -330,8 +330,8 @@ X509_EXTENSION *CmsStatusManager::getStatusExtension(const X509 *certificate) {
  */
 X509_EXTENSION *CmsStatusManager::getConfigExtension(const X509 *certificate) {
     // Make sure the custom extensions are configured before querying them
-    ossl::osslInit();
-    const int extension_index = X509_get_ext_by_NID(certificate, ossl::NID_SPvaCertConfigURI, -1);
+    cms::ssl::osslInit();
+    const int extension_index = X509_get_ext_by_NID(certificate, cms::ssl::NID_SPvaCertConfigURI, -1);
     if (extension_index < 0) throw CertStatusNoExtensionException("Failed to find Certificate-Config-PV extension in certificate.");
 
     // Get the extension object from the certificate
@@ -493,5 +493,5 @@ time_t CmsStatusManager::getExpirationDateFromCert(const X509 *cert) {
     // Convert ASN1_TIME to time_t using the CertDate utility
     return CertDate::asn1TimeToTimeT(expiration);
 }
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

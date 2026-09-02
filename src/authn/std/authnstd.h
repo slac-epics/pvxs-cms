@@ -37,8 +37,11 @@
 #define PVXS_X509_AUTH_HOSTNAME_MAX 1024
 #define PVXS_X509_AUTH_USERNAME_MAX 256
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::KeyPair;
 
 /**
  * The subclass of Credentials that contains the AuthNStd specific
@@ -64,7 +67,7 @@ class AuthNStd final : public Auth {
     void fromEnv(std::unique_ptr<client::Config> &config) override { config.reset(new ConfigStd(ConfigStd::fromEnv())); }
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #endif  // PVXS_AUTH_DEFAULT_H

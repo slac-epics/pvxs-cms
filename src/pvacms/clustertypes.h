@@ -18,8 +18,20 @@
 #include "certstatus.h"
 #include "ownedptr.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+    using pvxs::Value;
+    using pvxs::TypeDef;
+    using pvxs::TypeCode;
+    using pvxs::Member;
+    using cms::cert::certstatus_t;
+    using cms::cert::VALID;
+    using cms::cert::PENDING;
+    using cms::cert::PENDING_APPROVAL;
+    using cms::cert::PENDING_RENEWAL;
+    using cms::cert::EXPIRED;
+    using cms::cert::REVOKED;
+    using cms::cert::UNKNOWN;
+    using cms::detail::ossl_ptr;
 
 enum SyncUpdateType : int32_t {
     SYNC_INCREMENTAL  = 0,
@@ -108,7 +120,6 @@ void clusterSign(const ossl_ptr<EVP_PKEY> &cert_auth_pkey, Value &payload);
  */
 bool clusterVerify(const ossl_ptr<EVP_PKEY> &cert_auth_pub_key, Value &payload);
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cms
 
 #endif  // PVXS_CLUSTERTYPES_H_

@@ -16,10 +16,10 @@
 
 #include "p12filefactory.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
-DEFINE_LOGGER(certs, "pvxs.certs.file");
+DEFINE_LOGGER(certs, "cms.certs.file");
 
 /**
  * @brief Backs-up a file if it exists.
@@ -214,5 +214,5 @@ std::shared_ptr<KeyPair> IdFileFactory::createKeyPair() {
     return key_pair;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

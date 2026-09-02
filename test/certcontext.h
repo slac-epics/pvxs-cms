@@ -99,7 +99,26 @@ struct client1 {};
 struct client2 {};
 }  // namespace tag
 
-namespace certs {
+}  // namespace pvxs
+
+namespace cms {
+    using pvxs::Value;
+    using pvxs::shared_array;
+    namespace server = pvxs::server;
+    namespace client = pvxs::client;
+    namespace tag = pvxs::tag;
+    using cms::detail::file_ptr;
+    using cms::cert::CertDate;
+    using cms::cert::CertStatus;
+using cms::cert::CertStatusFactory;
+using cms::cert::CertStatusNoExtensionException;
+using cms::cert::certstatus_t;
+using cms::cert::CmsStatusManager;
+    using cms::cert::PVACertificateStatus;
+    using cms::cert::REVOKED;
+    using cms::detail::SB;
+    using cms::detail::ossl_ptr;
+    using cms::detail::ossl_shared_ptr;
 
 /**
  * @brief define the traits to be used in the template class CertCtx below that will describe the individual certs
@@ -251,7 +270,7 @@ void setValue(Value &target, const std::string &field, const Type &new_value) {
  */
 template <typename Tag>
 TestCert getTestCert() {
-    ossl::osslInit();
+        cms::ssl::osslInit();
     using traits = CertTraits<Tag>;
 
     char buffer[PATH_MAX];
@@ -465,8 +484,9 @@ void waitCounterAtLeast(const CounterMap &counters, epicsEvent &cert_status_evt,
     }
 }
 
-}  // namespace certs
+}  // namespace cms
 
+namespace pvxs {
 namespace server {
 
 class MockSource final : public Source {
