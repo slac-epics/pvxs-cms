@@ -3059,8 +3059,6 @@ int readParameters(int argc,
             << "                                             server by default. Can be overridden in each CCR\n"
             << "        --preload-cert <cert_file> ...       A list of certificate files you want to pre-load on startup\n"
             << "        --status-validity-mins               Set Status Validity Time in Minutes\n"
-            << "        --cert-pv-prefix <cert_pv_prefix>    Specifies the prefix for all PVs published by this "
-               "PVACMS.  Default `CERT`\n"
             << "        --cluster-mode                        Enable cluster mode for multi-node replication\n"
             << "        --cluster-pv-prefix <prefix>         Prefix for cluster PV names. Default `CERT:CLUSTER`\n"
             << "        --cluster-discovery-timeout <secs>   Seconds to wait for cluster discovery. Default 10\n"
@@ -3075,6 +3073,8 @@ int readParameters(int argc,
                "${XDG_CONFIG_HOME}/pva/1.5/admin.p12\n"
             << "        --admin-keychain-pwd <file>          Specify location of file containing Admin User's keychain "
                "file password\n"
+            << "        --cert-pv-prefix <cert_pv_prefix>    Specifies the prefix for all PVs published by this "
+               "PVACMS.  Default `CERT`\n"
             << authn_help << std::endl;
         exit(0);
     }
@@ -3088,16 +3088,15 @@ int readParameters(int argc,
         exit(0);
     }
 
-    // New admin can only be specified with --acf and/or --admin-keychain-pwd, and/or --admin-keychain-pwd
+    // --admin-keychain-new may only be combined with the admin options
     if (!admin_name.empty()) {
         for (auto arg = 1; arg < argc; ++arg) {
             const std::string option = argv[arg];
             if (option == "-a" || option == "--admin-keychain" || option == "--admin-keychain-pwd" ||
-                option == "--acf" || option == "--admin-keychain-new") {
+                option == "--acf" || option == "--admin-keychain-new" || option == "--cert-pv-prefix") {
                 arg++;
             } else {
-                std::cerr << "Error: --admin-keychain-new option cannot be used with any options other than -a, "
-                             "--admin-keychain, --admin-keychain-pwd, or --acf.\n";
+                std::cerr << "Error: --admin-keychain-new can only be combined with the admin options (see --help).\n";
                 exit(11);
             }
         }
