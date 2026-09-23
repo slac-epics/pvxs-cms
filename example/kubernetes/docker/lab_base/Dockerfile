@@ -22,7 +22,10 @@ COPY --from=source ${PROJECT_HOME} ${PROJECT_HOME}
 
 RUN echo "PVXS = \$(TOP)/../pvxs" >> ${PROJECT_HOME}/RELEASE.local
 RUN echo "PVXS_ENABLE_KRB_AUTH = YES" >> ${PROJECT_HOME}/CONFIG_SITE.local
-RUN cd ${PROJECT_HOME}/pvxs-cms && make -j$(nproc) all
+# How many compiler processes to run at once. Each can take most of a gigabyte,
+# so a machine with little memory and no swap needs this lowered.
+ARG JOBS
+RUN cd ${PROJECT_HOME}/pvxs-cms && make -j${JOBS:-$(nproc)} all
 
 # Copy user kerberos configuration
 COPY krb5.conf /etc/krb5.conf
