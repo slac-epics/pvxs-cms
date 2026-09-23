@@ -1554,11 +1554,8 @@ class CertListViews {
 bool callerIsAdministrator(const server::ExecOp *op) {
     const auto creds = op->credentials();
     if (!creds) return false;
-    pvxs::ioc::Credentials credentials(*creds);
-    pvxs::ioc::SecurityClient security_client;
     static ASMember as_member;
-    security_client.update(as_member.mem, ASL1, credentials);
-    return security_client.canWrite();
+    return clientCanPut(as_member.mem, ASL1, *creds);
 }
 
 /**
@@ -4264,11 +4261,8 @@ int main(int argc, char *argv[]) {
         wildcard_source->authorize([list_pending_pv, qualified_list_pending_pv](const std::string &name,
                                                                                   const ChannelControl &op) {
             if (name != list_pending_pv && name != qualified_list_pending_pv) return true;
-            pvxs::ioc::Credentials credentials(*op.credentials());
-            pvxs::ioc::SecurityClient security_client;
             static ASMember as_member;
-            security_client.update(as_member.mem, ASL1, credentials);
-            return security_client.canWrite();
+            return clientCanPut(as_member.mem, ASL1, *op.credentials());
         });
 
         // Open a view when its first subscriber arrives, and drop it when the last leaves, so
