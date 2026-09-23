@@ -1,32 +1,61 @@
-AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority")
+# Lab (control-systems department) IOC access control.
+#
+# Trust is shared across the facility (one Root CA), but AUTHORISATION is per
+# department, keyed on which departmental intermediate issued the client cert:
+#   AUTH_LAB  = certs issued by the Controls (Lab) intermediate
+#   AUTH_ML   = certs issued by the ML intermediate
+# Both chain to the one facility Root, so naming the intermediate discriminates
+# the department (the ACF matches the issuer chain of common names as a prefix).
+#
+# Policy:
+#   READ            open to everyone (anonymous, any zone) - RULE(1,READ) with no
+#                   UAG/AUTHORITY/METHOD.
+#   WRITE (default) own zone (lab guests + operators, AUTH_LAB) and cross-zone
+#                   operators (AUTH_ML).
+#   test:spec       SPECIAL PV (lab zone only): operators may WRITE; guests may
+#                   only READ it (via the open READ rule).
 
-UAG(USERS) {
-    "gateway",
-    "operator",
-    "guest"
+AUTHORITY(EPICS_CA, "EPICS Root Certificate Authority") {
+    AUTHORITY(AUTH_LAB, "EPICS Controls Intermediate CA")
+    AUTHORITY(AUTH_ML,  "EPICS ML Intermediate CA")
 }
 
-UAG(SPECIAL_USERS) {
+UAG(OPERATORS) {
     "gateway",
     "operator"
 }
 
+UAG(GUESTS) {
+    "guest"
+}
+
+# The test:spec special PV: operators (either department) may write; guests cannot.
 ASG(SPECIAL) {
+    RULE(1,READ)
     RULE(1,WRITE,TRAPWRITE) {
-        UAG(SPECIAL_USERS)
-        AUTHORITY(EPICS_CA)
+        UAG(OPERATORS)
+        AUTHORITY(AUTH_LAB, AUTH_ML)
         PROTOCOL(TLS)
         METHOD(X509)
     }
 }
 
+# Ordinary lab PVs.
 ASG(DEFAULT) {
-    RULE(0,NONE)
+    # READ open to anyone, including anonymous, in any zone.
+    RULE(1,READ)
+    # WRITE own zone: lab guests and operators (certs issued by the Lab intermediate).
     RULE(1,WRITE,TRAPWRITE) {
-        UAG(USERS)
-        AUTHORITY(EPICS_CA)
+        UAG(OPERATORS,GUESTS)
+        AUTHORITY(AUTH_LAB)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    # WRITE cross-zone: operators only (certs issued by the ML intermediate).
+    RULE(1,WRITE,TRAPWRITE) {
+        UAG(OPERATORS)
+        AUTHORITY(AUTH_ML)
         PROTOCOL(TLS)
         METHOD(X509)
     }
 }
-

@@ -22,10 +22,7 @@ spec:
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           command: ["/bin/bash", "-lc"]
           args:
-            - |
-              set -euo pipefail
-              sed -i 's/--cluster-discovery-timeout 30/--cluster-discovery-timeout 90/' /etc/supervisor/conf.d/pvacms.conf
-              exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+            - exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
           ports:
             - name: pva-tcp
               containerPort: {{ .Values.ports.pvaTcp }}
@@ -38,6 +35,7 @@ spec:
               containerPort: {{ .Values.ports.pvaTls }}
               protocol: TCP
             {{- end }}
+          {{- include "pvxs-lab.pvacmsProbes" (dict "ctx" .) | nindent 10 }}
           volumeMounts:
             - name: pva-config
               mountPath: /home/idm/.config/pva/1.5
@@ -69,23 +67,49 @@ spec:
             - name: EPICS_PVA_AUTO_ADDR_LIST
               value: "NO"
             - name: EPICS_PVA_ADDR_LIST
-              value: ""
-            - name: EPICS_PVACMS_CLUSTER_NAME_SERVERS
-              value: '{{ include "pvxs-lab.gatewayService" . }}:5075'
+              value: "127.0.0.1"
             - name: EPICS_PVAS_AUTO_BEACON_ADDR_LIST
               value: "NO"
             - name: EPICS_PVAS_BEACON_ADDR_LIST
               value: '{{ include "pvxs-lab.mlGatewayService" . }}:5076'
+            # The certificate database must live on the persistent volume mounted at
+            # /home/idm/.local/share/pva/1.5. Without this it follows the running user's
+            # data directory, and this container runs as root so that the key distribution
+            # centre can bind a privileged port, which puts the database on the container
+            # filesystem where it is destroyed on every restart. Losing it makes every
+            # certificate issued beforehand UNKNOWN, including the administrator's own,
+            # which the administrator rule requires.
+            - name: EPICS_PVACMS_DB
+              value: /home/idm/.local/share/pva/1.5/certs.db
             - name: EPICS_PVA_TLS_KEYCHAIN
               value: /home/idm/.config/pva/1.5/pvacms.p12
-            - name: EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT
-              value: "90"
-            - name: EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT
-              value: "30"
             {{- if .Values.ml.debug.enabled }}
             - name: PVXS_LOG
               value: {{ .Values.ml.debug.logLevel | quote }}
             {{- end }}
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/bash
+                  - -lc
+                  - |
+                    # Copy the ML PVACMS's generated admin keychain to the (inherited)
+                    # admin user so `su - admin` can approve ML-department certs locally.
+                    # Convenience only; MUST NOT fail the pod, so exit 0 on timeout.
+                    src=/home/idm/.config/pva/1.5/admin.p12
+                    dst=/home/admin/.config/pva/1.5/client.p12
+                    mkdir -p "$(dirname "$dst")" || true
+                    for i in $(seq 1 240); do
+                      if [ -s "$src" ]; then
+                        cp -f "$src" "$dst" && chown admin:admin "$dst" 2>/dev/null; chmod 0600 "$dst" 2>/dev/null
+                        echo "admin.p12 copied to admin client cert"
+                        exit 0
+                      fi
+                      sleep 0.5
+                    done
+                    echo "WARN: admin.p12 not present after 120s; admin user cert not provisioned yet" >&2
+                    exit 0
       volumes:
         - name: pva-config
           {{- if .Values.ml.persistence.enabled }}
@@ -103,10 +127,11 @@ spec:
           {{- end }}
         - name: ca-keychain
           secret:
-            secretName: {{ include "pvxs-lab.fullname" . }}-ca-keychain
+            # ML department PVACMS signs with the ML intermediate.
+            secretName: {{ include "pvxs-lab.fullname" . }}-ml-intermediate
         - name: pvacms-acf
           configMap:
-            name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf
+            name: {{ include "pvxs-lab.fullname" . }}-pvacms-acf-ml
         - name: krb5-conf
           configMap:
             name: {{ include "pvxs-lab.fullname" . }}-krb5

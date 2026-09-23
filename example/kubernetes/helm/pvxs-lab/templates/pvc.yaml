@@ -111,35 +111,6 @@ spec:
 {{- end }}
 
 ---
-{{- if .Values.it.persistence.enabled }}
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: {{ include "pvxs-lab.fullname" . }}-it-config
-spec:
-  accessModes: ["ReadWriteOnce"]
-  {{- if .Values.it.persistence.storageClassName }}
-  storageClassName: {{ .Values.it.persistence.storageClassName | quote }}
-  {{- end }}
-  resources:
-    requests:
-      storage: {{ .Values.it.persistence.size | quote }}
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: {{ include "pvxs-lab.fullname" . }}-it-data
-spec:
-  accessModes: ["ReadWriteOnce"]
-  {{- if .Values.it.persistence.storageClassName }}
-  storageClassName: {{ .Values.it.persistence.storageClassName | quote }}
-  {{- end }}
-  resources:
-    requests:
-      storage: {{ .Values.it.persistence.size | quote }}
-{{- end }}
-
----
 {{- if .Values.ml.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
