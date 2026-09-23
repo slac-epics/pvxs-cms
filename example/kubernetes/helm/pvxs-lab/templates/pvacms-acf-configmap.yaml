@@ -21,9 +21,15 @@ revoke a certificate, so every clause here is load bearing:
 The read rule is deliberately left open: anyone may read certificate status
 without presenting anything.
 */ -}}
+{{- /*
+Each department names its own certificate administrator and not the other's. That is the whole
+department separation: an administrator of one certificate manager is not an administrator of the
+other, because the authority clause above already requires a certificate issued by this
+department's own intermediate, and the name here has to match as well.
+*/ -}}
 {{- range $dept := list
-      (dict "suffix" "idm" "authority" $.Values.certAuthorities.labIntermediate)
-      (dict "suffix" "ml"  "authority" $.Values.certAuthorities.mlIntermediate) }}
+      (dict "suffix" "idm" "authority" $.Values.certAuthorities.labIntermediate "admins" "admin, certadmin")
+      (dict "suffix" "ml"  "authority" $.Values.certAuthorities.mlIntermediate "admins" "admin, mlcertadmin") }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -37,7 +43,7 @@ data:
         AUTHORITY(CMS_AUTH, {{ $dept.authority | quote }})
     }
 
-    UAG(CMS_ADMIN) {admin}
+    UAG(CMS_ADMIN) {{ "{" }}{{ $dept.admins }}{{ "}" }}
 
     ASG(DEFAULT) {
         RULE(0,READ)
