@@ -1,0 +1,14 @@
+# The cluster the laboratory runs on.
+#
+# The default CNI is turned off and Cilium is installed in its place, because the segments in
+# these laboratories are drawn with NetworkPolicy and Kind's default CNI does not enforce it. On
+# a cluster without a policy-enforcing CNI every rule in the charts is ignored, the boundaries
+# are open, and the laboratories look like they work while demonstrating nothing.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: spva-lab
+nodes:
+  - role: control-plane
+networking:
+  disableDefaultCNI: true
+  podSubnet: 192.168.0.0/16

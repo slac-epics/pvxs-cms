@@ -21,7 +21,12 @@ inside a podman machine, or on Windows inside WSL2 (the Windows Subsystem for Li
 
 **[Part 2 - simple, with a gateway](#part-2---simple-with-a-gateway)**
 - [5. External access through a gateway](#5-external-access-through-a-gateway)
+- [Nothing crosses the boundary yet](#nothing-crosses-the-boundary-yet)
+- [Issue the laboratory's certificates, the gateway among them](#issue-the-laboratorys-certificates-the-gateway-among-them)
+- [Carry the authority to the workstation](#carry-the-authority-to-the-workstation)
+- [Ask for an identity over TLS](#ask-for-an-identity-over-tls)
 - [6. Identity across a gateway](#6-identity-across-a-gateway)
+- [Revocation cuts a connection that is already up](#revocation-cuts-a-connection-that-is-already-up)
 
 **[Part 3 - federated, one facility root](#part-3---federated-one-facility-root)**
 - [Addressing and network layout](#addressing-and-network-layout)
@@ -60,7 +65,7 @@ inside a podman machine, or on Windows inside WSL2 (the Windows Subsystem for Li
 | **Gateways** | A gateway is the only path across a network boundary, enforced by network isolation rather than by configuration. A request that crosses is authorized twice: at the gateway against your certificate, and at the input/output controller (IOC) against the gateway's certificate. Parts 2, 3, and 4 |
 | **Federation** | Part 3 places two departments under one facility root, so every node trusts a certificate from either department and only the issuing department can revoke it. Part 4 gives each department its own root and stores both roots in every keychain, so trust comes from the trust anchor list rather than from a shared chain, and each gateway is addressed by its own name |
 | **Authorization by department** | Under a shared root, a rule names the organizational unit that the issuing department vouched for (Part 3). Under independent roots, a rule names the authority itself, because each root is a department (Part 4) |
-| **Authority revocation** | Revoking a department's intermediate authority, by that department's own administrator, stops that department and no other. The facility root has no status channel of its own, so it names a status responder, and every certificate beneath a revoked root reports `AUTHORITY_REVOKED` rather than claiming its own revocation. Part 3 |
+| **Authority revocation** | Revoking a department's intermediate authority, by that department's own administrator, stops that department and no other. The facility root has no status channel of its own, so it names a status responder. A revoked authority anywhere in the chain, at any depth, makes every certificate beneath it report `AUTHORITY_REVOKED` rather than claiming its own revocation, which says the fault is above the holder and where to go and look for it. An expired authority reads `AUTHORITY_EXPIRED` in the same way, though no laboratory here shows it, because a certificate never outlives its signer. Part 3 |
 
 ## The four laboratories
 
@@ -70,7 +75,7 @@ diagram and its own part of the walkthrough, and no test appears twice.
 | Laboratory | Walkthrough | Description |
 |---|---|---|
 | [`simple`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple.svg) | Part 1 | One segment, one self-signed authority, no boundary to cross |
-| [`simple-with-gateway`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple-with-gateway.svg) | Part 2 | One laboratory, published at a facility address and reached through a gateway |
+| [`simple-with-gateway`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple-with-gateway.svg) | Part 2 | One laboratory, published at a facility address and reached through a gateway that carries TLS alone |
 | [`federated-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-shared-root.svg) | Part 3 | Two departments under one facility root, with a status responder for the root |
 | [`federated-non-shared-root`](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-non-shared-root.svg) | Part 4 | Two departments under two independent roots, with both roots in every keychain |
 
@@ -149,16 +154,25 @@ off scratch/fy26-four-topologies. -->
 
 ## Start a laboratory
 
-Two scripts do different jobs. `bootstrap.sh` builds the images, which is slow and runs
-once. `reset.sh` builds a laboratory from the images, which takes a minute or two and
-runs whenever you want a different laboratory or a clean one:
+Two things do different jobs. `bootstrap.sh` builds the images, which is slow and runs
+once. `reset_topology` builds a laboratory from the images, which takes a minute or two
+and runs whenever you want a different laboratory or a clean one:
 
 ```sh
 cd ~/slac/pvxs-cms/example/podman
+source ./helpers.sh                   # defines reset_topology, run_in, and the rest
 ./bootstrap.sh                        # builds the images; issues no certificates
-./reset.sh                            # lists the four laboratories and describes each
-./reset.sh federated-shared-root      # brings that laboratory up and verifies it
+reset_topology                        # lists the four laboratories and describes each
+reset_topology federated-shared-root  # brings it up, verifies it, and reads its authorities
 ```
+
+`reset_topology` is a shell function rather than a script, and it has to be, because it
+does two things that must not be separated: it runs `reset.sh` to build the laboratory,
+and it then reads that laboratory's authority identifiers into your shell. Minting an
+authority gives it a new identifier, and a shell still holding the old one goes on naming
+an authority the laboratory no longer has, so every request reaches a name nothing
+answers for. That reads as a broken laboratory when it is only a stale shell. Running
+`reset.sh` by hand leaves you to remember `lab_ids` afterwards; `reset_topology` does not.
 
 The image build compiles EPICS Base, pvxs, pvxs-cms, and p4p from source, which takes a
 while. On a machine with limited memory, reduce the compiler parallelism and make sure
@@ -168,12 +182,22 @@ swap space is available:
 JOBS=2 ./bootstrap.sh
 ```
 
+Rebuilding leaves the images it replaced behind, and each build of this chain is several
+gigabytes. Build it enough times and the next one stops with `no space left on device`,
+which reads as a broken build rather than a full disk. Reclaim the ones nothing refers
+to:
+
+```sh
+podman system df               # says how much is reclaimable
+podman image prune -f          # removes the images nothing refers to
+```
+
 If you built the images before pulling new source, rebuild them. The process variables
 and the access rules are baked into the images, so a pull on its own leaves an IOC
 serving the old set and the examples in this document timing out:
 
 ```sh
-git pull && JOBS=2 ./bootstrap.sh && ./reset.sh federated-shared-root
+git pull && JOBS=2 ./bootstrap.sh && reset_topology federated-shared-root
 ```
 
 Certificate authorities belong to a laboratory rather than to the images, so `reset.sh`
@@ -191,9 +215,10 @@ both facts matter to what is being demonstrated. Rather than repeating a long
 source ./helpers.sh
 ```
 
-This defines `run_in` and reads the laboratory's issuer identifiers into the shell:
-`$ROOT` where one authority issues everything, and `$LAB` and `$ML` where each
-department has its own.
+This defines `run_in` and `reset_topology`, and reads the laboratory's issuer identifiers
+into the shell: `$ROOT` where one authority issues everything, and `$LAB` and `$ML` where
+each department has its own. Sourcing it again is harmless and re-reads the identifiers,
+which is what `reset_topology` does for you after every reset.
 
 ```
 run_in <place> as <person> [without a certificate] [--show] <command...>
@@ -254,7 +279,7 @@ Nothing crosses a boundary because there is no boundary, so this laboratory show
 certificate does on its own.
 
 ```sh
-./reset.sh simple
+reset_topology simple
 ```
 
 [![The simple laboratory: one segment carrying a PVACMS, two IOCs and a workstation, and one self-signed authority beside it](topology/topology-simple.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple.svg)
@@ -271,7 +296,7 @@ it. That is the whole hierarchy: one authority, and the certificates it signs.
 An authority that PVACMS created itself has an identifier nobody chose, and no node may
 trust an authority it learned about over the same channel it is trying to secure. Before
 anyone can request a certificate, the identifier has to reach them another way.
-`./reset.sh` does this for you. It is worth doing by hand once, because it is what an
+`reset_topology` does this for you. It is worth doing by hand once, because it is what an
 operator does when distributing trust to a machine the laboratory does not manage.
 
 The authority is a keychain file that PVACMS wrote, and its identifier is that
@@ -851,8 +876,16 @@ network and proxies inward; a load balancer owns the address and maps a port to 
 gateway. Nothing inside originates traffic outward, so there is no router here: every
 crossing is inbound, and the gateway is the only thing that crosses.
 
+The boundary carries TLS and nothing else. The gateway closes its plaintext listener, so
+there is no unencrypted way in and no anonymous way in either: a workstation outside has
+to hold the authority the facility issues under before it can verify what answers it, and
+it has to be given that authority by some route the facility does not provide. That is
+what this part walks through, and it is the order the steps come in: the laboratory
+issues its own certificates first, the boundary closes, and only then is a workstation
+outside set up from nothing.
+
 ```sh
-./reset.sh simple-with-gateway
+reset_topology simple-with-gateway
 ```
 
 [![The simple laboratory published at a facility address: a load balancer and a gateway in the perimeter network, the laboratory segment behind them, and a workstation outside](topology/topology-simple-with-gateway.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-simple-with-gateway.svg)
@@ -869,26 +902,60 @@ might have said:
 
 ```sh
 run_in perimeter as guest sh -c 'echo ${EPICS_PVA_NAME_SERVERS}'
-#   facility:5075
+#   pvas://facility:5076
 ```
 
 `facility` is the load balancer. It is HAProxy in `tcp` mode: it maps a port to a
 gateway and forwards the stream without inspecting it, which is what layer 4 means. Its
-configuration is `topologies/simple-with-gateway/config/haproxy.cfg`, and the part that
-matters is two pairs:
+configuration is `topologies/simple-with-gateway/config/haproxy.cfg`, and it publishes
+one port:
 
-- `frontend pva_plain` binds `:5075` and its backend is `pvxs-lab-gateway:5075`
 - `frontend pva_tls` binds `:5076` and its backend is `pvxs-lab-gateway:5076`
 
-Both port numbers are the same on each line, deliberately. A server names its own port
-in a search reply, and the client then dials that port on the address the reply came
-from, so a client answered "come back on 5075" reaches whatever 5075 maps to. Translate
-the port and the client arrives somewhere else.
+Both port numbers are the same, deliberately. A server names its own port in a search
+reply, and the client then dials that port on the address the reply came from, so a
+client answered "come back on 5076" reaches whatever 5076 maps to. Translate the port
+and the client arrives somewhere else.
 
-**Everything the laboratory has is issued as in Part 1, and the gateway needs a
-certificate too.** It requests an `ioc` certificate rather than a `server` one, because
-it is a server to the workstation outside and a client to the IOCs, and only an `ioc`
-certificate is both:
+The `pvas://` scheme is what makes this a secure name server rather than an ordinary
+one. A name server is asked for a name over a connection to it, so with `pvas://` the
+question itself travels over TLS, and the connection has to be established before the
+question can be put. That is the difference this part turns on: outside this boundary
+you cannot even ask what exists until you can verify what is answering.
+
+### Nothing crosses the boundary yet
+
+The laboratory has just been reset, so nothing holds a certificate and the workstation
+outside holds nothing at all. It cannot read:
+
+```sh
+run_in perimeter as guest without a certificate pvxget test:aiExample
+#   Timeout with 1 outstanding
+```
+
+And it cannot ask for a certificate either, which is the part worth pausing on:
+
+```sh
+run_in perimeter as guest without a certificate authnstd -u client -n remote
+#   ERR pvxs.auth.common
+#        No certificate manager answered CERT:CREATE:b1196b1d within 5 seconds. Nothing
+#        serves that name, so either no certificate manager for this authority is
+#        running, or it cannot be reached from here.
+```
+
+Both fail for the same reason. The only way in carries TLS, TLS is refused unless the
+workstation can verify what answers, and it has nothing to verify against. The
+certificate manager is behind the very boundary you would have to cross to ask it for
+anything. Nothing here is misconfigured: this is what a closed boundary looks like from
+outside, and it stays this way until somebody carries the authority across.
+
+### Issue the laboratory's certificates, the gateway among them
+
+Everything inside is issued as in Part 1, and **the gateway needs a certificate before
+the boundary can carry anything**. A gateway with no certificate serves no TLS, and a
+gateway that serves no TLS and no plaintext serves nothing whatsoever. It requests an
+`ioc` certificate rather than a `server` one, because it is a server to the workstation
+outside and a client to the IOCs, and only an `ioc` certificate is both:
 
 ```sh
 run_in lab as guest    authnstd -u client
@@ -898,26 +965,14 @@ run_in tstioc  as tstioc  authnstd -u ioc
 run_in gateway as gateway authnstd -u ioc
 
 run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+#   b1196b1d:01360524055551771210  done
 ```
 
-The workstation outside requests one too, and this is the first proof the path works:
-its request crosses the load balancer and the gateway to reach a PVACMS it cannot
-address. It requests under a name of its own, because the laboratory already has a
-`guest` and PVACMS refuses a second certificate for a subject it has issued:
-
-```sh
-run_in perimeter as guest authnstd -u client -n remote
-#   email this Certificate Request ID: CSCS-DCQV-WJQ9-JPZT, to your SPVA administrator
-#   Certificate identifier  : b1d050ed:17275979695046077977
-
-run_in lab-manager as admin pvxcert --review-pending --all approve --yes
-```
-
-Restart the three services that read a keychain at start. **Restart the IOCs first, and
-the gateway only once they are serving**, because a gateway makes its upstream
-connections when it starts and does not retry the ones it could not make. Restart them
-together and the gateway comes up against IOCs that are still starting, forwards
-nothing, and every read across the boundary times out with bytes visibly flowing:
+Restart the services that read a keychain at start. **Restart the IOCs first, and the
+gateway only once they are serving**, because a gateway makes its upstream connections
+when it starts and does not retry the ones it could not make. Restart them together and
+the gateway comes up against IOCs that are still starting, forwards nothing, and every
+read across the boundary times out with bytes visibly flowing:
 
 ```sh
 podman-compose -p podman -f topologies/simple-with-gateway/compose.yaml \
@@ -931,7 +986,7 @@ answers over TLS:
 
 ```sh
 run_in lab as operator pvxinfo -v test:aiExample | grep '^#'
-#   # TLS x509:...:EPICS Root Certificate Authority/testioc@10.89.0.95:5076
+#   # TLS x509:b1196b1d:15450121003520414239:EPICS Root Certificate Authority/testioc@10.89.0.8:5076
 ```
 
 Until then the same line says `anonymous/@...:5075`. Then restart the gateway:
@@ -941,12 +996,101 @@ podman-compose -p podman -f topologies/simple-with-gateway/compose.yaml \
     restart pvxs-lab-gateway
 ```
 
+It now holds a certificate, so it serves the boundary. One port is listening, and it is
+the secure one:
+
+```sh
+run_in gateway as gateway sh -c 'ss -lnt | grep 507'
+#   LISTEN 0 4 10.89.2.5:5076 0.0.0.0:*
+```
+
+The gateway says so as it starts, too:
+
+```text
+WARN pvxs.svr.init tls-only transport active without client_cert=require --
+     anonymous TLS clients will still be accepted
+```
+
+That warning is about the other axis. Closing the plaintext listener decides which
+*transport* is carried; it does not by itself decide who has to present a certificate.
+A holder that has the authority can still connect anonymously over TLS, and what it may
+then do is decided by the access rules in section 6.
+
+### Carry the authority to the workstation
+
+The workstation needs the root the facility issues under, and it cannot fetch it,
+because fetching it is one of the things the boundary refuses. So it is carried across
+by a route the facility does not provide, which here is a file copy.
+
+PVACMS writes that file out for you. Beside its own keychain sits `trust_anchor.p12`,
+holding the root certificate and nothing else:
+
+```sh
+podman cp podman_pvxs-lab-pvacms_1:/home/idm/.local/share/pva/1.5/trust_anchor.p12 .
+podman cp trust_anchor.p12 \
+    podman_internet-client_1:/home/guest/.config/pva/1.5/client.p12
+podman exec --user root podman_internet-client_1 \
+    chown guest /home/guest/.config/pva/1.5/client.p12
+```
+
+The certificate authority's own keychain would have done the job too, and handing it
+over would have handed over the key that signs certificates with it. `trust_anchor.p12`
+holds enough to verify what the authority signs and not enough to sign anything, which
+is what makes it safe to copy about. Read it where it landed:
+
+```sh
+run_in perimeter as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
+#   No identity certificate; trust anchors only:
+#   Primary Root CA         : CN=EPICS Root Certificate Authority, OU=epics.org Certificate Authority, O=certs.epics.org, C=US
+```
+
+A holder that already has the authority needs no issuer identifier and no first-use
+decision to make, because there is nothing left to decide. That is the difference
+between this and the reference subsection in Part 1: there the identifier is supplied
+and the authority is fetched, here the authority itself arrives and nothing is fetched.
+
+### Ask for an identity over TLS
+
+Now the workstation can verify what answers it, so it can ask. The request crosses the
+load balancer and the gateway to reach a PVACMS it cannot address, over the only
+transport the boundary carries. It asks under a name of its own, because the laboratory
+already has a `guest` and PVACMS refuses a second certificate for a subject it has
+issued:
+
+```sh
+run_in perimeter as guest authnstd -u client -n remote
+#   Keychain file created   : /home/guest/.config/pva/1.5/client.p12
+#   Certificate identifier  : b1196b1d:3952516796146155152
+
+run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+#   b1196b1d:03952516796146155152  CN=remote,O=epics.org,C=US
+#         PENDING_APPROVAL -> VALID  (APPROVE)
+```
+
+The request keeps the authority already in the keychain and adds the identity beside it,
+so one file ends up carrying both. That is the whole sequence: a trust anchor arrives by
+hand, and an identity follows over the wire.
+
 Now read across the boundary:
 
 ```sh
 run_in perimeter as guest pvxget test:aiExample
 #   value double = 4
 ```
+
+If the first read after approval times out, ask again. The certificate reads `VALID` at
+the moment it is approved, and the connection that was already open has to be remade
+before it carries the new identity.
+
+> **Why this workstation is configured with `remote_verification`.** A holder normally
+> confirms its own certificate with the certificate manager before using it. This one
+> cannot: the certificate manager is behind the boundary, and reaching it means using
+> the certificate whose standing is in question. The gateway checks what is presented to
+> it and refuses a holder that does not stand, so the check still happens, at the point
+> the connection is accepted rather than before it is made. The setting is in
+> `compose.yaml` as `EPICS_PVA_TLS_OPTIONS: "remote_verification"`, and it applies only
+> to a name server named with `pvas://`. A workstation with an ordinary route to the
+> certificate manager establishes its own standing as usual.
 
 ## 6. Identity across a gateway
 
@@ -957,14 +1101,14 @@ From inside the laboratory, the peer is the IOC itself:
 
 ```sh
 run_in lab as operator pvxinfo -v test:open | grep '^#'
-#   # TLS x509:0b5ee2fc:7327241123256509997:EPICS Root Certificate Authority/testioc@10.89.0.95:5076
+#   # TLS x509:b1196b1d:15450121003520414239:EPICS Root Certificate Authority/testioc@10.89.0.8:5076
 ```
 
 From outside, the peer is the **gateway**, at the load balancer's address:
 
 ```sh
 run_in perimeter as guest pvxinfo -v test:open | grep '^#'
-#   # TLS x509:0b5ee2fc:9808356842445051647:EPICS Root Certificate Authority/gateway@10.89.4.14:5076
+#   # TLS x509:b1196b1d:1360524055551771210:EPICS Root Certificate Authority/gateway@10.89.4.2:5076
 ```
 
 That one line carries two facts. The identity is `gateway`, because the secure
@@ -1056,6 +1200,160 @@ gateway's own file, and the IOC has to be willing to accept whatever the gateway
 forwards. Granting an IOC variable to `AUTHORITY` with no user group, as `test:open`
 does, is how a rule says "and I accept it through the gateway too".
 
+## Revocation cuts a connection that is already up
+
+Everything so far revoked a certificate and then asked for something new. That shows a
+door being locked; it does not show what happens to whoever is already through it. A
+certificate is checked when a connection is made, and both ends go on watching it for as
+long as the connection lasts, so revoking one takes effect while traffic is flowing
+rather than at the next attempt.
+
+Seeing that needs two terminals, because a monitor runs until you stop it. Open a second
+terminal and source the helpers in both:
+
+```sh
+cd ~/slac/pvxs-cms/example/podman
+source ./helpers.sh
+```
+
+Each demonstration below follows the same shape. In the first terminal start a monitor
+and leave it running. In the second, revoke a certificate. Then watch the first. Stop
+each monitor with Ctrl-C before starting the next.
+
+### A holder inside the laboratory
+
+**Terminal 1**, watching a variable over TLS:
+
+```sh
+run_in lab as operator pvxmonitor test:aiExample
+#   test:aiExample Connected to 10.89.0.9:5076
+#   ... values arriving ...
+```
+
+**Terminal 2**, revoking the certificate that connection is using:
+
+```sh
+run_in lab-manager as admin pvxcert --review-issued --where "name:operator and state:VALID" --all --yes
+#         VALID -> REVOKED  (REVOKE)
+```
+
+**Terminal 1** reacts at once, and then reconnects without the certificate:
+
+```text
+test:aiExample Disconnected
+test:aiExample Connected to 10.89.0.9:5075
+```
+
+Two things happened. The secure connection was torn down, because the identity it was
+carrying is no longer good. Then the client came back on the plaintext port as nobody in
+particular, because the IOC still offers one and reading never needed a certificate. The
+values continue; the ability to write is gone.
+
+### A holder outside the boundary
+
+The same revocation, from outside, ends differently, because this boundary carries TLS
+and nothing else.
+
+**Terminal 1**:
+
+```sh
+run_in perimeter as guest pvxmonitor test:aiExample
+#   test:aiExample Connected to 10.89.4.2:5076
+```
+
+**Terminal 2**:
+
+```sh
+run_in lab-manager as admin pvxcert --review-issued --where "name:remote and state:VALID" --all --yes
+```
+
+**Terminal 1** stops, and stays stopped:
+
+```text
+test:aiExample Disconnected
+```
+
+There is no second line. Inside the laboratory a revoked holder falls back to being
+anonymous; here there is nothing to fall back to, so revoking the certificate removes the
+workstation's only way in. That is the whole point of closing the plaintext listener.
+
+> **Getting back in takes the same route as the first time.** A revoked certificate is
+> still a certificate, and a holder presenting one is refused before it can ask for
+> another, so `authnstd --force` has nothing to ask over. Put the authority back and
+> request under an unused name, exactly as in section 5:
+>
+> ```sh
+> podman cp trust_anchor.p12 \
+>     podman_internet-client_1:/home/guest/.config/pva/1.5/client.p12
+> podman exec --user root podman_internet-client_1 \
+>     chown guest /home/guest/.config/pva/1.5/client.p12
+> run_in perimeter as guest authnstd -u client -n remote2
+> run_in lab-manager as admin pvxcert --review-pending --all approve --yes
+> ```
+
+### A server inside the laboratory
+
+The watching goes both ways. This time revoke the certificate of the IOC being watched
+rather than the holder watching it.
+
+**Terminal 1**, on a variable `tstioc` serves:
+
+```sh
+run_in lab as operator pvxmonitor tst:extra
+#   tst:extra Connected to 10.89.0.8:5076
+```
+
+**Terminal 2**:
+
+```sh
+run_in lab-manager as admin pvxcert --review-issued --where "name:tstioc and state:VALID" --all --yes
+```
+
+**Terminal 1**:
+
+```text
+tst:extra Disconnected
+tst:extra Connected to 10.89.0.8:5075
+```
+
+The client dropped the connection because the server it was talking to no longer holds a
+good certificate. What it reconnected to is the same IOC on its plaintext port, serving
+anonymously, which is all a server whose certificate has been revoked can still do.
+
+### A server on the far side of a gateway
+
+**Terminal 1**, from outside, watching a variable `testioc` serves:
+
+```sh
+run_in perimeter as guest pvxmonitor test:aiExample
+#   test:aiExample Connected to 10.89.4.2:5076
+```
+
+**Terminal 2**:
+
+```sh
+run_in lab-manager as admin pvxcert --review-issued --where "name:testioc and state:VALID" --all --yes
+```
+
+**Terminal 1**:
+
+```text
+test:aiExample Disconnected
+test:aiExample Connected to 10.89.4.2:5076
+```
+
+It came back, and to the same secure address, which is worth reading carefully. The
+workstation outside is not connected to the IOC; it is connected to the **gateway**, and
+the gateway's own certificate was not revoked. What broke was the gateway's connection to
+the IOC behind it, which took the workstation's subscription down with it. What came back
+is a secure connection to the gateway whose upstream is now an anonymous plaintext one.
+Being outside tells you that something changed; it does not tell you what, and the
+identity at the far end is no longer what it was.
+
+> **This section revokes four certificates.** The laboratory is not left as the
+> walkthrough found it, so start the next part from a clean one:
+> `reset_topology <topology>`.
+
 # Part 3 - federated, one facility root
 
 Two departments, each with its own PVACMS and gateway, both chaining to one facility
@@ -1064,7 +1362,7 @@ trusted everywhere. Revoking that root stops the whole facility, which is the la
 this part shows.
 
 ```sh
-./reset.sh federated-shared-root
+reset_topology federated-shared-root
 ```
 
 [![Two departments side by side, each with its own PVACMS and gateway, one facility root above them and a responder answering for it](topology/topology-federated-shared-root.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-shared-root.svg)
@@ -1277,7 +1575,7 @@ run_in lab-manager as idm bash -c \
 ```
 
 > **Every identifier printed in this document is an example.** Each laboratory creates
-> its own authorities, and creates new ones on `./reset.sh --authorities`, so yours are
+> its own authorities, and creates new ones on `reset_topology --authorities`, so yours are
 > different. Where a command has to carry one, it is written `${LAB}` or `${LAB_SKID}`,
 > which `lab_ids` fills in from the laboratory in front of you. Where a certificate has
 > to be named, take the identifier from the listing rather than from this document.
@@ -1799,17 +2097,35 @@ A holder is told at once, on the status process variable its certificate already
 
 ```sh
 run_in ml as guest pvxcert -f /home/guest/.config/pva/1.5/client.p12
-#   Status        : REVOKED
+#   Status        : AUTHORITY_REVOKED
 ```
 
-The word is `REVOKED`, the same one section 9's holder was given, not the
-`AUTHORITY_REVOKED` that section 10's revoked root produces. What a holder is given is
-the worst status found anywhere in its chain, and this holder's own certificate was
-never touched: it is the intermediate that signed it that was revoked, and revoked is
-the worse of the two. `AUTHORITY_REVOKED` is reserved for the facility root, whose
-status the department asks a responder about rather than reading it out of its own
-records. Either way, that certificate cannot be used, and asking that department for
-another one achieves nothing.
+The word is `AUTHORITY_REVOKED`, not the `REVOKED` that section 9's holder was given,
+and the difference is the whole point of having two words. This holder's own certificate
+was never touched. What was revoked is the intermediate that signed it, so the fault is
+above them and nothing they do to their own certificate will help: asking this department
+for another one gets a certificate signed by the same revoked authority.
+
+It says the same thing to whoever runs the site, from the other direction. `REVOKED`
+means look at that holder's certificate. `AUTHORITY_REVOKED` means look further up, and
+expect to find every holder under the same authority saying it too. It is reported for a
+revoked authority anywhere in the chain, at any depth, whether that is the department's
+intermediate as here or the facility root as in section 10.
+
+A holder's own revocation still outranks it. A certificate revoked or expired in its own
+right goes on saying so even when the authority above it has been revoked as well,
+because that is the fact its holder can act on.
+
+An expired authority is reported the same way and for the same reason, as
+`AUTHORITY_EXPIRED`. It does not appear in these laboratories, and that is worth saying
+plainly rather than leaving to be discovered: a certificate is never given a life longer
+than the authority that signed it, so when an authority reaches its expiry date every
+holder beneath it reaches its own at the same moment, and each correctly reports the
+`EXPIRED` that is true of itself. What `AUTHORITY_EXPIRED` names is the case that
+clamping does not cover, an authority further up the chain than the one that did the
+signing having expired while the signer and its holders are all still within their own
+dates. It tells the holder the same thing `AUTHORITY_REVOKED` does, that nothing done to
+their own certificate will help, and it tells whoever runs the site to look further up.
 
 Its IOC stops offering the secure port and serves plain traffic instead: an IOC that
 cannot stand behind its certificate does not keep presenting it. Revoked is a settled
@@ -1990,7 +2306,7 @@ The laboratory's stand-in for creating a new root and issuing to everyone again 
 command, and it is the only thing here that works:
 
 ```sh
-./reset.sh --authorities federated-shared-root
+reset_topology --authorities federated-shared-root
 ```
 
 It creates new authorities as well as new certificates, so the issuer identifiers
@@ -2010,7 +2326,7 @@ Two departments under two separate roots. Trust comes from each keychain storing
 roots as trust anchors: one identity, many anchors.
 
 ```sh
-./reset.sh federated-non-shared-root
+reset_topology federated-non-shared-root
 ```
 
 [![Two departments side by side under two independent roots, with a keychain below them holding one identity and both roots as trust anchors](topology/topology-federated-non-shared-root.svg)](https://raw.githubusercontent.com/slac-epics/pvxs-cms/fy26-integration-testing/example/podman/topology/topology-federated-non-shared-root.svg)
@@ -2037,7 +2353,7 @@ diagram to open the raw file.
   department's issuer identifier and no other, so a request about a certificate reaches
   the department that issued it, wherever the request is made.
 - **An IOC is handed both roots rather than fetching them.** An IOC stands on its own
-  department's segment and reaches nothing beyond it. To configure trust, `./reset.sh`
+  department's segment and reaches nothing beyond it. To configure trust, `reset_topology`
   writes both roots into `certs/trust_anchors.p12`, and each IOC and gateway starts with
   that file as its keychain; the identity it is then issued is added to the anchors
   already there.
@@ -2506,7 +2822,7 @@ The fields:
 | `issuer` | the issuing authority; naming another empties the result without a query |
 | `name` | the common name |
 | `org`, `unit`, `country` | the rest of the subject; a certificate with several units matches on any one |
-| `state` | `UNKNOWN`, `VALID`, `PENDING`, `PENDING_APPROVAL`, `PENDING_RENEWAL`, `EXPIRED`, `REVOKED`. `AUTHORITY_REVOKED` is not among them: it is read off the authority rather than recorded against a row, and naming it is refused with the list above |
+| `state` | `UNKNOWN`, `VALID`, `PENDING`, `PENDING_APPROVAL`, `PENDING_RENEWAL`, `EXPIRED`, `REVOKED`. `AUTHORITY_REVOKED` and `AUTHORITY_EXPIRED` are not among them: they are read off the authority rather than recorded against a row, and naming either is refused with the list above |
 | `type` | `CLIENT`, `SERVER`, `IOC`, `CERT_AUTH`, `ROOT_AUTH`, `UNKNOWN`, the word in the Type column |
 | `issued`, `expires`, `renew_by`, `changed` | a date, matching that whole day |
 | `issued_before`, `expires_before`, `renew_before`, `changed_before`, and the `_after` form of each | the same four, taking a date or a period. The `renew_by` pair drops the `by` |
@@ -2614,7 +2930,7 @@ To run the demonstration again from the top, put the laboratory back to the stat
 in immediately after a build:
 
 ```sh
-./reset.sh federated-shared-root
+reset_topology federated-shared-root
 ```
 
 This discards every certificate the laboratory has issued and every keychain the
@@ -2643,7 +2959,7 @@ where [the baseline section](#baseline-behavior-without-certificates) starts.
 To create new certificate authorities as well, which changes the issuer identifiers:
 
 ```sh
-./reset.sh --authorities federated-shared-root
+reset_topology --authorities federated-shared-root
 ```
 
 This builds nothing: the images do not depend on which authorities exist, so there is
