@@ -1,9 +1,9 @@
 # What a gateway admits at the boundary. Both gateways load this one file: the departments
-# differ in what they forward, which their process variable lists say, not in who they let in.
+# differ in what they forward, which their pvlists say, not in who they let in.
 #
-# The gateway image carries a file of this name naming one facility root, which is right for
-# the laboratories that have one. Here there is no such root, so this copy is mounted over it
-# and names the two roots that exist instead. A holder is admitted under either.
+# The gateway image carries a file of this name naming one facility root. Here there is no
+# such root, so this copy is mounted over it and names the two roots that exist instead. A
+# holder is admitted under either.
 
 AUTHORITY(LAB_CA, "EPICS Lab Root Certificate Authority")
 AUTHORITY(ML_CA,  "EPICS ML Root Certificate Authority")
@@ -37,8 +37,8 @@ ASG(SPECIAL) {
 #
 # SPECIAL above names operators; this one names nobody, so the condition is only that a
 # certificate was presented over TLS under one of the two roots. It is what decides who may
-# write the variables the lists mark with it, because the controller upstream sees this
-# gateway rather than the client behind it.
+# write the variables the pvlists mark with it, because the IOC upstream sees this gateway
+# rather than the client behind it.
 ASG(OPEN_WRITE) {
     RULE(1,READ) {
         AUTHORITY(LAB_CA, ML_CA)

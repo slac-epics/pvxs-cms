@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 # The federated non-shared-root topology: two isolated zones, each with its own gateway,
-# certificate manager and root certificate authority. The two roots are independent - neither
-# signs the other, nothing sits above them, and each is rotated on its own. Revocation of a
-# root is left to the shared-root picture, which already shows it, so this one stays on the
-# single point it exists to make. Trust therefore cannot come from a shared chain: it comes from each keychain storing
-# both roots as trust anchors, which is also what lets a certificate status reply signed under
-# either root be verified.
+# PVACMS and root certificate authority. The two roots are independent: neither signs the
+# other, nothing sits above them, and each is rotated on its own. Trust comes from each
+# keychain storing both roots as trust anchors, which is also what lets a certificate status
+# reply signed under either root be verified.
 # Every coordinate is computed here. See topology_kit for the primitives.
 from topology_kit import (C, GAP, HDR, LH, ZP, ZTITLE, Canvas, colw, esc, fields,
                           measure, output_path)
@@ -26,7 +24,7 @@ lab_gw_l = fields('Role: gateway (dual-homed), net-lab <-> net-internet','Image:
  'Reached directly at its own net-internet address, on 5075 and 5076',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'Presents: CN=gateway',
- 'Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc','ACF: gateway.acf','PVList: config/gateway-lab.pvlist')
+ 'Upstream: pvxs-lab-pvacms, pvxs-lab-testioc, pvxs-lab-tstioc','ACF: gateway.acf','pvlist: config/gateway-lab.pvlist')
 testioc_l = fields('Role: IOC','Image: testioc','eth0  net-lab        10.89.0.0/24',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: testioc.db, testiocg.db, testioc-lab.db',
@@ -52,7 +50,7 @@ ml_gw_l = fields('Role: gateway (dual-homed), net-ml <-> net-internet','Image: g
  'Reached directly at its own net-internet address, on 5075 and 5076',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'Presents: CN=ml-gateway',
- 'Upstream: pvxs-lab-ml, pvxs-lab-ml-ioc','ACF: gateway.acf','PVList: config/gateway-ml.pvlist')
+ 'Upstream: pvxs-lab-ml, pvxs-lab-ml-ioc','ACF: gateway.acf','pvlist: config/gateway-ml.pvlist')
 ml_client_l = fields('Role: client','Image: lab',
  'eth0  net-ml         10.89.1.0/24',
  'Route: 10.89.4.0/24 via pvxs-ml-router',
@@ -89,10 +87,9 @@ labca_l = fields('Subject: CN=EPICS Controls Intermediate CA','SKID: LAB_ISSUER_
  'Issued by: EPICS Lab Root Certificate Authority',
  'File: certs/lab_intermediate.p12','Mounted into: pvxs-lab-pvacms')
 
-# The keychain is what makes this topology work at all. With no authority above the two roots,
-# trust cannot come from the chain: it comes from the holder storing both roots as anchors.
-# One identity, many anchors - and the anchor list is what lets a status reply signed under
-# either root be verified.
+# With no authority above the two roots, trust comes from the holder storing both roots as
+# anchors: one identity, many anchors. The anchor list is also what lets a status reply
+# signed under either root be verified.
 keychain_l = fields('File: one PKCS#12 keychain',
  '',
  'IDENTITY - exactly one, never more',
@@ -191,12 +188,11 @@ def _router(dept, seg, cidr, far_gw, far_ports):
     return fields('Role: routing firewall, layers 3 and 4','Image: router',
      f'eth0  {seg:<14} {cidr}',
      'eth1  net-internet   10.89.4.0/24',
-     f'Carries every packet leaving the {dept} department, and the only',
-     '    place it carries one to is net-internet, where the other',
-     '    department presents the outward face of its gateway',
-     'Routes on the destination subnet alone, layer 3: the port has no',
-     '    part in choosing where a packet goes. The port decides only',
-     '    whether it is permitted at all, layer 4:',
+     f'Carries every packet leaving the {dept} department, and carries',
+     '    it only to net-internet, where the other department presents',
+     '    the outward face of its gateway',
+     'Routes on the destination subnet alone, layer 3. The port decides',
+     '    only whether a packet is permitted at all, layer 4:',
      f'    {far_ports[0]}, {far_ports[1]} to {far_gw} on net-internet',
      'Broadcast stays on the segment it was sent to, so a PVAccess',
      '    search stays inside the department. Anything past it is',
@@ -237,14 +233,14 @@ legend_x, legend_y = M, title_h + 26
 # The legend's height decides where the rows below the top band start, so it is worked out
 # here rather than while drawing.
 chips = [('CA or certificate - a file, on no network', C['ca'][1]),
-         ('PVACMS - certificate manager', C['pvacms'][1]),
-         ('IOC - controller', C['ioc'][1]),
+         ('PVACMS', C['pvacms'][1]),
+         ('IOC', C['ioc'][1]),
          ('gateway - proxies PVAccess between a zone', C['gateway'][1]),
          ('    and the network outside the facility', None),
          ('router - forwards between segments, and', C['router'][1]),
          ('    states which may reach which', None),
          ('client - workstation', C['client'][1]),
-         ('ACF or PVList - a file a component loads', C['file'][1])]
+         ('ACF or pvlist - a file a component loads', C['file'][1])]
 samples = [('net-lab bus - tapping it = attached to net-lab', C['bus_lab'], 4, None),
            ('net-ml bus - the same for net-ml', C['bus_ml'], 4, None),
            ('net-internet bus - tapping it = attached', C['bus_inet'], 4, None),
@@ -270,7 +266,7 @@ notation = ['10.89.0.0/24 : the segment, in CIDR. Three of them: the two',
 abbrev = ['CA     : certificate authority','SKID   : subject key identifier, 40 hex digits',
           'Issuer ID: the first 8 digits of a SKID','PVACMS : certificate manager',
           'IOC    : input output controller','ACF    : access security file',
-          'PVList : gateway process variable list','ML     : machine learning']
+          'pvlist : what a gateway forwards','ML     : machine learning']
 note = ['A line claims attachment, not direction.','Arrowheads only where a direction is real.','',
         'LAB_ISSUER, ML_ISSUER and the _SKID forms are','named, not printed: a fresh mint changes them.',
         'Values: issuer_ids.env']
@@ -294,8 +290,8 @@ gx2 = ml_x + ZP + gx2_local
 
 pc_w, pc_h = measure('internet-client', pc_l)
 
-# Two authority groups, not one. The gap between them is the whole point of this picture and
-# is drawn wide enough that no one reads them as branches of a single tree: nothing spans it.
+# Two authority groups, not one. The gap between them is drawn wide enough that they cannot
+# read as branches of a single tree, and nothing spans it.
 CA_GAP = 150
 
 lab_root_w, lab_root_h = measure('Lab Root CA', lab_root_l)
@@ -321,17 +317,17 @@ ml_ca_x = lab_ca_x + lab_ca_w + CA_GAP
 
 ca_x, ca_w = lab_ca_x, ca_span
 
-# The keychain sits below both groups and reaches up to each root. Below, because anything
-# drawn between or above them would read as the shared parent this topology does not have.
+# The keychain sits below both groups and reaches up to each root. Anything drawn between or
+# above them would read as the shared parent this topology does not have.
 kc_w, kc_h = measure('Keychain: one identity, many trust anchors', keychain_l)
 kc_x = (lab_ca_x + ml_ca_x + ml_ca_w)/2 - kc_w/2      # centred under the two groups it reaches
 kc_y = ca_y + ca_h + 52
 
 # net-internet is drawn the way every other segment is: one horizontal line, tapped by each
 # host that stands on it, labelled once. It belongs to nobody in the facility, so the line is
-# drawn below the box that holds the outside workstation rather than inside it, as it is on
-# the simple gateway and shared-root pictures: the workstation taps it from above, and the
-# two gateways and the two routers reach up to it out of their departments.
+# drawn below the box that holds the outside workstation rather than inside it: the
+# workstation taps it from above, and the two gateways and the two routers reach up to it out
+# of their departments.
 router_w, router_h = measure('pvxs-lab-router', lab_router_l)
 
 # The box outside the facility holds the one host that stands there and nothing else. It is
@@ -420,8 +416,7 @@ def build(cv):
     # Each group is drawn the same way and entirely within its own zone: a root on top, its own
     # intermediate beneath it. No line leaves a group, which is what makes the two independent.
     ca_cards = {}
-    # The Lab root delegates to an intermediate; the ML root signs for itself. The two
-    # departments are free to differ precisely because neither root constrains the other.
+    # The Lab root delegates to an intermediate; the ML root signs for itself.
     for tag, zx, zw, root_t, root_b, int_t, int_b in (
             ('lab', lab_ca_x, lab_ca_w, 'Lab Root CA', lab_root_l, 'Lab Intermediate CA', labca_l),
             ('ml', ml_ca_x, ml_ca_w, 'ML Root CA', ml_root_l, None, None)):

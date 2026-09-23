@@ -6,8 +6,8 @@
 # authorities of a different shape, so each mints its own rather than sharing one set.
 #
 # The root is written without its key: it is a trust anchor for every host, and the key that
-# would let anything be signed with it is not wanted on a running service. What each
-# certificate manager gets is its own department's intermediate, key and all.
+# would let anything be signed with it is not wanted on a running service. What each PVACMS
+# gets is its own department's intermediate, key and all.
 set -euo pipefail
 cd "$(dirname "$0")"
 

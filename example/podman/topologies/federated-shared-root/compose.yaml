@@ -3,23 +3,27 @@
 # Three networks stand in for three sites. A container reaches only the networks it is
 # attached to, so the isolation is enforced by podman rather than by a policy engine:
 #
-#   net-lab        the accelerator side: its certificate manager, its controllers, its gateway
-#   net-ml         the second department: its own certificate manager, controller and gateway
+#   net-lab        the accelerator side: its PVACMS, its IOCs, its gateway
+#   net-ml         the second department: its own PVACMS, IOC and gateway
 #   net-perimeter  outside both: reaches the two gateways and nothing else
 #
 # Each gateway sits on its own department's network and on the perimeter, which is the only
-# path between them. Nothing on the perimeter can address a certificate manager directly.
+# path between them. Nothing on the perimeter can address a PVACMS directly.
 #
 # Two departments, two intermediate certificate authorities, one facility root that every
 # node trusts. A certificate issued by either department is trusted everywhere; who may
-# administer which department is decided separately, by each certificate manager's own
-# access security file.
+# administer which department is decided separately, by each PVACMS's own access security
+# file.
 #
 # Service names match the DNS names used inside the images, so the shell profiles and the
 # gateway configuration work unchanged.
 #
 # Run ./bootstrap.sh first: it builds the images and mints the authorities.
 
+# Carried by the things that never look for a process variable: PVACMS serves and is served,
+# and a gateway is told its upstream in its own configuration file. Everything else here
+# leaves discovery on, finds its own department by broadcast, and names the facility address
+# for the other one.
 x-lab-env: &lab-env
   EPICS_PVA_AUTO_ADDR_LIST: "NO"
 
@@ -84,19 +88,22 @@ volumes:
   ml-ioc-config:
   lab-client-config:
   ml-client-config:
-  perimeter-client-config:
+  internet-client-config:
 
 services:
 
   # ------------------------------------------------------------- the facility authority
-  # Answers for the facility root, at the address named in the root's own extension. On both
-  # departmental networks, because both certificate managers chain to that root. What it says
-  # is in ./ocsp/index.txt, read when it starts.
+  # Answers for the facility root, at the address named in the root's own extension. What it
+  # says is in ./ocsp/index.txt, read when it starts.
+  #
+  # net-it is its own segment; the other two are legs into the networks that name it, the same
+  # accommodation pvxs-facility-lb needs. Each PVACMS stays on one interface, so that neither
+  # can address the other.
   pvxs-lab-authority-status:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-authority-status
-    networks: [net-it]
+    networks: [net-it, net-lab, net-ml]
     volumes:
       - ./ocsp:/ocsp:ro,Z
       - ../../../kubernetes/docker/idm/ocsp-supervisor.conf:/etc/supervisor/conf.d/ocsp.conf:ro,z
@@ -109,13 +116,10 @@ services:
     depends_on: [pvxs-lab-authority-status]
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
     hostname: pvxs-lab-pvacms
-    # net-it as well: the root names its responder by hostname, and podman answers a name
-    # only for containers that share a segment with the asker.
-    networks: [net-lab, net-it]
+    networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
       EPICS_PVACMS_DB: /home/idm/.local/share/pva/1.5/certs.db
       EPICS_PVA_TLS_KEYCHAIN: /home/idm/.config/pva/1.5/server.p12
     volumes:
@@ -136,8 +140,7 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms"
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - testioc-config:/home/testioc/.config/pva/1.5
@@ -152,8 +155,7 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms"
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - tstioc-config:/home/tstioc/.config/pva/1.5
@@ -181,17 +183,16 @@ services:
     command: ["/usr/local/bin/start-gateway", "LAB_ISSUER"]
     depends_on: [pvxs-lab-pvacms]
 
-  # ------------------------------------------------- machine learning department
+  # ------------------------------------------------- ML department
   pvxs-lab-ml:
     init: true
     depends_on: [pvxs-lab-authority-status]
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/ml:latest
     hostname: pvxs-lab-ml
-    networks: [net-ml, net-it]
+    networks: [net-ml]
     env_file: [./issuer_ids.env]
     environment:
       <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
       EPICS_PVACMS_DB: /home/idm/.local/share/pva/1.5/certs.db
       EPICS_PVA_TLS_KEYCHAIN: /home/idm/.config/pva/1.5/server.p12
     volumes:
@@ -209,8 +210,7 @@ services:
     networks: [net-ml]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml"
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
     volumes:
       - ml-ioc-config:/home/mlioc/.config/pva/1.5
@@ -238,7 +238,7 @@ services:
     depends_on: [pvxs-lab-ml]
 
   # ------------------------------------------------------------------- clients
-  # A shell inside the lab department. Reaches its own certificate manager directly.
+  # A shell inside the lab department. Reaches its own PVACMS directly.
   lab-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
@@ -248,8 +248,7 @@ services:
     networks: [net-lab]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-pvacms pvxs-lab-testioc pvxs-lab-tstioc"
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_NAME_SERVERS: "facility:5175"
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -258,8 +257,8 @@ services:
       - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
 
-  # A shell inside the machine learning department, the mirror of lab-client: its own
-  # department directly, and the perimeter so it can reach the other department's gateway.
+  # A shell inside the ML department, the mirror of lab-client: its own department directly,
+  # and the perimeter so it can reach the other department's gateway.
   ml-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
@@ -267,8 +266,7 @@ services:
     networks: [net-ml]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
-      EPICS_PVA_ADDR_LIST: "pvxs-lab-ml pvxs-lab-ml-ioc"
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_NAME_SERVERS: "facility:5075"
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -279,18 +277,18 @@ services:
 
   # A shell outside both departments. Reaches the two gateways and nothing else, so
   # every certificate status lookup and every process variable crosses a gateway.
-  perimeter-client:
+  internet-client:
     init: true
     image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/internet:latest
-    hostname: perimeter-client
+    hostname: internet-client
     networks: [net-internet]
     env_file: [./issuer_ids.env]
     environment:
-      <<: *lab-env
+      EPICS_PVA_AUTO_ADDR_LIST: "YES"
       EPICS_PVA_NAME_SERVERS: "facility:5075 facility:5175"
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
-      - perimeter-client-config:/home/guest/.config/pva/1.5
+      - internet-client-config:/home/guest/.config/pva/1.5
       - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
 
@@ -300,9 +298,9 @@ services:
   #
   # A leg on every segment that names it, and the alias repeated on each. Podman answers a
   # name only for containers that share a segment with the asker, and each department's
-  # workstation reaches the other department by that name - the same accommodation the
-  # certificate managers need to reach the responder. At a real site one address in DNS and a
-  # route would do it; here the name has to be answerable where it is asked.
+  # workstation reaches the other department by that name - the same accommodation each
+  # PVACMS needs to reach the responder. At a real site one address in DNS and a route would
+  # do it; here the name has to be answerable where it is asked.
   pvxs-facility-lb:
     init: true
     image: docker.io/library/haproxy:lts-alpine
