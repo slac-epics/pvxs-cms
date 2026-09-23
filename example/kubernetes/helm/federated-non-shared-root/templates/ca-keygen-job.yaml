@@ -1,0 +1,196 @@
+{{/*
+The two authorities, minted before anything starts.
+
+They share nothing. The lab root signs an intermediate the lab certificate manager holds; the
+ML certificate manager mints a root of its own and signs with that directly. Neither can verify
+the other by following a chain, so both roots are packaged together as trust anchors and every
+keychain holds the pair. That is the whole point of this laboratory: trust comes from the
+anchor list rather than from a common ancestor.
+*/}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ca-keygen
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ca-keygen
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ca-keygen
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ca-keygen}
+subjects:
+  - kind: ServiceAccount
+    name: ca-keygen
+    namespace: {{ .Values.namespace }}
+---
+{{/* The ML certificate manager mints its own root, and refuses every administrator unless the
+     access file names the same authority. helm applies hooks before the rest of the release,
+     so the job cannot mount the ConfigMap the Deployments use and gets one of its own. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ca-keygen-acf
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+data:
+  pvacms-ml.acf: |
+{{ .Files.Get "files/pvacms-ml.acf" | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ca-keygen
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    # Kept when it fails, so the reason is readable. A job deleted on failure takes
+    # its logs with it and reports only that the release did not install.
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels: {app: ca-keygen}
+    spec:
+      serviceAccountName: ca-keygen
+      restartPolicy: OnFailure
+      initContainers:
+        # Whether authorities already exist, asked of the cluster before anything is minted.
+        # A separate container because the minting image has no kubectl.
+        - name: probe
+          image: {{ include "lab.image" (dict "Values" .Values "role" "kubectl") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              if kubectl get configmap lab-issuer-ids >/dev/null 2>&1; then
+                  echo yes > /certs/.skip
+              else
+                  echo no > /certs/.skip
+              fi
+          volumeMounts:
+            - {name: certs, mountPath: /certs}
+        - name: mint
+          image: {{ include "lab.image" (dict "Values" .Values "role" "idm") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/bash", "-c"]
+          env:
+            - name: EPICS_PVACMS_DB
+              value: /tmp/certs.db
+            - name: EPICS_CERT_AUTH_NAME
+              value: {{ .Values.certAuthorities.mlRoot | quote }}
+            - name: EPICS_CERT_AUTH_ORGANIZATION
+              value: certs.epics.org
+            - name: EPICS_CERT_AUTH_ORGANIZATIONAL_UNIT
+              value: epics.org Certificate Authority
+          args:
+            - |
+              set -euo pipefail
+                # Minted once per laboratory, not once per helm operation. The reset deletes
+                # the marker, so a new laboratory gets new authorities.
+              if [ "$(cat /certs/.skip 2>/dev/null)" = yes ]; then
+                  echo "authorities already exist, keeping them"; exit 0
+              fi
+              arch=$(/opt/epics/epics-base/startup/EpicsHostArch)
+
+              # The lab side: a root, and one intermediate beneath it. No -S, because there is
+              # no shared root here for a responder to answer about.
+              /opt/epics/pvxs-cms/test/O.$arch/gen_lab_certs \
+                  -O /certs \
+                  -R {{ .Values.certAuthorities.labRoot | quote }} \
+                  -L {{ .Values.certAuthorities.labIntermediate | quote }}
+              mv /certs/cert_auth.p12 /certs/lab_root.p12
+              rm -f /certs/ml_intermediate.p12
+
+              # The ML side mints its own root, the same way it would on a first start, and
+              # signs with it directly. There is no intermediate: this department answers for
+              # itself all the way up.
+              /opt/epics/pvxs-cms/bin/$arch/pvacms \
+                  --cert-auth-keychain /certs/ml_root.p12 \
+                  --admin-keychain /tmp/admin.p12 \
+                  --acf /acf/pvacms-ml.acf \
+                  --admin-keychain-new admin >/dev/null 2>&1
+
+              skid() {
+                  openssl pkcs12 -in "$1" -passin pass: -nokeys 2>/dev/null \
+                    | openssl x509 -noout -ext subjectKeyIdentifier \
+                    | tail -1 | tr -d " :" | tr "A-F" "a-f"
+              }
+              ML_ISSUER_SKID=$(skid /certs/ml_root.p12)
+              LAB_ISSUER_SKID=$(sed -n 's/^LAB_ISSUER_SKID=//p' /certs/issuer_ids.env)
+              [ -n "$LAB_ISSUER_SKID" ] && [ -n "$ML_ISSUER_SKID" ] || {
+                  echo "one of the two authorities has no subject key identifier" >&2; exit 1; }
+
+              # What every keychain has to hold: both roots, and neither key. A holder checks
+              # what it is shown against this list rather than by walking up to a shared root,
+              # because there is no shared root to walk up to.
+              openssl pkcs12 -in /certs/lab_root.p12 -passin pass: -nokeys >  /tmp/roots.pem
+              openssl pkcs12 -in /certs/ml_root.p12  -passin pass: -nokeys >> /tmp/roots.pem
+              openssl pkcs12 -export -nokeys -in /tmp/roots.pem \
+                  -out /certs/trust_anchors.p12 -passout pass:
+
+              { printf 'LAB_ISSUER=%s\n' "${LAB_ISSUER_SKID:0:8}"
+                printf 'ML_ISSUER=%s\n'  "${ML_ISSUER_SKID:0:8}"
+                printf 'LAB_ISSUER_SKID=%s\n' "$LAB_ISSUER_SKID"
+                printf 'ML_ISSUER_SKID=%s\n'  "$ML_ISSUER_SKID"; } > /certs/issuer_ids.env
+              # The packaging container runs as an unprivileged user, and pvacms writes the
+              # root it mints with mode 0600 as root. Without this it cannot read the file it
+              # is here to package, and the release fails with a permission error three steps
+              # from the cause. The keys never leave this pod's emptyDir.
+              chmod 0644 /certs/*.p12 /certs/issuer_ids.env
+              cat /certs/issuer_ids.env
+          volumeMounts:
+            - {name: certs, mountPath: /certs}
+            - {name: acf, mountPath: /acf}
+      containers:
+        - name: package
+          image: {{ include "lab.image" (dict "Values" .Values "role" "kubectl") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              cd /certs
+              if [ "$(cat .skip 2>/dev/null)" = yes ]; then
+                  echo "authorities already exist, keeping them"; exit 0
+              fi
+              kubectl create secret generic lab-intermediate \
+                  --from-file=cert_auth.p12=lab_intermediate.p12 \
+                  --dry-run=client -o yaml | kubectl apply -f -
+              kubectl create secret generic ml-root \
+                  --from-file=cert_auth.p12=ml_root.p12 \
+                  --dry-run=client -o yaml | kubectl apply -f -
+              kubectl create secret generic trust-anchors \
+                  --from-file=trust_anchors.p12=trust_anchors.p12 \
+                  --dry-run=client -o yaml | kubectl apply -f -
+              . ./issuer_ids.env
+              kubectl create configmap lab-issuer-ids \
+                  --from-literal=LAB_ISSUER="$LAB_ISSUER" \
+                  --from-literal=ML_ISSUER="$ML_ISSUER" \
+                  --from-literal=LAB_ISSUER_SKID="$LAB_ISSUER_SKID" \
+                  --from-literal=ML_ISSUER_SKID="$ML_ISSUER_SKID" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+              echo "two independent authorities: LAB=$LAB_ISSUER ML=$ML_ISSUER"
+          volumeMounts:
+            - {name: certs, mountPath: /certs}
+      volumes:
+        - {name: certs, emptyDir: {}}
+        - {name: acf, configMap: {name: ca-keygen-acf}}

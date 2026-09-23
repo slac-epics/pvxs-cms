@@ -1,0 +1,71 @@
+{{/*
+The segments.
+
+podman gives each segment its own bridge with isolate=true, so nothing reaches another segment
+by addressing it and the gateway is the only way in as a fact of the network rather than a
+matter of configuration. A pod network is flat, so the same shape is drawn with policy.
+
+These are ingress rules only. Egress is left alone deliberately: a pod that may not be reached
+cannot do anything by trying, and ingress-only rules are far easier to read than a matched pair.
+
+NOTE: these are enforced only by a CNI that implements NetworkPolicy. Kind's default CNI does
+NOT. The cluster this chart expects is created with Calico, which is what kind-cluster.yaml and
+`kind_create` in khelpers.sh set up. On a cluster without it every rule below is silently
+ignored and the laboratory will appear to work while enforcing nothing.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+{{/*
+The laboratory segment. Reachable by the places that sit in it, and by the gateway, which is a
+client to it. The workstation outside is not on this list, which is what makes the boundary
+real: it may not address an IOC even though it could resolve the name.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lab-segment-ingress
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app, operator: In, values: ["pvacms", "testioc", "tstioc", "lab-client"]}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {zone: lab}
+        - podSelector:
+            matchLabels: {app: gateway}
+---
+{{/*
+The gateway.
+
+THE DIFFERENCE, and the one worth reading twice. In podman the gateway sits on the laboratory
+segment and simply does not listen there, so a workstation's broadcast is answered once, by the
+IOC. A pod holds one address and cannot listen on part of it, so instead the laboratory is not
+allowed to reach the gateway at all.
+
+The rule that was being kept - a zone never reaches its own gateway - is kept. What changes is
+where it is enforced, and so what a mistake looks like: a laboratory workstation that somehow
+addresses the gateway now waits and times out, where in podman it would have been answered
+twice and told 'Duplicate PV name'.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-ingress
+spec:
+  podSelector:
+    matchLabels: {app: gateway}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {zone: internet}
+      ports:
+        - {port: {{ .Values.ports.pvaTls }}, protocol: TCP}

@@ -1,0 +1,7 @@
+apiVersion: v2
+name: simple-with-gateway
+description: The simple-with-gateway laboratory, as Kubernetes objects. One department, one
+  certificate manager, two IOCs, a gateway on a TLS-only boundary, and a workstation outside it.
+type: application
+version: 0.1.0
+appVersion: "latest"

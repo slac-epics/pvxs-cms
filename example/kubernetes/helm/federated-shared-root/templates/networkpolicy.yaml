@@ -1,0 +1,126 @@
+{{/*
+The segments.
+
+podman gives each of the five its own bridge with isolate=true, so nothing reaches another by
+addressing it and the gateways are the only crossings as a fact of the network. A pod network
+is flat, so the same shape is drawn with policy.
+
+Ingress only. A pod that may not be reached cannot do anything by trying, and a matched pair of
+ingress and egress rules is far harder to read than one direction.
+
+These are enforced only by a CNI that implements NetworkPolicy. Kind's default CNI does NOT.
+The cluster this expects is created with Calico by kind_create in helpers.sh. Without it every
+rule below is ignored, both boundaries are open, and the laboratory demonstrates nothing while
+appearing to work.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+{{/*
+Each department: reachable by what sits in it, by its own gateway, which is a client to it, and
+by the load balancer, which is how the peer department and the outside reach it. The peer
+department is NOT on this list, which is what makes the federation real: the ML workstation may
+not address a lab IOC even though it can resolve the name.
+*/}}
+{{- range $d := list (dict "n" "lab" "apps" (list "pvacms" "testioc" "tstioc" "lab-client") "gw" "gateway") (dict "n" "ml" "apps" (list "ml" "ml-ioc" "ml-client") "gw" "ml-gateway") }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: {{ $d.n }}-segment-ingress}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app, operator: In, values: [{{ range $i, $a := $d.apps }}{{ if $i }}, {{ end }}"{{ $a }}"{{ end }}]}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {zone: {{ $d.n }}}}
+        - podSelector: {matchLabels: {app: {{ $d.gw }}}}
+        - podSelector: {matchLabels: {app: facility}}
+---
+{{- end }}
+{{/*
+The gateways.
+
+THE DIFFERENCE, and the one worth reading twice. In podman each gateway stands on its own
+department's segment and simply does not listen there, so a workstation's search is answered
+once, by the IOC. A pod holds one address and cannot listen on part of it, so instead the
+department is not allowed to reach its own gateway at all.
+
+The rule that was being kept - a department never reaches its own gateway - is kept. What
+changes is where it is enforced, and so what a mistake looks like: a workstation that somehow
+addressed its own gateway now waits and times out, where in podman it would have been answered
+twice and told 'Duplicate PV name'.
+
+Reachable by the load balancer, which is how everything legitimate arrives, and by the PEER
+gateway, which is the fourth design rule: a gateway's server side asks the other department
+whether a certificate presented to it still stands, and only that department can answer.
+*/}}
+{{- range $g := list (dict "app" "gateway" "peer" "ml-gateway") (dict "app" "ml-gateway" "peer" "gateway") }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: {{ $g.app }}-ingress}
+spec:
+  podSelector: {matchLabels: {app: {{ $g.app }}}}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app: facility}}
+        - podSelector: {matchLabels: {app: {{ $g.peer }}}}
+---
+{{- end }}
+{{/*
+The load balancer, and the rule podman cannot enforce.
+
+In podman the facility alias exists on both departments' segments and every port is forwarded,
+so a lab workstation that named facility:5075 would reach its own gateway the long way round.
+Nothing prevents it there; only the configured value keeps it honest.
+
+Here each department is allowed the PEER department's ports and refused its own, so the second
+and third design rules hold whatever a workstation is configured with. The workstation outside
+gets both, which is the whole of its access.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: facility-ingress}
+spec:
+  podSelector: {matchLabels: {app: facility}}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {zone: lab}}
+      ports:
+        - {port: {{ .Values.ports.mlTcp }}, protocol: TCP}
+        - {port: {{ .Values.ports.mlTls }}, protocol: TCP}
+    - from:
+        - podSelector: {matchLabels: {zone: ml}}
+      ports:
+        - {port: {{ .Values.ports.labTcp }}, protocol: TCP}
+        - {port: {{ .Values.ports.labTls }}, protocol: TCP}
+    - from:
+        - podSelector: {matchLabels: {zone: internet}}
+      ports:
+        - {port: {{ .Values.ports.labTcp }}, protocol: TCP}
+        - {port: {{ .Values.ports.labTls }}, protocol: TCP}
+        - {port: {{ .Values.ports.mlTcp }}, protocol: TCP}
+        - {port: {{ .Values.ports.mlTls }}, protocol: TCP}
+---
+{{/*
+The responder. Both departments' certificate managers have to be able to ask it whether the
+facility root still stands, and it answers nothing else to anyone.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: responder-ingress}
+spec:
+  podSelector: {matchLabels: {app: authority-status}}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {zone: lab}}
+        - podSelector: {matchLabels: {zone: ml}}
+      ports:
+        - {port: {{ .Values.ports.ocsp }}, protocol: TCP}

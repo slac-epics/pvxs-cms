@@ -1,0 +1,8 @@
+apiVersion: v2
+name: federated-shared-root
+description: The federated-shared-root laboratory, as Kubernetes objects. Two departments under
+  one facility root, each with its own certificate manager, IOCs and gateway, a load balancer
+  that chooses the department by port, and a responder that answers for the root.
+type: application
+version: 0.1.0
+appVersion: "latest"

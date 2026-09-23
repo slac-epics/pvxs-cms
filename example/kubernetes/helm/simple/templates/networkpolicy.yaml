@@ -1,0 +1,24 @@
+{{/*
+One segment, so there is nothing to divide. The rule is kept anyway: an IOC is reachable only
+by what sits in this laboratory.
+
+Enforced only by a CNI that implements NetworkPolicy. Kind's default CNI does NOT; kind_create
+installs Calico for exactly that reason.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: lab-segment-ingress}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {zone: lab}

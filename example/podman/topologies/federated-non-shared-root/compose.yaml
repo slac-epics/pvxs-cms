@@ -17,7 +17,7 @@
 # Service names match the DNS names used inside the images, so the shell profiles and the
 # gateway configuration work unchanged.
 #
-# Run ./bootstrap.sh first: it builds the images. ./reset.sh mints the authorities.
+# Run build_images first (helpers.sh): it builds the images. ./reset.sh mints the authorities.
 #
 # Picture: topology/topology-federated-non-shared-root.svg
 

@@ -1,0 +1,15 @@
+{{/* Keychains and databases outlive their pods, so a restart is the same holder rather than
+     looking like a revocation. ocsp-state is here because the line saying whether the root
+     stands is rewritten during a demonstration and must survive the responder restarting. */}}
+{{- range $n := list "idm-config" "idm-data" "ml-config" "ml-data" "testioc-config" "tstioc-config" "ml-ioc-config" "gateway-config" "ml-gateway-config" "lab-client-config" "ml-client-config" "internet-client-config" "ocsp-state" }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: {{ $n }}}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if $.Values.persistence.storageClass }}
+  storageClassName: {{ $.Values.persistence.storageClass | quote }}
+  {{- end }}
+  resources: {requests: {storage: {{ $.Values.persistence.size }}}}
+{{- end }}

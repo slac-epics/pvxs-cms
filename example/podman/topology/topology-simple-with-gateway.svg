@@ -58,7 +58,7 @@
 <text x="78.0" y="1320" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search</text>
 <text x="78.0" y="1335" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">DB: testioc.db, testiocg.db</text>
 <text x="78.0" y="1350" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ACF: testioc.acf</text>
-<text x="78.0" y="1365" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_TLS_OPTIONS: remote_verification</text>
+<text x="78.0" y="1365" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">EPICS_PVA_TLS_OPTIONS: no_own_cert_status_check</text>
 <text x="78.0" y="1380" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Holds the root by hand: trust_anchor.p12 copied in, because the</text>
 <text x="78.0" y="1395" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">    authority cannot be fetched through a boundary that needs it</text>
 <text x="78.0" y="1410" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Serves:</text>

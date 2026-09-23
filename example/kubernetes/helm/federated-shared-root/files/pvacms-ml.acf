@@ -1,0 +1,15 @@
+AUTHORITY("EPICS Root Certificate Authority") {
+    AUTHORITY(CMS_AUTH, "EPICS ML Intermediate CA")
+}
+
+UAG(CMS_ADMIN) {admin, mlcertadmin}
+
+ASG(DEFAULT) {
+    RULE(0,READ)
+    RULE(1,WRITE) {
+        UAG(CMS_ADMIN)
+        AUTHORITY(CMS_AUTH)
+        PROTOCOL(TLS)
+        METHOD("x509")
+    }
+}
