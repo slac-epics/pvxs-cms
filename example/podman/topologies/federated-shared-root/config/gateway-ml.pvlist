@@ -1,13 +1,13 @@
-
+  
 ml:.* ALLOW
 ml:open ALLOW OPEN_WRITE
 CERT:CREATE:__ML_ISSUER__(?::.*)? ALLOW CERT_CREATE
 CERT:STATUS:__ML_ISSUER__(?::.*)? ALLOW CERT_STATUS
 # The two certificate listing views that are open to everyone, named by issuer so this
-# gateway claims only what its own certificate manager can answer. The plain names are
-# deliberately absent: both certificate managers answer those and neither gateway could
-# say which department a request meant. The view of certificates awaiting a decision is
-# deliberately absent too - a gateway makes its upstream connection as itself, so the
-# certificate manager's read gate would see the gateway rather than the administrator.
+# gateway claims only what its own PVACMS can answer. The plain names are deliberately
+# absent: both PVACMS answer those and neither gateway could say which department a request
+# meant. The view of certificates awaiting a decision is deliberately absent too - a gateway
+# makes its upstream connection as itself, so the PVACMS read gate would see the gateway
+# rather than the administrator.
 CERT:LIST:__ML_ISSUER__:ALL ALLOW CERT_STATUS
 CERT:LIST:__ML_ISSUER__:EXPIRING ALLOW CERT_STATUS

@@ -260,8 +260,15 @@ exec bash --norc -i"
             # The identity the certificate manager issued to itself, presented over the
             # secure port. Without both of these the manager sees no administrator and
             # refuses the decision - which is the access rule working, not a broken tool.
+            #
+            # The address is this machine: an administrator's tools run beside the manager
+            # and have no reason to look anywhere else. Naming it here rather than in
+            # compose.yaml keeps the certificate manager itself free of any address list,
+            # which is right - it is a server and never searches for anything.
             prelude="export EPICS_PVA_TLS_KEYCHAIN=/home/idm/.config/pva/1.5/admin.p12
-export EPICS_PVA_NAME_SERVERS=pvas://localhost:5076
+export EPICS_PVA_ADDR_LIST=127.0.0.1
+export EPICS_PVA_AUTO_ADDR_LIST=NO
+export EPICS_PVA_NAME_SERVERS=
 " ;;
         guest|operator)
             # The login profile supplies the tool paths and the organisation, but it was
