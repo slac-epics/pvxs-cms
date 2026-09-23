@@ -12,6 +12,6 @@ MODULES=pvxs
 PVXS_DIRNAME=pvxs
 PVXS_REPONAME=pvxs-tls
 PVXS_REPOOWNER=slac-epics
-PVXS=main
+PVXS=fy26-integration-testing
 PVXS_VARNAME=PVXS
 PVXS_RECURSIVE=yes
