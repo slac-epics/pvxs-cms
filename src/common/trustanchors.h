@@ -160,8 +160,8 @@ inline std::vector<std::string> heldAnchorIds(const pvxs::certs::CertData &cert_
     try {
         add(primaryAnchor(cert_data));
     } catch (const std::exception &) {
-        // A keychain whose identity chains to nothing it holds is already wrong. Report the
-        // anchors it does hold in file order rather than reporting none.
+        // A keychain whose identity chains to nothing it holds reports the anchors it does
+        // hold, in file order.
     }
     for (X509 *anchor : anchors) add(anchor);
     return ids;
@@ -233,9 +233,7 @@ inline pvxs::ossl_ptr<STACK_OF(X509)> layOutChain(X509 *identity,
                                                   const std::vector<X509 *> &available,
                                                   const std::vector<X509 *> &anchors_to_hold) {
     // A trust anchor is a self-signed root, and this is the one place every write passes
-    // through, so the rule is enforced here rather than trusted of each caller. Writing the
-    // certificate an authority signs with in place of the root above it produces a file that
-    // reads as a keychain and trusts nothing, and it does so without any error.
+    // through, so the rule is enforced here.
     for (X509 *anchor : anchors_to_hold)
         if (!isTrustAnchor(anchor))
             throw std::runtime_error(pvxs::SB()
@@ -280,8 +278,7 @@ inline pvxs::ossl_ptr<STACK_OF(X509)> layOutChain(X509 *identity,
     for (X509 *anchor : anchors_to_hold) place(anchor);
 
     // Then any intermediate certificate authority still unplaced. Roots are deliberately left
-    // out: an anchor the file held and this invocation is not to hold has been dropped, and
-    // carrying it over here would put it straight back.
+    // out: an anchor the file held and this invocation is not to hold has been dropped.
     for (X509 *candidate : available)
         if (candidate && !isTrustAnchor(candidate) && X509_check_ca(candidate)) place(candidate);
 
@@ -292,17 +289,12 @@ inline pvxs::ossl_ptr<STACK_OF(X509)> layOutChain(X509 *identity,
  * @brief The chain a reset of the anchor set writes, refusing to strand the identity kept.
  *
  * The identity and its key already in the keychain are left in place, so that identity must
- * still chain to one of the roots about to be written. Without that refusal a command meant to
- * adjust trust would leave a holder with a perfectly good certificate that nothing in its own
- * file can verify.
+ * still chain to one of the roots about to be written.
  *
  * The check is made against what the file already holds together with the roots about to be
- * written and reaches no further: a keychain whose identity chains to nothing it holds is
- * already in a state it should not be in, and the remedy is to put it right rather than for the
- * tool to fetch more material to complete the chain with.
+ * written, and reaches no further.
  *
- * Throwing rather than writing is the whole of "writes nothing": the caller has nothing to write
- * until this returns.
+ * It throws before writing, so the caller has nothing to write until this returns.
  *
  * @param held the keychain contents as they are now
  * @param anchors_to_hold the roots retrieved for the issuers named, in the order they were named
@@ -404,8 +396,8 @@ inline AnchorPlan planAnchors(const AnchorPlanInput &input) {
         // Nothing named anywhere, so the primary anchor mints, and it leads the held list.
         plan.minting_issuer = input.held_anchor_ids.front();
     }
-    // The root of the authority that minted is forced by the certificate rather than chosen, so
-    // it joins the set whether or not this invocation is establishing trust.
+    // The root of the authority that minted is forced by the certificate, so it joins the set
+    // whether or not this invocation is establishing trust.
     addAnchor(plan.minting_issuer);
 
     for (size_t i = 1; i < input.named_issuers.size(); i++) {

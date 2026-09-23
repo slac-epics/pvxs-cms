@@ -401,7 +401,7 @@ ocsp_responder() {
             local index state
             index=$(_lab_authority_index 2>/dev/null)
             if [ -z "${index}" ]; then echo "no responder here"; return 0; fi
-            state=$(podman ps --filter "label=com.docker.compose.service=pvxs-lab-authority-status" \
+            state=$(podman ps --filter "label=com.docker.compose.service=pvxs-lab-ocsp-responder" \
                         --format '{{.State}}' 2>/dev/null | head -1)
             if [ "${state}" != running ]; then
                 echo "the status of the facility root is UNKNOWN"; return 0
@@ -413,11 +413,11 @@ ocsp_responder() {
             esac ;;
         unreachable)
             _lab_authority_index >/dev/null || return 1
-            _lab_compose stop pvxs-lab-authority-status >/dev/null 2>&1
+            _lab_compose stop pvxs-lab-ocsp-responder >/dev/null 2>&1
             echo "the responder is stopped" ;;
         reachable)
             _lab_authority_index >/dev/null || return 1
-            _lab_compose start pvxs-lab-authority-status >/dev/null 2>&1
+            _lab_compose start pvxs-lab-ocsp-responder >/dev/null 2>&1
             echo "the responder is running"
             ocsp_responder says ;;
         revoke)
@@ -427,7 +427,7 @@ ocsp_responder() {
             # four-digit form makes the responder answer with an internal error.
             awk -F'\t' -v when="$(date -u +%y%m%d%H%M%SZ)" 'BEGIN{OFS="\t"}
                 {print "R", $2, when, $4, $5, $6}' "${index}" > "${index}.new" && mv "${index}.new" "${index}"
-            _lab_compose restart pvxs-lab-authority-status >/dev/null 2>&1
+            _lab_compose restart pvxs-lab-ocsp-responder >/dev/null 2>&1
             ocsp_responder says ;;
         *)
             echo "ocsp_responder: no subcommand '${1}'." >&2

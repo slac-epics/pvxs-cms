@@ -187,8 +187,7 @@ void writeKeychain(const std::string &file,
 }
 
 // Order is the meaning: the first entry is the authority asked to mint, and the order the rest
-// are named in is the order they are written in, so a splitter that sorted would silently mint
-// from the alphabetically first authority.
+// are named in is the order they are written in.
 void testTheListIsRead() {
     testDiag("Whitespace and the comma both separate, each entry is trimmed, and order is kept");
 
@@ -368,8 +367,7 @@ void testTheIssuerCertificateAuthorityIsStillElementZero() {
     testEq(material.label(CertStatus::getIssuerCa(after_reset.cert_auth_chain)), std::string("A"));
 }
 
-// Nothing in the file marks the primary anchor, so it has to be derived by walking. Reading it
-// from a position would answer the wrong anchor for a file whose identity is not under the first.
+// Nothing in the file marks the primary anchor, so it is derived by walking.
 void testThePrimaryAnchorIsDerivedAndNotPositional() {
     testDiag("Primary is the anchor the identity chains to, wherever that anchor sits");
 
@@ -398,8 +396,7 @@ void testThePrimaryAnchorIsDerivedAndNotPositional() {
     testEq(show(ta::heldAnchorIds(awkward)), show({material.c, material.a}));
 }
 
-// Without this refusal a command meant to adjust trust would leave a holder with a perfectly
-// good certificate that nothing in its own file can verify.
+// A reset refuses when the identity would reach no anchor in its own file.
 void testAResetRefusesToStrandTheIdentity() {
     testDiag("A reset that omits the root the identity chains to writes nothing at all");
 
@@ -414,8 +411,7 @@ void testAResetRefusesToStrandTheIdentity() {
     // The message names the authority the identity chains to, so an operator can name it too
     testTrue(contains(refusal, material.a));
     // There was nothing to write, so the file on disk is exactly as it was. Compared as a
-    // boolean rather than as two values, because a keychain is binary and printing two of them
-    // on a failure would bury it.
+    // boolean, because a keychain is binary.
     testTrue(readFile("testtrustanchors_reset.p12") == before);
 
     // Naming that authority as well is accepted, and being named first counts for nothing
@@ -573,8 +569,7 @@ void testTheKeychainReportCoversEveryKeychainShape() {
 
         std::ostringstream listing;
         ta::printAnchorListing(anchors_only, listing);
-        // The anchor lines and nothing else. Compared as a boolean because printing two whole
-        // listings on a failure would bury the difference.
+        // The anchor lines and nothing else. Compared as a boolean.
         testTrue(out.str() == listing.str());
         testTrue(contains(out.str(), "Primary Root CA         : "));
         testTrue(contains(out.str(), "Trusted Root CA         : "));
@@ -710,9 +705,7 @@ void testEveryAnchorWrittenIsARoot() {
 }
 
 // The generated keychains are written into the architecture build directory and opened by name,
-// so they are only found when that is the working directory. Started elsewhere the reader
-// returns nothing and assertions fail, which reads as a fault in the code under test rather than
-// a fault in how the test was started.
+// so they are only found when that is the working directory.
 void requireFixture(const char *name) {
     if (access(name, R_OK) == 0) return;
     char directory[PATH_MAX];

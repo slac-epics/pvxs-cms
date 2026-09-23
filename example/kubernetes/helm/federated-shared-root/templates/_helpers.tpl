@@ -16,10 +16,8 @@
 {{- define "lab.facility"    -}}facility{{- end -}}
 
 {{/*
-THE DIFFERENCE: a department in podman finds its own IOCs by broadcast and is given no address
-list at all. There is no broadcast domain across pods, so each department names its own. The
-department's OWN gateway is deliberately absent from both lists, which is the thing podman
-achieves by having the gateway not answer on that segment.
+There is no broadcast domain across pods, so each department names its own IOCs. The
+department's OWN gateway is absent from both lists.
 */}}
 {{- define "lab.labZoneEnv" -}}
 - name: EPICS_PVA_AUTO_ADDR_LIST

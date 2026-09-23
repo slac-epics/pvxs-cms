@@ -58,9 +58,8 @@ ossl_ptr<EVP_PKEY> publicKeyFromPem(const std::string &pub_key_pem) {
 /**
  * @brief The reason OpenSSL gives, so a failure says something more than that it failed.
  *
- * The queue is emptied before each operation by clearOpensslErrors, because otherwise an error
- * left behind by unrelated earlier work is reported instead, and on the failure that matters
- * most here that would name the wrong cause entirely.
+ * The queue is emptied before each operation by clearOpensslErrors, so the reason belongs to
+ * this operation.
  */
 void clearOpensslErrors() { ERR_clear_error(); }
 
@@ -147,8 +146,7 @@ std::string buildRequestIdPayload(const std::string &request_id,
                                   const std::string &cert_id,
                                   const std::string &pub_key_digest,
                                   const time_t issued_at) {
-    // Every field is checked for a line feed, because a field carrying one would move the
-    // line boundaries and let one field pose as another.
+    // Every field is checked for a line feed, which is the record separator.
     for (const auto *field : {&request_id, &cert_id, &pub_key_digest}) {
         if (field->find('\n') != std::string::npos || field->find('\0') != std::string::npos) {
             throw std::runtime_error("A certificate request identifier field cannot contain a line feed or a zero byte");
@@ -226,8 +224,7 @@ std::vector<uint8_t> encryptToRequester(const std::string &pub_key_pem, const st
                                       << opensslError());
     }
 
-    // What this key and padding can carry. Stated rather than discovered from a failure, so an
-    // over-long payload says why rather than reporting an encryption error.
+    // What this key and padding can carry, so an over-long payload says why.
     const size_t modulus_bytes = static_cast<size_t>(EVP_PKEY_size(key.get()));
     const size_t oaep_overhead = 2 * SHA256_DIGEST_LENGTH + 2;
     if (modulus_bytes <= oaep_overhead || payload.size() > modulus_bytes - oaep_overhead) {

@@ -320,9 +320,7 @@ class ConfigCms final : public Config {
      * @brief How far ahead the expiring certificate view looks, in seconds. Default thirty days.
      *
      * The view takes no parameter - a display tool cannot send one - so the period is the
-     * server's to choose rather than the caller's. The value is stated in the view's column
-     * labels, since a normative table has nowhere else to put it and a reader would otherwise
-     * have no way to know what they are looking at.
+     * server's to choose. The value is stated in the view's column labels.
      */
     uint32_t cert_list_expiry_window_secs = 30 * 24 * 60 * 60;
 
@@ -330,19 +328,17 @@ class ConfigCms final : public Config {
      * @brief Shortest gap between two posts of the same listing view, in seconds.
      *
      * A monitored table resends every column whenever anything changes, because a change mask
-     * marks fields and an array is one field. So the case to defend against is not a large
-     * table but a burst: approving fifty certificates one after another would otherwise post
-     * fifty complete tables. The interval delays a post and never drops a change, and the last
-     * change of a burst is always carried by the final post.
+     * marks fields and an array is one field. The interval collapses a burst of approvals and
+     * never drops a change, and the last change of a burst is carried by the final post.
      */
     uint32_t cert_list_min_post_interval_secs = 2;
 
     /**
      * @brief When the trust anchor's responder cannot be reached, keep serving the last
-     * verified answer about the authority rather than reporting its standing as unknown.
+     * verified answer about the authority rather than reporting its certificate status as unknown.
      *
      * A failed transfer, an unverifiable reply and a malformed reply are one outcome: the
-     * authority's standing is not known. The default is to say so, which denies connections
+     * authority's certificate status is not known. The default is to say so, which denies connections
      * until the responder answers again, because a facility that cannot check its authority
      * should stop rather than continue on an assumption. A site whose availability matters
      * more than that guarantee sets this, and an outage of one web service then leaves the

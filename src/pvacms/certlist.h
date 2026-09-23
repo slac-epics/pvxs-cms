@@ -32,9 +32,8 @@ namespace certs {
  * Ordered by created_date descending, ties broken on the serial so the order is total. The
  * order has to be stable under an update, because a monitored table that re-sorts itself
  * moves the row the operator was about to click. created_date is the only column that
- * qualifies: it is never written twice, whereas the serial is random rather than monotonic
- * and not_before is the start of validity, which for a certificate issued with a future
- * start date is later than the moment it was created.
+ * qualifies: it is written once. The serial is random, and not_before is the start of
+ * validity, which for a future start date is later than the moment of creation.
  */
 #define SQL_LIST_CERTS_COLUMNS        \
     "SELECT c.serial "                \
@@ -58,9 +57,8 @@ namespace certs {
     "ORDER BY c.created_date DESC, c.serial ASC"
 
 // A certificate's organizational units are read with their own statement, one indexed lookup per
-// listed row (SQL_GET_SUBJECT_UNITS in certsubjectunits.h), rather than joined into the query
-// above: joining would have to paste the values into one string, and a value may legally contain
-// whatever separator was chosen, so the listing could not tell one unit from two.
+// listed row (SQL_GET_SUBJECT_UNITS in certsubjectunits.h). A unit value may legally contain
+// any separator, so the values are kept apart.
 
 /** Every certificate. */
 #define SQL_LIST_CERTS_ALL            \
@@ -82,12 +80,10 @@ namespace certs {
 /**
  * What this manager records about one certificate, asked for by serial.
  *
- * Read for the trust anchor alone, and outside the listing query rather than out of its
- * result: the view and the filter both narrow what that query returns, so a root the
- * database does hold could be absent from the rows and the anchor would be reported as
- * unknown to a manager that issued it.
+ * Read for the trust anchor alone, outside the listing query, because the view and the filter
+ * both narrow what that query returns.
  */
-#define SQL_GET_CERT_STANDING         \
+#define SQL_GET_CERT_STATUS         \
     "SELECT c.status, c.status_date, c.renew_by " \
     "FROM certs c WHERE c.serial = :serial"
 
@@ -108,8 +104,7 @@ enum class CertListView {
 /**
  * @brief One certificate, with every column already rendered as the string it is served as.
  *
- * Rendered here rather than at the point of serving because the normative table carries only
- * scalar arrays and has nowhere to put per-column units or display form, so what the server
+ * Rendered here, because the normative table carries scalar arrays alone, so what the server
  * puts in the column is exactly what a viewer shows.
  */
 /**
@@ -121,8 +116,8 @@ enum class CertListView {
  * asked about it, and this is the only way it appears in a listing at all.
  *
  * A manager that signs with its own self-signed root is the other case. There the same
- * certificate is also a row of the certificates table, and the listing reads its standing back
- * out of the table (`SQL_GET_CERT_STANDING`) so that the two rows agree.
+ * certificate is also a row of the certificates table, and the listing reads its certificate status back
+ * out of the table (`SQL_GET_CERT_STATUS`) so that the two rows agree.
  *
  * It is listed because of when it expires. Every certificate beneath it stops working the day
  * it does, and an authority that appears in no listing is one nobody is watching the calendar
@@ -130,7 +125,7 @@ enum class CertListView {
  */
 struct RootAuthority {
     bool names_responder{false};  //!< whether the certificate says where its revocation is published
-    certstatus_t standing{UNKNOWN};  //!< what that responder says, or UNKNOWN when there is none
+    certstatus_t status{UNKNOWN};  //!< what that responder says, or UNKNOWN when there is none
     std::string cert_id;          //!< its own subject key identifier and serial, since it issued itself
     std::string common_name, organization, country;
     std::vector<std::string> organizational_units;
@@ -155,9 +150,8 @@ struct CertListRow {
  *
  * `CN=...,OU=...,O=...,C=...`, omitting parts that are empty. Canonical rather than copied:
  * certificates issued before the leaf-first subject order change carry common name, country,
- * organization, unit, and a certificate from another authority can carry any order at all, so
- * printing each certificate's own order would show one identity two different ways. The point
- * of the column is that its text can be pasted into an access security file.
+ * organization, unit, and a certificate from another authority can carry any order at all.
+ * The column's text can be pasted into an access security file.
  *
  * Multiple organizational unit values keep their relative order among themselves.
  */

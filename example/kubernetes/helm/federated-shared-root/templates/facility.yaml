@@ -2,9 +2,8 @@
 The facility address: one name, and the port chooses the department.
 
 This is a real load balancer rather than a Service alone, because a Service selects one set of
-pods and this name has to send 5075 to the lab gateway and 5175 to the ML gateway. It is the
-same haproxy the podman laboratory runs, with the same four frontends and the same rule that a
-port is never translated.
+pods and this name has to send 5075 to the lab gateway and 5175 to the ML gateway. haproxy
+carries four frontends, each on the same port as its backend.
 */}}
 apiVersion: apps/v1
 kind: Deployment

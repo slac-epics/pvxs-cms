@@ -1,12 +1,7 @@
 # The simple laboratory: one department and nothing else.
 #
-# The podman topology this is taken from is example/podman/topologies/simple. One thing could
-# not come across as it was written, and it is marked THE DIFFERENCE where it appears:
-#
-#   Discovery. A laboratory zone in podman finds its IOCs by broadcast. A pod network has no
-#   broadcast domain, so the zone is given an explicit address list of the IOC services
-#   instead. What is being demonstrated - that a zone reaches its own IOCs without naming a
-#   gateway - still holds, but it is reached by naming them rather than by asking everyone.
+# A pod network has no broadcast domain, so the zone is given an explicit address list of the
+# IOC services. It reaches its own IOCs by naming them.
 #
 
 namespace: spva-lab
@@ -35,9 +30,8 @@ certAuthority:
   organization: certs.epics.org
   organizationalUnit: epics.org Certificate Authority
 
-# The address the workstation outside the boundary knows. In podman this is an haproxy
-# container aliased 'facility'; here it is a Service of the same name, which is the same job
-# done by kube-proxy. Set type to LoadBalancer if you want it published outside the cluster.
+# The address the workstation outside the boundary knows, a Service named 'facility'. Set type
+# to LoadBalancer to publish it outside the cluster.
 facility:
   serviceType: ClusterIP
 

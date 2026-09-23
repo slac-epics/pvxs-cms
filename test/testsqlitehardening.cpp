@@ -88,14 +88,11 @@ void testHardeningIsApplied() {
 
 // Write-ahead logging is recorded in the database file, so it survives reopening
 // once the file has content; the busy timeout belongs to the connection and does
-// not. That difference is why the settings are applied on every open rather than
-// once at creation - applying them once would leave later connections with no
-// timeout, which is the failure this guards against.
+// not, so the settings are applied on every open.
 void testWhatSurvivesReopening() {
     testDiag("Which settings survive reopening the same file");
     const std::string path{"testsqlitehardening_reopen.db"};
-    // Opened directly rather than through TempDb, whose destructor removes the file
-    // - which would leave nothing to reopen.
+    // Opened directly, so the file survives to be reopened.
     sqlite3 *first = nullptr;
     testOk(sqlite3_open(path.c_str(), &first) == SQLITE_OK, "Opened a database to harden and close");
     if (first) {

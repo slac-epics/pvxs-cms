@@ -69,9 +69,9 @@ PVACertificateStatus CertStatusFactory::createPVACertificateStatus(const serial_
     // certificate, because that is the fact they can act on.
     certstatus_t reported_status = status;
     if (status != REVOKED && status != EXPIRED) {
-        if (authority_standing_ == cert_authority_standing_t::REVOKED) {
+        if (authority_ocsp_status_ == ocspcertstatus_t::OCSP_CERTSTATUS_REVOKED) {
             reported_status = AUTHORITY_REVOKED;
-        } else if (authority_standing_ == cert_authority_standing_t::UNKNOWN) {
+        } else if (authority_ocsp_status_ == ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN) {
             reported_status = UNKNOWN;
         }
     }

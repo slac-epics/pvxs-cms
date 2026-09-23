@@ -64,7 +64,7 @@
 #include "certfilefactory.h"
 #include "certrequestid.h"
 #include "certstatus.h"
-#include "authoritymonitor.h"
+#include "ocspstatusmonitor.h"
 #include "certstatusfactory.h"
 #include "cmsversion.h"
 #include "trustanchors.h"
@@ -90,7 +90,7 @@ namespace pvxs {
 namespace certs {
 
 /** What the authority above this service's certificates is known to be. */
-cert_authority_standing_t authorityStanding();
+ocspcertstatus_t ocspStatus();
 
 /** The facility root as the listing needs it, or nothing when none is loaded. */
 std::unique_ptr<RootAuthority> currentRootAuthority();
@@ -339,8 +339,7 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
     }
 
     // The request identifier table, created whether or not the certificate table was just
-    // made. Adding it to the statement above would leave every existing deployment without
-    // it, because that statement only runs when certs is absent. Safe to run every start.
+    // made. Safe to run every start.
     if (sqlite3_exec(certs_db.get(), SQL_CREATE_REQUEST_ID_TABLE, nullptr, nullptr, nullptr) != SQLITE_OK) {
         throw std::runtime_error(SB() << "Failed to create the certificate request identifier table: "
                                       << sqlite3_errmsg(certs_db.get()));
@@ -351,8 +350,7 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
     // single-value column, one row per non-empty value at position zero, inside the same
     // transaction. Every certificate written before this change carries at most one unit, so
     // there is no order to reconstruct and no row can be brought forward wrongly. Nothing is
-    // dropped and no existing row is rewritten, and a row that already has units is left alone,
-    // so running it on every start is harmless.
+    // dropped and no existing row is rewritten, and a row that already has units is left alone.
     if (sqlite3_exec(certs_db.get(), SQL_CREATE_SUBJECT_UNITS_TABLE, nullptr, nullptr, nullptr) != SQLITE_OK) {
         throw std::runtime_error(SB() << "Failed to create the certificate organizational unit table: "
                                       << sqlite3_errmsg(certs_db.get()));
@@ -360,7 +358,7 @@ void initCertsDatabase(sql_ptr &certs_db, const std::string &db_file) {
 
     // Bring an existing database forward. The create statement above only runs when the
     // table is absent, so it never reaches a database made by an earlier version. Each
-    // column is added only if it is not already there, so starting twice is harmless.
+    // column is added only if it is absent.
     std::set<std::string> existing_columns;
     if (sqlite3_prepare_v2(certs_db.get(), SQL_CERTS_TABLE_COLUMNS, -1, statement.acquire(), nullptr) != SQLITE_OK) {
         throw std::runtime_error(SB() << "Failed to read the certs table columns: " << sqlite3_errmsg(certs_db.get()));
@@ -573,9 +571,7 @@ void bindValidStatusClauses(sqlite3_stmt *sql_statement, const std::vector<certs
  * @brief A database transaction that rolls back unless it is told to commit.
  *
  * A certificate row and its organizational unit rows describe one subject between them, so a
- * failure part way through must leave neither. Without this the certificate would be written and
- * its ancestry lost, which is worse than the request failing: the certificate would then claim a
- * shorter path than the one that was asked for.
+ * failure part way through must leave neither.
  */
 class SqliteTransaction {
    public:
@@ -805,8 +801,7 @@ certstatus_t storeCertificate(const sql_ptr &certs_db, CertFactory &cert_factory
                          sqlite3_bind_parameter_index(sql_statement, ":approved"),
                          cert_factory.initial_status_ == VALID ? 1 : 0);
         sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":status_date"), current_time);
-        // Recorded once when the row is first written and never changed afterwards: a
-        // listing is ordered by it, and a value that moved would move rows under a reader.
+        // Recorded once when the row is first written. A listing is ordered by it.
         sqlite3_bind_int64(sql_statement, sqlite3_bind_parameter_index(sql_statement, ":created_date"), current_time);
         sqlite3_bind_text(sql_statement,
                           sqlite3_bind_parameter_index(sql_statement, ":key_usage"),
@@ -1179,7 +1174,7 @@ int64_t onCreateCertificate(ConfigCms &config,
     // First, make sure that we've updated any expired cert first
     auto const full_skid = CertStatus::getFullSkId(pub_key);
     auto cert_status_factory(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_cert_chain, config.cert_status_validity_mins, 0, authorityStanding()));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_cert_chain, config.cert_status_validity_mins, 0, ocspStatus()));
     postUpdateToNextCertToExpire(cert_status_factory,
                                  shared_status_pv,
                                  certs_db,
@@ -1408,8 +1403,7 @@ int64_t onCreateCertificate(ConfigCms &config,
         // Only a request awaiting approval gets an identifier, because that is the only state an
         // administrator approves. A request sent straight to VALID by site configuration, one
         // matched by a prior approval, and one from any authenticator other than the standard
-        // one all get none: an identifier there would tell the requester to email an
-        // administrator who has nothing to approve.
+        // one all get none.
         //
         // A renewal of a certificate still awaiting approval keeps the identifier already
         // recorded against it, so the requester does not have to send a second one. A pending
@@ -1440,12 +1434,11 @@ int64_t onCreateCertificate(ConfigCms &config,
 
 
 /**
- * @brief Keeps the three standing listing views up to date.
+ * @brief Keeps the three certificate status listing views up to date.
  *
  * A monitored table resends every column whenever anything changes, because a change mask
- * marks fields and an array is one field. So the case to defend against is not a large table
- * but a burst: approving fifty certificates one after another would otherwise post fifty
- * complete tables. A shortest gap between posts collapses a burst into one or two.
+ * marks fields and an array is one field. A shortest gap between posts collapses a burst of
+ * approvals into one or two.
  *
  * The gap delays a post and never drops a change. A change arriving inside the gap sets a
  * pending flag, and the next call after the gap has passed posts the table as it then is, so
@@ -1563,9 +1556,8 @@ bool callerIsAdministrator(const server::ExecOp *op) {
  * else, and is present either way. That is deliberate: the identifier is a search key an
  * administrator uses to find a row and then read it, not a token that approves anything.
  *
- * A pvRequest is not read. A remote procedure call reply is written in full rather than
- * masked against a prototype, so `-r field(...)` would be accepted and silently ignored;
- * the columns wanted are named in the query structure instead.
+ * A remote procedure call reply is written in full. The columns wanted are named in the
+ * query structure.
  *
  * @param config server configuration, for the expiry window
  * @param certs_db the certificate database
@@ -1578,8 +1570,7 @@ void onListCertificates(const ConfigCms &config, const sql_ptr &certs_db, const 
     try {
         const bool is_admin = callerIsAdministrator(op.get());
 
-        // Re-read here rather than trust what the tool checked: the call is reachable by any
-        // client, and one can be hand-built.
+        // Re-read here, because the call is reachable by any client.
         std::unique_ptr<CertFilter> filter;
         if (const auto where_arg = args["query.where"]) {
             const auto expression = where_arg.as<std::string>();
@@ -1647,7 +1638,7 @@ void onGetStatus(const ConfigCms &config,
                  const ossl_ptr<X509> &cert_auth_cert,
                  const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, ocspStatus()));
     try {
         std::vector<serial_number_t> cert_auth_serial_numbers;
         log_debug_printf(pvacms, "GET STATUS: Certificate %s\n", getCertId(our_issuer_id, serial).c_str());
@@ -1683,18 +1674,17 @@ void onGetStatus(const ConfigCms &config,
         // authority, neither of which is the problem. AUTHORITY_REVOKED says the fault is above
         // them, which is what tells a holder it is not theirs to fix and tells whoever runs the
         // site which certificate to go and look at.
-        certstatus_t authority_status = UNKNOWN;
+        certstatus_t authority_ocsp_status = UNKNOWN;
         time_t authority_status_date = 0;
         for (const auto cert_auth_serial_number : cert_auth_serial_numbers) {
-            getWorstCertificateStatus(certs_db, cert_auth_serial_number, authority_status, authority_status_date);
+            getWorstCertificateStatus(certs_db, cert_auth_serial_number, authority_ocsp_status, authority_status_date);
         }
 
         // A certificate revoked or expired in its own right keeps reporting that, because that
-        // is the fact its holder can act on. Otherwise an authority that has been revoked, or
-        // that has expired, anywhere in the chain and at any depth, is named as the authority's
-        // fault rather than the holder's, so that whoever reads it knows to look further up.
-        if (status != REVOKED && status != EXPIRED && authority_status != UNKNOWN) {
-            switch (authority_status) {
+        // is the fact its holder can act on. An authority revoked or expired anywhere in the
+        // chain is named as the authority's fault, so a reader looks further up.
+        if (status != REVOKED && status != EXPIRED && authority_ocsp_status != UNKNOWN) {
+            switch (authority_ocsp_status) {
                 case REVOKED:
                 case AUTHORITY_REVOKED:
                     status = AUTHORITY_REVOKED;
@@ -1707,9 +1697,9 @@ void onGetStatus(const ConfigCms &config,
                     break;
                 default:
                     // Anything else the chain reports that is worse than the holder's own
-                    // standing is reported as it stands.
-                    if (authority_status > status) {
-                        status = authority_status;
+                    // certificate status is reported as it stands.
+                    if (authority_ocsp_status > status) {
+                        status = authority_ocsp_status;
                         status_date = authority_status_date;
                     }
                     break;
@@ -1754,7 +1744,7 @@ void onRevoke(const ConfigCms &config,
               const ossl_ptr<X509> &cert_auth_cert,
               const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, ocspStatus()));
     try {
         Guard G(status_update_lock);
         serial_number_t serial = getParameters(parameters);
@@ -1802,7 +1792,7 @@ void onApprove(const ConfigCms &config,
                const ossl_ptr<X509> &cert_auth_cert,
                const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, ocspStatus()));
     try {
         Guard G(status_update_lock);
         std::string issuer_id;
@@ -1863,7 +1853,7 @@ void onDeny(const ConfigCms &config,
             const ossl_ptr<X509> &cert_auth_cert,
             const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain) {
     const auto cert_status_creator(
-        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, authorityStanding()));
+        CertStatusFactory(cert_auth_cert, cert_auth_pkey, cert_auth_chain, config.cert_status_validity_mins, 0, ocspStatus()));
     try {
         Guard G(status_update_lock);
         std::string issuer_id;
@@ -2109,12 +2099,11 @@ std::string trustAnchorFileBeside(const std::string &cert_auth_keychain_file) {
  *
  * A holder that already has the authority needs no identifier to establish trust and no route to
  * fetch one, which is what lets a workstation outside a boundary be set up by copying a single
- * file to it. Handing over the certificate authority's own keychain would hand over the key that
- * signs certificates with it, so what is written here is the root certificate and nothing else:
- * enough to verify what the authority signs, and not enough to sign anything.
+ * file to it. What is written here is the root certificate: enough to verify what the authority
+ * signs.
  *
- * Written on every start rather than only when the authority is minted, so that a manager that
- * already had one ends up with the file too, and so that minting a new authority replaces it.
+ * Written on every start, so a manager that already had one ends up with the file too, and
+ * minting a new authority replaces it.
  *
  * Where several authorities sit under one facility root this writes that root, which is the one
  * worth handing out. A laboratory whose departments share no root has more than one, and no
@@ -2132,9 +2121,8 @@ void writeTrustAnchorFile(const ConfigCms &config, const CertData &cert_data) {
             return;
         }
 
-        // Written only when it would say something different, because writing a keychain file
-        // renames the previous one aside, and a manager that is restarted often would otherwise
-        // leave a trail of copies of a file that had not changed.
+        // Written only when it says something different, because writing a keychain file
+        // renames the previous one aside.
         try {
             const auto existing = IdFileFactory::create(trust_anchor_file, "")->getCertDataFromFile();
             X509 *const existing_root = cms::cert::primaryAnchor(existing);
@@ -2330,9 +2318,8 @@ void addNewAdminToAcfFile(const std::string &filename, const std::string &admin_
         throw std::runtime_error("UAG(CMS_ADMIN) block not found in file: " + filename);
     }
 
-    // Nothing to add: the administrator is already listed. Do not rewrite the file.
-    // Writing an identical file would fail wherever the access security file is
-    // supplied read-only, which is the normal way to ship one.
+    // The administrator is already listed, and the file is left alone: it is normally
+    // supplied read-only.
     if (content == original_content) {
         return;
     }
@@ -2570,7 +2557,7 @@ static void insertLoadedCertIfMissing(const ConfigCms &config,
     const std::string o  = get_nid(NID_organizationName);
     const std::string c  = get_nid(NID_countryName);
     // A subject this certificate manager did not write may name several units. Read them all,
-    // in the order the subject lists them, rather than the first one only.
+    // in the order the subject lists them.
     const std::vector<std::string> organizational_units = getSubjectOrganizationalUnits(subj);
     const std::string &ou = innermostOrganizationalUnit(organizational_units);
 
@@ -2621,10 +2608,9 @@ static void insertLoadedCertIfMissing(const ConfigCms &config,
     sqlite3_bind_int  (stmt, sqlite3_bind_parameter_index(stmt, ":status"),     (int)effective_status);
     sqlite3_bind_int  (stmt, sqlite3_bind_parameter_index(stmt, ":approved"),   approved);
     sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":status_date"), now);
-    // This certificate was made elsewhere, so when it was created is not knowable. Its
-    // own start of validity is used: a property of the certificate, so two nodes loading
-    // the same file agree, and reloading it after rebuilding the database gives the same
-    // answer. The load time would do neither.
+    // This certificate was made elsewhere, so its own start of validity is used: a property
+    // of the certificate, so two nodes loading the same file agree, and reloading it after
+    // rebuilding the database gives the same answer.
     sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":created_date"), not_before);
     const auto loaded_key_usage = usageStringFromCert(cert.get(), NID_key_usage);
     const auto loaded_extended_key_usage = usageStringFromCert(cert.get(), NID_ext_key_usage);
@@ -2937,35 +2923,33 @@ void setValue(Value &target, const std::string &field, const T &new_value) {
 // Neither of the two below is ever freed, on purpose. OpenSSL registers its own cleanup with
 // the exit handlers the first time it is initialised, which happens once main is under way,
 // and exit handlers run in the reverse of the order they were registered. Anything owned at
-// this scope is registered before main starts, so by the time its destructor would run OpenSSL
-// has already released the structures underneath it, and releasing them a second time aborts
-// the process on every exit. A plain pointer has no destructor, so the one root certificate
-// and the one monitor simply stay alive until the process image goes away.
+// this scope is registered before main starts, so its destructor runs after OpenSSL has
+// released the structures underneath it. A plain pointer has no destructor, so the one root
+// certificate and the one monitor stay alive until the process image goes away.
 
 /**
- * @brief The one trust anchor this service issues beneath, and its standing.
+ * @brief The one trust anchor this service issues beneath, and its certificate status.
  *
  * A process has exactly one, established before it serves anything, and every status it
- * composes is answered through it. It is reached this way rather than passed down, so that a
- * status cannot be composed anywhere in this service without it.
+ * composes is answered through it, so every status in this service has it.
  */
-cms::cert::AuthorityMonitor *the_authority_monitor = nullptr;
+cms::cert::OcspStatusMonitor *the_ocsp_status_monitor = nullptr;
 
 /** The facility root this service issues beneath, kept so the listing can name it. */
 X509 *the_root_certificate = nullptr;
 
-cert_authority_standing_t authorityStanding() {
+ocspcertstatus_t ocspStatus() {
     // Nothing is known about an authority nobody is watching, and nothing should be: a trust
     // anchor that names no responder makes no claim to be checkable, and its certificates are
     // answered on their own merits.
-    if (!the_authority_monitor || !the_authority_monitor->isActive()) return cert_authority_standing_t::STANDING;
-    return the_authority_monitor->standing();
+    if (!the_ocsp_status_monitor || !the_ocsp_status_monitor->isActive()) return OCSP_CERTSTATUS_GOOD;
+    return the_ocsp_status_monitor->ocspStatus();
 }
 
 /**
  * @brief The facility root as the listing needs it, assembled fresh each time it is asked for.
  *
- * Fresh because its standing is not recorded anywhere: it is what the responder last said, and
+ * Fresh because its certificate status is not recorded anywhere: it is what the responder last said, and
  * that is read at the point of answering like every other status this service composes.
  *
  * @return the root, or nothing when this service has not loaded one
@@ -2976,20 +2960,17 @@ std::unique_ptr<RootAuthority> currentRootAuthority() {
 
     std::unique_ptr<RootAuthority> root(new RootAuthority());
 
-    // A responder that was never named cannot have said anything, so nothing is known about
-    // the authority rather than nothing being wrong with it.
-    root->names_responder = the_authority_monitor && the_authority_monitor->isActive();
+    // A responder that was never named has said nothing, so the authority is unknown.
+    root->names_responder = the_ocsp_status_monitor && the_ocsp_status_monitor->isActive();
     if (root->names_responder) {
-        switch (the_authority_monitor->standing()) {
-            case cert_authority_standing_t::STANDING: root->standing = VALID; break;
-            case cert_authority_standing_t::REVOKED: root->standing = REVOKED; break;
-            default: root->standing = UNKNOWN; break;
+        switch (the_ocsp_status_monitor->ocspStatus()) {
+            case OCSP_CERTSTATUS_GOOD: root->status = VALID; break;
+            case OCSP_CERTSTATUS_REVOKED: root->status = REVOKED; break;
+            default: root->status = UNKNOWN; break;
         }
     }
 
-    // It issued itself, so the identifier carries its own subject key identifier rather than
-    // this service's: nobody can ask this service about it, and the identifier should not
-    // suggest otherwise.
+    // It issued itself, so the identifier carries its own subject key identifier.
     root->serial = CertStatusFactory::getSerialNumber(cert);
     root->cert_id = getCertId(CertStatus::getSkId(cert), root->serial);
 
@@ -3477,7 +3458,7 @@ bool postUpdatesToNextCertStatusToBecomeInvalid(const CertStatusFactory &cert_st
  * actually watching are posted to, because a status nobody is subscribed to is composed again
  * the moment somebody asks.
  *
- * @param cert_status_creator composes each status, already carrying the new standing
+ * @param cert_status_creator composes each status, already carrying the new certificate status
  * @param status_monitor_params the certificates database and the channel to post on
  */
 void postAuthorityChangeToWatchers(const CertStatusFactory &cert_status_creator,
@@ -3512,7 +3493,7 @@ void postAuthorityChangeToWatchers(const CertStatusFactory &cert_status_creator,
         }
     }
     stmt.reset();
-    log_info_printf(pvacmsmonitor, "Authority standing changed: told %u watched certificates\n", posted);
+    log_info_printf(pvacmsmonitor, "Authority certificate status changed: told %u watched certificates\n", posted);
 }
 
 timeval statusMonitor(const StatusMonitor &status_monitor_params) {
@@ -3521,15 +3502,14 @@ timeval statusMonitor(const StatusMonitor &status_monitor_params) {
                                                      status_monitor_params.cert_auth_pkey_,
                                                      status_monitor_params.cert_auth_cert_chain_,
                                                      status_monitor_params.config_.cert_status_validity_mins,
-                                                     0, authorityStanding()));
+                                                     0, ocspStatus()));
 
     // The authority above every certificate is checked on its own schedule, so a change in it
-    // arrives between these wake-ups rather than at one. Carry it to whoever is listening now,
-    // instead of leaving them with an answer that is no longer what this service would give.
-    static cert_authority_standing_t last_reported_standing = cert_authority_standing_t::STANDING;
-    const auto standing_now = authorityStanding();
-    if (standing_now != last_reported_standing) {
-        last_reported_standing = standing_now;
+    // arrives between these wake-ups. Carry it to whoever is listening now.
+    static ocspcertstatus_t last_reported_status = OCSP_CERTSTATUS_GOOD;
+    const auto status_now = ocspStatus();
+    if (status_now != last_reported_status) {
+        last_reported_status = status_now;
         postAuthorityChangeToWatchers(cert_status_creator, status_monitor_params);
     }
 
@@ -3949,9 +3929,9 @@ int main(int argc, char *argv[]) {
         // The root states where its own revocation can be learned. Ask, so that a revoked
         // authority reaches the certificates issued beneath it.
         the_root_certificate = X509_dup(cert_auth_root_cert.get());
-        the_authority_monitor =
-            new cms::cert::AuthorityMonitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status);
-        the_authority_monitor->start();
+        the_ocsp_status_monitor =
+            new cms::cert::OcspStatusMonitor(cert_auth_root_cert.get(), config.cert_auth_hold_last_known_status);
+        the_ocsp_status_monitor->start();
 
         if (!admin_name.empty()) {
             // Name the step that failed. Creating the certificate and registering the
@@ -4026,8 +4006,8 @@ int main(int argc, char *argv[]) {
         SharedPV list_pv(SharedPV::buildReadonly());
         WildcardPV list_view_pv(WildcardPV::buildMailbox());
 
-        // The three standing views a control room keeps open. Exact names rather than one
-        // wildcard pattern, so they cannot swallow the issuer-qualified one-shot call name,
+        // The three views a control room keeps open. Exact names, so they cannot
+        // swallow the issuer-qualified one-shot call name,
         // which has the same shape. That holds only while no view word can be a legal issuer
         // id - an issuer id is eight hexadecimal digits and none of these is - so any new view
         // word has to be checked the same way.
@@ -4081,8 +4061,6 @@ int main(int argc, char *argv[]) {
                 cluster_sync.publishCertChange(created_serial);
             else
                 cluster_sync.publishSnapshot();
-            // A new certificate belongs in the standing views straight away, most often on
-            // the one showing what is awaiting a decision.
             cert_list_views.refresh();
         });
 
@@ -4247,7 +4225,7 @@ int main(int argc, char *argv[]) {
         auto pva_server = ServerEv(config, [&status_monitor_params, &cert_list_views](short) {
             const auto next = statusMonitor(status_monitor_params);
             // The same timer carries the delayed post: a change that arrived inside the gap
-            // between posts is written out here rather than waiting for the next change.
+            // between posts is written out here.
             cert_list_views.postIfPending();
             return next;
         });

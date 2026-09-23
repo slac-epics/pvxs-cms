@@ -248,8 +248,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // The two shorthands stand for expressions. Combining either with --where would leave
-        // it unclear which one applies, so it is refused rather than guessed at.
+        // The two shorthands stand for expressions, so they are refused alongside --where.
         if ((pending || !expiring.empty()) && !where.empty()) {
             log_err_printf(certslog, "Error: --pending and --expiring cannot be combined with --where.%s", "\n");
             return 3;
@@ -352,8 +351,7 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
 
-            // A certificate is only offered when it can actually be acted on, and the reason it
-            // cannot is shown rather than the certificate being quietly dropped.
+            // A certificate is offered when it can be acted on, and the reason shown when not.
             if (review_issued) {
                 // Only the status decides here. Whose certificate it is decides nothing,
                 // because an ordinary user may revoke their own and that is the point of the
@@ -366,10 +364,8 @@ int main(int argc, char *argv[]) {
                 // looks the same either way: the certificate manager builds the request
                 // identifier column for every caller and simply leaves the values empty for
                 // one who may not see them, so there is nothing in the reply to read it off.
-                // Withholding on a guess would take the operation away from the users who are
-                // entitled to it, so the administrator's own certificate is offered like any
-                // other and the manager's refusal is reported against it, the same way as any
-                // other write that the manager declines.
+                // The administrator's own certificate is offered like any other, and the
+                // manager's refusal is reported against it.
                 for (auto &row : rows) {
                     if (!certs::isRevocable(row.status)) {
                         row.ineligible_reason = "status " + row.status + " cannot be revoked";
@@ -403,8 +399,7 @@ int main(int argc, char *argv[]) {
 
         if (list) {
             // --list asks a different question from the others, and answers it for the whole
-            // database rather than one certificate, so combining it with them is meaningless
-            // rather than merely unsupported.
+            // database, so it stands alone.
             if (approve || revoke || deny || !cert_file.empty() || !issuer_serial_string.empty()) {
                 log_err_printf(certslog, "Error: --list cannot be used with -f, -A, -D, -R or a certificate ID.%s", "\n");
                 return 3;

@@ -73,8 +73,7 @@ void testCertTypeNamesWhatItIsFor() {
                           "TLS Web Server Authentication, TLS Web Client Authentication, OCSP Signing"),
            std::string("IOC"));
 
-    // A certificate stored before the type was recorded has neither. Saying UNKNOWN is the
-    // point: reporting it as the most common kind would be believed.
+    // A certificate stored before the type was recorded has neither, and says UNKNOWN.
     testEq(renderCertType("", ""), std::string("UNKNOWN"));
 }
 
@@ -247,8 +246,7 @@ void testUnknownFormatIsRefused() {
     testOk1(parseCertListFormat("columns", format) && format == CertListFormat::Columns);
 }
 
-// The order is the server's: it picks a key that cannot change while a row is in the view, so
-// a client that re-sorted would undo the property the choice exists for.
+// The order is the server's: it picks a key that cannot change while a row is in the view.
 void testPrintedOrderIsTheServedOrder() {
     testDiag("The printed order is the served order");
 
@@ -327,7 +325,7 @@ struct ListDb {
 
 // The key has to be one that cannot change while a row is in the view. A certificate whose
 // validity starts in the future is the case that separates creation time from start of
-// validity, and ordering on the latter would move it.
+// validity.
 void testRowOrderIsByCreationNotValidity() {
     testDiag("Rows are ordered by when a certificate was created, newest first");
 
@@ -337,8 +335,7 @@ void testRowOrderIsByCreationNotValidity() {
 
     const time_t now = 1785888000;
     store.add(100, "oldest", VALID, now - 3000, now, now + 86400);
-    // Created in the middle but not valid until much later: ordering on the start of
-    // validity would put this last, which is the mistake being guarded against.
+    // Created in the middle, valid much later.
     store.add(200, "future-start", PENDING, now - 2000, now + 500000, now + 900000);
     store.add(300, "newest", VALID, now - 1000, now, now + 86400);
 
@@ -352,8 +349,8 @@ void testRowOrderIsByCreationNotValidity() {
 }
 
 // A certificate subject may name a nested organizational unit. The listing has to show the whole
-// path, not just the innermost unit, or the column cannot be pasted into an access security file
-// and a filter naming an outer unit would not find the certificate that sits under it.
+// path, so the column can be pasted into an access security file and an outer unit finds what
+// sits under it.
 void testTheListingShowsEveryOrganizationalUnit() {
     testDiag("A listed subject carries every unit, innermost first");
 
@@ -414,10 +411,10 @@ void testPendingViewShowsOnlyWhatAwaitsADecision() {
 // asked about it. It is listed anyway, because the day it expires every certificate beneath it
 // stops working, and an authority in no listing is one nobody is watching the calendar for.
 RootAuthority aRoot(const time_t not_after, const bool names_responder = true,
-                    const certstatus_t standing = VALID) {
+                    const certstatus_t status = VALID) {
     RootAuthority root;
     root.names_responder = names_responder;
-    root.standing = standing;
+    root.status = status;
     root.cert_id = "5ed0fe96:00000000009876543212";
     root.common_name = "EPICS Root Certificate Authority";
     root.organization = "certs.epics.org";
@@ -442,8 +439,8 @@ void testTheRootIsListedAmongWhatWasIssued() {
     if (rows.size() < 2) { testSkip(3, "no root row"); return; }
     testEq(rows[1].type, std::string("ROOT_AUTH"));
     testEq(rows[1].cert_id, std::string("5ed0fe96:00000000009876543212"));
-    // The column that would carry a request identifier says where its standing comes from
-    // instead: nothing here issued it, and something outside publishes its revocation.
+    // The request identifier column says where its certificate status comes from: something outside
+    // publishes its revocation.
     testEq(rows[1].request_id, std::string("EXTERN OCSP"));
 }
 
@@ -456,7 +453,7 @@ void testARootNamingNoResponderSaysSo() {
     const auto rows = queryCertList(store.db, CertListView::All, "a76e613b", true, 0, nullptr, &root);
     testEq(rows.size(), size_t(1));
     if (rows.empty()) { testSkip(1, "no root row"); return; }
-    // Nothing establishes its standing, so nothing is claimed about it.
+    // Nothing establishes its certificate status, so nothing is claimed about it.
     testEq(rows[0].status, std::string("UNKNOWN"));
 }
 
@@ -512,7 +509,7 @@ void testARootThisManagerDoesNotHoldReportsItsResponder() {
     if (rows.empty()) { testSkip(3, "no root row"); return; }
     testEq(rows[0].status, std::string("VALID"));
     testEq(rows[0].request_id, std::string("EXTERN OCSP"));
-    // Nothing here changed its standing and nothing here will renew it.
+    // Nothing here changed its certificate status and nothing here will renew it.
     testOk(rows[0].status_changed.empty() && rows[0].renew_by.empty(),
            "No date that belongs to this manager is claimed (status changed '%s', renew by '%s')",
            rows[0].status_changed.c_str(), rows[0].renew_by.c_str());
@@ -533,10 +530,9 @@ void testARootThisManagerIssuedAgreesWithItsOwnRow() {
               "Digital Signature, Certificate Sign, CRL Sign", "TLS Web Server Authentication");
 
     RootAuthority root;
-    // What currentRootAuthority() builds for a self-signed root that names no responder: it
-    // knows nothing about its own standing, because nothing outside is publishing one.
+    // What currentRootAuthority() builds for a self-signed root that names no responder.
     root.names_responder = false;
-    root.standing = UNKNOWN;
+    root.status = UNKNOWN;
     root.cert_id = getCertId("a76e613b", serial);
     root.common_name = common_name;
     root.organization = "epics.org";
@@ -567,8 +563,7 @@ void testARootThisManagerIssuedAgreesWithItsOwnRow() {
            anchor.renew_by.c_str());
 }
 
-// The identifier is a search key an administrator uses to find a row and read it. Handing it
-// to everyone would let it be treated as proof that a request is genuine.
+// The identifier is a search key an administrator uses to find a row and read it.
 void testRequestIdIsWithheldFromNonAdministrators() {
     testDiag("The request identifier is withheld unless the caller is an administrator");
 
@@ -655,8 +650,8 @@ void testColumnsTheInteractiveModesDecideFrom() {
     }
     testOk(dates_present, "Issued, Expires and Renew by all carry a value");
 
-    // Revocation is refused for anything other than awaiting-approval, pending or valid, so
-    // the status column is what lets a client say in advance which rows would be refused.
+    // Revocation is accepted for awaiting-approval, pending and valid, so the status column
+    // tells a client in advance which rows it applies to.
     const auto revocable = [](const std::string &status) {
         return status == "PENDING_APPROVAL" || status == "PENDING" || status == "VALID";
     };

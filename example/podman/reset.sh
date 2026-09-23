@@ -166,16 +166,15 @@ _bring_up() {
 }
 
 # ---------------------------------------------------------------- checks
-# Each laboratory is checked for what it has. A responder, a second department and a
-# internet are not universal, and asking about one a topology lacks would report a fault
-# where there is none.
+# Each laboratory is checked for what it has: a responder, a second department and an
+# internet belong to some topologies only.
 _places=$(eval "printf '%s' \"\${TOPOLOGY_${topology//-/_}_PLACES:-}\"")
 _has() { case " ${_places} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # A responder answers for a root that names one, and only a laboratory with a facility root
 # has one to answer for. Asked of the compose file rather than of a list kept in step by hand,
 # because the compose file is what decides whether the container exists.
-_has_responder() { _compose config --services 2>/dev/null | grep -q -- '-authority-status'; }
+_has_responder() { _compose config --services 2>/dev/null | grep -q -- '-ocsp-responder'; }
 
 # Whether the boundary carries TLS and nothing else, which changes what a workstation outside it
 # can do before anything has been handed to it: with no plaintext listener to answer, it cannot
@@ -193,7 +192,7 @@ _boundary_is_tls_only() {
 _check_responder() {
     # The authority has to be establishable before anything can be issued. A laboratory that
     # looks up but cannot establish it is the worst state to hand back.
-    local c; c=$(podman ps --format '{{.Names}}' | grep -- '-authority-status' | head -1)
+    local c; c=$(podman ps --format '{{.Names}}' | grep -- '-ocsp-responder' | head -1)
     [ -n "${c}" ] || { echo "    no responder container is running" >&2; return 1; }
     for _ in $(seq 1 12); do
         if podman exec "${c}" timeout 8 openssl ocsp \
@@ -264,8 +263,7 @@ _check_reads() {
 }
 
 _says() { # _says <expected text> <command...>   - true when the output contains the text
-    # The output is captured before it is searched: these commands are expected to fail, and
-    # under 'set -o pipefail' their failure would sink the pipeline even when the text matched.
+    # The output is captured before it is searched: these commands are expected to fail.
     local want="$1"; shift
     local out; out=$("$@" 2>&1 || true)
     printf '%s' "${out}" | grep -q -- "${want}"
@@ -351,8 +349,7 @@ if [ ! -x "${topology_dir}/mint.sh" ]; then
         _c=$(podman ps --filter "label=com.docker.compose.service=${_svc}" --format '{{.Names}}' | head -1)
         [ -n "${_c}" ] || continue
         # As root, because the images run their shells as an unprivileged user and /etc is
-        # root's. sh rather than bash, and only where EPICS is installed: a laboratory has
-        # appliances in it that are not ours and have neither.
+        # root's. sh, and only where EPICS is installed.
         podman exec --user root "${_c}" sh -c '
             [ -d /opt/epics ] || exit 0
             mkdir -p /etc/epics && printf "%s" "$1" > /etc/epics/issuer' _ "${_skid}" \

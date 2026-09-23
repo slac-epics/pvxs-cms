@@ -283,8 +283,7 @@ void AuthNStd::fillCreateResponse(const Value &ccr, Value &reply, const CreateRe
  * identifier really was issued for this certificate and this key, and only then print.
  *
  * Verifying before decrypting means a corrupted or substituted package is refused on the
- * signature rather than reported as a decryption failure, which would read as though our own
- * key were wrong.
+ * signature.
  *
  * Every failure is loud and prints no identifier. A failure to decrypt is the visible form of
  * a public key substituted in transit, which is the whole point of this, so it must never be
@@ -311,15 +310,13 @@ void AuthNStd::handleCreateResponse(const Value &reply,
 
     // Which key verifies the signature depends on what was committed to before the request was
     // sent, and the two are not equally strong. A certificate authority already in the keychain
-    // needs nothing from this reply. Otherwise the authority delivered in this reply is used,
+    // needs nothing from this reply. The authority delivered in this reply is used,
     // and that is only sound because the reply's authority has already been matched against an
     // issuer the operator supplied out of band; a signature checked with a key taken from the
     // same reply proves nothing, so those two steps must not be separated.
     //
     // A keychain may hold several authorities, so which of them is asked is decided by the
-    // identifier committed to before the request went out, not by a position in the file. A
-    // position would give the authority the previous identity was issued under, and a request
-    // made to another department the keychain also trusts would then be refused.
+    // identifier committed to before the request went out, not by a position in the file.
     ossl_ptr<EVP_PKEY> authority_key;
     {
         auto candidates = cms::cert::certsInChain(held_before_request.cert_auth_chain);
@@ -347,7 +344,7 @@ void AuthNStd::handleCreateResponse(const Value &reply,
         const auto cert_data = certDataFromPem(delivered.as<std::string>());
 
         // The commitment made before the request was sent is what makes this sound. Checking it
-        // here, immediately before the key is used, rather than relying on a later check
+        // here, immediately before the key is used.
         // elsewhere: a signature verified with a key taken from the same reply proves nothing,
         // so nothing may come between these two lines.
         verifyDeliveredIssuerId(cert_data, expected_issuer_id);

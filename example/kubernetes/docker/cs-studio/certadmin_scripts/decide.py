@@ -43,8 +43,7 @@ def outcome_of(row, labels):
     if action == "revoke":
         return "REVOKED"
     if action == "deny":
-        # The server writes REVOKED for a denial, so that is what is shown. Saying DENIED here
-        # would name a status the certificate never reaches.
+        # The server writes REVOKED for a denial, so that is what is shown.
         return "REVOKED"
 
     def cell(name):

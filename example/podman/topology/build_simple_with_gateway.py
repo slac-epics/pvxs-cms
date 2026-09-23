@@ -16,8 +16,7 @@ testioc_l = fields('Role: IOC','Image: testioc','eth0  net-lab  10.89.0.0/24',
  'Listens: tcp/5075 PVA   tcp/5076 PVA over TLS   udp/5076 PVA search',
  'DB: testioc.db, testiocg.db','ACF: testioc.acf',
  'EPICS_PVA_TLS_OPTIONS: no_own_cert_status_check',
- 'Holds the root by hand: trust_anchor.p12 copied in, because the',
- '    authority cannot be fetched through a boundary that needs it','Serves:',
+ 'Holds the root by hand: trust_anchor.p12 copied in','Serves:',
  '    test:aiExample, test:stringExample, test:longExample',
  '    test:enumExample, test:arrayExample, test:calcExample',
  '    test:spec (SPECIAL), test:open (OPEN)')
@@ -41,7 +40,7 @@ gateway_l = fields('Role: gateway (dual-homed), net-lab <-> net-perimeter','Imag
  'eth1  net-perimeter  10.89.2.0/24   server side, where it is asked',
  'Program: p4p pvagw, layer 7','Config: config/gateway-lab.conf',
  'Serves on eth1 alone: "interface" pinned to its net-perimeter address',
- 'Reached from outside at facility:5076, over TLS and nothing else',
+ 'Reached from outside at facility:5076, over TLS',
  'Listens: tcp/5076 PVA over TLS   udp/5076 PVA search',
  'EPICS_PVAS_SERVER_PORT=NO closes the plaintext listener, so the',
  '    boundary carries TLS alone. It needs its certificate to serve at all',
@@ -147,12 +146,11 @@ NOTE = ['A line claims attachment. Arrowheads appear only where','a direction is
         'A workstation outside names the facility address, so its',
         'search goes straight to the balancer, which hands it to',
         'the gateway, which searches the laboratory on its behalf.','',
-        'ROOT_ISSUER and ROOT_ISSUER_SKID are named rather than','printed here: a fresh mint changes them.',
+        'ROOT_ISSUER and ROOT_ISSUER_SKID are named here:','a fresh mint changes them.',
         'Values: issuer_ids.env']
 
-# One appliance owns the facility address. Mapping a port to a different port would break
-# PVAccess: a server names its own port in a search reply and the client dials that port on
-# the address the reply arrived from, so a translated port would send it nowhere useful.
+# One appliance owns the facility address, and each port maps to the same number: a server
+# names its own port in a search reply and the client dials that port.
 lb_l = fields('Role: facility load balancer, layer 4 (dual-homed)','Image: lb',
  'eth0  net-internet   10.89.4.0/24   (the facility address)',
  'eth1  net-perimeter  10.89.2.0/24   (its foot in the DMZ)',
@@ -163,8 +161,7 @@ lb_l = fields('Role: facility load balancer, layer 4 (dual-homed)','Image: lb',
  'This is the one device here where a port picks a destination. It',
  '    rewrites the destination and the packet is routed afterwards.',
  'It answers as itself to the gateway, so replies come back through',
- '    it. The gateway authorises on the certificate presented, not',
- '    on the address it came from.')
+ '    it. The gateway authorises on the certificate presented.')
 
 # ---------------------------------------------------------------- geometry
 M = 40
@@ -189,8 +186,7 @@ lab_x = M
 RIGHT = 96
 CANVAS_W = lab_x + W_lab + RIGHT
 
-# legend, drawn by hand from the lists above. Both columns are measured from their own
-# text rather than guessed, so a reworded line cannot run out past the border.
+# legend, drawn by hand from the lists above. Both columns are measured from their own text.
 legend_x = M
 top_y = title_h + 26          # where the boxes in the top band hang from
 LEG_COL_GAP = 34
@@ -213,7 +209,7 @@ ca_y = top_y
 # perimeter in the same band, which is what makes the four comparable at a glance.
 gwx = lab_x + ZP + (cxs[C_GWACF] + cxs[C_GWPVL] + COLS[C_GWPVL])/2
 # Wide enough for the card AND for its own title strip: the title is set in 15px bold from
-# 40px in, so a zone sized only by its card would let the title run out past the corner.
+# 40px in, so the zone is sized for the title as well as the card.
 PERIM_TITLE = 'net-internet   10.89.4.0/24   -   outside the facility'
 pz_w = max(measure('internet-client', perim_client_l)[0] + 2*ZP, 40 + len(PERIM_TITLE)*8.3 + 16)
 pz_h = ZTITLE + 12 + measure('internet-client', perim_client_l)[1] + 20
@@ -243,8 +239,7 @@ dmz_h = (perim_bus_y - dmz_y) + 30
 # The laboratory spans under the legend, so it is what has to clear it.
 zone_y = max(dmz_y + dmz_h + 46, top_y + lg_h + 44)
 
-# The legend stands beside the DMZ rather than above it, so it drops to sit just clear of the
-# laboratory instead of leaving a hole beneath itself.
+# The legend stands beside the DMZ, just clear of the laboratory.
 legend_y = zone_y - lg_h - 44
 CANVAS_H = 0                          # set once the rows are measured
 

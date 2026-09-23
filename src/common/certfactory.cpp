@@ -245,8 +245,8 @@ void CertFactory::setSubject(const ossl_ptr<X509> &certificate) const {
         // enclosing the one before it, which is how access control rules read it.
         //
         // One entry per unit, each its own relative distinguished name (the trailing 0), in the
-        // order supplied. Folding them into one relative distinguished name instead would carry
-        // no order at all, and most readers render it badly.
+        // order supplied. Folding them into one relative distinguished name carries
+        // no order at all.
         for (const auto &org_unit : org_unit_) {
             if (org_unit.empty()) continue;
             if (X509_NAME_add_entry_by_txt(subject_name, "OU", MBSTRING_ASC, reinterpret_cast<const unsigned char *>(org_unit.c_str()), -1, -1, 0) != 1) {

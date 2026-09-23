@@ -114,8 +114,7 @@ inline std::string readIssuerId(const std::string &text) {
  * @brief The part of an issuer identifier that a process channel name carries.
  *
  * Channel names carry the first eight digits, so an identifier given in full addresses the same
- * certificate manager as the short form of it. Without this, naming an authority by all forty
- * digits builds a name nothing serves, and the request goes unanswered rather than refused.
+ * certificate manager as the short form of it.
  */
 inline std::string issuerIdForPvName(const std::string &issuer_id) {
     const auto digits = readIssuerId(issuer_id);
@@ -503,15 +502,6 @@ class CertStatusSubscriptionException final : public CertStatusException {
 // Define the enum
 #define X_IT(name) name,
 #define O_IT(name) name = V_##name,
-/**
- * @brief What the authority above a certificate is known to be.
- *
- * A certificate manager learns this by asking the responder its trust anchor names, and
- * answers every status through it, so a certificate that stands in its own right still
- * reports that the authority above it does not.
- */
-enum class cert_authority_standing_t { STANDING, REVOKED, UNKNOWN };
-
 enum certstatus_t { CERT_STATUS_LIST };
 enum ocspcertstatus_t { OCSP_CERT_STATUS_LIST };
 #undef X_IT

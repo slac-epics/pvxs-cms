@@ -8,8 +8,7 @@
  * The responder here is part of the test rather than a separate program, and it is bound to a
  * port the operating system chooses on the loopback interface. Two things follow. Nothing is
  * reachable from off the machine, and nothing collides with another test, another job on the
- * same machine, or a demonstration laboratory the developer happens to have running - which
- * uses a fixed port and would otherwise be answered instead of this.
+ * same machine, or a demonstration laboratory on a fixed port.
  *
  * The address goes inside the certificate, so the order is forced: bind first to learn the
  * port, then mint the root that names it.
@@ -35,13 +34,13 @@
 #include <pvxs/log.h>
 #include <pvxs/unittest.h>
 
-#include "authoritymonitor.h"
+#include "ocspstatusmonitor.h"
 #include "certstatus.h"
 #include "ownedptr.h"
 
 using namespace pvxs;
-using cms::cert::AuthorityMonitor;
-using pvxs::certs::cert_authority_standing_t;
+using cms::cert::OcspStatusMonitor;
+using pvxs::certs::ocspcertstatus_t;
 
 namespace {
 
@@ -192,7 +191,7 @@ class Responder {
         worker_ = std::thread([this] { serve(); });
     }
 
-    /** Stops answering without changing what the answer would have been. */
+    /** Stops answering, keeping the answer it holds. */
     void stop() {
         if (!worker_.joinable()) return;
         running_.store(false);
@@ -314,34 +313,34 @@ class Responder {
     std::thread worker_;
 };
 
-/** Waits for the monitor to reach a standing, so a test states what it wants rather than a delay. */
-bool reaches(const AuthorityMonitor& monitor, const cert_authority_standing_t wanted) {
+/** Waits for the monitor to reach a wanted status, so a test states what it wants rather than a delay. */
+bool reaches(const OcspStatusMonitor& monitor, const ocspcertstatus_t wanted) {
     const auto give_up_at = std::chrono::steady_clock::now() + answer_timeout;
     while (std::chrono::steady_clock::now() < give_up_at) {
-        if (monitor.standing() == wanted) return true;
+        if (monitor.ocspStatus() == wanted) return true;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     return false;
 }
 
-/** Whether a standing stays what it is for the whole of a stated time. */
-bool holds(const AuthorityMonitor& monitor, const cert_authority_standing_t wanted,
+/** Whether an certificate status stays what it is for the whole of a stated time. */
+bool holds(const OcspStatusMonitor& monitor, const ocspcertstatus_t wanted,
            const std::chrono::seconds duration) {
     const auto until = std::chrono::steady_clock::now() + duration;
     while (std::chrono::steady_clock::now() < until) {
-        if (monitor.standing() != wanted) return false;
+        if (monitor.ocspStatus() != wanted) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     return true;
 }
 
-/** Waits for a standing to be established at all, whatever it turns out to be. */
-bool settles(const AuthorityMonitor& monitor) { return reaches(monitor, cert_authority_standing_t::STANDING); }
+/** Waits for an certificate status to be established at all, whatever it turns out to be. */
+bool settles(const OcspStatusMonitor& monitor) { return reaches(monitor, ocspcertstatus_t::OCSP_CERTSTATUS_GOOD); }
 
-const char* nameOf(const cert_authority_standing_t standing) {
-    switch (standing) {
-        case cert_authority_standing_t::STANDING: return "STANDING";
-        case cert_authority_standing_t::REVOKED: return "REVOKED";
+const char* nameOf(const ocspcertstatus_t status) {
+    switch (status) {
+        case ocspcertstatus_t::OCSP_CERTSTATUS_GOOD: return "GOOD";
+        case ocspcertstatus_t::OCSP_CERTSTATUS_REVOKED: return "REVOKED";
         default: return "UNKNOWN";
     }
 }
@@ -366,11 +365,11 @@ void testAnchorStands() {
     lab.responder.answer(V_OCSP_CERTSTATUS_GOOD);
     lab.responder.start();
 
-    AuthorityMonitor monitor(lab.root.cert.get(), false);
+    OcspStatusMonitor monitor(lab.root.cert.get(), false);
     testOk(monitor.isActive(), "the responder named by the anchor is watched: %s", monitor.responderUri().c_str());
     monitor.start();
 
-    testOk(reaches(monitor, cert_authority_standing_t::STANDING), "the anchor stands, on a delegated signature");
+    testOk(reaches(monitor, ocspcertstatus_t::OCSP_CERTSTATUS_GOOD), "the anchor stands, on a delegated signature");
 }
 
 void testAnchorRevoked() {
@@ -379,10 +378,10 @@ void testAnchorRevoked() {
     lab.responder.answer(V_OCSP_CERTSTATUS_REVOKED);
     lab.responder.start();
 
-    AuthorityMonitor monitor(lab.root.cert.get(), false);
+    OcspStatusMonitor monitor(lab.root.cert.get(), false);
     monitor.start();
 
-    testOk(reaches(monitor, cert_authority_standing_t::REVOKED), "the anchor is reported revoked");
+    testOk(reaches(monitor, ocspcertstatus_t::OCSP_CERTSTATUS_REVOKED), "the anchor is reported revoked");
 }
 
 void testResponderSaysUnknown() {
@@ -391,10 +390,10 @@ void testResponderSaysUnknown() {
     lab.responder.answer(V_OCSP_CERTSTATUS_UNKNOWN);
     lab.responder.start();
 
-    AuthorityMonitor monitor(lab.root.cert.get(), false);
+    OcspStatusMonitor monitor(lab.root.cert.get(), false);
     monitor.start();
 
-    testOk(reaches(monitor, cert_authority_standing_t::UNKNOWN), "a responder that will not say leaves it unknown");
+    testOk(reaches(monitor, ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN), "a responder that will not say leaves it unknown");
 }
 
 void testResponderUnreachable() {
@@ -402,11 +401,11 @@ void testResponderUnreachable() {
     Laboratory lab;
     lab.responder.goAway();  // as stopping the service does: the address refuses
 
-    AuthorityMonitor monitor(lab.root.cert.get(), false);
+    OcspStatusMonitor monitor(lab.root.cert.get(), false);
     monitor.start();
 
-    testOk(reaches(monitor, cert_authority_standing_t::UNKNOWN),
-           "an unreachable responder leaves the standing unknown, which denies connections");
+    testOk(reaches(monitor, ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN),
+           "an unreachable responder leaves the status UNKNOWN, which denies connections");
 }
 
 void testBusyResponderIsNotNews() {
@@ -416,33 +415,31 @@ void testBusyResponderIsNotNews() {
     lab.responder.answerGoodFor(seconds_a_long_answer_is_good_for);
     lab.responder.start();
 
-    AuthorityMonitor monitor(lab.root.cert.get(), false);
+    OcspStatusMonitor monitor(lab.root.cert.get(), false);
     monitor.start();
     if (!settles(monitor)) {
-        testFail("the anchor was never established as standing, so there is nothing to disturb");
+        testFail("the anchor was never established as VALID, so there is nothing to disturb");
         return;
     }
 
     // The next few calls are dropped, as a responder already answering somebody else drops
     // them. The answer in hand is good for much longer than that, so nothing has been learned
-    // and nothing should change: a service that reported the authority unknown here would stop
-    // every connection it underwrites on the strength of one missed call.
+    // and nothing should change.
     lab.responder.dropFirst(3);
-    testOk(holds(monitor, cert_authority_standing_t::STANDING, std::chrono::seconds(10)),
-           "a dropped call does not disturb a standing that is still good");
+    testOk(holds(monitor, ocspcertstatus_t::OCSP_CERTSTATUS_GOOD, std::chrono::seconds(10)),
+           "a dropped call does not disturb a status that is still GOOD");
 }
 
 void testResponderAcceptsAndSaysNothing() {
     testDiag("== a responder that takes the call and then says nothing");
     Laboratory lab;
     // Bound and listening, but nothing is accepting, so the caller is connected and then left.
-    // Without a bound on the exchange this never returns: the standing would freeze wherever it
-    // was and the service could not shut down, because stopping waits for the poll in flight.
+    // One exchange is bounded, and stopping waits for the poll in flight.
 
-    AuthorityMonitor monitor(lab.root.cert.get(), false);
+    OcspStatusMonitor monitor(lab.root.cert.get(), false);
     monitor.start();
 
-    testOk(reaches(monitor, cert_authority_standing_t::UNKNOWN),
+    testOk(reaches(monitor, ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN),
            "a silent responder is given up on, and counts as not knowing");
 }
 
@@ -452,10 +449,10 @@ void testLastAnswerHeld() {
     lab.responder.answer(V_OCSP_CERTSTATUS_GOOD);
     lab.responder.start();
 
-    AuthorityMonitor monitor(lab.root.cert.get(), true);
+    OcspStatusMonitor monitor(lab.root.cert.get(), true);
     monitor.start();
     if (!settles(monitor)) {
-        testFail("the anchor was never established as standing, so there is nothing to hold");
+        testFail("the anchor was never established as GOOD, so there is nothing to hold");
         testSkip(1, "no answer to hold");
         return;
     }
@@ -466,15 +463,15 @@ void testLastAnswerHeld() {
     // is good for two seconds, but the monitor will not ask more often than every ten, and a
     // refused connection fails at once.
     std::this_thread::sleep_for(std::chrono::seconds(12));
-    testOk(monitor.standing() == cert_authority_standing_t::STANDING,
-           "the last verified answer is kept: %s", nameOf(monitor.standing()));
+    testOk(monitor.ocspStatus() == ocspcertstatus_t::OCSP_CERTSTATUS_GOOD,
+           "the last verified answer is kept: %s", nameOf(monitor.ocspStatus()));
 }
 
 void testAnchorNamesNoResponder() {
     testDiag("== an anchor that names no responder");
     const auto root = mint("Test Facility Root", 1, true, "", nullptr, nullptr);
 
-    AuthorityMonitor monitor(root.cert.get(), false);
+    OcspStatusMonitor monitor(root.cert.get(), false);
     testOk(!monitor.isActive(), "an anchor naming no responder is not watched");
 
     monitor.start();  // does nothing, and must not be an error
@@ -488,13 +485,13 @@ void testAnchorNotSelfSigned() {
     // Names a responder, but is issued by something else, so no answer about it could be trusted.
     const auto intermediate = mint("Test Intermediate", 2, true, responder.uri(), nullptr, &root);
 
-    const AuthorityMonitor monitor(intermediate.cert.get(), false);
+    const OcspStatusMonitor monitor(intermediate.cert.get(), false);
     testOk(!monitor.isActive(), "a certificate that is not self-signed is not watched");
 }
 
 }  // namespace
 
-MAIN(testauthoritystatus) {
+MAIN(testocspstatusmonitor) {
     testPlan(11);
     logger_config_env();
 

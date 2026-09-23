@@ -35,9 +35,7 @@ inline std::string trimSurroundingWhitespace(const std::string &value) {
 /**
  * @brief Trim each organizational unit, drop empty ones, and refuse a value we cannot carry.
  *
- * A repeated value would say that a unit sits inside itself, which nothing can satisfy, and a
- * value containing the separator could not be told apart from two values once joined. Both are
- * refused at the point of request rather than carried into a certificate.
+ * A repeated value, and a value containing the separator, are refused at the point of request.
  *
  * Values are compared exactly and case is not folded, matching how the common name is treated.
  *
@@ -233,8 +231,7 @@ inline const std::string &innermostOrganizationalUnit(const std::vector<std::str
  * so no caller can act on the list without the two having been compared. Were the server to build
  * the subject from the list while a verifier inspected only the single value, a caller could leave
  * an authorised value in the single field, put unauthorised values in the list, and have them all
- * issued. That is a privilege escalation rather than a compatibility wrinkle, which is why the
- * check is here rather than at each call site.
+ * issued. The check is here, so it holds for every call site.
  *
  * @param ccr the certificate creation request as it arrived
  * @return the organizational units, innermost first

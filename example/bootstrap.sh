@@ -98,8 +98,7 @@ done
 
 fi
 
-# Not ours, and not built: the facility load balancer is HAProxy, which is what a site would
-# use for this. Pulled here so that bringing a laboratory up needs no registry.
+# The facility load balancer is HAProxy.
 echo "==> fetching the load balancer image"
 docker pull -q docker.io/library/haproxy:lts-alpine >/dev/null 2>&1 \
     || echo "    could not fetch haproxy - the gateway laboratories will need it" >&2

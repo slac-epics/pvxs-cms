@@ -1,18 +1,10 @@
 # The simple-with-gateway laboratory.
 #
-# The podman topology this is taken from is example/podman/topologies/simple-with-gateway.
-# Two things could not come across as they were written, and both are marked THE DIFFERENCE
-# where they appear:
+#   Discovery. A pod network has no broadcast domain, so the zone is given an explicit address
+#   list of the IOC services, and reaches its own IOCs by naming them.
 #
-#   Discovery. A laboratory zone in podman finds its IOCs by broadcast. A pod network has no
-#   broadcast domain, so the zone is given an explicit address list of the IOC services
-#   instead. What is being demonstrated - that a zone reaches its own IOCs without naming a
-#   gateway - still holds, but it is reached by naming them rather than by asking everyone.
-#
-#   The gateway not answering its own zone. A NetworkPolicy stops the zone reaching the
-#   gateway's ports
-#   instead. The rule is kept; what changes is that the zone cannot ask, where before the
-#   gateway did not answer. A misconfiguration here times out rather than returning twice.
+#   The gateway. A NetworkPolicy stops the zone reaching the gateway's ports, so a
+#   misconfiguration here times out.
 
 namespace: spva-lab
 
@@ -42,9 +34,8 @@ certAuthority:
   organization: certs.epics.org
   organizationalUnit: epics.org Certificate Authority
 
-# The address the workstation outside the boundary knows. In podman this is an haproxy
-# container aliased 'facility'; here it is a Service of the same name, which is the same job
-# done by kube-proxy. Set type to LoadBalancer if you want it published outside the cluster.
+# The address the workstation outside the boundary knows, a Service named 'facility'. Set type
+# to LoadBalancer to publish it outside the cluster.
 facility:
   serviceType: ClusterIP
 

@@ -37,7 +37,7 @@ UAG(GATEWAYS) {
 # upstream connection as itself. What this rule then sees is the gateway, not the client
 # behind it, which is why the gateway is named. Who the client was is decided at the gateway,
 # by the matching rule in its own access file - so opening this variable up here does not open
-# it to anyone the gateway would have refused.
+# by the matching rule in its own access file.
 ASG(OPEN) {
     RULE(1,READ)
     # Anyone in this department holding a certificate.

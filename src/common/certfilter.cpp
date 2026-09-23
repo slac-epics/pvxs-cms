@@ -290,9 +290,7 @@ class Tokeniser {
 /** Turn a broken-down date into a moment, reading it as Coordinated Universal Time.
  *
  * The one function that does this is spelled differently on either platform, and neither
- * spelling exists on the other. mktime is not a substitute: it reads the same fields as local
- * time, so it would move every date in the filter by the offset of whatever zone the machine
- * happens to be in.
+ * spelling exists on the other. mktime reads the same fields as local time.
  */
 inline int64_t momentFromUtc(std::tm &tm) {
 #if defined(_WIN32) || defined(_MSC_VER)

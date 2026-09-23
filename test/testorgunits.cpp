@@ -89,8 +89,8 @@ std::shared_ptr<CertCreationRequest> requestFor(const std::vector<std::string> &
     return probe.createCertCreationRequest(credentials, key_pair, ssl::kForClient, config);
 }
 
-// Rendered so a failure says which units came back, and in what order. Built here rather than
-// with joinOrganizationalUnits so a fault in the joining cannot hide a fault in the reading.
+// Rendered so a failure says which units came back, and in what order. Built here, so a fault
+// in joinOrganizationalUnits cannot hide one in the reading.
 std::string show(const std::vector<std::string> &units) {
     std::string out("[");
     for (size_t i = 0; i < units.size(); i++) {
@@ -117,7 +117,7 @@ void testTheEnvironmentCarriesAList() {
     testEq(show(parseOrganizationalUnits(" staff ; beamline ")), show({"staff", "beamline"}));
     testEq(show(parseOrganizationalUnits("beamline")), show({"beamline"}));
     testEq(show(parseOrganizationalUnits("")), show({}));
-    // An empty value is not a unit, so a stray separator is forgiven rather than refused
+    // An empty value is no unit, so a stray separator is forgiven
     testEq(show(parseOrganizationalUnits("staff;;beamline")), show({"staff", "beamline"}));
 }
 
@@ -131,8 +131,7 @@ void testJoiningIsTheInverseOfParsing() {
     testEq(joinOrganizationalUnits({"staff", "beamline"}), std::string("staff;beamline"));
 }
 
-// A unit inside itself is not a shorter path or an odd spelling, it is a statement nothing can
-// satisfy, so it is refused where it is written rather than carried into a certificate.
+// A unit inside itself is a statement nothing can satisfy, and is refused where it is written.
 void testAUnitCannotContainItself() {
     testDiag("A repeated value is refused, after trimming");
 
@@ -213,9 +212,8 @@ void testDisagreeingFieldsAreRefused(const std::shared_ptr<KeyPair> &key_pair) {
     testTrue(refuses([&] { getOrganizationalUnits(request->ccr); }));
 }
 
-// The payload must cover every unit. If it covered only the innermost, a unit appended in
-// flight would still verify, and since the units are a containment path an appended one changes
-// which access rules apply to the holder.
+// The payload covers every unit, which is a containment path and decides which access rules
+// apply to the holder.
 void testTheSignaturePayloadCoversEveryUnit(const std::shared_ptr<KeyPair> &key_pair) {
     testDiag("Both sides compute the same payload, and it changes when a unit is added");
 
@@ -249,8 +247,7 @@ void testAnOlderRequestStillVerifies(const std::shared_ptr<KeyPair> &key_pair) {
     }
 }
 
-// One entry per unit, in the order supplied. Folding them into one entry instead would carry no
-// order at all, which is the whole of the meaning.
+// One entry per unit, in the order supplied, which is where the meaning is.
 void testTheIssuedSubjectNamesEveryUnitInOrder(const std::shared_ptr<KeyPair> &key_pair) {
     testDiag("Each unit is its own subject entry, innermost first");
 
@@ -310,7 +307,7 @@ void testAShortenedSubjectIsRefused(const std::shared_ptr<KeyPair> &key_pair) {
     const auto whole = pemFor(asked, 2003);
     testFalse(refuses([&] { CCRManager::checkIssuedOrganizationalUnits(asked, whole); }));
 
-    // Something that is not a certificate at all is refused rather than passed over
+    // Something that is no certificate at all is refused
     testTrue(refuses([&] { CCRManager::checkIssuedOrganizationalUnits(asked, "not a certificate"); }));
 }
 
@@ -352,7 +349,7 @@ struct SubjectDb {
     bool migrate() { return sqlite3_exec(db, SQL_CREATE_SUBJECT_UNITS_TABLE, nullptr, nullptr, nullptr) == SQLITE_OK; }
 
     //! How many certificates match the subject, using the certificate manager's own duplicate
-    //! query, so that an edit to SQL_DUPS_SUBJECT is caught here rather than in production.
+    //! query, so an edit to SQL_DUPS_SUBJECT is caught here.
     int countMatching(const char *cn, const std::vector<std::string> &units) {
         std::string sql(SQL_DUPS_SUBJECT);
         sql += getOrganizationalUnitsClause(units);
@@ -381,7 +378,7 @@ void testAnExistingDatabaseIsBroughtForward() {
     testTrue(store.migrate());
 
     testEq(show(getSubjectUnits(store.db, 100)), show({"beamline"}));
-    // An empty value is not a unit, so it gets no row rather than a row holding nothing
+    // An empty value is no unit, so it gets no row
     testEq(show(getSubjectUnits(store.db, 200)), show({}));
 
     // Running it again must not double the rows, and must not disturb a certificate that has

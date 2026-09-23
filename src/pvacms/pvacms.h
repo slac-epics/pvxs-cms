@@ -24,7 +24,7 @@
 
 #include "certfactory.h"
 #include "certfilefactory.h"
-#include "authoritymonitor.h"
+#include "ocspstatusmonitor.h"
 #include "certstatus.h"
 #include "certsubjectunits.h"
 #include "configcms.h"
@@ -131,8 +131,8 @@
 // The organizational units are not compared here. They are an ordered list of any length, so the
 // test is appended by getOrganizationalUnitsClause: a count of the candidate's units followed by
 // one positional equality test per requested value. `certs.OU` is deliberately left out of the
-// comparison even though it would narrow the search, because it is derived from the child table
-// and matching on both would make the answer depend on the two never drifting apart.
+// comparison, because it is derived from the child table and matching on both would couple
+// them.
 #define SQL_DUPS_SUBJECT              \
     "SELECT COUNT(*) "                \
     "FROM certs "                     \
@@ -384,7 +384,7 @@ bool getPriorApprovalStatus(const sql_ptr &certs_db, const std::string &name, co
 void onGetStatus(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
                  const std::string &pv_name, serial_number_t serial, const std::string &issuer_id, const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                  const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
-                 const cms::cert::AuthorityMonitor &authority_monitor);
+                 const cms::cert::OcspStatusMonitor &ocsp_status_monitor);
 
 void onRevoke(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
               std::unique_ptr<server::ExecOp> &&op, const std::string &pv_name, const std::list<std::string> &parameters,

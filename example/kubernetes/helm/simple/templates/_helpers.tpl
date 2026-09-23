@@ -14,11 +14,8 @@
 {{/*
 The laboratory zone's addressing.
 
-THE DIFFERENCE: podman leaves both lists unset here and turns automatic discovery on, so a
-workstation finds its IOCs by broadcast. There is no broadcast domain across pods, so the
-three places that live in the laboratory are given the IOCs and the certificate manager by
-name. The gateway is deliberately absent from this list, which is the same thing the podman
-laboratory achieves by having the gateway not answer.
+There is no broadcast domain across pods, so the three places that live in the laboratory
+are given the IOCs and the certificate manager by name. The gateway is absent from this list.
 */}}
 {{- define "lab.zoneAddrList" -}}
 {{ include "lab.pvacmsService" . }} {{ include "lab.testiocService" . }} {{ include "lab.tstiocService" . }}
@@ -31,7 +28,7 @@ laboratory achieves by having the gateway not answer.
   value: {{ include "lab.zoneAddrList" . | quote }}
 {{- end -}}
 
-{{/* The three scripts the podman topology bind-mounts, carried here in a ConfigMap. */}}
+{{/* The three start scripts, carried in a ConfigMap. */}}
 {{- define "lab.scriptsVolume" -}}
 - name: scripts
   configMap:
@@ -60,8 +57,7 @@ The issuer identifier.
 It does not exist until the certificate manager has minted its authority, so the ConfigMap is
 not there when the chart is installed and the mount is optional. Mounted rather than written
 into the running container, because a pod is replaceable: `krestart <place> pod` and every
-rollout produce a new filesystem, and an issuer id poked into the old one goes with it. That
-is a difference from podman, where the container persists and writing into it is enough.
+rollout produce a new filesystem, and an issuer id poked into the old one goes with it.
 */}}
 {{- define "lab.issuerVolume" -}}
 - name: issuer
