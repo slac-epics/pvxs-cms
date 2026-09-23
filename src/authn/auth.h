@@ -308,29 +308,33 @@ class Auth {
     // Called to have a standard presentation of the CCR for the
     // purposes of generating and verifying signatures
     static std::string ccrToString(const std::shared_ptr<CertCreationRequest> &ccr, const uint16_t &usage) {
-        return SB() << ccr->type                            // Type
-                    << ccr->credentials->name               // Name
-                    << ccr->credentials->country            // Country
-                    << ccr->credentials->organization       // Organization
-                    << ccr->credentials->organization_unit  // Organizational Unit
-                    << ccr->credentials->not_before         // Not before
-                    << ccr->credentials->not_after          // Not After
-                    << ccr->credentials->config_uri_base    // Config URL Base
-                    << usage;                               // Usage
+        // Every organizational unit is covered, not just the innermost one, so that a value added
+        // in flight cannot pass verification. A request carrying at most one unit produces the same
+        // payload it did before units could repeat, so an older client still verifies here.
+        return SB() << ccr->type                                                           // Type
+                    << ccr->credentials->name                                              // Name
+                    << ccr->credentials->country                                           // Country
+                    << ccr->credentials->organization                                      // Organization
+                    << joinOrganizationalUnits(ccr->credentials->organization_unit)        // Organizational Units
+                    << ccr->credentials->not_before                                        // Not before
+                    << ccr->credentials->not_after                                         // Not After
+                    << ccr->credentials->config_uri_base                                   // Config URL Base
+                    << usage;                                                              // Usage
     }
 
     // Called to have a standard presentation of the CCR for the
     // purposes of generating and verifying signatures
     static std::string ccrToString(const Value &ccr) {
-        return SB() << ccr["type"].as<std::string>()               // Type
-                    << ccr["name"].as<std::string>()               // Name
-                    << ccr["country"].as<std::string>()            // Country
-                    << ccr["organization"].as<std::string>()       // Organization
-                    << ccr["organization_unit"].as<std::string>()  // Organizational Unit
-                    << ccr["not_before"].as<time_t>()              // Not before
-                    << ccr["not_after"].as<time_t>()               // Not After
-                    << ccr["config_uri_base"].as<std::string>()    // Config URL Base
-                    << ccr["usage"].as<uint16_t>();                // Usage
+        // Must produce byte for byte what the client-side overload above produced.
+        return SB() << ccr["type"].as<std::string>()                              // Type
+                    << ccr["name"].as<std::string>()                              // Name
+                    << ccr["country"].as<std::string>()                           // Country
+                    << ccr["organization"].as<std::string>()                      // Organization
+                    << joinOrganizationalUnits(getOrganizationalUnits(ccr))       // Organizational Units
+                    << ccr["not_before"].as<time_t>()                             // Not before
+                    << ccr["not_after"].as<time_t>()                              // Not After
+                    << ccr["config_uri_base"].as<std::string>()                   // Config URL Base
+                    << ccr["usage"].as<uint16_t>();                               // Usage
     }
 
  private:
@@ -683,7 +687,9 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
             log_info_printf(auth, " OUTPUT TO: %s\n", tls_keychain_file.c_str());
             log_info_printf(auth, "SUBJECT CN: %s\n", credentials->name.c_str());
             if (!credentials->organization.empty()) log_info_printf(auth, "SUBJECT  O: %s\n", credentials->organization.c_str());
-            if (!credentials->organization_unit.empty()) log_info_printf(auth, "SUBJECT OU: %s\n", credentials->organization_unit.c_str());
+            // One line per unit, innermost first, so the whole containment path is visible
+            for (const auto &organization_unit : credentials->organization_unit)
+                log_info_printf(auth, "SUBJECT OU: %s\n", organization_unit.c_str());
             if (!credentials->country.empty()) log_info_printf(auth, "SUBJECT  C:%s\n", credentials->country.c_str());
             log_info_printf(auth, "VALID FROM: %s\n", from.c_str());
             if (renew_by) {

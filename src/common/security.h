@@ -7,12 +7,104 @@
 #ifndef PVXS_SEC_SECURITY_H
 #define PVXS_SEC_SECURITY_H
 
+#include <algorithm>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
 #include <pvxs/nt.h>
 
 #include "ownedptr.h"
 
 namespace pvxs {
 namespace certs {
+
+//! Separator between organizational unit values wherever they must share one string:
+//! the environment variables, and the signature payload. Matches the separator the
+//! keychain settings already use, so there is one convention rather than two.
+constexpr char kOrganizationalUnitSeparator = ';';
+
+//! Remove leading and trailing whitespace, so `OU= beamline` and `OU=beamline` are one value.
+inline std::string trimSurroundingWhitespace(const std::string &value) {
+    const auto first = value.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return {};
+    const auto last = value.find_last_not_of(" \t\r\n");
+    return value.substr(first, last - first + 1);
+}
+
+/**
+ * @brief Trim each organizational unit, drop empty ones, and refuse a value we cannot carry.
+ *
+ * A repeated value would say that a unit sits inside itself, which nothing can satisfy, and a
+ * value containing the separator could not be told apart from two values once joined. Both are
+ * refused at the point of request rather than carried into a certificate.
+ *
+ * Values are compared exactly and case is not folded, matching how the common name is treated.
+ *
+ * @param units the organizational units to normalize in place, innermost first
+ * @throws std::runtime_error if a value is repeated or contains the separator
+ */
+inline void normalizeOrganizationalUnits(std::vector<std::string> &units) {
+    std::vector<std::string> normalized;
+    normalized.reserve(units.size());
+    for (const auto &unit : units) {
+        auto trimmed = trimSurroundingWhitespace(unit);
+        if (trimmed.empty()) continue;
+        if (trimmed.find(kOrganizationalUnitSeparator) != std::string::npos)
+            throw std::runtime_error(SB() << "Organizational unit \"" << trimmed << "\" contains a '"
+                                          << kOrganizationalUnitSeparator << "', which separates one unit from the next");
+        if (std::find(normalized.begin(), normalized.end(), trimmed) != normalized.end())
+            throw std::runtime_error(SB() << "Organizational unit \"" << trimmed
+                                          << "\" is given more than once: a unit cannot contain itself");
+        normalized.push_back(std::move(trimmed));
+    }
+    units = std::move(normalized);
+}
+
+/**
+ * @brief Split a separator-delimited list of organizational units into its values.
+ *
+ * The values are read innermost first: the first value sits inside the second. Surrounding
+ * whitespace is trimmed and empty values are dropped, so `" staff ; beamline"` and
+ * `"staff;beamline"` both give `{"staff", "beamline"}`.
+ *
+ * @param value the joined list, as an environment variable carries it
+ * @return the organizational units, innermost first
+ * @throws std::runtime_error if a value is repeated
+ */
+inline std::vector<std::string> parseOrganizationalUnits(const std::string &value) {
+    std::vector<std::string> units;
+    for (std::string::size_type start = 0;;) {
+        const auto separator = value.find(kOrganizationalUnitSeparator, start);
+        if (separator == std::string::npos) {
+            units.push_back(value.substr(start));
+            break;
+        }
+        units.push_back(value.substr(start, separator - start));
+        start = separator + 1;
+    }
+    normalizeOrganizationalUnits(units);
+    return units;
+}
+
+/**
+ * @brief Join organizational units into one string, innermost first.
+ *
+ * The inverse of parseOrganizationalUnits for any list that parse would produce. A single unit
+ * joins to itself and no units join to the empty string, so a request carrying at most one unit
+ * produces exactly the string it produced before units could repeat.
+ *
+ * @param units the organizational units, innermost first
+ * @return the values joined by the separator
+ */
+inline std::string joinOrganizationalUnits(const std::vector<std::string> &units) {
+    std::string joined;
+    for (const auto &unit : units) {
+        if (!joined.empty()) joined += kOrganizationalUnitSeparator;
+        joined += unit;
+    }
+    return joined;
+}
 
 /**
  * @class AuthnCredentials
@@ -27,7 +119,8 @@ struct AuthnCredentials {
     std::string name;
     std::string country;
     std::string organization;
-    std::string organization_unit;
+    //! Organizational units, innermost first: the first sits inside the second, and so on.
+    std::vector<std::string> organization_unit;
 
     // Validity
     time_t not_before;
@@ -90,6 +183,7 @@ struct AuthnCredentials {
         members::String("country"),            \
         members::String("organization"),       \
         members::String("organization_unit"),  \
+        members::StringA("organization_units"),\
         members::UInt16("usage"),              \
         members::UInt64("not_before"),         \
         members::UInt64("not_after"),          \
@@ -98,6 +192,74 @@ struct AuthnCredentials {
         members::Bool("no_status"),            \
         members::Struct("verifier", VERIFIER), \
     }
+
+/**
+ * @brief Express a single organizational unit as a list, with an empty value meaning no unit.
+ *
+ * For the places that still hold one unit in one string: a configured certificate authority unit,
+ * a value read out of the existing single-value database column.
+ *
+ * @param unit the one unit, or an empty string for none
+ * @return a list holding that unit, or an empty list
+ */
+inline std::vector<std::string> singleOrganizationalUnit(const std::string &unit) {
+    if (unit.empty()) return {};
+    return {unit};
+}
+
+/**
+ * @brief The innermost organizational unit, or an empty string when there is none.
+ *
+ * The single value the existing `certs.OU` column holds. That column is derived and never
+ * authoritative: it exists so the existing index, the existing queries and anything reading the
+ * table directly keep working, and the innermost unit is the most specific single value to show.
+ *
+ * @param units the organizational units, innermost first
+ * @return the innermost unit, or an empty string
+ */
+inline const std::string &innermostOrganizationalUnit(const std::vector<std::string> &units) {
+    static const std::string none;
+    return units.empty() ? none : units.front();
+}
+
+/**
+ * @brief Read the organizational units out of a certificate creation request.
+ *
+ * A request from a client that predates repeated units carries no `organization_units` field at
+ * all, because the request travels with its own type. Its single `organization_unit` value is
+ * then read as a one-element list, so such a request is handled exactly as it was before.
+ *
+ * When a request carries both fields they must agree, and this is the only way to read the units,
+ * so no caller can act on the list without the two having been compared. Were the server to build
+ * the subject from the list while a verifier inspected only the single value, a caller could leave
+ * an authorised value in the single field, put unauthorised values in the list, and have them all
+ * issued. That is a privilege escalation rather than a compatibility wrinkle, which is why the
+ * check is here rather than at each call site.
+ *
+ * @param ccr the certificate creation request as it arrived
+ * @return the organizational units, innermost first
+ * @throws std::runtime_error if the request carries both fields and they disagree
+ */
+inline std::vector<std::string> getOrganizationalUnits(const Value &ccr) {
+    const auto single_value = ccr["organization_unit"];
+    const auto single = single_value ? single_value.as<std::string>() : std::string();
+
+    if (const auto units_value = ccr["organization_units"]) {
+        const auto values = units_value.as<shared_array<const std::string>>();
+        if (values.empty()) {
+            if (!single.empty())
+                throw std::runtime_error(SB() << "Certificate creation request names organizational unit \"" << single
+                                              << "\" but its list of units is empty");
+            return {};
+        }
+        if (values[0] != single)
+            throw std::runtime_error(SB() << "Certificate creation request names organizational unit \"" << single
+                                          << "\" but the innermost unit in its list is \"" << values[0] << "\"");
+        return {values.begin(), values.end()};
+    }
+
+    return singleOrganizationalUnit(single);
+}
 
 struct CertCreationRequest final {
     std::shared_ptr<AuthnCredentials> credentials;

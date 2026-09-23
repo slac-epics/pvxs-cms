@@ -328,6 +328,10 @@ struct PKCS12Writer {
 struct CertCreator {
     // commonName string
     const char *CN = nullptr;
+    // Optional inner organizational unit, emitted before the standing one so the subject
+    // reads as a containment path: this unit sits inside "epics.org Certificate Authority".
+    // Left null for every certificate that does not need one, so their subjects are unchanged.
+    const char *inner_OU = nullptr;
     // Root cert (we'll use this as if the CMS is serving this root cert and not some intermediary)
     const X509 *root = nullptr;
     // NULL for self-signed
@@ -413,6 +417,15 @@ struct CertCreator {
             }
             // Leaf first, matching what CertFactory emits, so a test certificate has the
             // same shape of subject as one this system issues.
+            //
+            // A subject may name more than one organizational unit, innermost first, each its
+            // own entry. When inner_OU is set the subject carries two, which is the shape a
+            // nested unit produces and which nothing else in these fixtures exercises.
+            if (inner_OU) {
+                MUST(1, X509_NAME_add_entry_by_txt(sub, "OU", MBSTRING_ASC,
+                                                   reinterpret_cast<const unsigned char*>(inner_OU),
+                                                   -1, -1, 0));
+            }
             MUST(1, X509_NAME_add_entry_by_txt(sub, "OU", MBSTRING_ASC,
                                                reinterpret_cast<const unsigned char*>("epics.org Certificate Authority"),
                                                -1, -1, 0));
@@ -616,6 +629,12 @@ int main(int argc, char *argv[])
             CertCreator cc;
             cc.root = root_cert.get();
             cc.CN = name;
+            // One fixture carries a nested organizational unit, so there is a real keychain
+            // file whose subject names two units innermost first. ioc1 is the one nothing else
+            // asserts on and which has no keychain password, so the other fixtures' subjects
+            // stay byte for byte as they were and the file can simply be opened.
+            if(!strcmp(name, "ioc1"))
+                cc.inner_OU = "beamline";
             cc.serial = serial++;
             cc.key_usage = "digitalSignature";
             if(strstr(name, "server"))

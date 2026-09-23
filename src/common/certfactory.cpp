@@ -210,6 +210,24 @@ bool CertFactory::verifySignature(const ossl_ptr<EVP_PKEY> &pkey, const std::vec
     return verifyBytes(pkey, data.data(), data.size(), signature.data(), signature.size());
 }
 
+std::vector<std::string> getSubjectOrganizationalUnits(const X509_NAME *subject) {
+    std::vector<std::string> units;
+    if (!subject) return units;
+
+    for (int index = -1;;) {
+        index = X509_NAME_get_index_by_NID(const_cast<X509_NAME *>(subject), NID_organizationalUnitName, index);
+        if (index < 0) break;
+        const X509_NAME_ENTRY *entry = X509_NAME_get_entry(const_cast<X509_NAME *>(subject), index);
+        if (!entry) continue;
+        const ASN1_STRING *value = X509_NAME_ENTRY_get_data(const_cast<X509_NAME_ENTRY *>(entry));
+        if (!value) continue;
+        // The whole value, however long, and whatever it contains: read from the entry rather
+        // than into a fixed buffer, so nothing is truncated
+        units.emplace_back(reinterpret_cast<const char *>(ASN1_STRING_get0_data(value)), ASN1_STRING_length(value));
+    }
+    return units;
+}
+
 /**
  * Set the subject of the provided certificate.
  *
@@ -222,14 +240,20 @@ void CertFactory::setSubject(const ossl_ptr<X509> &certificate) const {
             throw std::runtime_error(SB() << "Failed to set common name in certificate subject: " << name_);
         }
         log_debug_printf(certs, "SUBJECT CN: %s\n", name_.c_str());
-        // Emitted leaf first: common name, then organizational unit, then organization,
+        // Emitted leaf first: common name, then organizational units, then organization,
         // then country. A name written this way reads as a containment path, each part
         // enclosing the one before it, which is how access control rules read it.
-        if (!org_unit_.empty() &&
-            X509_NAME_add_entry_by_txt(subject_name, "OU", MBSTRING_ASC, reinterpret_cast<const unsigned char *>(org_unit_.c_str()), -1, -1, 0) != 1) {
-            throw std::runtime_error(SB() << "Failed to set organizational unit in certificate subject: " << name_);
+        //
+        // One entry per unit, each its own relative distinguished name (the trailing 0), in the
+        // order supplied. Folding them into one relative distinguished name instead would carry
+        // no order at all, and most readers render it badly.
+        for (const auto &org_unit : org_unit_) {
+            if (org_unit.empty()) continue;
+            if (X509_NAME_add_entry_by_txt(subject_name, "OU", MBSTRING_ASC, reinterpret_cast<const unsigned char *>(org_unit.c_str()), -1, -1, 0) != 1) {
+                throw std::runtime_error(SB() << "Failed to set organizational unit in certificate subject: " << name_);
+            }
+            log_debug_printf(certs, "SUBJECT OU: %s\n", org_unit.c_str());
         }
-        log_debug_printf(certs, "SUBJECT OU: %s\n", org_unit_.c_str());
         if (!org_.empty() &&
             X509_NAME_add_entry_by_txt(subject_name, "O", MBSTRING_ASC, reinterpret_cast<const unsigned char *>(org_.c_str()), -1, -1, 0) != 1) {
             throw std::runtime_error(SB() << "Failed to set org in certificate subject: " << name_);

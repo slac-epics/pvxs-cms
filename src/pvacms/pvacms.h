@@ -25,6 +25,7 @@
 #include "certfactory.h"
 #include "certfilefactory.h"
 #include "certstatus.h"
+#include "certsubjectunits.h"
 #include "configcms.h"
 #include "openssl.h"
 #include "ownedptr.h"
@@ -126,12 +127,16 @@
     "     :extended_key_usage"        \
     ")"
 
+// The organizational units are not compared here. They are an ordered list of any length, so the
+// test is appended by getOrganizationalUnitsClause: a count of the candidate's units followed by
+// one positional equality test per requested value. `certs.OU` is deliberately left out of the
+// comparison even though it would narrow the search, because it is derived from the child table
+// and matching on both would make the answer depend on the two never drifting apart.
 #define SQL_DUPS_SUBJECT              \
     "SELECT COUNT(*) "                \
     "FROM certs "                     \
     "WHERE CN = :CN "                 \
     "  AND O = :O "                   \
-    "  AND OU = :OU "                 \
     "  AND C = :C "
 
 #define SQL_DUPS_SUBJECT_KEY_IDENTIFIER \
@@ -148,12 +153,14 @@
     "FROM certs "                     \
     "WHERE CN = :CN "                 \
     "  AND O = :O "                   \
-    "  AND OU = :OU "                 \
     "  AND C = :C "                   \
     "  AND status IN (:status0, :status1, :status2, :status3) " \
     "  AND serial != :serial "        \
-    "  AND renewal_due != 0 "         \
-    "LIMIT 1 "                        \
+    "  AND renewal_due != 0 "
+
+// Appended after the organizational unit comparison, which must sit inside the WHERE clause
+#define SQL_GET_RENEWED_CERT_TAIL     \
+    " LIMIT 1 "
 
 #define SQL_TOUCH_CERT_STATUS         \
     "UPDATE certs "                   \
@@ -261,10 +268,11 @@
     "FROM certs "                 \
     "WHERE CN = :CN "             \
     "  AND O = :O "               \
-    "  AND OU = :OU "             \
-    "  AND C = :C "               \
-    "ORDER BY status_date DESC "  \
-    "LIMIT 1 "
+    "  AND C = :C "
+
+// Appended after the organizational unit comparison, which must sit inside the WHERE clause
+#define SQL_PRIOR_APPROVAL_STATUS_TAIL \
+    " ORDER BY status_date DESC LIMIT 1 "
 
 namespace pvxs {
 namespace certs {
@@ -362,7 +370,7 @@ int64_t onCreateCertificate(ConfigCms &config, sql_ptr &certs_db, const server::
                          const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain, std::string issuer_id);
 
 bool getPriorApprovalStatus(const sql_ptr &certs_db, const std::string &name, const std::string &country, const std::string &organization,
-                            const std::string &organization_unit);
+                            const std::vector<std::string> &organizational_units);
 
 void onGetStatus(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
                  const std::string &pv_name, serial_number_t serial, const std::string &issuer_id, const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
