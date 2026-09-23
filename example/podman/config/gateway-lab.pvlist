@@ -2,6 +2,7 @@
 test:.* ALLOW
 tst:.* ALLOW
 test:spec ALLOW SPECIAL
+test:open ALLOW OPEN_WRITE
 CERT:CREATE:__LAB_ISSUER__(?::.*)? ALLOW CERT_CREATE
 CERT:STATUS:__LAB_ISSUER__(?::.*)? ALLOW CERT_STATUS
 # The two views that are open to everyone, named by issuer. See the machine learning
