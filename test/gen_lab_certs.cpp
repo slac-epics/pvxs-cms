@@ -504,7 +504,8 @@ void usage(const char* argv0) {
                "      cert_auth.p12         Root cert only (trust anchor for every pod)\n"
                "      lab_intermediate.p12  Lab intermediate cert + key + chain-to-root\n"
                "      ml_intermediate.p12   ML  intermediate cert + key + chain-to-root\n"
-               "      issuer_ids.env        LAB_ISSUER=<hex> and ML_ISSUER=<hex>\n"
+               "      issuer_ids.env        LAB_ISSUER / ML_ISSUER (naming form) and\n"
+               "                            LAB_ISSUER_SKID / ML_ISSUER_SKID (whole)\n"
                "\n"
                "    Also prints LAB_ISSUER=/ML_ISSUER= to stdout.\n"
                "\n"
@@ -611,8 +612,10 @@ int main(int argc, char *argv[])
             MUST(1, sk_X509_push(p12.cacerts.get(), root_cert.get()));
             p12.write(p12name);
 
-            // The intermediate's OWN issuer id (its SKID) - the id leaf certs it signs will use.
-            return pvxs::certs::CertStatus::getSkId(cert.get());
+            // The intermediate's OWN subject key identifier, whole. The first eight digits of
+            // it name this authority in a process variable name; the whole thing is what
+            // anyone establishing trust in it has to be given.
+            return pvxs::certs::CertStatus::getFullSkId(cert.get());
         };
 
         if (lab_cn == ml_cn)
@@ -621,6 +624,9 @@ int main(int argc, char *argv[])
 
         const std::string lab_issuer = mintIntermediate(lab_cn, "lab_intermediate.p12");
         const std::string ml_issuer  = mintIntermediate(ml_cn,  "ml_intermediate.p12");
+
+        const std::string lab_short = lab_issuer.substr(0, pvxs::certs::kIssuerIdNameLength);
+        const std::string ml_short  = ml_issuer.substr(0, pvxs::certs::kIssuerIdNameLength);
 
         if (lab_issuer == ml_issuer) {
             throw std::runtime_error("Lab and ML intermediates produced the same issuer id - "
@@ -633,11 +639,18 @@ int main(int argc, char *argv[])
             const std::string env_path(SB()<<outdir<<"issuer_ids.env");
             const pvxs::file_ptr out(fopen(env_path.c_str(), "w"), false);
             if(!out) throw std::runtime_error(SB()<<"Error opening for write : "<<env_path);
-            fprintf(out.get(), "LAB_ISSUER=%s\n", lab_issuer.c_str());
-            fprintf(out.get(), "ML_ISSUER=%s\n",  ml_issuer.c_str());
+            // Both forms. The short one names an authority in a process variable name, the
+            // whole one is what establishes trust in it, and they are wanted in different
+            // places, so neither is derived from the other by whoever reads this.
+            fprintf(out.get(), "LAB_ISSUER=%s\n", lab_short.c_str());
+            fprintf(out.get(), "ML_ISSUER=%s\n",  ml_short.c_str());
+            fprintf(out.get(), "LAB_ISSUER_SKID=%s\n", lab_issuer.c_str());
+            fprintf(out.get(), "ML_ISSUER_SKID=%s\n",  ml_issuer.c_str());
         }
-        std::cout<<"LAB_ISSUER="<<lab_issuer<<"\n";
-        std::cout<<"ML_ISSUER="<<ml_issuer<<"\n";
+        std::cout<<"LAB_ISSUER="<<lab_short<<"\n";
+        std::cout<<"ML_ISSUER="<<ml_short<<"\n";
+        std::cout<<"LAB_ISSUER_SKID="<<lab_issuer<<"\n";
+        std::cout<<"ML_ISSUER_SKID="<<ml_issuer<<"\n";
 
         return 0;
     } catch(std::exception& e) {

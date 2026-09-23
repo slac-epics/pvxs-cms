@@ -222,6 +222,23 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
         const std::string tls_keychain_file = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_file : config.tls_keychain_file;
         const std::string tls_keychain_pwd = IS_FOR_A_SERVER_(cert_usage) ? config.tls_srv_keychain_pwd : config.getKeychainPassword();
 
+        // Downloading a trust anchor bootstraps trust, so the operator must identify the expected
+        // issuer out-of-band. Require --issuer (or EPICS_PVA_AUTH_ISSUER) and verify the delivered
+        // authority matches it before storing, so a substituted authority is never trusted (#18).
+        if (config.issuer_id.empty()) {
+            std::cerr << "Refusing to download a trust anchor without --issuer (or EPICS_PVA_AUTH_ISSUER): "
+                         "the expected certificate authority must be identified to avoid trusting a substituted authority." << std::endl;
+            return 14;
+        }
+
+        // Retrieving a trust anchor is the moment trust is decided, and there is nothing pinned
+        // to decide it against, so the identifier given has to be the whole one.
+        try {
+            certs::requireCompleteIssuerId(config.issuer_id);
+        } catch (const std::exception &e) {
+            std::cerr << e.what() << std::endl;
+            return 14;
+        }
         // Create a keychain file from a trust anchor
         AuthNStd authenticator{};
         auto credentials = authenticator.getCredentials(config, !IS_FOR_A_SERVER_(cert_usage));
