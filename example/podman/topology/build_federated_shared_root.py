@@ -318,8 +318,8 @@ gx1 = lab_x + ZP + gx1_local
 gx2 = ml_x + ZP + gx2_local
 rx = (gx1 + gx2) / 2
 
-pz_w = measure('perimeter-client', pc_l)[0] + 2*ZP
-pz_h = ZTITLE + 12 + measure('perimeter-client', pc_l)[1] + 20
+pz_w = measure('internet-client', pc_l)[0] + 2*ZP
+pz_h = ZTITLE + 12 + measure('internet-client', pc_l)[1] + 20
 
 ca_children_w = colw('Lab Intermediate CA', labca_l) + colw('ML Intermediate CA', mlca_l) + colw('OCSP Signing Cert', signer_l) + 2*GAP
 ca_w = ca_children_w + 2*ZP
@@ -432,7 +432,7 @@ def build(cv):
         cv.hv([(t['cx'], bus_lab_y), (t['cx'], t['top'])], C[colr], 2); cv.dot(t['cx'], bus_lab_y, C[colr])
 
     # --- perimeter client + CA + responder cards
-    pcc = cv.card(pz_x + (pz_w - measure('perimeter-client', pc_l)[0])/2, pz_y + ZTITLE + 12, 'perimeter-client', pc_l, 'client', 'client')
+    pcc = cv.card(pz_x + (pz_w - measure('internet-client', pc_l)[0])/2, pz_y + ZTITLE + 12, 'internet-client', pc_l, 'client', 'client')
     rootc = cv.card(rx - root_w/2, ca_y + ZTITLE + 10, 'Facility Root CA', root_l, 'ca', 'ca')
     ch_y = rootc['bot'] + 46
     c1 = cv.card(ca_x + ZP, ch_y, 'Lab Intermediate CA', labca_l, 'ca', 'ca')

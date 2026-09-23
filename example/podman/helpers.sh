@@ -73,7 +73,7 @@ _lab_place() {          # place -> compose service
     case "$1" in
         lab)          echo lab-client ;;
         ml)           echo ml-client ;;
-        perimeter)    echo perimeter-client ;;
+        perimeter)    echo internet-client ;;
         lab-manager)  echo pvxs-lab-pvacms ;;
         ml-manager)   echo pvxs-lab-ml ;;
         testioc)      echo pvxs-lab-testioc ;;
