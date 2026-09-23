@@ -237,7 +237,11 @@ void P12FileFactory::writePKCS12File() {
     } else if (cert_ptr_) {
         // If a cert has been specified then convert to p12
         p12 = toP12(password_, key_pair_->pkey.get(), cert_ptr_, certs_ptr_);
-    } else if (key_pair_->pkey.get()) {
+    } else if (!key_pair_ && certs_ptr_ && sk_X509_num(certs_ptr_) > 0) {
+        // Trust anchors and nothing else: a keychain that carries what to trust and no identity
+        // of its own. Written as the chain it is, in the order it was given.
+        p12 = toP12(password_, nullptr, nullptr, certs_ptr_);
+    } else if (key_pair_ && key_pair_->pkey.get()) {
         // If private key only
         p12 = toP12(password_, key_pair_->pkey.get(), nullptr, nullptr);
     }
@@ -301,7 +305,10 @@ void P12FileFactory::writePKCS12File() {
             const ossl_ptr<ASN1_OBJECT> trust(OBJ_txt2obj("anyExtendedKeyUsage", 0));
             ossl_ptr<X509_ATTRIBUTE> attr(X509_ATTRIBUTE_create(NID_oracle_jdk_trustedkeyusage, V_ASN1_OBJECT, trust.get()));
 
-            if (sk_X509_ATTRIBUTE_push(newattrs.get(), attr.get()) != 1) {
+            // OPENSSL_sk_push returns the new element count, not a success flag, so anything
+            // above zero is the push succeeding. A bag that already carried an attribute would
+            // otherwise be reported as a failure that did not happen.
+            if (sk_X509_ATTRIBUTE_push(newattrs.get(), attr.get()) <= 0) {
                 log_err_printf(filelogger, "Unable to add JDK trust attribute%s\n", "");
                 return 1;
             }

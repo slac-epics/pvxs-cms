@@ -10,6 +10,7 @@ authnkrb_SRCS += certstatusfactory.cpp
 authnkrb_SRCS += certstatus.cpp
 authnkrb_SRCS += certstatusmanager.cpp
 authnkrb_SRCS += certfactory.cpp
+authnkrb_SRCS += certrequestid.cpp
 authnkrb_SRCS += certfilefactory.cpp
 authnkrb_SRCS += p12filefactory.cpp
 authnkrb_SRCS += auth.cpp
