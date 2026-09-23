@@ -97,8 +97,6 @@ swap space is available  e.g.:
 JOBS=2 build_images
 ```
 
-**Note**: The images and build scripts are shared with the podman examples so you don't have to do this twice.  Do either here or there.
-
 ## Start a topology scenario
 
 - `reset_topology` resets and builds a laboratory from the images & reads that laboratory's authority identifiers into your shell.
@@ -268,62 +266,21 @@ podman-compose -p podman -f topologies/simple/compose.yaml \
     restart pvxs-lab-testioc pvxs-lab-tstioc
 ```
 
-**The same write now succeeds**, and the rule that separates the two people takes
-effect. `testioc.acf` puts operators and guests in the default group, and operators
-alone on `test:spec`:
+Now the access rules decide, and they distinguish people based on the certificates they carry:
 
 ```sh
-run_in lab as guest    pvxput test:stringExample hello   # written
-run_in lab as operator pvxput test:spec 22               # written
-
-run_in lab as guest    pvxput test:spec 11
-#   ERROR ... Put not permitted
+run_in lab as operator pvxput test:spec 3     # written: SPECIAL grants operators
+run_in lab as guest    pvxput test:spec 3     # refused: guest is not an operator
+run_in lab as guest    pvxput test:open 3     # written: OPEN grants any holder
+run_in lab as guest without a certificate pvxput test:open 3     # refused: only works with a certificate
 ```
+###  Immediate Revocation
+####  Monitor PVACMS certificates
 
-The guest holds a valid certificate from this laboratory's own authority. What it lacks
-is membership in the group the rule names:
-
-```sh
-run_in testioc as testioc cat /home/testioc/testioc.acf
-#   UAG(OPERATORS) {
-#       "operator"
-#   }
-#
-#   UAG(GUESTS) {
-#       "guest"
-#   }
-#
-#   ASG(SPECIAL) {                          test:spec
-#       RULE(1,READ)
-#       RULE(1,WRITE,TRAPWRITE) {
-#           UAG(OPERATORS)
-#           AUTHORITY(EPICS_CA)
-#           PROTOCOL(TLS)
-#           METHOD(X509)
-#       }
-#   }
-```
-
-**Identify the peer that answered.** `pvxinfo -v` ends with the identity of the peer it
-reached. Here that is the IOC itself, because nothing stands between them. Part 2 asks
-the same question through a gateway and gets a different answer:
+Available to anyone - start this in a different terminal:
 
 ```sh
-run_in lab as operator pvxinfo -v test:open | grep '^#'
-#   # TLS x509:0b5ee2fc:7327241123256509997:EPICS Root Certificate Authority/testioc@10.89.0.95:5076
-```
-
-`pvxinfo -v` prints the whole effective configuration first; the identity of the peer is
-the one line beginning with `#`, which is what the pipe keeps. The name after the
-authority is the certificate the IOC presented, and the address is where the IOC is. On
-one segment, with nothing in between, they name the same machine.
-
-**View what PVACMS holds**, as a live view anyone can subscribe to. The guest still
-holds the certificate approved earlier, so it can ask as itself:
-
-```sh
-# a monitor runs until you stop it: Ctrl-C to come back
-run_in lab as guest pvxmonitor CERT:LIST:ALL
+run_in lab as guest pvxmonitor test:open
 ```
 
 The name carries no authority identifier. Where two PVACMS instances share a network,

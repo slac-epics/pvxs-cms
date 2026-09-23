@@ -141,3 +141,20 @@ ASG(DEFAULT) {
         METHOD(X509)
     }
 }
+
+# test:hidden. The default is no access at all: a caller with no certificate matches only the
+# NONE rule, so it can neither read nor write. A certificate holder reads. Only the lab
+# department writes.
+ASG(HIDDEN) {
+    RULE(1,NONE)
+    RULE(1,READ) {
+        AUTHORITY(LAB_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+    RULE(1,WRITE,TRAPWRITE) {
+        AUTHORITY(LAB_CA)
+        PROTOCOL(TLS)
+        METHOD(X509)
+    }
+}

@@ -82,8 +82,6 @@ Use Docker Desktop on macOS, but install kind and helm
    kbuild_images                # JOBS=2 kbuild_images on a machine with little memory
    ```
 
-**Note**: The images and build scripts are shared with the podman examples so you don't have to do this twice.  Do either here or there.
-
 6. Load the images into the cluster, which has no access to the runtime's image
    store:
 
@@ -264,25 +262,14 @@ kgo_tls
 # ==> restarting services
 ```
 
-Now create user certificates
-
-```sh
-krun_in lab as guest    authnstd -u client
-krun_in lab as operator authnstd -u client
-krun_in lab-pvacms as admin pvxcert --review-pending --all approve --yes
-```
-
-Now the access rules decide, and they distinguish people:
+Now the access rules decide, and they distinguish people based on the certificates they carry:
 
 ```sh
 krun_in lab as operator pvxput test:spec 3     # written: SPECIAL grants operators
 krun_in lab as guest    pvxput test:spec 3     # refused: guest is not an operator
 krun_in lab as guest    pvxput test:open 3     # written: OPEN grants any holder
+krun_in lab as guest without a certificate pvxput test:open 3     # refused: only works with a certificate
 ```
-
-`test:open` is the rule worth reading twice: it names no user group at all. Its
-condition is only that a certificate was presented over TLS and chains to the
-laboratory's authority.
 
 **THE DIFFERENCE.** After the manager mints its authority, the issuer identifier is
 read back into ConfigMap `lab-issuer` and every Deployment is rolled to mount it, and
