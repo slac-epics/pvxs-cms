@@ -1,0 +1,13 @@
+# simple-with-gateway - not built yet.
+#
+# The picture is drawn: topology/topology-simple-with-gateway.svg. What is missing is this file and the
+# configuration beside it. Until then ./reset.sh simple-with-gateway stops here rather than starting a
+# laboratory that would only half work.
+#
+# What building it means, beyond copying the federated-shared-root file:
+#   - its own authorities, minted by bootstrap.sh into certs/ in the shape this topology
+#     needs, which is the part that differs most between the four
+#   - its own config/ beside this file: an access security file per certificate manager,
+#     and a gateway configuration and process variable list per gateway
+#   - the segments the picture shows, with only the services that stand on them
+services: {}

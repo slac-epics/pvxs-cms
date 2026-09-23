@@ -55,8 +55,8 @@ services:
     networks: [net-lab, net-ml]
     volumes:
       - ./ocsp:/ocsp:ro,Z
-      - ../kubernetes/docker/idm/ocsp-supervisor.conf:/etc/supervisor/conf.d/ocsp.conf:ro,z
-      - ../kubernetes/docker/idm/ocsp-only-supervisord.conf:/etc/supervisor/supervisord.conf:ro,z
+      - ../../../kubernetes/docker/idm/ocsp-supervisor.conf:/etc/supervisor/conf.d/ocsp.conf:ro,z
+      - ../../../kubernetes/docker/idm/ocsp-only-supervisord.conf:/etc/supervisor/supervisord.conf:ro,z
     command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
 
   # ---------------------------------------------------------------- lab department
@@ -80,7 +80,7 @@ services:
       # can read. The facility root's own key is never mounted into a running service.
       - ./certs/lab_intermediate.p12:/certs/lab_intermediate.p12:ro,Z
       - ./config/pvacms-lab.acf:/etc/pvacms/pvacms.acf:ro,z
-      - ./scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
+      - ../../scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
     command: ["/usr/local/bin/start-pvacms", "lab"]
 
   pvxs-lab-testioc:
@@ -95,7 +95,7 @@ services:
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - testioc-config:/home/testioc/.config/pva/1.5
-      - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
+      - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
     command: ["/usr/local/bin/start-ioc", "testioc"]
     depends_on: [pvxs-lab-pvacms]
 
@@ -111,7 +111,7 @@ services:
       EPICS_PVA_AUTH_ISSUER: "${LAB_ISSUER_SKID}"
     volumes:
       - tstioc-config:/home/tstioc/.config/pva/1.5
-      - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
+      - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
     command: ["/usr/local/bin/start-ioc", "tstioc"]
     depends_on: [pvxs-lab-pvacms]
 
@@ -130,7 +130,7 @@ services:
       - gateway-config:/home/gateway/.config/pva/1.5
       - ./config/gateway-lab.conf:/home/gateway/gateway.conf.in:ro,z
       - ./config/gateway-lab.pvlist:/home/gateway/gateway.pvlist.in:ro,z
-      - ./scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro,z
+      - ../../scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro,z
     command: ["/usr/local/bin/start-gateway", "LAB_ISSUER"]
     depends_on: [pvxs-lab-pvacms]
 
@@ -152,7 +152,7 @@ services:
       - ml-data:/home/idm/.local/share/pva/1.5
       - ./certs/ml_intermediate.p12:/certs/ml_intermediate.p12:ro,Z
       - ./config/pvacms-ml.acf:/etc/pvacms/pvacms.acf:ro,z
-      - ./scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
+      - ../../scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
     command: ["/usr/local/bin/start-pvacms", "ml"]
 
   pvxs-lab-ml-ioc:
@@ -167,7 +167,7 @@ services:
       EPICS_PVA_AUTH_ISSUER: "${ML_ISSUER_SKID}"
     volumes:
       - ml-ioc-config:/home/mlioc/.config/pva/1.5
-      - ./scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
+      - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
     command: ["/usr/local/bin/start-ioc", "mlioc"]
     depends_on: [pvxs-lab-ml]
 
@@ -185,7 +185,7 @@ services:
       - ml-gateway-config:/home/gateway/.config/pva/1.5
       - ./config/gateway-ml.conf:/home/gateway/gateway.conf.in:ro,z
       - ./config/gateway-ml.pvlist:/home/gateway/gateway.pvlist.in:ro,z
-      - ./scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro,z
+      - ../../scripts/start-gateway.sh:/usr/local/bin/start-gateway:ro,z
     command: ["/usr/local/bin/start-gateway", "ML_ISSUER"]
     depends_on: [pvxs-lab-ml]
 
@@ -208,7 +208,7 @@ services:
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - lab-client-config:/home/guest/.config/pva/1.5
-      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
+      - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
 
   # A shell inside the machine learning department, the mirror of lab-client: its own
@@ -227,7 +227,7 @@ services:
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - ml-client-config:/home/guest/.config/pva/1.5
-      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
+      - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]
 
   # A shell outside both departments. Reaches the two gateways and nothing else, so
@@ -244,5 +244,5 @@ services:
       PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     volumes:
       - perimeter-client-config:/home/guest/.config/pva/1.5
-      - ./scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
+      - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
     command: ["/usr/local/bin/start-shell", "guest", "operator"]

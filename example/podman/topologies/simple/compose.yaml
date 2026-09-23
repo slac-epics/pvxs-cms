@@ -1,0 +1,93 @@
+# The simple laboratory: one segment, one certificate authority, no boundary to cross.
+#
+# The certificate manager mints its own self-signed authority the first time it starts and
+# issues every certificate under it directly, so there is nothing to mint beforehand and no
+# issuer id to carry around. With one certificate manager on the segment, the unqualified
+# CERT:CREATE is unambiguous, which is why nothing here sets EPICS_PVA_AUTH_ISSUER.
+#
+# Picture: topology/topology-simple.svg
+
+x-lab-env: &lab-env
+  EPICS_PVA_AUTO_ADDR_LIST: "YES"
+
+# One segment, pinned so what the picture says about it stays true. Host addresses within it
+# are assigned by podman when a container starts, and change between runs.
+networks:
+  net-lab:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.89.0.0/24
+
+volumes:
+  idm-config:
+  idm-data:
+  testioc-config:
+  tstioc-config:
+  lab-client-config:
+
+services:
+
+  # The one certificate manager, and the one authority. Its keychain is created on the first
+  # start, into the data volume, so it is the same authority on every later start.
+  pvxs-lab-pvacms:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/idm:latest
+    hostname: pvxs-lab-pvacms
+    networks: [net-lab]
+    environment:
+      <<: *lab-env
+      EPICS_PVACMS_DB: /home/idm/.local/share/pva/1.5/certs.db
+      EPICS_PVA_TLS_KEYCHAIN: /home/idm/.config/pva/1.5/server.p12
+      EPICS_CERT_AUTH_NAME: EPICS Root Certificate Authority
+      EPICS_CERT_AUTH_ORGANIZATION: certs.epics.org
+      EPICS_CERT_AUTH_ORGANIZATIONAL_UNIT: epics.org Certificate Authority
+    volumes:
+      - idm-config:/home/idm/.config/pva/1.5
+      - idm-data:/home/idm/.local/share/pva/1.5
+      - ./config/pvacms.acf:/etc/pvacms/pvacms.acf:ro,z
+      - ../../scripts/start-pvacms.sh:/usr/local/bin/start-pvacms:ro,z
+    command: ["/usr/local/bin/start-pvacms", "own"]
+
+  pvxs-lab-testioc:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/testioc:latest
+    hostname: pvxs-lab-testioc
+    networks: [net-lab]
+    environment:
+      <<: *lab-env
+    volumes:
+      - testioc-config:/home/testioc/.config/pva/1.5
+      - ./config/testioc.acf:/home/testioc/testioc.acf:ro,z
+      - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
+    command: ["/usr/local/bin/start-ioc", "testioc"]
+    depends_on: [pvxs-lab-pvacms]
+
+  pvxs-lab-tstioc:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/tstioc:latest
+    hostname: pvxs-lab-tstioc
+    networks: [net-lab]
+    environment:
+      <<: *lab-env
+    volumes:
+      - tstioc-config:/home/tstioc/.config/pva/1.5
+      - ./config/tstioc.acf:/home/tstioc/tstioc.acf:ro,z
+      - ../../scripts/start-ioc.sh:/usr/local/bin/start-ioc:ro,z
+    command: ["/usr/local/bin/start-ioc", "tstioc"]
+    depends_on: [pvxs-lab-pvacms]
+
+  # A shell in the laboratory. Everything it needs is on the one segment, so it finds the
+  # certificate manager and both controllers by broadcast rather than by being told.
+  lab-client:
+    init: true
+    image: ${DOCKER_REGISTRY:-localhost}/${DOCKER_USERNAME:-spva}/lab:latest
+    hostname: lab-client
+    networks: [net-lab]
+    environment:
+      <<: *lab-env
+      PATH: "/opt/epics/pvxs/bin/linux-x86_64:/opt/epics/pvxs-cms/bin/linux-x86_64:/opt/epics/pvxs/bin/linux-aarch64:/opt/epics/pvxs-cms/bin/linux-aarch64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    volumes:
+      - lab-client-config:/home/guest/.config/pva/1.5
+      - ../../scripts/start-shell.sh:/usr/local/bin/start-shell:ro,z
+    command: ["/usr/local/bin/start-shell", "guest", "operator"]
