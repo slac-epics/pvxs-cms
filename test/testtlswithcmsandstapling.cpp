@@ -716,7 +716,7 @@ struct Tester {
  * @return test runner status (non-zero for errors)
  */
 MAIN(testtlswithcmsandstapling) {
-    testPlan(128);
+    testPlan(149);
     testSetup();
     logger_config_env();
     const auto tester = new Tester();

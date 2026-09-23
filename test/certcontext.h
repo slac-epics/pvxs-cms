@@ -367,6 +367,43 @@ void makeStatusResponse(CertCtx<Tag> &cert_context,
                converted_ocsp_byte_len,
                expected_ocsp_byte_len);
 
+        if (!cert_context.status.ocsp_bytes.empty()) {
+            // The three plain text dates are informational. A message whose dates disagree
+            // with the signed status response is still accepted, and the dates the client
+            // ends up holding come from the signed response rather than from the message.
+            const auto saved_date = cert_context.status_val["ocsp_status_date"].template as<std::string>();
+            setValue<std::string>(cert_context.status_val, "ocsp_status_date", "1970-01-01 00:00:00 UTC");
+            bool accepted = true;
+            try {
+                const auto disagreeing = PVACertificateStatus(cert_context.status_val, cert_context.cert.trusted_store.get());
+                testOk(disagreeing.status_date == cert_context.status.status_date,
+                       "Status date taken from the signed response, not the message, for %s",
+                       cert_context.name.c_str());
+            } catch (const std::exception &) {
+                accepted = false;
+                testFail("Status with a disagreeing plain text date was rejected for %s", cert_context.name.c_str());
+            }
+            testOk(accepted, "Status with a disagreeing plain text date is accepted for %s", cert_context.name.c_str());
+            setValue<std::string>(cert_context.status_val, "ocsp_status_date", saved_date);
+
+            // The enumerated status is taken from the message and is not covered by the
+            // signature, so a message contradicting the signed response must still be
+            // rejected. This is what selfConsistent() guards and it is deliberately kept.
+            const auto saved_index = cert_context.status_val["value.index"].template as<uint32_t>();
+            const auto contradicting_index = static_cast<uint32_t>(saved_index == VALID ? REVOKED : VALID);
+            setValue<uint32_t>(cert_context.status_val, "value.index", contradicting_index);
+            bool rejected = false;
+            try {
+                const auto contradicting = PVACertificateStatus(cert_context.status_val, cert_context.cert.trusted_store.get());
+                (void)contradicting;
+            } catch (const std::exception &) {
+                rejected = true;
+            }
+            testOk(rejected, "Status whose enumerated value contradicts the signed response is rejected for %s",
+                   cert_context.name.c_str());
+            setValue<uint32_t>(cert_context.status_val, "value.index", saved_index);
+        }
+
         if (!cert_context.pending.empty()) {
             cert_context.pending.erase(cert_context.pending.begin());
             if (!cert_context.pending.empty()) {
