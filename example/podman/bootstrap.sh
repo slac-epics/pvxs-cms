@@ -73,6 +73,12 @@ done
 
 fi
 
+# Not ours, and not built: the facility load balancer is HAProxy, which is what a site would
+# use for this. Pulled here so that bringing a laboratory up needs no registry.
+echo "==> fetching the load balancer image"
+podman pull -q docker.io/library/haproxy:lts-alpine >/dev/null 2>&1 \
+    || echo "    could not fetch haproxy - ./reset.sh simple-with-gateway will need it" >&2
+
 echo
 echo "The images are built. Certificate authorities belong to a laboratory rather than to the"
 echo "images, so they are minted when you bring one up:"
