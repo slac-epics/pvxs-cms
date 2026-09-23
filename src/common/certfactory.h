@@ -68,6 +68,11 @@ class CertFactory {
     bool no_status_;
     std::string cert_config_uri_base_;
     std::string skid_;
+    // What the certificate is for, as the strings written into its key usage and
+    // extended key usage extensions. Filled in when the extensions are added, so a
+    // caller can record what a certificate is for without decoding it back out.
+    mutable std::string key_usage_;
+    mutable std::string extended_key_usage_;
     certstatus_t initial_status_;
     bool allow_duplicates_{true};
 
