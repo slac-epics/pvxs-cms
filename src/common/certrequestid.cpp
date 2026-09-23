@@ -129,15 +129,12 @@ std::string requestIdCanonical(const std::string &as_written) {
 std::string publicKeyDigest(EVP_PKEY *pub_key) {
     if (!pub_key) throw std::runtime_error("No public key to identify");
 
-    unsigned char *der = nullptr;
-    const int der_len = i2d_PUBKEY(pub_key, &der);
-    if (der_len <= 0) {
-        OPENSSL_free(der);
-        throw std::runtime_error("Failed to encode the public key to identify it");
-    }
+    ossl_ptr<unsigned char> der;
+    const int der_len = i2d_PUBKEY(pub_key, der.acquire());
+    if (der_len <= 0) throw std::runtime_error("Failed to encode the public key to identify it");
+
     unsigned char hash[SHA256_DIGEST_LENGTH] = {0};
-    SHA256(der, static_cast<size_t>(der_len), hash);
-    OPENSSL_free(der);
+    SHA256(der.get(), static_cast<size_t>(der_len), hash);
     return toHex(hash, sizeof(hash));
 }
 

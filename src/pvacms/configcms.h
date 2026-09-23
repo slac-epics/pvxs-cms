@@ -337,6 +337,19 @@ class ConfigCms final : public Config {
      */
     uint32_t cert_list_min_post_interval_secs = 2;
 
+    /**
+     * @brief When the trust anchor's responder cannot be reached, keep serving the last
+     * verified answer about the authority rather than reporting its standing as unknown.
+     *
+     * A failed transfer, an unverifiable reply and a malformed reply are one outcome: the
+     * authority's standing is not known. The default is to say so, which denies connections
+     * until the responder answers again, because a facility that cannot check its authority
+     * should stop rather than continue on an assumption. A site whose availability matters
+     * more than that guarantee sets this, and an outage of one web service then leaves the
+     * facility running on the last answer it trusted.
+     */
+    bool cert_auth_hold_last_known_status = false;
+
     void applyCmsEnv(const std::map<std::string, std::string>& defs);
     static ConfigCms mockCms(int family=AF_INET);
     static ConfigCms forCms();

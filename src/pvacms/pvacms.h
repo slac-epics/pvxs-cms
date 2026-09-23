@@ -24,6 +24,7 @@
 
 #include "certfactory.h"
 #include "certfilefactory.h"
+#include "authoritymonitor.h"
 #include "certstatus.h"
 #include "certsubjectunits.h"
 #include "configcms.h"
@@ -247,6 +248,14 @@
     "  AND renew_by != 0 "          \
     "  AND renew_by <= :now "
 
+// Every certificate this service has a live answer for. Used when the authority above them
+// changes, since that changes what each of them is told without any of them having changed.
+#define SQL_CERT_CURRENTLY_ANSWERABLE  \
+    "SELECT serial, status "           \
+    "FROM certs "                      \
+    "WHERE not_before <= :now "        \
+    "  AND not_after > :now "
+
 #define SQL_CERT_STATUS_NEARLY_INVALID \
     "SELECT serial, status "        \
     "FROM certs "                   \
@@ -374,7 +383,8 @@ bool getPriorApprovalStatus(const sql_ptr &certs_db, const std::string &name, co
 
 void onGetStatus(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
                  const std::string &pv_name, serial_number_t serial, const std::string &issuer_id, const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
-                 const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain);
+                 const ossl_ptr<X509> &cert_auth_cert, const ossl_shared_ptr<STACK_OF(X509)> &cert_auth_chain,
+                 const cms::cert::AuthorityMonitor &authority_monitor);
 
 void onRevoke(const ConfigCms &config, const sql_ptr &certs_db, const std::string &our_issuer_id, server::WildcardPV &status_pv,
               std::unique_ptr<server::ExecOp> &&op, const std::string &pv_name, const std::list<std::string> &parameters,

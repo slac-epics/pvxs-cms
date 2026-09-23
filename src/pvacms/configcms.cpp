@@ -255,6 +255,11 @@ void ConfigCms::applyCmsEnv(const std::map<std::string, std::string> &defs) {
         }
     }
 
+    // EPICS_PVACMS_AUTHORITY_HOLD_LAST_KNOWN
+    if (pickone({"EPICS_PVACMS_AUTHORITY_HOLD_LAST_KNOWN"})) {
+        cert_auth_hold_last_known_status = parseTo<bool>(pickone.val);
+    }
+
     if (pickone({"EPICS_PVACMS_CERT_LIST_EXPIRY_WINDOW"})) {
         try {
             cert_list_expiry_window_secs = static_cast<uint32_t>(parseTo<uint64_t>(pickone.val));
@@ -325,6 +330,7 @@ void ConfigCms::updateDefs(defs_t &defs) const {
     defs["EPICS_PVACMS_CLUSTER_DISCOVERY_TIMEOUT"] = std::to_string(cluster_discovery_timeout_secs);
     defs["EPICS_PVACMS_CLUSTER_BIDI_TIMEOUT"] = std::to_string(cluster_bidi_timeout_secs);
     defs["EPICS_PVACMS_CERT_LIST_EXPIRY_WINDOW"] = std::to_string(cert_list_expiry_window_secs);
+    defs["EPICS_PVACMS_AUTHORITY_HOLD_LAST_KNOWN"] = cert_auth_hold_last_known_status ? "YES" : "NO";
     defs["EPICS_PVACMS_CERT_LIST_MIN_POST_INTERVAL"] = std::to_string(cert_list_min_post_interval_secs);
 
     // Add any defs for any registered authn methods

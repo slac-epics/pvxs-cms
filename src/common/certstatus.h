@@ -12,8 +12,6 @@
 #ifndef PVXS_CERTSTATUS_H_
 #define PVXS_CERTSTATUS_H_
 
-#include <algorithm>
-#include <cctype>
 #include <iomanip>
 
 #include <openssl/x509.h>
@@ -44,6 +42,7 @@ DEFINE_LOGGER(status_setup, "pvxs.certs.status");
 namespace pvxs {
 namespace certs {
 
+/** How many hex digits of a certificate authority's subject key identifier name it on the wire. */
 constexpr size_t kIssuerIdNameLength = 8;
 
 /** How many hex digits the whole subject key identifier has, being a SHA-1 digest. */
@@ -56,6 +55,25 @@ constexpr size_t kIssuerIdFullLength = 40;
  *  manager to ask, and inadequate to decide which authority to trust.
  */
 inline bool issuerIdIsComplete(const std::string &issuer_id) { return issuer_id.size() >= kIssuerIdFullLength; }
+
+/**
+ * @brief Whether an authority's identifier is the one committed to.
+ *
+ * The comparison runs over as much of the identifier as was committed to in advance. Someone who
+ * pinned a certificate authority in a keychain has the whole thing and gets the whole thing
+ * compared. Someone who typed the published short form gets that many digits compared, which is
+ * all the form they used can carry; supplying more of it makes the check stronger.
+ *
+ * Compared without regard to case, since the identifier is written as hexadecimal either way.
+ */
+inline bool issuerIdIsExpected(const std::string &expected, const std::string &actual_full) {
+    if (expected.empty() || expected.size() > actual_full.size()) return false;
+    for (size_t i = 0; i < expected.size(); i++) {
+        if (std::tolower(static_cast<unsigned char>(expected[i]))
+            != std::tolower(static_cast<unsigned char>(actual_full[i]))) return false;
+    }
+    return true;
+}
 
 /**
  * @brief Read an issuer identifier the way somebody wrote it down.
@@ -92,6 +110,13 @@ inline std::string readIssuerId(const std::string &text) {
     return digits;
 }
 
+/**
+ * @brief The part of an issuer identifier that a process channel name carries.
+ *
+ * Channel names carry the first eight digits, so an identifier given in full addresses the same
+ * certificate manager as the short form of it. Without this, naming an authority by all forty
+ * digits builds a name nothing serves, and the request goes unanswered rather than refused.
+ */
 inline std::string issuerIdForPvName(const std::string &issuer_id) {
     const auto digits = readIssuerId(issuer_id);
     return digits.substr(0, std::min(digits.size(), kIssuerIdNameLength));
@@ -283,7 +308,7 @@ inline std::string getCertListPv(const std::string &cert_pv_prefix) {
 inline std::string getCertListPv(const std::string &cert_pv_prefix, const std::string &issuer_id) {
     std::string pv = getCertListPvBase(cert_pv_prefix);
     pv += ":";
-    pv += issuer_id;
+    pv += issuerIdForPvName(issuer_id);
     return pv;
 }
 
@@ -460,7 +485,8 @@ class CertStatusSubscriptionException final : public CertStatusException {
     X_IT(PENDING_APPROVAL) \
     X_IT(PENDING_RENEWAL)  \
     X_IT(EXPIRED)          \
-    X_IT(REVOKED)
+    X_IT(REVOKED)          \
+    X_IT(AUTHORITY_REVOKED)
 
 // All OCSP certificate statuses
 #define OCSP_CERT_STATUS_LIST     \
@@ -471,6 +497,15 @@ class CertStatusSubscriptionException final : public CertStatusException {
 // Define the enum
 #define X_IT(name) name,
 #define O_IT(name) name = V_##name,
+/**
+ * @brief What the authority above a certificate is known to be.
+ *
+ * A certificate manager learns this by asking the responder its trust anchor names, and
+ * answers every status through it, so a certificate that stands in its own right still
+ * reports that the authority above it does not.
+ */
+enum class cert_authority_standing_t { STANDING, REVOKED, UNKNOWN };
+
 enum certstatus_t { CERT_STATUS_LIST };
 enum ocspcertstatus_t { OCSP_CERT_STATUS_LIST };
 #undef X_IT
@@ -1004,7 +1039,8 @@ struct OCSPStatus {
     virtual bool operator==(ocspcertstatus_t& rhs) const { return this->ocsp_status == rhs; }
     virtual bool operator!=(ocspcertstatus_t& rhs) const { return !(*this == rhs); }
     virtual bool operator==(certstatus_t& rhs) const {
-        return (rhs == VALID && this->ocsp_status == OCSP_CERTSTATUS_GOOD) || (rhs == REVOKED && this->ocsp_status == OCSP_CERTSTATUS_REVOKED);
+        return (rhs == VALID && this->ocsp_status == OCSP_CERTSTATUS_GOOD) ||
+               ((rhs == REVOKED || rhs == AUTHORITY_REVOKED) && this->ocsp_status == OCSP_CERTSTATUS_REVOKED);
     }
     virtual bool operator!=(certstatus_t& rhs) const { return !(*this == rhs); }
 
@@ -1186,7 +1222,10 @@ struct CertificateStatus {
      *
      * @return true if the certificate is Expired or Revoked
      */
-    bool isRevokedOrExpired() const noexcept { return status == REVOKED || status == EXPIRED; }
+    /** Whether the certificate itself, or the authority above it, denies its use. */
+    bool isRevokedOrExpired() const noexcept {
+        return status == REVOKED || status == EXPIRED || status == AUTHORITY_REVOKED;
+    }
 
      /**
       * @brief Check whether this *status result* is still current

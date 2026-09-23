@@ -74,7 +74,18 @@ std::tuple<time_t, std::string> CCRManager::createCertificate(const std::shared_
     auto config = client::Config::fromEnv();
     config.tls_disabled = true;
     auto client = config.build();
-    auto value(client.rpc(create_pv, arg).exec()->wait(timeout));
+    Value value;
+    try {
+        value = client.rpc(create_pv, arg).exec()->wait(timeout);
+    } catch (const client::Timeout &) {
+        // Nothing answered. The name carries the authority being asked, so say which one:
+        // an authority that has been minted again has a different one, and a request naming
+        // the previous one reaches a name nothing serves.
+        throw std::runtime_error(SB() << "No certificate manager answered " << create_pv << " within "
+                                      << timeout << " seconds. Nothing serves that name, so either no "
+                                      << "certificate manager for this authority is running, or it cannot "
+                                      << "be reached from here.");
+    }
 
     std::string pem_string;
     auto pem_val = value["cert"];
