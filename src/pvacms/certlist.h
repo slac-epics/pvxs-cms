@@ -16,6 +16,7 @@
 #include <pvxs/data.h>
 
 #include "certfilter.h"
+#include "certlistcols.h"
 
 namespace pvxs {
 namespace certs {
@@ -90,19 +91,6 @@ enum class CertListView {
     PendingApproval,  //!< Awaiting an administrator's decision. Administrators only.
     Expiring,         //!< Expiring inside the server's window. Readable by everyone.
 };
-
-/** The columns a listing carries, in the order they appear. */
-namespace certlistcol {
-constexpr const char *kCertId = "cert_id";
-constexpr const char *kType = "type";
-constexpr const char *kSubject = "subject";
-constexpr const char *kStatus = "status";
-constexpr const char *kExpires = "expires";
-constexpr const char *kIssued = "issued";
-constexpr const char *kStatusChanged = "status_changed";
-constexpr const char *kRenewBy = "renew_by";
-constexpr const char *kRequestId = "request_id";
-}  // namespace certlistcol
 
 /**
  * @brief One certificate, with every column already rendered as the string it is served as.

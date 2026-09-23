@@ -108,6 +108,7 @@ TESTPROD_HOST += testorgunits
 # Uses SQL_DUPS_SUBJECT from pvacms.h, whose sql_ptr is behind PVXS_ENABLE_PVACMS.
 testorgunits_CPPFLAGS += -DPVXS_ENABLE_PVACMS
 testorgunits_SRCS += testorgunits.cpp
+testorgunits_SRCS += certsubjectunits.cpp
 testorgunits_SRCS += auth.cpp
 testorgunits_SRCS += ccrmanager.cpp
 testorgunits_SRCS += configauthn.cpp
@@ -138,6 +139,21 @@ testcertfilter_SRCS += testcertfilter.cpp
 testcertfilter_SRCS += certfilter.cpp
 testcertfilter_LIBS += pvxsIoc dbRecStd dbCore ca
 testcertfilter_SYS_LIBS += sqlite3
+
+# Test reviewing certificates one at a time: that it writes exactly what was agreed, nothing
+# before the confirmation, nothing that moved underneath, and nothing after a cancel
+TESTS += testcertreview
+TESTPROD_HOST += testcertreview
+testcertreview_SRCS += testcertreview.cpp
+testcertreview_SRCS += certreview.cpp
+testcertreview_SRCS += certfilter.cpp
+testcertreview_SRCS += certrequestid.cpp
+testcertreview_SRCS += certfactory.cpp
+testcertreview_SRCS += certfilefactory.cpp
+testcertreview_SRCS += p12filefactory.cpp
+testcertreview_SRCS += openssl.cpp
+testcertreview_LIBS += pvxsIoc dbRecStd dbCore ca
+testcertreview_SYS_LIBS += sqlite3
 
 # Test cluster functionality
 TESTS += testcluster
