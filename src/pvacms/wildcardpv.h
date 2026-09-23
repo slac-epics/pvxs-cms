@@ -138,6 +138,21 @@ struct WildcardSource final : Source, std::enable_shared_from_this<WildcardSourc
     WildcardSource& add(const std::string& name, const WildcardPV& pv);
     WildcardSource& remove(const std::string& name);
 
+    /** Decide, per client, whether a channel may be created at all.
+     *
+     * Called in onCreate() before attach(), with the name asked for and the control
+     * carrying that client's credentials. Returning false refuses the channel.
+     *
+     * This is the only place a per-client read decision can be made. onFirstConnect fires
+     * only when a name's client count becomes non-zero, so it runs for the first subscriber
+     * alone and every later one joins unchecked, and its signature carries no credentials
+     * so it could not check even if it ran.
+     *
+     * With no authorizer set, every channel is allowed, which is the behaviour of every
+     * existing caller.
+     */
+    WildcardSource& authorize(std::function<bool(const std::string& name, const server::ChannelControl& op)>&& fn);
+
     typedef std::map<std::string, std::shared_ptr<WildcardPV>> pv_list_t;
     typedef std::map<std::string, WildcardPV> list_t;
     list_t list() const;
@@ -151,6 +166,7 @@ struct WildcardSource final : Source, std::enable_shared_from_this<WildcardSourc
   private:
     mutable RWLock lock;
     pv_list_t pvs;
+    std::function<bool(const std::string&, const server::ChannelControl&)> authorizer;
 
     bool wildcardMatch(const std::string& searched_name, WildcardPV& pv);
 
