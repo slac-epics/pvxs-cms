@@ -55,7 +55,7 @@
 #include <pvxs/server.h>
 #include <pvxs/sharedpv.h>
 #include <wildcardpv.h>
-#include <pvxs/credentials.h>
+#include "asauth.h"
 
 #include "auth.h"
 #include "authregistry.h"
@@ -475,6 +475,22 @@ std::string getCertificateSkid(const sql_ptr &certs_db, serial_number_t serial) 
     }
     stmt.reset();
     return skid;
+}
+
+std::string getCertificateCommonName(const sql_ptr &certs_db, serial_number_t serial) {
+    const int64_t db_serial = *reinterpret_cast<int64_t *>(&serial);
+    sqlite3_stmt *stmt;
+    std::string common_name;
+    if (sqlite3_prepare_v2(certs_db.get(), SQL_CERT_CN_BY_SERIAL, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":serial"), db_serial);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const auto *text = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+            if (text)
+                common_name = text;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return common_name;
 }
 
 bool isNodeCertRevoked(const sql_ptr &certs_db, const std::string &node_id) {
@@ -1538,11 +1554,8 @@ class CertListViews {
 bool callerIsAdministrator(const server::ExecOp *op) {
     const auto creds = op->credentials();
     if (!creds) return false;
-    pvxs::ioc::Credentials credentials(*creds);
-    pvxs::ioc::SecurityClient security_client;
     static ASMember as_member;
-    security_client.update(as_member.mem, ASL1, credentials);
-    return security_client.canWrite();
+    return clientCanPut(as_member.mem, ASL1, *creds);
 }
 
 /**
@@ -4126,22 +4139,22 @@ int main(int argc, char *argv[]) {
             // Get credentials for this operation
             const auto creds = op->credentials();
 
-            pvxs::ioc::Credentials credentials(*creds);
-
-            // Get security client from channel
-            pvxs::ioc::SecurityClient securityClient;
-
-            static ASMember as_member;
-            securityClient.update(as_member.mem, ASL1, credentials);
-
             // Don't allow if:
             // - The new `state` is not `REVOKE` and the user is not an administrator, OR
             // - The new `state` is `REVOKE` and either:
             //   - both conditions are true (an administrator is revoking their own certificate), OR
             //   - both are false (a non-administrator is revoking a certificate that is not their own).
-            const auto is_admin = securityClient.canWrite();
+            static ASMember as_member;
+            const auto is_admin = clientCanPut(as_member.mem, ASL1, *creds);
+            // "Own certificate" means the caller authenticated over TLS with an
+            // x509 certificate whose common name matches the common name recorded
+            // for the certificate being acted on.  The issuer is implied: only
+            // certificates issued by this PVACMS's own certificate authority can
+            // complete the TLS handshake and appear in the certs database.
             const auto is_own_cert =
-                (credentials.issuer_id == our_issuer_id && std::to_string(serial) == credentials.serial);
+                creds->isTLS && creds->method == "x509" &&
+                !creds->account.empty() &&
+                creds->account == getCertificateCommonName(certs_db, serial);
             const auto is_revoke = (state == "REVOKED");
 
             if (is_revoke && is_own_cert) {
@@ -4248,11 +4261,8 @@ int main(int argc, char *argv[]) {
         wildcard_source->authorize([list_pending_pv, qualified_list_pending_pv](const std::string &name,
                                                                                   const ChannelControl &op) {
             if (name != list_pending_pv && name != qualified_list_pending_pv) return true;
-            pvxs::ioc::Credentials credentials(*op.credentials());
-            pvxs::ioc::SecurityClient security_client;
             static ASMember as_member;
-            security_client.update(as_member.mem, ASL1, credentials);
-            return security_client.canWrite();
+            return clientCanPut(as_member.mem, ASL1, *op.credentials());
         });
 
         // Open a view when its first subscriber arrives, and drop it when the last leaves, so
