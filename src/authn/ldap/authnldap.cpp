@@ -29,10 +29,14 @@
 #include "auth.h"
 #include "authregistry.h"
 
-DEFINE_LOGGER(auth_ldap, "pvxs.auth.ldap");
+DEFINE_LOGGER(auth_ldap, "cms.auth.ldap");
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::KeyPair;
+    using ::cms::cert::CertFactory;
 
 /**
  * @brief Registrar for the LDAP authenticator
@@ -85,7 +89,7 @@ std::shared_ptr<AuthnCredentials> AuthNLdap::getCredentials(const client::Config
     auto ldap_credentials = std::make_shared<LdapCredentials>();
 
     // Set the expiration time of the certificate
-    const time_t now = timeNow();
+    const time_t now = cert::timeNow();
     ldap_credentials->not_before = now;
     if (ldap_config.cert_validity_mins <= 0) {
         ldap_credentials->not_after = 0;
@@ -382,8 +386,8 @@ std::string AuthNLdap::getPublicKeyFromLDAP(const std::string &ldap_server,
     return public_key_string;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #ifdef __APPLE__
 #pragma clang diagnostic pop

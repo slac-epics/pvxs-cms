@@ -70,7 +70,7 @@ constexpr int ask_again_after_fraction = 3;
  */
 constexpr auto responder_patience = std::chrono::seconds(10);
 
-using pvxs::certs::ocspcertstatus_t;
+using cms::cert::ocspcertstatus_t;
 
 /**
  * @brief Waits until the exchange with the responder can go further, or the deadline passes.
@@ -281,10 +281,10 @@ void OcspStatusMonitor::poll() {
 
     // The same decode, signature check and freshness check the service already applies to
     // every status it receives.
-    const auto parsed = pvxs::certs::CmsStatusManager::parse(response, trusted_store_.get());
+    const auto parsed = cms::cert::CmsStatusManager::parse(response, trusted_store_.get());
 
-    const auto reported = parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_REVOKED ? ocspcertstatus_t::OCSP_CERTSTATUS_REVOKED
-                          : parsed.ocsp_status == pvxs::certs::OCSP_CERTSTATUS_GOOD  ? ocspcertstatus_t::OCSP_CERTSTATUS_GOOD
+    const auto reported = parsed.ocsp_status == cms::cert::OCSP_CERTSTATUS_REVOKED ? ocspcertstatus_t::OCSP_CERTSTATUS_REVOKED
+                          : parsed.ocsp_status == cms::cert::OCSP_CERTSTATUS_GOOD  ? ocspcertstatus_t::OCSP_CERTSTATUS_GOOD
                                                                                      : ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN;
     const auto previous = ocspStatus();
     answer_valid_until_.store(parsed.status_valid_until_date.t, std::memory_order_release);

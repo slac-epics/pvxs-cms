@@ -52,7 +52,16 @@
  *
  */
 using namespace pvxs;
-using namespace pvxs::certs;
+using cms::cert::CertStatus;
+using cms::cert::CertStatusFactory;
+using cms::cert::CertDate;
+using cms::cert::getCertStatusPv;
+using cms::cert::VALID;
+using cms::cert::REVOKED;
+using cms::detail::ServerEv;
+using cms::ConfigCms;
+using cms::CertCtx;
+using cms::CounterMap;
 
 namespace {
 
@@ -80,7 +89,7 @@ struct Tester {
     std::shared_ptr<server::WildcardSource> source;
     server::WildcardPV status_pv{server::WildcardPV::buildMailbox()};
     server::Config server_config;
-    server::ServerEv pvacms;
+    ServerEv pvacms;
     client::Context client;
     CounterMap cert_status_request_counters;
     epicsEvent cert_status_evt;

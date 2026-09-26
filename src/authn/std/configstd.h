@@ -12,13 +12,14 @@
 
 #include "configauthn.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+
 
 class ConfigStd final : public ConfigAuthN {
    public:
     ConfigStd& applyEnv() {
-        Config::applyEnv();
+        client::Config::applyEnv();
         tls_disabled = true;
         return *this;
     }
@@ -50,6 +51,6 @@ void fromStdEnv(const std::map<std::string, std::string>& defs);
 void updateDefs(defs_t &defs) const;
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 #endif  // PVXS_CONFIGSTD_H_

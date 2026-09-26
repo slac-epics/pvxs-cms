@@ -1,0 +1,63 @@
+# The PVAccess that ships inside EPICS Base: softIocPVA and pvmonitor, no pvxs at all.
+# modules/pvAccess and modules/pva2pva in this Base fork contain no OpenSSL, so this is the
+# stock EPICS PVA stack on both ends.
+namespace: pvxs-teststand
+
+dockerRegistry: docker.io
+dockerUsername: georgeleveln
+imageTag: latest
+imagePullPolicy: IfNotPresent
+
+images:
+  server: epics-pva
+  monitor: epics-pva
+
+binaries:
+  serverDir: /opt/epics/epics-base/bin
+  serverName: softIocPVA
+  monitorDir: /opt/epics/epics-base/bin
+  monitorName: pvmonitor
+  monitorArgs: ""
+
+# Only the port. The other variables the test stand sets stop the PVAccess server in EPICS
+# Base answering searches; with the default environment it answers immediately.
+serverEnv:
+  EPICS_PVAS_SERVER_PORT: "5075"
+
+ports:
+  pvaTcp: 5075
+  pvaUdp: 5076
+
+pvPrefix: "SIM:"
+scanRate: "5 second"
+fillRate: ".2 second"
+arrayLength: 64
+
+monitorPvs: [counter, mean, sigma, snr, x_axis, noisy_signal, clean_signal]
+
+startMode: supervised
+
+# What the server's probes test: none, supervisor, tcp. See server.yaml.
+# The PVA gateway leg. Off unless a permutation needs it; experiment.py turns it on for the
+# "gw" search mode. pvagw lives in the four-topologies gateway image.
+gateway:
+  enabled: false
+  image: gateway
+  args: ""
+
+probeMode: supervisor
+
+# Seconds between SIGTERM and SIGKILL when the pod is deleted. 0 for an abrupt kill.
+terminationGracePeriodSeconds: 30
+
+probes:
+  periodSeconds: 10
+  failureThreshold: 3
+  # The startup probe gets its own budget: 2 s x 30 = 60 s for the server to open its port.
+  startupPeriodSeconds: 2
+  startupFailureThreshold: 30
+  timeoutSeconds: 5
+
+publishNotReadyAddresses: true
+replicas: 1
+useAccessSecurity: false

@@ -98,8 +98,11 @@
 // Forward declarations
 struct sqlite3;
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cluster {
+
+namespace server = ::pvxs::server;
+using ::pvxs::Value;
 
 /**
  * @brief Represents a single member node of a PVACMS cluster.
@@ -191,7 +194,7 @@ struct SyncSource : public server::Source {
 
     void onSearch(Search &op) override;
     void onCreate(std::unique_ptr<server::ChannelControl> &&chan) override;
-    List onList() override;
+    server::Source::List onList() override;
 
     epicsMutex lock_;
     std::shared_ptr<std::set<std::string>> names_;
@@ -224,7 +227,7 @@ public:
                          const std::string &issuer_id,
                          const std::string &pv_prefix,
                          sqlite3 *certs_db,
-                         const ossl_ptr<EVP_PKEY> &cert_auth_pkey,
+                         const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey,
                          epicsMutex &status_update_lock);
 
     /**
@@ -296,7 +299,7 @@ private:
     std::string issuer_id_;
     std::string sync_pv_name_;
     sqlite3 *certs_db_;
-    const ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
+    const ::pvxs::ossl_ptr<EVP_PKEY> &cert_auth_pkey_;
     epicsMutex &status_update_lock_;
 
     std::shared_ptr<SyncSource> sync_source_;
@@ -342,7 +345,7 @@ Value serializeCertsTable(sqlite3 *certs_db,
                           const std::vector<ClusterMember> &members,
                           const Value &prototype = Value());
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cluster
+}  // namespace cms
 
 #endif  // PVXS_CLUSTERSYNC_H_

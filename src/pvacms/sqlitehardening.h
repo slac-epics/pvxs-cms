@@ -9,8 +9,8 @@
 
 #include <sqlite3.h>
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 /**
  * @brief Apply the settings the certificate database is expected to run with.
@@ -37,7 +37,7 @@ void applySqliteHardening(sqlite3 *db);
 /** Milliseconds SQLite waits for a lock before reporting "database is locked". */
 constexpr int SQLITE_BUSY_TIMEOUT_MS = 5000;
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_SQLITEHARDENING_H_

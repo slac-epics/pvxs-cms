@@ -31,8 +31,35 @@
 #include "serverev.h"
 #include "trustanchors.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    using namespace ::cms::cert;
+    using namespace ::cms::ssl;
+    using namespace ::cms::detail;
+    namespace client = ::pvxs::client;
+    namespace server = ::pvxs::server;
+    namespace members = ::pvxs::members;
+
+    using ::pvxs::Member;
+    using ::cms::detail::SB;
+    using ::pvxs::TypeCode;
+    using ::pvxs::TypeDef;
+    using ::pvxs::Value;
+    using ::pvxs::logger_config_env;
+    using ::pvxs::logger_level_set;
+    using ::cms::detail::ossl_ptr;
+    using ::pvxs::shared_array;
+    using ::cms::cert::AuthnCredentials;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::IdFileFactory;
+    using ::cms::cert::KeyPair;
+    using ::cms::cert::CertFactory;
+    using ::cms::cert::CertStatus;
+    using ::cms::cert::CmsStatusManager;
+    using ::cms::cert::CertStatusFactory;
+    using ::cms::cert::CertData;
+    using ::cms::cert::getCertId;
+    using ::cms::cert::VALID;
 
 // Shared authenticator logger; defined in auth.cpp (not here — loggers should
 // not be defined in a header).
@@ -65,7 +92,6 @@ struct CreateResponseContext {
  * The Auth class provides an interface for retrieving credentials and
  * creating and validating Certificate Creation Requests (CCRs).
  */
-using namespace certs;
 class Auth {
  public:
     std::string type_{};
@@ -367,8 +393,6 @@ class Auth {
      * @return The prototype of the data returned for a certificate configuration PV
      */
     static Value getConfigurationPrototype() {
-        using namespace members;
-
         auto value = TypeDef(TypeCode::Struct,
                              {
                                  Member(TypeCode::UInt64, "serial"),
@@ -756,7 +780,7 @@ CertData getCertificate(bool & /*retrieved_credentials*/,
                         bool daemon_mode) {
     CertData cert_data;
 
-    if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient))) {
+    if (auto credentials = authenticator.getCredentials(config, IS_USED_FOR_(cert_usage, ::cms::ssl::kForClient))) {
         // If daemon mode, then add base uri to credentials
         if (daemon_mode) credentials->config_uri_base = config.getCertPvPrefix();
 
@@ -983,18 +1007,18 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
         auto config = ConfigT::fromEnv();
 
         bool verbose{false}, debug{false}, daemon_mode{false}, force{false};
-        uint16_t cert_usage{pvxs::ssl::kForClient};
+        uint16_t cert_usage{::cms::ssl::kForClient};
 
         const auto parse_result = readParameters(argc, argv, config, verbose, debug, cert_usage, daemon_mode, force);
         if (parse_result)
             return parse_result == -1 ? 0 : parse_result;
 
         if (verbose) {
-            logger_level_set(std::string("pvxs.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Info);
-            logger_level_set(std::string("pvxs.auth.ccr").c_str(), pvxs::Level::Info);
+            logger_level_set(std::string("cms.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Info);
+            logger_level_set(std::string("cms.auth.ccr").c_str(), pvxs::Level::Info);
         }
         if (debug)
-            logger_level_set(std::string("pvxs.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Debug);
+            logger_level_set(std::string("cms.auth." + authenticator.type_ + "*").c_str(), pvxs::Level::Debug);
 
         // Execute a special case hook if provided
         if (pre_configure_hook) pre_configure_hook(config, authenticator);
@@ -1011,7 +1035,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
         CertData cert_data;
         try {
             auto new_cert_data = IdFileFactory::create(tls_keychain_file, tls_keychain_pwd)->getCertDataFromFile();
-            const auto now = timeNow();
+            const auto now = cert::timeNow();
             const auto not_after_time =
                 (!new_cert_data.cert) ? 0 : CertFactory::getNotAfterTimeFromCert(new_cert_data.cert);
             if (not_after_time > now) {
@@ -1052,7 +1076,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
 
         if (cert_data.cert && daemon_mode) {
             return authenticator.runAuthNDaemon(config,
-                                         IS_USED_FOR_(cert_usage, pvxs::ssl::kForClient),
+                                         IS_USED_FOR_(cert_usage, cms::ssl::kForClient),
                                          std::move(cert_data),
                                          [&retrieved_credentials,
                                           config,
@@ -1078,7 +1102,7 @@ int runAuthenticator(int argc, char *argv[], std::function<void(ConfigT &, AuthT
     }
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
 #endif  // PVXS_AUTH_H

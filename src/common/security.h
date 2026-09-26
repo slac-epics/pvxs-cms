@@ -12,12 +12,22 @@
 #include <string>
 #include <vector>
 
+#include <pvxs/data.h>
 #include <pvxs/nt.h>
 
 #include "ownedptr.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+using pvxs::Member;
+using pvxs::shared_array;
+using cms::detail::ossl_ptr;
+using cms::detail::SB;
+using pvxs::TypeCode;
+using pvxs::TypeDef;
+using pvxs::Value;
+namespace members = pvxs::members;
 
 //! Separator between organizational unit values wherever they must share one string:
 //! the environment variables, and the signature payload. Matches the separator the
@@ -339,7 +349,7 @@ struct KeyPair final {
     }
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_SEC_SECURITY_H

@@ -23,7 +23,7 @@
 // The table and its statements live with the feature, in certrequestid.h
 
 using namespace pvxs;
-using namespace pvxs::certs;
+using namespace cms::cert;
 
 namespace {
 

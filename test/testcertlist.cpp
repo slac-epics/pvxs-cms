@@ -26,7 +26,7 @@
 #include "certstatus.h"
 
 using namespace pvxs;
-using namespace pvxs::certs;
+using namespace cms::cert;
 
 namespace {
 

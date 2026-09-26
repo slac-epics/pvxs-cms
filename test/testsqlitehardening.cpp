@@ -23,7 +23,7 @@
 
 #include "sqlitehardening.h"
 
-using namespace pvxs::certs;
+using namespace cms::cert;
 
 namespace {
 

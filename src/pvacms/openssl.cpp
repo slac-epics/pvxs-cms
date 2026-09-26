@@ -23,26 +23,10 @@
 #error TLS 1.3 support required.  Upgrade to openssl >= 1.1.0
 #endif
 
-namespace pvxs {
-namespace ossl {
+namespace cms {
+namespace ssl {
 
-SSLError::SSLError(const std::string &msg)
-    : std::runtime_error([&msg]() -> std::string {
-          std::ostringstream strm;
-          const char *file = nullptr;
-          int line = 0;
-          const char *data = nullptr;
-          int flags = 0;
-          while (const auto err = ERR_get_error_all(&file, &line, nullptr, &data, &flags)) {
-              strm << file << ':' << line << ':' << ERR_reason_error_string(err);
-              if (data && (flags & ERR_TXT_STRING)) strm << ':' << data;
-              strm << ", ";
-          }
-          strm << msg;
-          return strm.str();
-      }()) {}
-
-SSLError::~SSLError() = default;
+using pvxs::ossl_ptr;
 
 std::ostream &operator<<(std::ostream &strm, const ShowX509 &cert) {
     if (cert.cert) {
@@ -52,7 +36,7 @@ std::ostream &operator<<(std::ostream &strm, const ShowX509 &cert) {
         const ossl_ptr<BIO> io(__FILE__, __LINE__, BIO_new(BIO_s_mem()));
         {
             try {
-                const auto cert_id = certs::CmsStatusManager::getCertIdFromCert(cert.cert);
+                const auto cert_id = cms::cert::CmsStatusManager::getCertIdFromCert(cert.cert);
                 (void)BIO_printf(io.get(), "\nCertificate ID : ");
                 (void)BIO_printf(io.get(), cert_id.c_str());
             } catch (...) {}
@@ -62,12 +46,12 @@ std::ostream &operator<<(std::ostream &strm, const ShowX509 &cert) {
         (void)BIO_printf(io.get(), "\nIssuer Subject : ");
         (void)X509_NAME_print(io.get(), issuer, 1024);
         if (const auto atm = X509_get0_notBefore(cert.cert)) {
-            const certs::CertDate the_date(atm);
+            const cms::cert::CertDate the_date(atm);
             (void)BIO_printf(io.get(), "\nValid From     : ");
             (void)BIO_printf(io.get(), the_date.s.c_str());
         }
         if (const auto atm = X509_get0_notAfter(cert.cert)) {
-            const certs::CertDate the_date(atm);
+            const cms::cert::CertDate the_date(atm);
             (void)BIO_printf(io.get(), "\nExpires On     : ");
             (void)BIO_printf(io.get(), the_date.s.c_str());
         }

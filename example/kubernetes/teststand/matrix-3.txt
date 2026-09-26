@@ -1,0 +1,5 @@
+# Batch 3: the multi-node stand-ins, and the gateway leg.
+--variant spva --search udp --kill udpblock --load fast
+--variant spva --search udp --kill impostor --load fast
+--variant spva --search gw  --kill graceful --load fast
+--variant spva --search gw  --kill abrupt   --load fast-big

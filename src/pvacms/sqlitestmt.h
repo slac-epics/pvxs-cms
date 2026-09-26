@@ -9,8 +9,8 @@
 
 #include <sqlite3.h>
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 /**
  * @brief Owns a prepared statement and finalises it however the scope is left.
@@ -65,7 +65,7 @@ class SqliteStmt final {
     sqlite3_stmt *stmt_{nullptr};
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_SQLITESTMT_H_

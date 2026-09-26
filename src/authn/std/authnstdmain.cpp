@@ -15,8 +15,15 @@
 #include "p12filefactory.h"
 #include "trustanchors.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    using namespace ::cms::cert;
+    namespace certs = ::cms::cert;
+    using ::cms::cert::CertCreationRequest;
+    using ::cms::cert::IdFileFactory;
+    using ::cms::cert::CertDate;
+    using ::cms::cert::VALID;
+    using ::cms::cert::PENDING_APPROVAL;
 
 /**
  * @brief Define the options for the authnstd tool
@@ -180,19 +187,19 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
 
     // Set the certificate usage based on the command line parameters
     if (usage == "server") {
-        cert_usage = ssl::kForServer;
+            cert_usage = ::cms::ssl::kForServer;
         if (config.tls_srv_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVAS_TLS_KEYCHAIN environment variable to create server certificates" << std::endl;
             return 10;
         }
     } else if (usage == "client") {
-        cert_usage = ssl::kForClient;
+            cert_usage = ::cms::ssl::kForClient;
         if (config.tls_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVA_TLS_KEYCHAIN environment variable to create client certificates" << std::endl;
             return 11;
         }
     } else if (usage == "ioc") {
-        cert_usage = ssl::kForClientAndServer;
+            cert_usage = ::cms::ssl::kForClientAndServer;
         if (config.tls_srv_keychain_file.empty()) {
             std::cerr << "You must set EPICS_PVAS_TLS_KEYCHAIN environment variable to create ioc certificates" << std::endl;
             return 12;
@@ -205,15 +212,15 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
     // Pull out command line args to override config values
     if ( !name.empty()) {
         switch (cert_usage) {
-            case ssl::kForClient: config.name = name; break;
-            case ssl::kForServer: config.server_name = name; break;
+                case ::cms::ssl::kForClient: config.name = name; break;
+                case ::cms::ssl::kForServer: config.server_name = name; break;
             default: config.name = config.server_name = name; break;
         }
     }
     if ( !organization.empty()) {
         switch (cert_usage) {
-            case ssl::kForClient: config.organization = organization; break;
-            case ssl::kForServer: config.server_organization = organization; break;
+                case ::cms::ssl::kForClient: config.organization = organization; break;
+                case ::cms::ssl::kForServer: config.server_organization = organization; break;
             default: config.organization = config.server_organization = organization; break;
         }
     }
@@ -226,15 +233,15 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
     }
     if ( !organizational_unit.empty()) {
         switch (cert_usage) {
-            case ssl::kForClient: config.organizational_unit = organizational_unit; break;
-            case ssl::kForServer: config.server_organizational_unit = organizational_unit; break;
+                case ::cms::ssl::kForClient: config.organizational_unit = organizational_unit; break;
+                case ::cms::ssl::kForServer: config.server_organizational_unit = organizational_unit; break;
             default: config.organizational_unit = config.server_organizational_unit = organizational_unit; break;
         }
     }
     if ( !country.empty()) {
         switch (cert_usage) {
-            case ssl::kForClient: config.country = country; break;
-            case ssl::kForServer: config.server_country = country; break;
+                case ::cms::ssl::kForClient: config.country = country; break;
+                case ::cms::ssl::kForServer: config.server_country = country; break;
             default: config.country = config.server_country = country; break;
         }
     }
@@ -252,7 +259,7 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
 
         // What the keychain holds now. The reset replaces the anchors and keeps everything else,
         // so this has to be read before anything is retrieved.
-        const auto held = certs::readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
+        const auto held = readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
 
         cms::cert::AnchorPlanInput plan_input;
         plan_input.named_issuers = config.issuer_ids;
@@ -275,10 +282,10 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
                 // Retrieving a trust anchor is the moment trust is decided. An authority the
                 // keychain already holds is decided against the held value, so a short form
                 // names it; one it does not hold is decided by the name alone.
-                certs::requireCompleteUnlessHeld(issuer_id, plan_input.held_anchor_ids);
+                requireCompleteUnlessHeld(issuer_id, plan_input.held_anchor_ids);
                 // Nothing is written until every named authority has answered, so a keychain is
                 // never left holding whichever subset did.
-                retrieved.push_back(certs::retrieveTrustAnchor(authenticator, config, cert_usage, issuer_id));
+                retrieved.push_back(retrieveTrustAnchor(authenticator, config, cert_usage, issuer_id));
             }
         } catch (const std::exception &e) {
             std::cerr << e.what() << std::endl;
@@ -307,7 +314,7 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
 
         // The anchors are listed whenever the set or the primary ends up different from what it
         // was, because nothing in the file marks which anchor is primary.
-        const auto written = certs::readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
+        const auto written = readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
         if (cms::cert::trustChanged(held, written)) cms::cert::printAnchorListing(written, std::cout);
         return -1;
     }
@@ -315,10 +322,15 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
     return 0;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 
-using namespace pvxs::certs;
+using cms::cert::CertDate;
+using cms::cert::VALID;
+using cms::cert::PENDING_APPROVAL;
+using cms::auth::AuthNStd;
+using cms::auth::ConfigStd;
+using cms::auth::runAuthenticator;
 
 /**
  * @brief Main function for the authnstd tool

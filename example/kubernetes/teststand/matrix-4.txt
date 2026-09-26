@@ -1,0 +1,5 @@
+# Batch 4: SLAC's hand sequence with pvxmonitor. Manual start, PID 1 is sleep, gap before restart.
+--variant spva --search udp --kill manual-delete --load fast --probes none --gap 15
+--variant spva --search udp --kill manual-delete --load fast --probes none --gap 90
+--variant spva --search udp --kill manual-ioc    --load fast --probes none --gap 90
+--variant spva --search ns  --kill manual-delete --load fast --probes none --gap 90

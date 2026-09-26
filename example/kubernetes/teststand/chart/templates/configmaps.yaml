@@ -1,0 +1,178 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "teststand.scriptsConfig" . }}
+data:
+  start-server.sh: |
+    #!/bin/bash
+    # Prepare the server pod, then either hand over to supervisord or stay alive for the
+    # operator to start the server by hand.
+    set -euo pipefail
+
+    mkdir -p /home/testioc/.config/pva/1.5
+    chown -R testioc:testioc /home/testioc/.config/pva/1.5
+
+    if [ -n "${EPICS_PVA_AUTH_ISSUER:-}" ]; then
+        mkdir -p /etc/epics
+        printf '%s' "${EPICS_PVA_AUTH_ISSUER}" > /etc/epics/issuer
+    fi
+
+    if [ -r /certs/trust_anchors.p12 ] && [ ! -s /home/testioc/.config/pva/1.5/server.p12 ]; then
+        install -m 600 -o testioc /certs/trust_anchors.p12 /home/testioc/.config/pva/1.5/server.p12
+    fi
+
+    if [ "${START_MODE:-supervised}" = "manual" ]; then
+        echo "Manual start mode. The server is not running."
+        echo "Start it with:  su testioc -c /usr/local/bin/start-softioc"
+        exec sleep infinity
+    fi
+
+    exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+
+  start-softioc.sh: |
+    #!/bin/bash
+    # Start the server. The binary differs by variant and the database does not, so the
+    # database is the same file in every one of them.
+    set -euo pipefail
+
+    cd /home/testioc
+    export HOME=/home/testioc
+    arch="$(/opt/epics/epics-base/startup/EpicsHostArch)"
+    binary="{{ .Values.binaries.serverDir }}/${arch}/{{ .Values.binaries.serverName }}"
+
+    args=(-v -d /home/testioc/testioc-lab.db)
+    [ -f /home/testioc/testioc.acf ] && args+=(-a /home/testioc/testioc.acf)
+
+    echo "starting ${binary}"
+    exec "${binary}" "${args[@]}"
+
+  start-monitor.sh: |
+    #!/bin/bash
+    # The client pod. Idle by default: the monitor is started by hand, or by experiment.py, so
+    # that its output goes to a terminal or a file rather than to a pod log.
+    set -euo pipefail
+    if [ "${AUTO_MONITOR:-no}" != "yes" ]; then
+        echo "client pod idle; run a monitor with kubectl exec"
+        exec sleep infinity
+    fi
+    server="${SERVER:?server name not set}"
+    prefix="${PV_PREFIX:-SIM:}"
+    arch="$(/opt/epics/epics-base/startup/EpicsHostArch)"
+    binary="{{ .Values.binaries.monitorDir }}/${arch}/{{ .Values.binaries.monitorName }}"
+    pvs=()
+    for pv in {{ .Values.monitorPvs | join " " }}; do pvs+=("${prefix}${pv}"); done
+    exec stdbuf -oL "${binary}" {{ .Values.binaries.monitorArgs }} "${pvs[@]}"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "teststand.supervisorConfig" . }}
+data:
+  testioc.conf: |
+    [program:testioc]
+    command=/usr/local/bin/start-softioc
+    environment=HOME="/home/testioc",USER="testioc"
+    user=testioc
+    autostart=true
+    autorestart=true
+    stdout_logfile=/proc/1/fd/1
+    stdout_logfile_maxbytes=0
+    stderr_logfile=/proc/1/fd/2
+    stderr_logfile_maxbytes=0
+    stopsignal=TERM
+    stopasgroup=true
+    killasgroup=true
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "teststand.databasesConfig" . }}
+data:
+  {{/*
+  Stands in for the Gaussian simulator's process variables.
+
+  Two rates. The records ending _src and _buf run at fillRate and are not monitored: they
+  exist only to keep the two arrays full. The records the client monitors run at scanRate,
+  so the arrays arrive complete but only as often as a person can read them.
+  */}}
+  testioc-lab.db: |
+    record(calc, "{{ .Values.pvPrefix }}tick") {
+      field(SCAN, "{{ .Values.fillRate }}")
+      field(INPA, "{{ .Values.pvPrefix }}tick.VAL NPP NMS")
+      field(CALC, "(A<100000)?A+1:0")
+    }
+
+    record(calc, "{{ .Values.pvPrefix }}clean_src") {
+      field(SCAN, "{{ .Values.fillRate }}")
+      field(INPA, "{{ .Values.pvPrefix }}tick NPP NMS")
+      field(CALC, "SIN(A/10)")
+    }
+
+    record(calc, "{{ .Values.pvPrefix }}noise_src") {
+      field(SCAN, "{{ .Values.fillRate }}")
+      field(INPA, "{{ .Values.pvPrefix }}clean_src NPP NMS")
+      field(CALC, "A+RNDM-0.5")
+    }
+
+    record(compress, "{{ .Values.pvPrefix }}clean_buf") {
+      field(SCAN, "{{ .Values.fillRate }}")
+      field(INP, "{{ .Values.pvPrefix }}clean_src NPP NMS")
+      field(ALG, "Circular Buffer")
+      field(NSAM, "{{ .Values.arrayLength }}")
+    }
+
+    record(compress, "{{ .Values.pvPrefix }}noisy_buf") {
+      field(SCAN, "{{ .Values.fillRate }}")
+      field(INP, "{{ .Values.pvPrefix }}noise_src NPP NMS")
+      field(ALG, "Circular Buffer")
+      field(NSAM, "{{ .Values.arrayLength }}")
+    }
+
+    record(calc, "{{ .Values.pvPrefix }}counter") {
+      field(SCAN, "{{ .Values.scanRate }}")
+      field(INPA, "{{ .Values.pvPrefix }}tick NPP NMS")
+      field(CALC, "A")
+    }
+
+    record(calc, "{{ .Values.pvPrefix }}mean") {
+      field(SCAN, "{{ .Values.scanRate }}")
+      field(INPA, "{{ .Values.pvPrefix }}clean_src NPP NMS")
+      field(CALC, "A")
+      field(PREC, "4")
+    }
+
+    record(calc, "{{ .Values.pvPrefix }}sigma") {
+      field(SCAN, "{{ .Values.scanRate }}")
+      field(INPA, "{{ .Values.pvPrefix }}tick NPP NMS")
+      field(CALC, "1+0.1*COS(A/10)")
+      field(PREC, "4")
+    }
+
+    record(calc, "{{ .Values.pvPrefix }}snr") {
+      field(SCAN, "{{ .Values.scanRate }}")
+      field(CALC, "10+RNDM")
+      field(PREC, "2")
+    }
+
+    record(calc, "{{ .Values.pvPrefix }}x_axis") {
+      field(SCAN, "{{ .Values.scanRate }}")
+      field(INPA, "{{ .Values.pvPrefix }}tick NPP NMS")
+      field(CALC, "A*0.01")
+      field(PREC, "3")
+    }
+
+    record(waveform, "{{ .Values.pvPrefix }}clean_signal") {
+      field(SCAN, "{{ .Values.scanRate }}")
+      field(INP, "{{ .Values.pvPrefix }}clean_buf NPP NMS")
+      field(NELM, "{{ .Values.arrayLength }}")
+      field(FTVL, "DOUBLE")
+    }
+
+    record(waveform, "{{ .Values.pvPrefix }}noisy_signal") {
+      field(SCAN, "{{ .Values.scanRate }}")
+      field(INP, "{{ .Values.pvPrefix }}noisy_buf NPP NMS")
+      field(NELM, "{{ .Values.arrayLength }}")
+      field(FTVL, "DOUBLE")
+    }

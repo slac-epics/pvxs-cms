@@ -1,0 +1,48 @@
+{{- if .Values.gateway.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-gateway
+  labels: {app: teststand-gateway, release: {{ .Release.Name }}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: teststand-gateway, release: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels: {app: teststand-gateway, release: {{ .Release.Name }}}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/gateway-config.yaml") . | sha256sum }}
+    spec:
+      securityContext: {runAsUser: 0, fsGroup: 0}
+      containers:
+        - name: gateway
+          image: {{ .Values.dockerRegistry }}/{{ .Values.dockerUsername }}/{{ .Values.gateway.image }}:{{ .Values.imageTag }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/bash", "-lc", "cd /home/gateway && exec /opt/epics/p4p/bin/$(/opt/epics/epics-base/startup/EpicsHostArch)/pvagw {{ .Values.gateway.args }} /etc/pvagw/gateway.conf"]
+          env:
+            - {name: HOME, value: /home/gateway}
+            - {name: EPICS_PVAS_SERVER_PORT, value: "{{ .Values.ports.pvaTcp }}"}
+          ports:
+            - {name: pva-tcp, containerPort: {{ .Values.ports.pvaTcp }}, protocol: TCP}
+            - {name: pva-udp, containerPort: {{ .Values.ports.pvaUdp }}, protocol: UDP}
+          volumeMounts:
+            - {name: gw, mountPath: /etc/pvagw}
+      volumes:
+        - name: gw
+          configMap: {name: {{ .Release.Name }}-gateway}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-gateway
+  labels: {app: teststand-gateway, release: {{ .Release.Name }}}
+spec:
+  type: ClusterIP
+  selector: {app: teststand-gateway, release: {{ .Release.Name }}}
+  ports:
+    - {name: pva-tcp, port: {{ .Values.ports.pvaTcp }}, targetPort: {{ .Values.ports.pvaTcp }}, protocol: TCP}
+    - {name: pva-udp, port: {{ .Values.ports.pvaUdp }}, targetPort: {{ .Values.ports.pvaUdp }}, protocol: UDP}
+{{- end }}

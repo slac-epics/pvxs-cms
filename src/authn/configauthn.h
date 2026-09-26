@@ -15,8 +15,10 @@
 
 #include "security.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace auth {
+    namespace client = ::pvxs::client;
+    using namespace ::cms::cert;
 
 class ConfigAuthN : public client::Config {
    public:
@@ -52,6 +54,6 @@ static std::string getIPAddress();
 void updateDefs(defs_t& defs) const;
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace auth
+}  // namespace cms
 #endif  // PVXS_CONFIGAUTHN_H_

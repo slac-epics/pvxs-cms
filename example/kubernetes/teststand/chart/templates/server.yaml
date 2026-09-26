@@ -1,0 +1,140 @@
+{{/*
+The server, and the Service the client addresses. A client never addresses the pod.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "teststand.serverService" . }}
+  labels:
+{{ include "teststand.serverSelector" . | indent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  # Recreate, not RollingUpdate: two pods serving the same process variable names at once
+  # would make it ambiguous which one a client reached.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+{{ include "teststand.serverSelector" . | indent 6 }}
+  template:
+    metadata:
+      labels:
+{{ include "teststand.serverSelector" . | indent 8 }}
+      annotations:
+        # A ConfigMap change does not restart a pod by itself, so the rendered contents are
+        # hashed in here: change a script, the database, or a rate, and the pod rolls.
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+    spec:
+      # How long a deleted pod has between SIGTERM and SIGKILL. 0 kills the server mid-write,
+      # which is the case where a client could receive a truncated frame.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        # Root, so the start script can chown the keychain directory to the server's own user.
+        runAsUser: 0
+        fsGroup: 0
+      containers:
+        - name: server
+          image: {{ include "teststand.image" (dict "Values" .Values "role" "server") }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/local/bin/start-server"]
+          env:
+            - name: START_MODE
+              value: {{ .Values.startMode | quote }}
+{{- range $k, $v := .Values.serverEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+{{- end }}
+{{ include "teststand.zoneEnv" . | indent 12 }}
+          ports:
+            - {name: pva-tcp, containerPort: {{ .Values.ports.pvaTcp }}, protocol: TCP}
+            - {name: pva-udp, containerPort: {{ .Values.ports.pvaUdp }}, protocol: UDP}
+{{- if and (ne .Values.probeMode "none") (ne .Values.startMode "manual") }}
+          {{/*
+          probeMode selects what the probes test.
+
+          supervisor: ask supervisord whether the server process is running. Touches no socket,
+                      so it cannot itself disturb the server or hide a server that is bound but
+                      not answering, which is the failure under study.
+          tcp:        what the test stand uses. A TCP socket probe opens a connection and resets
+                      it without the server accepting. The PVAccess server in EPICS Base listens
+                      with a backlog of four, so a few cycles fill its accept queue and later
+                      clients time out. Kept as an option because reproducing that is the point.
+          */}}
+          {{- $cmd := "supervisorctl status testioc | grep -q RUNNING" }}
+          {{- range $kind := list "startupProbe" "readinessProbe" "livenessProbe" }}
+          {{ $kind }}:
+            {{- if eq $.Values.probeMode "tcp" }}
+            tcpSocket: {port: {{ $.Values.ports.pvaTcp }}}
+            {{- else }}
+            exec: {command: ["/bin/sh", "-c", {{ $cmd | quote }}]}
+            {{- end }}
+            {{- if eq $kind "startupProbe" }}
+            periodSeconds: {{ $.Values.probes.startupPeriodSeconds }}
+            failureThreshold: {{ $.Values.probes.startupFailureThreshold }}
+            {{- else }}
+            periodSeconds: {{ $.Values.probes.periodSeconds }}
+            failureThreshold: {{ $.Values.probes.failureThreshold }}
+            {{- end }}
+            timeoutSeconds: {{ $.Values.probes.timeoutSeconds }}
+          {{- end }}
+{{- end }}
+          volumeMounts:
+            - {name: scripts, mountPath: /usr/local/bin/start-server, subPath: start-server.sh}
+            - {name: scripts, mountPath: /usr/local/bin/start-softioc, subPath: start-softioc.sh}
+            - {name: supervisor, mountPath: /etc/supervisor/conf.d/testioc.conf, subPath: testioc.conf}
+            - {name: databases, mountPath: /home/testioc/testioc-lab.db, subPath: testioc-lab.db}
+            - {name: config, mountPath: /home/testioc/.config/pva/1.5}
+{{- if .Values.useAccessSecurity }}
+            - {name: acf, mountPath: /home/testioc/testioc.acf, subPath: testioc.acf}
+{{- end }}
+      volumes:
+{{ include "teststand.scriptsVolume" . | indent 8 }}
+        - name: supervisor
+          configMap: {name: {{ include "teststand.supervisorConfig" . }}}
+        - name: databases
+          configMap: {name: {{ include "teststand.databasesConfig" . }}}
+        - name: config
+          emptyDir: {}
+{{- if .Values.useAccessSecurity }}
+        - name: acf
+          configMap: {name: {{ include "teststand.acfConfig" . }}}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "teststand.serverService" . }}
+  labels:
+{{ include "teststand.serverSelector" . | indent 4 }}
+spec:
+  type: ClusterIP
+  # Keep the server in the endpoints even while unready. Turn off to test whether endpoint
+  # churn during pod replacement is what stops a monitor reconnecting.
+  publishNotReadyAddresses: {{ .Values.publishNotReadyAddresses }}
+  selector:
+{{ include "teststand.serverSelector" . | indent 4 }}
+  # Same number on both sides. A PVAccess server names its own port in a search reply and the
+  # client then dials that port, so a translated port would send it nowhere.
+  ports:
+    - {name: pva-tcp, port: {{ .Values.ports.pvaTcp }}, targetPort: {{ .Values.ports.pvaTcp }}, protocol: TCP}
+    - {name: pva-udp, port: {{ .Values.ports.pvaUdp }}, targetPort: {{ .Values.ports.pvaUdp }}, protocol: UDP}
+---
+{{/*
+The same server without the Service's address translation. A headless Service resolves
+straight to the pod IP, so a client using it holds the pod's own address and finds out what
+happens to that address when the pod is replaced.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "teststand.serverService" . }}-pod
+  labels:
+{{ include "teststand.serverSelector" . | indent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: {{ .Values.publishNotReadyAddresses }}
+  selector:
+{{ include "teststand.serverSelector" . | indent 4 }}
+  ports:
+    - {name: pva-tcp, port: {{ .Values.ports.pvaTcp }}, targetPort: {{ .Values.ports.pvaTcp }}, protocol: TCP}
+    - {name: pva-udp, port: {{ .Values.ports.pvaUdp }}, targetPort: {{ .Values.ports.pvaUdp }}, protocol: UDP}

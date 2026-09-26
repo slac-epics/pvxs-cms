@@ -41,10 +41,11 @@
 #include "openssl.h"
 
 using namespace pvxs;
+namespace certs = ::cms::cert;
 
 namespace {
 
-DEFINE_LOGGER(certslog, "pvxs.certs.tool");
+DEFINE_LOGGER(certslog, "cms.certs.tool");
 
 #if !defined(_WIN32) && !defined(_MSC_VER)
 void setEcho(const bool enable) {
@@ -485,7 +486,7 @@ int main(int argc, char *argv[]) {
 
         if (!cert_file.empty()) {
             try {
-                auto cert_data = certs::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
+                auto cert_data = cms::cert::IdFileFactory::create(cert_file, password)->getCertDataFromFile();
                 cert_id = cms::cert::printKeychainReport(cert_data, std::cout, std::cerr);
                 // An anchors-only keychain has no certificate to ask the status of.
                 if (cert_id.empty()) return 0;
@@ -525,7 +526,7 @@ int main(int argc, char *argv[]) {
                           << "Status        : " << result["state"].as<std::string>() << std::endl
                           << "Status Issued : " << result["ocsp_status_date"].as<std::string>() << std::endl
                           << "Status Expires: " << result["ocsp_certified_until"].as<std::string>() << std::endl;
-                if (result["value.index"].as<uint32_t>() == certs::REVOKED) {
+                if (result["value.index"].as<uint32_t>() == cms::cert::REVOKED) {
                     std::cout << "Revocation Date: " << result["ocsp_revocation_date"].as<std::string>() << std::endl;
                 }
                 std::cerr << "--------------------------------------------\n" << std::endl;

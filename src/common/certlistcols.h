@@ -7,8 +7,8 @@
 #ifndef PVXS_CERTLISTCOLS_H_
 #define PVXS_CERTLISTCOLS_H_
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 /**
  * @brief The field names the certificate listing table carries.
@@ -33,7 +33,7 @@ constexpr const char *kRenewBy = "renew_by";
 constexpr const char *kRequestId = "request_id";
 }  // namespace certlistcol
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERTLISTCOLS_H_

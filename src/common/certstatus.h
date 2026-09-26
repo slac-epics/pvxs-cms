@@ -17,6 +17,7 @@
 #include <openssl/x509.h>
 
 #include <pvxs/config.h>
+#include <pvxs/data.h>
 #include <pvxs/log.h>
 #include <pvxs/nt.h>
 
@@ -28,7 +29,7 @@
 typedef epicsGuard<epicsMutex> Guard;
 typedef epicsGuardRelease<epicsMutex> UnGuard;
 
-DEFINE_LOGGER(status_setup, "pvxs.certs.status");
+DEFINE_LOGGER(status_setup, "cms.certs.status");
 
 // Define permanently valid status time
 #if defined(__TIME_T_MAX__)
@@ -39,8 +40,18 @@ DEFINE_LOGGER(status_setup, "pvxs.certs.status");
 #define PERMANENTLY_VALID_STATUS (time_t)((~(unsigned long long)0) >> 1)
 #endif
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+
+using cms::detail::ossl_ptr;
+using cms::detail::ossl_shared_ptr;
+using cms::detail::SB;
+using pvxs::shared_array;
+using pvxs::TypeCode;
+using pvxs::TypeDef;
+using pvxs::Value;
+namespace nt = pvxs::nt;
+namespace members = pvxs::members;
 
 /** How many hex digits of a certificate authority's subject key identifier name it on the wire. */
 constexpr size_t kIssuerIdNameLength = 8;
@@ -1352,7 +1363,7 @@ struct UnCertifiedCertificateStatus final : CertificateStatus {
                             CertDate(PERMANENTLY_VALID_STATUS), CertDate(static_cast<time_t>(0))) {}
 };
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERTSTATUS_H_

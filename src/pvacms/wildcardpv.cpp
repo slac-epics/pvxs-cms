@@ -23,13 +23,15 @@
 typedef epicsGuard<epicsMutex> Guard;
 typedef epicsGuardRelease<epicsMutex> UnGuard;
 
-DEFINE_LOGGER(logshared, "pvxs.svr.pvwild");
-DEFINE_LOGGER(logmailbox, "pvxs.mailbox");
-DEFINE_LOGGER(logsource, "pvxs.svr.src");
-DEFINE_LOGGER(status_cms, "pvxs.st.cms");
+DEFINE_LOGGER(logshared, "cms.svr.pvwild");
+DEFINE_LOGGER(logmailbox, "cms.mailbox");
+DEFINE_LOGGER(logsource, "cms.svr.src");
+DEFINE_LOGGER(status_cms, "cms.st.cms");
 
 namespace pvxs {
 namespace server {
+
+using cms::detail::SB;
 
 template <typename T>
 using ptr_set = std::set<T, std::owner_less<T>>;

@@ -36,7 +36,9 @@
 #include "security.h"
 
 using namespace pvxs;
-using namespace pvxs::certs;
+using namespace cms::cert;
+using namespace cms::auth;
+using namespace cms::ssl;
 
 namespace {
 
@@ -86,7 +88,7 @@ std::shared_ptr<CertCreationRequest> requestFor(const std::vector<std::string> &
     credentials->organization = "lbnl";
     credentials->organization_unit = units;
     const ConfigAuthN config;
-    return probe.createCertCreationRequest(credentials, key_pair, ssl::kForClient, config);
+    return probe.createCertCreationRequest(credentials, key_pair, cms::ssl::kForClient, config);
 }
 
 // Rendered so a failure says which units came back, and in what order. Built here, so a fault
@@ -218,7 +220,7 @@ void testTheSignaturePayloadCoversEveryUnit(const std::shared_ptr<KeyPair> &key_
     testDiag("Both sides compute the same payload, and it changes when a unit is added");
 
     const auto request = requestFor({"staff", "beamline"}, key_pair);
-    testEq(PayloadProbe::fromCredentials(request, ssl::kForClient), PayloadProbe::fromWire(request->ccr));
+    testEq(PayloadProbe::fromCredentials(request, cms::ssl::kForClient), PayloadProbe::fromWire(request->ccr));
 
     const auto honest = PayloadProbe::fromWire(request->ccr);
     request->ccr["organization_units"] =
@@ -243,7 +245,7 @@ void testAnOlderRequestStillVerifies(const std::shared_ptr<KeyPair> &key_pair) {
 
         testFalse(static_cast<bool>(old_ccr["organization_units"]));
         testEq(show(getOrganizationalUnits(old_ccr)), show(units));
-        testEq(PayloadProbe::fromWire(old_ccr), PayloadProbe::fromCredentials(request, ssl::kForClient));
+        testEq(PayloadProbe::fromWire(old_ccr), PayloadProbe::fromCredentials(request, cms::ssl::kForClient));
     }
 }
 
@@ -252,7 +254,7 @@ void testTheIssuedSubjectNamesEveryUnitInOrder(const std::shared_ptr<KeyPair> &k
     testDiag("Each unit is its own subject entry, innermost first");
 
     CertFactory factory(1234, key_pair, "alice", "US", "lbnl", {"staff", "beamline"}, time(nullptr), time(nullptr) + 3600, 0,
-                        ssl::kForClient, "CERT");
+                        cms::ssl::kForClient, "CERT");
     const auto cert = factory.create();
     auto *subject = X509_get_subject_name(cert.get());
 
@@ -269,11 +271,11 @@ void testTheIssuedSubjectNamesEveryUnitInOrder(const std::shared_ptr<KeyPair> &k
 void testASubjectIsReadBackWhole(const std::shared_ptr<KeyPair> &key_pair) {
     testDiag("A subject naming one unit, or none, reads back correctly too");
 
-    CertFactory one(1235, key_pair, "alice", "US", "lbnl", {"beamline"}, time(nullptr), time(nullptr) + 3600, 0, ssl::kForClient, "CERT");
+    CertFactory one(1235, key_pair, "alice", "US", "lbnl", {"beamline"}, time(nullptr), time(nullptr) + 3600, 0, cms::ssl::kForClient, "CERT");
     const auto with_one = one.create();
     testEq(show(getSubjectOrganizationalUnits(X509_get_subject_name(with_one.get()))), show({"beamline"}));
 
-    CertFactory none(1236, key_pair, "alice", "US", "lbnl", {}, time(nullptr), time(nullptr) + 3600, 0, ssl::kForClient, "CERT");
+    CertFactory none(1236, key_pair, "alice", "US", "lbnl", {}, time(nullptr), time(nullptr) + 3600, 0, cms::ssl::kForClient, "CERT");
     const auto with_none = none.create();
     testEq(show(getSubjectOrganizationalUnits(X509_get_subject_name(with_none.get()))), show({}));
 
@@ -288,7 +290,7 @@ void testAShortenedSubjectIsRefused(const std::shared_ptr<KeyPair> &key_pair) {
     testDiag("A certificate carrying fewer units than were asked for is refused");
 
     const auto pemFor = [&key_pair](const std::vector<std::string> &units, const uint64_t serial) {
-        CertFactory factory(serial, key_pair, "alice", "US", "lbnl", units, time(nullptr), time(nullptr) + 3600, 0, ssl::kForClient, "CERT");
+        CertFactory factory(serial, key_pair, "alice", "US", "lbnl", units, time(nullptr), time(nullptr) + 3600, 0, cms::ssl::kForClient, "CERT");
         const auto cert = factory.create();
         return CertFactory::certAndCasToPemString(cert, nullptr);
     };

@@ -45,10 +45,10 @@ inline std::vector<std::string> parseIssuerList(const std::string &value) {
     std::vector<std::string> issuers;
     for (std::string::size_type start = 0;;) {
         const auto separator = value.find_first_of(kIssuerListSeparators, start);
-        const auto entry = pvxs::certs::trimSurroundingWhitespace(
+        const auto entry = cms::cert::trimSurroundingWhitespace(
             separator == std::string::npos ? value.substr(start) : value.substr(start, separator - start));
         if (!entry.empty()) {
-            const auto digits = pvxs::certs::readIssuerId(entry);
+            const auto digits = cms::cert::readIssuerId(entry);
             if (!digits.empty() && std::find(issuers.begin(), issuers.end(), digits) == issuers.end())
                 issuers.push_back(digits);
         }

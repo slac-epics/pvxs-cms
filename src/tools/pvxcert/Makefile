@@ -9,6 +9,9 @@
 PVXCERT_DIR = $(TOOLS_DIR)/pvxcert
 
 SRC_DIRS += $(PVXCERT_DIR)
+# openssl.cpp lives in src/pvacms, whose SRC_DIRS entry is only added when PVACMS
+# builds; add it here so pvxcert finds it even where PVACMS is disabled (Windows).
+SRC_DIRS += $(PVACMS_DIR)
 
 PROD += pvxcert
 
@@ -26,6 +29,7 @@ pvxcert_SRCS += certfactory.cpp
 pvxcert_SRCS += certstatus.cpp
 pvxcert_SRCS += certfilter.cpp
 pvxcert_SRCS += certstatusmanager.cpp
+pvxcert_SRCS += openssl.cpp
 pvxcert_SRCS += cmsversion.cpp
 
 # Link dependencies

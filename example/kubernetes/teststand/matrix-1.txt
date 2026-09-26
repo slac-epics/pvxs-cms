@@ -1,0 +1,7 @@
+# Batch 1: your pvxs, vary the kill and the load. Search via the Service, which is what SLAC does.
+--variant spva --search udp --kill abrupt   --load fast
+--variant spva --search udp --kill abrupt   --load fast-big
+--variant spva --search udp --kill abrupt   --load fast-big --grace 0
+--variant spva --search udp --kill ioc      --load fast-big
+--variant spva --search udp --kill netcut   --load fast
+--variant spva --search udp --kill graceful --load fast-big --probes tcp

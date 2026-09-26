@@ -420,7 +420,7 @@ struct CertCreator {
         unsigned char *dbuf = nullptr;
         const auto dbuflen = i2d_ASN1_IA5STRING(ival.get(), &dbuf); // encode
         if (dbuflen < 0)
-            throw pvxs::ossl::SSLError("Adding custom extension: Failed to create ASN1_IA5STRING object");
+            throw cms::ssl::SSLError("Adding custom extension: Failed to create ASN1_IA5STRING object");
 
         // ensure OPENSSL_free()
         const pvxs::ossl_ptr<unsigned char> dholder(__FILE__, __LINE__, dbuf);
@@ -429,23 +429,23 @@ struct CertCreator {
         // can't use s2i_ASN1_OCTET_STRING() as DER is not nil terminated string
         const pvxs::ossl_ptr<ASN1_OCTET_STRING> idval(__FILE__, __LINE__, ASN1_OCTET_STRING_new());
         if (!ASN1_OCTET_STRING_set(idval.get(), dbuf, dbuflen))
-            throw pvxs::ossl::SSLError("Adding custom extension: Failed to set ASN1_OCTET_STRING");
+            throw cms::ssl::SSLError("Adding custom extension: Failed to set ASN1_OCTET_STRING");
 
         // Create a new non-critical extension using wrapped, encoded, PV name as value
         const pvxs::ossl_ptr<X509_EXTENSION> ext(X509_EXTENSION_create_by_NID(nullptr, nid, false, idval.get()), false);
         if (!ext) {
-            throw pvxs::ossl::SSLError("Adding custom extension: Failed to create X509_EXTENSION");
+            throw cms::ssl::SSLError("Adding custom extension: Failed to create X509_EXTENSION");
         }
 
         // Add the extension to the certificate
         if (!X509_add_ext(certificate.get(), ext.get(), -1)) {
-            throw pvxs::ossl::SSLError("Failed to add X509_EXTENSION to certificate");
+            throw cms::ssl::SSLError("Failed to add X509_EXTENSION to certificate");
         }
     }
 
     std::tuple<pvxs::ossl_ptr<EVP_PKEY>, pvxs::ossl_ptr<X509>> create(const bool add_status_extension=true)
     {
-        pvxs::ossl::osslInit();
+        cms::ssl::osslInit();
 
         // generate a public/private key pair
         pvxs::ossl_ptr<EVP_PKEY> key;
@@ -541,8 +541,8 @@ struct CertCreator {
         }
 
         if ( add_status_extension) {
-            const auto issuer_id = pvxs::certs::CertStatus::getSkId(root ? root : issuer);
-            addCustomExtensionByNid(cert, pvxs::ossl::NID_SPvaCertStatusURI, getCertStatusURI(cert_pv_prefix, issuer_id, serial));
+            const auto issuer_id = cms::cert::CertStatus::getSkId(root ? root : issuer);
+            addCustomExtensionByNid(cert, cms::ssl::NID_SPvaCertStatusURI, getCertStatusURI(cert_pv_prefix, issuer_id, serial));
         }
 
         auto nbytes(X509_sign(cert.get(), ikey, sig));
@@ -716,7 +716,7 @@ int main(int argc, char *argv[])
             // The intermediate's OWN subject key identifier, whole. The first eight digits of
             // it name this authority in a process variable name; the whole thing is what
             // anyone establishing trust in it has to be given.
-            return pvxs::certs::CertStatus::getFullSkId(cert.get());
+            return cms::cert::CertStatus::getFullSkId(cert.get());
         };
 
         if (lab_cn == ml_cn)
@@ -726,8 +726,8 @@ int main(int argc, char *argv[])
         const std::string lab_issuer = mintIntermediate(lab_cn, "lab_intermediate.p12");
         const std::string ml_issuer  = mintIntermediate(ml_cn,  "ml_intermediate.p12");
 
-        const std::string lab_short = lab_issuer.substr(0, pvxs::certs::kIssuerIdNameLength);
-        const std::string ml_short  = ml_issuer.substr(0, pvxs::certs::kIssuerIdNameLength);
+        const std::string lab_short = lab_issuer.substr(0, cms::cert::kIssuerIdNameLength);
+        const std::string ml_short  = ml_issuer.substr(0, cms::cert::kIssuerIdNameLength);
 
         if (lab_issuer == ml_issuer) {
             throw std::runtime_error("Lab and ML intermediates produced the same issuer id - "
