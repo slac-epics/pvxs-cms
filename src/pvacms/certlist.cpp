@@ -15,8 +15,8 @@
 #include "certsubjectunits.h"
 #include "sqlitestmt.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 namespace {
 
@@ -374,5 +374,5 @@ Value buildCertListTable(const std::vector<CertListRow> &rows, const bool with_r
     return table;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

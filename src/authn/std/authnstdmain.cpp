@@ -17,6 +17,8 @@
 
 namespace cms {
 namespace auth {
+    using namespace ::cms::cert;
+    namespace certs = ::cms::cert;
     using ::cms::cert::CertCreationRequest;
     using ::cms::cert::IdFileFactory;
     using ::cms::cert::CertDate;
@@ -257,7 +259,7 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
 
         // What the keychain holds now. The reset replaces the anchors and keeps everything else,
         // so this has to be read before anything is retrieved.
-        const auto held = certs::readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
+        const auto held = readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
 
         cms::cert::AnchorPlanInput plan_input;
         plan_input.named_issuers = config.issuer_ids;
@@ -280,10 +282,10 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
                 // Retrieving a trust anchor is the moment trust is decided. An authority the
                 // keychain already holds is decided against the held value, so a short form
                 // names it; one it does not hold is decided by the name alone.
-                certs::requireCompleteUnlessHeld(issuer_id, plan_input.held_anchor_ids);
+                requireCompleteUnlessHeld(issuer_id, plan_input.held_anchor_ids);
                 // Nothing is written until every named authority has answered, so a keychain is
                 // never left holding whichever subset did.
-                retrieved.push_back(certs::retrieveTrustAnchor(authenticator, config, cert_usage, issuer_id));
+                retrieved.push_back(retrieveTrustAnchor(authenticator, config, cert_usage, issuer_id));
             }
         } catch (const std::exception &e) {
             std::cerr << e.what() << std::endl;
@@ -312,7 +314,7 @@ int readParameters(int argc, char *argv[], ConfigStd &config, bool &verbose, boo
 
         // The anchors are listed whenever the set or the primary ends up different from what it
         // was, because nothing in the file marks which anchor is primary.
-        const auto written = certs::readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
+        const auto written = readKeychainOrNothing(tls_keychain_file, tls_keychain_pwd);
         if (cms::cert::trustChanged(held, written)) cms::cert::printAnchorListing(written, std::cout);
         return -1;
     }

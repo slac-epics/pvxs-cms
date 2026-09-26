@@ -43,9 +43,12 @@
 #include "trustanchors.h"
 
 using namespace pvxs;
-using namespace pvxs::certs;
+using namespace cms::cert;
 
 namespace ta = cms::cert;
+using namespace cms::auth;
+using namespace cms::ssl;
+namespace certs = cms::cert;
 
 namespace {
 
@@ -596,7 +599,7 @@ void testTheKeychainReportCoversEveryKeychainShape() {
         } catch (...) {
         }
         std::ostringstream expected;
-        expected << ossl::ShowX509{no_anchors.cert.get()} << std::endl
+        expected << ShowX509{no_anchors.cert.get()} << std::endl
                  << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n");
         testTrue(out.str() == expected.str());
         testEq(err.str(), std::string("Certificate Details: \n"
@@ -640,16 +643,16 @@ void testEveryAnchorWrittenIsARoot() {
     // A manager that signs from an intermediate certificate authority answers that intermediate
     // with the root above it, and the root is what the keychain has to hold
     const CertData from_intermediate = replyFrom(I, {A});
-    testEq(material.label(certs::anchorFromReply(from_intermediate)), std::string("A"));
+    testEq(material.label(anchorFromReply(from_intermediate)), std::string("A"));
 
     // A single-level authority signs with its own root and answers it directly
     const CertData from_single_level = replyFrom(B, {});
-    testEq(material.label(certs::anchorFromReply(from_single_level)), std::string("B"));
+    testEq(material.label(anchorFromReply(from_single_level)), std::string("B"));
 
     // A reply that reaches no root fails the command rather than handing back the certificate
     // that was delivered, and names the authority that answered so an operator knows which
     const CertData without_the_root = replyFrom(I, {});
-    testTrue(contains(refusalFor([&] { certs::anchorFromReply(without_the_root); }),
+    testTrue(contains(refusalFor([&] { anchorFromReply(without_the_root); }),
                       CertStatus::getFullSkId(I)));
 
     // The ordinary certificate request resolves the same way: the authority is named by the
@@ -662,8 +665,8 @@ void testEveryAnchorWrittenIsARoot() {
     // The root is written once and neither intermediate is written at all.
     {
         const CertData second_intermediate = replyFrom(material.I2, {A});
-        const std::vector<X509 *> anchors{certs::anchorFromReply(from_intermediate),
-                                          certs::anchorFromReply(second_intermediate)};
+        const std::vector<X509 *> anchors{anchorFromReply(from_intermediate),
+                                          anchorFromReply(second_intermediate)};
 
         writeKeychain("testtrustanchors_written.p12", nullptr, nullptr,
                       ta::chainForAnchorReset(holds_nothing, anchors));
@@ -687,8 +690,8 @@ void testEveryAnchorWrittenIsARoot() {
 
     // Two authorities under unrelated roots hold both roots, and both are self-signed
     {
-        const std::vector<X509 *> anchors{certs::anchorFromReply(from_intermediate),
-                                          certs::anchorFromReply(from_single_level)};
+        const std::vector<X509 *> anchors{anchorFromReply(from_intermediate),
+                                          anchorFromReply(from_single_level)};
 
         writeKeychain("testtrustanchors_written.p12", nullptr, nullptr,
                       ta::chainForAnchorReset(holds_nothing, anchors));

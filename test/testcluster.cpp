@@ -28,6 +28,8 @@
 
 using namespace pvxs;
 using namespace cms;
+using namespace cms::cert;
+using namespace cms::auth;
 using cms::cluster::applySyncSnapshot;
 using cms::cluster::CertUpdate;
 using cms::cluster::ClusterController;

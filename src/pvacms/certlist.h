@@ -19,8 +19,8 @@
 #include "certlistcols.h"
 #include "certstatus.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 /**
  * The columns every certificate listing reads, and the order every listing returns.
@@ -201,7 +201,7 @@ Value buildCertListTable(const std::vector<CertListRow> &rows, bool with_request
 /** The column names a listing carries, in order. */
 std::vector<std::string> certListColumns(bool with_request_id);
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERTLIST_H_

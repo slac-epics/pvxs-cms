@@ -15,8 +15,10 @@
 #include "certlistcols.h"
 #include "certrequestid.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+using pvxs::Value;
+using pvxs::shared_array;
 
 namespace {
 
@@ -276,5 +278,5 @@ int runReview(std::vector<ReviewRow> &rows, const ReviewOptions &options, const 
     return any_failed ? 5 : 0;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

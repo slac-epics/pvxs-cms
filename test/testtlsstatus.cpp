@@ -36,6 +36,8 @@
 
 namespace {
 using namespace pvxs;
+using namespace cms::cert;
+using namespace cms::auth;
 using cms::ConfigCms;
 using cms::CertCtx;
 using cms::CounterMap;

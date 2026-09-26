@@ -40,7 +40,7 @@
 
 using namespace pvxs;
 using cms::cert::OcspStatusMonitor;
-using pvxs::certs::ocspcertstatus_t;
+using cms::cert::ocspcertstatus_t;
 
 namespace {
 

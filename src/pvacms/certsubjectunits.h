@@ -13,8 +13,8 @@
 
 #include <sqlite3.h>
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 // A certificate subject may name several organizational units, read innermost first, so one row
 // per unit. `position` is the depth in the ancestry, counting from the innermost unit at zero,
@@ -114,7 +114,7 @@ void storeSubjectUnits(sqlite3 *certs_db, int64_t db_serial, const std::vector<s
  */
 std::vector<std::string> getSubjectUnits(sqlite3 *certs_db, int64_t db_serial);
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERT_SUBJECT_UNITS_H

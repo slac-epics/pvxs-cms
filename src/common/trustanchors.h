@@ -116,7 +116,7 @@ inline X509 *walkToAnchor(X509 *start,
  * @return the primary anchor, borrowed from @p cert_data
  * @throws std::runtime_error if the identity reaches no anchor, or the file holds none
  */
-inline X509 *primaryAnchor(const pvxs::certs::CertData &cert_data) {
+inline X509 *primaryAnchor(const cms::cert::CertData &cert_data) {
     const auto chain = certsInChain(cert_data.cert_auth_chain);
 
     if (cert_data.cert) {
@@ -142,7 +142,7 @@ inline X509 *primaryAnchor(const pvxs::certs::CertData &cert_data) {
 //!
 //! Primary comes first because that is the order `planAnchors` reads the held list in when
 //! nothing is named and the primary anchor is the one asked to mint.
-inline std::vector<std::string> heldAnchorIds(const pvxs::certs::CertData &cert_data) {
+inline std::vector<std::string> heldAnchorIds(const cms::cert::CertData &cert_data) {
     std::vector<std::string> ids;
     const auto anchors = anchorsInChain(cert_data.cert_auth_chain);
     if (anchors.empty()) return ids;
@@ -150,7 +150,7 @@ inline std::vector<std::string> heldAnchorIds(const pvxs::certs::CertData &cert_
     const auto add = [&ids](X509 *anchor) {
         std::string id;
         try {
-            id = pvxs::certs::CertStatus::getFullSkId(anchor);
+            id = cms::cert::CertStatus::getFullSkId(anchor);
         } catch (const std::exception &) {
             return;  // an authority with no subject key identifier cannot be named at all
         }
@@ -168,9 +168,9 @@ inline std::vector<std::string> heldAnchorIds(const pvxs::certs::CertData &cert_
 }
 
 //! The whole subject key identifier of the primary anchor, or an empty string when there is none.
-inline std::string primaryAnchorId(const pvxs::certs::CertData &cert_data) {
+inline std::string primaryAnchorId(const cms::cert::CertData &cert_data) {
     try {
-        return pvxs::certs::CertStatus::getFullSkId(primaryAnchor(cert_data));
+        return cms::cert::CertStatus::getFullSkId(primaryAnchor(cert_data));
     } catch (const std::exception &) {
         return {};
     }
@@ -192,11 +192,11 @@ inline X509 *anchorForIssuerId(const std::string &issuer_id, const std::vector<X
         if (!candidate) continue;
         std::string full;
         try {
-            full = pvxs::certs::CertStatus::getFullSkId(candidate);
+            full = cms::cert::CertStatus::getFullSkId(candidate);
         } catch (const std::exception &) {
             continue;
         }
-        if (!pvxs::certs::issuerIdIsExpected(issuer_id, full)) continue;
+        if (!cms::cert::issuerIdIsExpected(issuer_id, full)) continue;
         if (isTrustAnchor(candidate)) return candidate;
         std::vector<X509 *> path;
         const std::vector<X509 *> no_anchors;
@@ -237,7 +237,7 @@ inline pvxs::ossl_ptr<STACK_OF(X509)> layOutChain(X509 *identity,
     for (X509 *anchor : anchors_to_hold)
         if (!isTrustAnchor(anchor))
             throw std::runtime_error(pvxs::SB()
-                                     << "The certificate '" << pvxs::certs::CertStatus::getFullSkId(anchor)
+                                     << "The certificate '" << cms::cert::CertStatus::getFullSkId(anchor)
                                      << "' is not self-signed, so it is not a trust anchor, and holding it as one "
                                         "would write a keychain that can verify nothing. Nothing has been written.");
 
@@ -301,7 +301,7 @@ inline pvxs::ossl_ptr<STACK_OF(X509)> layOutChain(X509 *identity,
  * @return the chain to write
  * @throws std::runtime_error if the identity would be stranded, naming the authority it chains to
  */
-inline pvxs::ossl_ptr<STACK_OF(X509)> chainForAnchorReset(const pvxs::certs::CertData &held,
+inline pvxs::ossl_ptr<STACK_OF(X509)> chainForAnchorReset(const cms::cert::CertData &held,
                                                           const std::vector<X509 *> &anchors_to_hold) {
     if (held.cert) {
         X509 *const chains_to = primaryAnchor(held);
@@ -311,7 +311,7 @@ inline pvxs::ossl_ptr<STACK_OF(X509)> chainForAnchorReset(const pvxs::certs::Cer
         if (!named)
             throw std::runtime_error(pvxs::SB()
                                      << "The identity in this keychain chains to the certificate authority '"
-                                     << pvxs::certs::CertStatus::getFullSkId(chains_to)
+                                     << cms::cert::CertStatus::getFullSkId(chains_to)
                                      << "', which is not among the issuers named, so replacing the trust anchors "
                                         "would leave that identity unverifiable. Nothing has been written. Name "
                                         "that authority too, or remove the identity first.");
@@ -366,7 +366,7 @@ inline AnchorPlan planAnchors(const AnchorPlanInput &input) {
     // trusted, while the whole identifier is still required for one that is not.
     const auto heldForm = [&input](const std::string &named) -> std::string {
         for (const auto &held : input.held_anchor_ids)
-            if (pvxs::certs::issuerIdIsExpected(named, held)) return held;
+            if (cms::cert::issuerIdIsExpected(named, held)) return held;
         return std::string();
     };
 
@@ -441,7 +441,7 @@ inline std::string anchorSubject(X509 *certificate) {
  * @param cert_data the keychain contents as they were written
  * @param out where to print
  */
-inline void printAnchorListing(const pvxs::certs::CertData &cert_data, std::ostream &out) {
+inline void printAnchorListing(const cms::cert::CertData &cert_data, std::ostream &out) {
     const auto anchors = anchorsInChain(cert_data.cert_auth_chain);
     if (anchors.empty()) return;
 
@@ -468,7 +468,7 @@ inline void printAnchorListing(const pvxs::certs::CertData &cert_data, std::ostr
  * primary is compared as well, because a request minted from an authority already trusted can
  * move it without changing the set, and that is a change to the file worth seeing.
  */
-inline bool trustChanged(const pvxs::certs::CertData &before, const pvxs::certs::CertData &after) {
+inline bool trustChanged(const cms::cert::CertData &before, const cms::cert::CertData &after) {
     std::vector<std::string> was = heldAnchorIds(before);
     std::vector<std::string> now = heldAnchorIds(after);
     std::sort(was.begin(), was.end());

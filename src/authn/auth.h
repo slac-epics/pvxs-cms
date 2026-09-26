@@ -33,6 +33,9 @@
 
 namespace cms {
 namespace auth {
+    using namespace ::cms::cert;
+    using namespace ::cms::ssl;
+    using namespace ::cms::detail;
     namespace client = ::pvxs::client;
     namespace server = ::pvxs::server;
     namespace members = ::pvxs::members;

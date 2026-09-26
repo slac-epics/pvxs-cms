@@ -16,8 +16,8 @@
 #include "certdate.h"
 #include "certstatus.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 namespace {
 
@@ -1017,5 +1017,5 @@ bool CertFilter::possibleFor(const std::string &issuer_id) const {
     return true;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

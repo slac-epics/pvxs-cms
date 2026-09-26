@@ -13,6 +13,8 @@
 
 namespace cms {
 namespace auth {
+    using namespace ::cms::cert;
+    namespace certs = ::cms::cert;
     using ::cms::cert::CertDate;
     using ::cms::cert::PENDING_APPROVAL;
 

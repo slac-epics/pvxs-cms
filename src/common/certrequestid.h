@@ -18,8 +18,8 @@
 #include "certfilefactory.h"
 #include "security.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 /**
  * A certificate request identifier, and the package that carries one back to whoever asked
@@ -199,7 +199,7 @@ std::vector<uint8_t> requestIdSignedBytes(const std::string &cert_id,
                                           const std::string &pub_key_digest,
                                           const std::vector<uint8_t> &ciphertext);
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERTREQUESTID_H_

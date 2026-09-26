@@ -27,6 +27,7 @@ DEFINE_LOGGER(pvacmscluster, "cms.certs.cluster");
 
 namespace cms {
 namespace cluster {
+    using namespace ::cms::cert;
 
 namespace client = ::pvxs::client;
 

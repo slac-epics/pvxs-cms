@@ -16,8 +16,9 @@
 
 namespace cms {
 namespace cert {
+using cms::ssl::ShowX509;
 
-std::string printKeychainReport(const pvxs::certs::CertData &cert_data, std::ostream &out, std::ostream &err) {
+std::string printKeychainReport(const cms::cert::CertData &cert_data, std::ostream &out, std::ostream &err) {
     if (!cert_data.cert) {
         if (anchorsInChain(cert_data.cert_auth_chain).empty()) {
             throw std::runtime_error("Failed to read certificate from file");
@@ -30,16 +31,16 @@ std::string printKeychainReport(const pvxs::certs::CertData &cert_data, std::ost
     // Not every certificate names a config PV, so a failed lookup just leaves the line out.
     std::string config_id{};
     try {
-        config_id = pvxs::certs::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
+        config_id = cms::cert::CmsStatusManager::getConfigPvFromCert(cert_data.cert);
     } catch (...) {
     }
 
     err << "Certificate Details: " << std::endl << "============================================" << std::endl;
-    out << pvxs::ossl::ShowX509{cert_data.cert.get()} << std::endl
+    out << ShowX509{cert_data.cert.get()} << std::endl
         << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n");
     err << "--------------------------------------------" << std::endl;
     printAnchorListing(cert_data, out);
-    return pvxs::certs::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
+    return cms::cert::CmsStatusManager::getStatusPvFromCert(cert_data.cert);
 }
 
 }  // namespace cert

@@ -14,8 +14,10 @@
 
 #include <pvxs/data.h>
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+using pvxs::Value;
+using pvxs::shared_array;
 
 /** What an administrator decided about one certificate. */
 enum class ReviewDecision {
@@ -116,7 +118,7 @@ bool isRevocable(const std::string &status);
 int runReview(std::vector<ReviewRow> &rows, const ReviewOptions &options, const ReviewCallbacks &callbacks, std::istream &in,
               std::ostream &out, std::ostream &err);
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERT_REVIEW_H

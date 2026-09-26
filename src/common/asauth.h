@@ -17,8 +17,9 @@
 
 #include "utilpvt.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+    namespace server = ::pvxs::server;
 
 /**
  * @brief Check whether a client is authorized to PUT against an access-security
@@ -85,7 +86,7 @@ inline bool clientCanPut(ASMEMBERPVT mem, int asl, const server::ClientCredentia
     return can_put;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CMS_ASAUTH_H

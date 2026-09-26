@@ -88,6 +88,7 @@ DEFINE_LOGGER(pvacmsmonitor, "cms");
 
 namespace cms {
 using pvxs::Value;
+using namespace ::cms::cert;
 using pvxs::shared_array;
 using pvxs::NoConvert;
 using pvxs::impl::ConfigCommon;
@@ -1479,7 +1480,7 @@ int64_t onCreateCertificate(ConfigCms &config,
             }
         }
 
-        CreateResponseContext response_context;
+        cms::auth::CreateResponseContext response_context;
         response_context.request_id = request_id;
         response_context.cert_auth_pkey = &cert_auth_pkey;
         authenticator->fillCreateResponse(ccr, reply, response_context);

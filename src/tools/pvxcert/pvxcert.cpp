@@ -41,6 +41,7 @@
 #include "openssl.h"
 
 using namespace pvxs;
+namespace certs = ::cms::cert;
 
 namespace {
 

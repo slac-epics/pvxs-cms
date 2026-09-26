@@ -9,8 +9,10 @@
 #include <algorithm>
 #include <vector>
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+using pvxs::Value;
+using pvxs::shared_array;
 
 namespace {
 
@@ -163,5 +165,5 @@ void printCertList(std::ostream &out, const Value &table, const CertListFormat f
     }
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

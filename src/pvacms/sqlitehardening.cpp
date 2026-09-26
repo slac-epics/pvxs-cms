@@ -10,8 +10,8 @@
 
 #include <pvxs/log.h>
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 namespace {
 DEFINE_LOGGER(sqlitehardening, "cms.db.hardening");
@@ -37,5 +37,5 @@ void applySqliteHardening(sqlite3 *const db) {
                      SQLITE_BUSY_TIMEOUT_MS);
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

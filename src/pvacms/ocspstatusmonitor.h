@@ -65,12 +65,12 @@ class OcspStatusMonitor {
      * rather keep the last verified answer than stop sets `hold_last_known`, and then only
      * a responder that says so changes it.
      */
-    pvxs::certs::ocspcertstatus_t ocspStatus() const noexcept {
+    cms::cert::ocspcertstatus_t ocspStatus() const noexcept {
         const auto answer = answer_.load(std::memory_order_acquire);
-        if (answer == pvxs::certs::ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN || hold_last_known_) return answer;
+        if (answer == cms::cert::ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN || hold_last_known_) return answer;
         return time(nullptr) < answer_valid_until_.load(std::memory_order_acquire)
                    ? answer
-                   : pvxs::certs::ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN;
+                   : cms::cert::ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN;
     }
 
     /** @brief Begins polling. Does nothing when the anchor named no responder. */
@@ -100,7 +100,7 @@ class OcspStatusMonitor {
      * The certificate status is derived from these, so a poll that came back with nothing records
      * nothing and the answer already held stands until it runs out.
      */
-    std::atomic<pvxs::certs::ocspcertstatus_t> answer_{pvxs::certs::ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN};
+    std::atomic<cms::cert::ocspcertstatus_t> answer_{cms::cert::ocspcertstatus_t::OCSP_CERTSTATUS_UNKNOWN};
     std::atomic<time_t> answer_valid_until_{0};
 
     /** Its own event loop, on a named EPICS thread, so nothing here runs on the server's. */

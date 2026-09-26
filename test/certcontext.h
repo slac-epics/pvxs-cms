@@ -103,6 +103,7 @@ struct client2 {};
 
 namespace cms {
     using pvxs::Value;
+    using namespace ::cms::cert;
     using pvxs::shared_array;
     namespace server = pvxs::server;
     namespace client = pvxs::client;

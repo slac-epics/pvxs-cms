@@ -35,7 +35,7 @@ namespace cert {
  * @param err where the headers, separators, and the no-identity notice are printed
  * @return the status PV name, or an empty string when there is no identity certificate
  */
-std::string printKeychainReport(const pvxs::certs::CertData &cert_data, std::ostream &out, std::ostream &err);
+std::string printKeychainReport(const cms::cert::CertData &cert_data, std::ostream &out, std::ostream &err);
 
 }  // namespace cert
 }  // namespace cms

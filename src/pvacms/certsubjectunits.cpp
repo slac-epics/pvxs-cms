@@ -11,8 +11,9 @@
 #include "sqlitestmt.h"
 #include "utilpvt.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+    using namespace ::cms::detail;
 
 std::string getOrganizationalUnitsClause(const std::vector<std::string> &units) {
     auto clause = SB();
@@ -70,5 +71,5 @@ std::vector<std::string> getSubjectUnits(sqlite3 *certs_db, const int64_t db_ser
     return units;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms

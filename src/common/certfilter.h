@@ -14,8 +14,8 @@
 #include <string>
 #include <vector>
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 /**
  * @brief What is wrong with a filter, said so an operator can act on it.
@@ -156,7 +156,7 @@ constexpr size_t kFilterMaxRegexes = 8;
 /** Most rows the in-memory pass will look at. */
 constexpr size_t kFilterMaxRows = 100000;
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERTFILTER_H_

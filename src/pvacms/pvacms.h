@@ -304,9 +304,7 @@ namespace cms {
     using cms::detail::ossl_shared_ptr;
     using cms::detail::sql_ptr;
     using cms::detail::ServerEv;
-
-std::string sanToJson(const std::vector<SanEntry> &entries);
-std::vector<SanEntry> sanFromJson(const std::string &json);
+    using namespace ::cms::cert;
 
 /**
  * @brief Monitors the certificate status and updates the shared wildcard status pv when any become valid or expire.

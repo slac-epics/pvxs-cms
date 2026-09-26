@@ -18,8 +18,7 @@
 namespace cms {
 namespace auth {
     namespace client = ::pvxs::client;
-    using ::cms::cert::SanEntry;
-    using ::cms::cert::ScheduleWindow;
+    using namespace ::cms::cert;
 
 class ConfigAuthN : public client::Config {
    public:

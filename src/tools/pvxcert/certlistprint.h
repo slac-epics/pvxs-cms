@@ -12,8 +12,10 @@
 
 #include <pvxs/data.h>
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
+using pvxs::Value;
+using pvxs::shared_array;
 
 /** How `--list` writes the table it was served. */
 enum class CertListFormat {
@@ -44,7 +46,7 @@ bool parseCertListFormat(const std::string &name, CertListFormat &out);
  */
 void printCertList(std::ostream &out, const Value &table, CertListFormat format);
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
 
 #endif  // PVXS_CERTLISTPRINT_H_

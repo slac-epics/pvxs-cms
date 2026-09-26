@@ -12,6 +12,7 @@
 
 namespace cms {
 namespace auth {
+    using namespace ::cms::cert;
     using ::cms::cert::CertCreationRequest;
 
 class CCRManager {

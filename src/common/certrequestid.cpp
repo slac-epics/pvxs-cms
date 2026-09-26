@@ -23,8 +23,8 @@
 
 #include "openssl.h"
 
-namespace pvxs {
-namespace certs {
+namespace cms {
+namespace cert {
 
 namespace {
 
@@ -316,5 +316,5 @@ std::vector<uint8_t> requestIdSignedBytes(const std::string &cert_id,
     return out;
 }
 
-}  // namespace certs
-}  // namespace pvxs
+}  // namespace cert
+}  // namespace cms
