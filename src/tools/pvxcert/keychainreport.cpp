@@ -16,7 +16,6 @@
 
 namespace cms {
 namespace cert {
-using cms::ssl::ShowX509;
 
 std::string printKeychainReport(const cms::cert::CertData &cert_data, std::ostream &out, std::ostream &err) {
     if (!cert_data.cert) {
@@ -36,7 +35,7 @@ std::string printKeychainReport(const cms::cert::CertData &cert_data, std::ostre
     }
 
     err << "Certificate Details: " << std::endl << "============================================" << std::endl;
-    out << ShowX509{cert_data.cert.get()} << std::endl
+    out << cms::ssl::ShowX509{cert_data.cert.get()} << std::endl
         << (config_id.empty() ? "" : "Config URI     : " + config_id + "\n");
     err << "--------------------------------------------" << std::endl;
     printAnchorListing(cert_data, out);
